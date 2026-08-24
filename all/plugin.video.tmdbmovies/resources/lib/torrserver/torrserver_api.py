@@ -244,7 +244,12 @@ class TorrServer(object):
 
     def add_magnet_fast(self, magnet, title="", poster=""):
         info_hash = extract_hash_from_magnet(magnet)
-        if info_hash:
+        # Magnetul are propriul tracker (&tr=, ex. announce cu passkey pe trackere
+        # private)? Atunci SARIM cache-urile publice (itorrents.org etc.) - copia
+        # de acolo are announce inlocuit/gol => TorrServer nu primeste peers (private
+        # = zero DHT) => metadata nu ajunge niciodata. Trimitem magnetul direct.
+        has_own_tracker = ('&tr=' in magnet) or ('?tr=' in magnet)
+        if info_hash and not has_own_tracker:
             cached = self._try_torrent_cache(info_hash)
             if cached:
                 b64 = base64.b64encode(cached).decode('ascii')

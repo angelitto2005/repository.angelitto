@@ -341,7 +341,7 @@ def _best_title_and_year(info, magnet=''):
         bt = (info.get('Title', '') or info.get('title', '')).strip()
     return bt, by
 
-_VIDEO_EXT = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.ts', '.m4v', '.webm', '.flv', '.m2ts')
+_VIDEO_EXT = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.ts', '.m4v', '.webm', '.flv', '.m2ts', '.iso')
 _MIN_VIDEO_SIZE = 50 * 1024 * 1024
 
 def _format_file_label(f):
@@ -435,7 +435,7 @@ def _do_buffer_and_play(ts, info_hash, file_id, file_path, file_size, title,
             ui_window.close_window()
             return
 
-def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster_for_ts):
+def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster_for_ts, torrent_b64=None):
     info_hash = None
     ce = ui_window._cancel_event
     try:
@@ -443,17 +443,34 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
         if ce.is_set():
             return
         is_file_upload = False
-        if os.path.exists(magnet_uri) and os.path.isfile(magnet_uri):
-            info_hash = ts.add_file(magnet_uri, title=title, poster=poster_for_ts)
-            is_file_upload = True
-        elif magnet_uri.startswith('magnet:'):
-            info_hash = ts.add_magnet_fast(magnet_uri, title=title, poster=poster_for_ts)
-            is_file_upload = True
-        elif magnet_uri.lower().endswith('.torrent') or urlparse.urlparse(magnet_uri).path.lower().endswith('.torrent'):
-            info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
-            is_file_upload = True
-        else:
-            info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
+        # .torrent raw disponibil (ex. SeedPool trimite bytes la scraping)?
+        # Upload DIRECT = TorrServer are fisierele instant, fara BEP-9
+        # (schimbul de metadata pe magnet pur poate bloca indefinit chiar si
+        # cu peers conectati la trackerul privat).
+        if torrent_b64 and magnet_uri.startswith('magnet:'):
+            try:
+                import base64
+                raw = base64.b64decode(torrent_b64)
+                if raw[:1] == b'd':
+                    info_hash = ts._upload_multipart_raw(raw, 'torrent.torrent', title, poster_for_ts)
+                    if info_hash:
+                        is_file_upload = True
+                        log("Worker: .torrent bytes uploaded directly -> %s" % info_hash)
+            except Exception as _e:
+                log("Worker: b64 upload failed (%s), fallback la magnet" % str(_e)[:60])
+                info_hash = None
+        if not info_hash:
+            if os.path.exists(magnet_uri) and os.path.isfile(magnet_uri):
+                info_hash = ts.add_file(magnet_uri, title=title, poster=poster_for_ts)
+                is_file_upload = True
+            elif magnet_uri.startswith('magnet:'):
+                info_hash = ts.add_magnet_fast(magnet_uri, title=title, poster=poster_for_ts)
+                is_file_upload = True
+            elif magnet_uri.lower().endswith('.torrent') or urlparse.urlparse(magnet_uri).path.lower().endswith('.torrent'):
+                info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
+                is_file_upload = True
+            else:
+                info_hash = ts.add_magnet(magnet_uri, title=title, poster=poster_for_ts)
         if not info_hash:
             return
         ts.save_hash_to_settings(info_hash=info_hash)
@@ -472,7 +489,12 @@ def _worker_phase1(ts, magnet_uri, item_info, ui_window, platform, title, poster
         candidates = [f for f in files
                       if any(f.get('path', '').lower().endswith(e) for e in _VIDEO_EXT)]
         if not candidates:
-            candidates = files
+            # Torrent FARA niciun fisier video (ex. doar .exe/.scr) = sursa fake.
+            # Esuam devreme ca playerul sa sursa urmatoarea / sa redeschida sursele,
+            # nu sa incercam demuxer pe un executabil ("error probing input format").
+            log("Worker: torrentul nu are niciun fisier video (%d fisiere: %s) - sursa invalida/fake, skip"
+                % (len(files), ', '.join(f.get('path', '')[:40] for f in files[:3])))
+            return
         significant = [f for f in candidates if f.get('length', 0) > _MIN_VIDEO_SIZE]
         season = item_info.get('Season')
         episode = item_info.get('Episode')
@@ -698,7 +720,7 @@ def _wait_for_ready(ts, info_hash, file_id, title, file_path, file_size,
         log("Buffer EXCEPTIE: %s" % str(e))
         return 'error'
 
-def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
+def get_torrserver_url(magnet_uri, item_info, bridge_info=None, torrent_b64=None):
     if len(magnet_uri) == 40 and not magnet_uri.startswith(('http', 'magnet')):
         magnet_uri = "magnet:?xt=urn:btih:%s" % magnet_uri
     ts = _create_ts()
@@ -732,7 +754,8 @@ def get_torrserver_url(magnet_uri, item_info, bridge_info=None):
         win.setProperty('tmdbmovies.torrserver_flag', bridge_info.get('quality', 'SD'))
     worker1 = threading.Thread(
         target=_worker_phase1,
-        args=(ts, magnet_uri, item_info, ui1, platform, title, poster_for_ts))
+        args=(ts, magnet_uri, item_info, ui1, platform, title, poster_for_ts),
+        kwargs={'torrent_b64': torrent_b64})
     worker1.daemon = True
     worker1.start()
     if bridge_info:

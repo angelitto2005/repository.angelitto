@@ -156,7 +156,7 @@ def _tier_matches(tier, cat, is_cached):
         return cat in ('aio', 'stremio') and not is_cached
     return False
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
@@ -249,7 +249,7 @@ def deduplicate_streams(streams):
         else:
             duplicates_removed += 1
     
-    log(f"[DEDUP] ✓ Result: {len(streams)} -> {len(unique_streams)} (removed {duplicates_removed} duplicates)")
+    log(f"[DEDUP] âś“ Result: {len(streams)} -> {len(unique_streams)} (removed {duplicates_removed} duplicates)")
     
     return unique_streams
     
@@ -671,6 +671,7 @@ def extract_stream_info(stream):
             'p2p_mediafusion': 'MediaFusion P2P',
             'p2p_filelist': 'FileList',
             'p2p_speedapp': 'SpeedApp',
+            'p2p_seedpool': 'SeedPool',
             'p2p_knaben': 'Knaben',
             'p2p_thepiratebay': 'TPB',
             'p2p_custom1': ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1',
@@ -747,7 +748,7 @@ def extract_stream_info(stream):
     
     # 2b. Extragere din name pentru WebStreamr
     if not server and (provider == 'Webstreamr' or 'webstreamr' in raw_name.lower()):
-        webstr_server_match = re.search(r'🔗\s*(.+?)(?:\n|$)', raw_title)
+        webstr_server_match = re.search(r'đź”—\s*(.+?)(?:\n|$)', raw_title)
         if webstr_server_match: 
             server = webstr_server_match.group(1).strip()
         elif binge_group:
@@ -865,7 +866,7 @@ def extract_stream_info(stream):
         # -------------------------------------------------------------
         
         size_patterns = [
-            r'💾\s*([\d.]+)\s*(GB|MB|TB)',                    # Emoji format
+            r'đź’ľ\s*([\d.]+)\s*(GB|MB|TB)',                    # Emoji format
             r'\[([\d.]+)\s*(GB|MB|TB)\]',                     # [5.28 GB]
             r'\|\s*([\d.]+)\s*(GB|MB|TB)\s*(?:\||$)',         # | 5.28 GB |
             r'Size\s*:\s*([\d.]+)\s*(GB|MB|TB)',              # Size: 5.28 GB
@@ -1100,10 +1101,10 @@ def build_display_items(streams, poster_url):
         raw_name = s.get('name', '')
         
         label2 = raw_title if raw_title else raw_name
-        label2 = re.sub(r'[💾🔗🇬🇧🇺🇸🇮🇳]', '', label2)
+        label2 = re.sub(r'[đź’ľđź”—đź‡¬đź‡§đź‡şđź‡¸đź‡®đź‡ł]', '', label2)
         label2 = label2.replace('\n', ' ').strip()
         label2 = re.sub(r'\s*\|\s*[A-Za-z0-9]+Hub\s*$', '', label2)
-        label2 = re.sub(r'\s*🔗\s*\w+\s*\(\w+\)\s*$', '', label2)
+        label2 = re.sub(r'\s*đź”—\s*\w+\s*\(\w+\)\s*$', '', label2)
         
         if len(label2) > 110:
             label2 = label2[:107] + "..."
@@ -1131,7 +1132,7 @@ def sort_streams_by_quality(streams):
         title_lower = s.get('title', '').lower()
         text_combined = f"{name_lower} {title_lower} {quality_field}"
         
-        # Scor Calitate — quality_field e sursa autoritara
+        # Scor Calitate â€” quality_field e sursa autoritara
         q_score = 0
         if quality_field == '4k' or quality_field == '2160p' or quality_field == 'uhd':
             q_score = 4
@@ -1200,7 +1201,7 @@ def sort_streams_by_quality(streams):
             try: seeders = int(info_dict.get('seeders', 0))
             except: pass
         if seeders == 0:
-            m = re.search(r'(?:👤|👥|S:)\s*(\d+)', name_lower + ' ' + title_lower)
+            m = re.search(r'(?:đź‘¤|đź‘Ą|S:)\s*(\d+)', name_lower + ' ' + title_lower)
             if m: seeders = int(m.group(1))
 
         # Group Score pt Setari (4 categorii: HTTP / AIO / Stremio / P2P)
@@ -1548,7 +1549,7 @@ def _silent_scrape_next_episode(player):
         http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
         p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
         debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-        p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+        p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
         for pid in ALL_KNOWN_PROVIDERS:
             is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
             if not is_enabled:
@@ -1769,11 +1770,11 @@ def start_playback_monitor(player_instance, dialog=None):
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        log(f"[PLAYER-MONITOR] âś“ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        log(f"[PLAYER-MONITOR] âś“ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
         # ============================================================
         # FIX ANTI-DUMMY: STERGEM BIFA PUSA DE KODI DIN GRESEALA
@@ -1846,7 +1847,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 )
                 
                 player_instance._send_trakt_scrobble('pause', last_known_progress)
-                log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
+                log(f"[PLAYER-MONITOR] âś“ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
                 # FIX RESUME: Verificam daca exista deja un resume valid (>3min) inainte de a-l sterge
@@ -1950,7 +1951,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
             
-            # Refresh unic dupa 5s — suficient cat fullscreenvideo sa se inchida complet (chiar si Torrentio)
+            # Refresh unic dupa 5s â€” suficient cat fullscreenvideo sa se inchida complet (chiar si Torrentio)
             xbmc.sleep(5000)
             xbmc.executebuiltin('Container.Refresh')
             log("[PLAYER-MONITOR] Container refreshed")
@@ -2255,7 +2256,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         'lines': bridge_lines,
                         'quality': bridge_quality,
                     }
-                    ts_url = get_torrserver_url(url, item_info, bridge_info=bridge_info)
+                    ts_url = get_torrserver_url(url, item_info, bridge_info=bridge_info,
+                                                torrent_b64=stream.get('_torrent_b64') or '')
                     if ts_url:
                         log("[PLAYER] P2P resolved via TorrServer: %s" % ts_url[:60])
                         valid_url = ts_url
@@ -2346,9 +2348,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             try: skin_type = ADDON.getSetting('skin_type')
             except: skin_type = '0'
             if skin_type == '1':
-                msg = f"{counter_str} [COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                msg = f"{counter_str} [COLOR FFFF69B4]{display_name}[/COLOR] â€˘[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             else:
-                msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] •[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
+                msg = f"Waiting for response from {counter_str}\n[COLOR FFFF69B4]{display_name}[/COLOR] â€˘[B][COLOR {c_qual}]{qual_txt}[/COLOR][/B]"
             p_dialog.update(int(((i - start_index + 1) / max(1, total_streams - start_index)) * 100), message=msg)
 
             log(f"[PLAYER] Testing source {i+1}: {provider_id} | {display_name} [{qual_txt}]")
@@ -2464,7 +2466,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if is_valid:
                     valid_url = url
                     valid_index = i
-                    log(f"[PLAYER] ✓ SURSA VALIDA: {i + 1}")
+                    log(f"[PLAYER] âś“ SURSA VALIDA: {i + 1}")
                     break
             except Exception as e:
                 log(f"[PLAYER] Error verificare: {e}")
@@ -2553,7 +2555,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             _su = _sd.get('url', '')
             if 'passkey=' in _su:
                 _sd['url'] = re.sub(r'(passkey=)[^&]+', r'\1***', _su)
-            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
+            # _torrent_b64 = tot .torrentul in base64 (~44KB/sursa) - nu-l loga
+            if '_torrent_b64' in _sd:
+                _tb = _sd['_torrent_b64']
+                _sd['_torrent_b64'] = '<%d chars>' % len(_tb) if isinstance(_tb, str) else '<bytes>'
+            xbmc.log(f"[TMDb Movies] đź§˛ STREAM DATA đź§˛:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
@@ -3044,7 +3050,7 @@ def list_sources(params):
         # -> ChoosePlayOrResume -> dialogul NATIV a aparut (item-ul de widget pastreaza
         # resume point pe VideoInfoTag). resume:false = userul a ales "Play from beginning"
         # -> play 0, fara dialogul nostru (altfel apar 2 dialoguri).
-        # NOTA: bookmark-ul din MyVideos NU e folosit ca semnal aici — el e scris de
+        # NOTA: bookmark-ul din MyVideos NU e folosit ca semnal aici â€” el e scris de
         # SaveFileStateJob la ORICE stop anterior (persistent), deci existenta lui nu
         # dovedeste ca dialogul nativ a rulat pe click-ul curent (vezi In Progress Episodes,
         # unde argv='resume:false' e doar flag-ul implicit al listelor de plugin).
@@ -3106,7 +3112,7 @@ def list_sources(params):
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
         if not is_enabled:
@@ -3279,7 +3285,7 @@ def list_sources(params):
         scan_thread = threading.Thread(target=_run_scan, daemon=True)
         scan_thread.start()
 
-        # Ruleaza doModal in thread separat (ca POV) — dialogul ramane deschis
+        # Ruleaza doModal in thread separat (ca POV) â€” dialogul ramane deschis
         # pana cand ResultsWindow e gata, eliminand gap-ul vizual
         _dialog_thread = threading.Thread(target=dialog.doModal, daemon=True)
         _dialog_thread.start()
@@ -3353,7 +3359,7 @@ def list_sources(params):
             streams = sort_streams_by_quality(streams)
             if use_cache:
                 cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration, cur_sort_opt)
-            # lista e deja sortata cu optiunea curenta — display-ul nu mai re-sorteaza
+            # lista e deja sortata cu optiunea curenta â€” display-ul nu mai re-sorteaza
             cached_sort_opt = cur_sort_opt
 
     if not streams:
@@ -3384,7 +3390,7 @@ def list_sources(params):
         return
     
     # Prepare metadata for results window
-    # SINGLE call (RAM cache, instant) — replaces get_poster_url (1-2 calls) + get_english_metadata (2-3 calls) + get_external_ids (1 call)
+    # SINGLE call (RAM cache, instant) â€” replaces get_poster_url (1-2 calls) + get_english_metadata (2-3 calls) + get_external_ids (1 call)
     from resources.lib.tmdb_api import get_tmdb_item_details
     details = get_tmdb_item_details(str(tmdb_id), c_type)
     
@@ -3498,7 +3504,7 @@ def list_sources(params):
             data_ep_target = get_json(url_ep_target)
             if data_ep_target and data_ep_target.get('name', '').strip():
                 target_name = data_ep_target['name'].strip()
-                if not re.match(r'^[A-Za-zÀ-ÿ]+\s+\d+$', target_name):
+                if not re.match(r'^[A-Za-zĂ€-Ăż]+\s+\d+$', target_name):
                     meta_dict['title'] = target_name
         except:
             pass
@@ -3542,7 +3548,7 @@ def list_sources(params):
     if ret < 0:
         from resources.lib.results_window import ResultsWindow
         window_items = format_for_results_window(filtered_streams, poster_url, meta_dict)
-        # Inchide dialogul de scanare FIX cand ResultsWindow e gata — zero gap
+        # Inchide dialogul de scanare FIX cand ResultsWindow e gata â€” zero gap
         try: dialog.close()
         except: pass
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
@@ -3562,7 +3568,7 @@ def list_sources(params):
             except: pass
 
     if ret >= 0:
-        # Inchide dialogul de scanare (autoplay/binge — fara ResultsWindow)
+        # Inchide dialogul de scanare (autoplay/binge â€” fara ResultsWindow)
         try: dialog.close()
         except: pass
         selected_streams = filtered_streams  
@@ -3657,7 +3663,7 @@ def initiate_download(params):
         return
     # =================================================================
     
-    # Metadata — single call replaces year + imdb_id + poster_url
+    # Metadata â€” single call replaces year + imdb_id + poster_url
     from resources.lib.tmdb_api import get_tmdb_item_details
     md = get_tmdb_item_details(str(tmdb_id), c_type)
     if md:
@@ -3688,7 +3694,7 @@ def initiate_download(params):
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+    p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
         if not is_enabled:

@@ -1,5 +1,6 @@
-1.1.236
-- Fixed some small bugs
+1.1.237
+- Added SeedPool, a private P2P tracker that works exclusively with TorrServer
+- Fixed several minor bugs
 
 1.1.235
 - Fixed date formatting in the TMDb and Simkl Calendars.

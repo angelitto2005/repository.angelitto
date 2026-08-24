@@ -6500,6 +6500,340 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
     return all_streams if all_streams else None
 
 
+# --- SeedPool (UNIT3D private tracker) ---
+_SEEDPOOL_BASE = 'https://seedpool.org'
+_SEEDPOOL_JUNK_RE = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview)\b'
+_SEEDPOOL_VIDEO_EXTS = ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.ts', '.m4v', '.webm', '.flv', '.m2ts', '.iso')
+_seedpool_session = None
+_seedpool_session_ts = 0
+_seedpool_session_lock = threading.Lock()
+_seedpool_announce = None
+_seedpool_login_fail_ts = 0
+
+
+def _seedpool_get_session(username, password, force=False):
+    """Login HTML (Laravel cu honeypots); sesiune cached 30 min.
+    Backoff 60s dupa un esec (trackerul throttleaza incercarile repetate)."""
+    global _seedpool_session, _seedpool_session_ts, _seedpool_login_fail_ts
+    with _seedpool_session_lock:
+        now = time.time()
+        if not force and _seedpool_session is not None and (now - _seedpool_session_ts) < 1800:
+            return _seedpool_session
+        if (now - _seedpool_login_fail_ts) < 60:
+            xbmc.log("[TMDb Movies] [SeedPool] login backoff active", xbmc.LOGERROR)
+            return None
+        try:
+            ua = get_random_ua()
+            s = requests.Session()
+            s.headers.update({'User-Agent': ua, 'Accept-Language': 'en-US,en;q=0.5'})
+            r = s.get(_SEEDPOOL_BASE + '/login', timeout=15)
+            fm = re.search(r'<form[^>]*action="[^"]*/login"[^>]*>(.*?)</form>', r.text, re.DOTALL)
+            if not fm:
+                xbmc.log("[TMDb Movies] [SeedPool] no login form found", xbmc.LOGERROR)
+                _seedpool_login_fail_ts = time.time()
+                return None
+            data = {}
+            for inp in re.finditer(r'<input([^>]*)>', fm.group(1)):
+                nm = re.search(r'name="([^"]*)"', inp.group(1))
+                vl = re.search(r'value="([^"]*)"', inp.group(1))
+                if nm:
+                    # honeypots text (_username etc.) raman goale; hidden pastreaza valoarea
+                    data[nm.group(1)] = vl.group(1) if vl else ''
+            data['username'] = username
+            data['password'] = password
+            if 'remember' in data:
+                data['remember'] = 'on'
+            r2 = s.post(_SEEDPOOL_BASE + '/login', data=data,
+                        headers={'Origin': _SEEDPOOL_BASE, 'Referer': _SEEDPOOL_BASE + '/login'}, timeout=15)
+            if 'logout' not in r2.text.lower():
+                xbmc.log("[TMDb Movies] [SeedPool] login failed", xbmc.LOGERROR)
+                _seedpool_session = None
+                _seedpool_session_ts = 0
+                _seedpool_login_fail_ts = time.time()
+                return None
+            _seedpool_session = s
+            _seedpool_session_ts = time.time()
+            _seedpool_login_fail_ts = 0
+            xbmc.log("[TMDb Movies] [SeedPool] login OK", xbmc.LOGERROR)
+            return s
+        except Exception as e:
+            xbmc.log("[TMDb Movies] [SeedPool] login error: %s" % str(e), xbmc.LOGERROR)
+            _seedpool_login_fail_ts = time.time()
+            return None
+
+
+def _sp_bdecode(data, pos):
+    c = data[pos:pos + 1]
+    if c == b'i':
+        e = data.index(b'e', pos)
+        return int(data[pos + 1:e]), e + 1
+    if c == b'l':
+        pos += 1
+        out = []
+        while data[pos:pos + 1] != b'e':
+            v, pos = _sp_bdecode(data, pos)
+            out.append(v)
+        return out, pos + 1
+    if c == b'd':
+        pos += 1
+        out = {}
+        while data[pos:pos + 1] != b'e':
+            k, pos = _sp_bdecode(data, pos)
+            v, pos = _sp_bdecode(data, pos)
+            out[k] = v
+        return out, pos + 1
+    e = data.index(b':', pos)
+    ln = int(data[pos:e])
+    st = e + 1
+    return data[st:st + ln], st + ln
+
+
+def _seedpool_info_hash(tdata):
+    """info_hash = sha1(bencode(info_dict)) din continutul .torrent."""
+    try:
+        i = tdata.find(b'4:info')
+        if i < 0:
+            return None
+        obj, end = _sp_bdecode(tdata, i + 6)
+        return hashlib.sha1(tdata[i + 6:end]).hexdigest()
+    except Exception:
+        return None
+
+
+def _seedpool_extract_announce(tdata):
+    """Announce URL (cu passkey embedded); valideaza fiecare candidat ca sa
+    evite potrivirile false in interiorul datelor binare 'pieces'.
+    Prefixul de lungime e calculat dinamic ('8:announce')."""
+    global _seedpool_announce
+    if _seedpool_announce:
+        return _seedpool_announce
+    key = b'announce'
+    pat = re.compile(re.escape(str(len(key)).encode()) + b':' + re.escape(key) + rb'(\d+):')
+    for m in pat.finditer(tdata):
+        ln = int(m.group(1))
+        st = m.end()
+        cand = tdata[st:st + ln]
+        if cand.startswith((b'http://', b'https://', b'udp://')):
+            try:
+                ann = cand.decode('utf-8', errors='ignore')
+                _seedpool_announce = ann
+                return ann
+            except Exception:
+                pass
+    return None
+
+
+def _seedpool_parse_rows(html):
+    """Parseaza randurile UNIT3D din pagina de cautare."""
+    rows = []
+    for m in re.finditer(r'<tr[^>]*data-torrent-id="(\d+)"[^>]*>(.*?)</tr>', html, re.DOTALL):
+        tid, row = m.group(1), m.group(2)
+        try:
+            nm = re.search(r'class="torrent-search--list__name"[^>]*>\s*(.+?)\s*</a>', row, re.DOTALL)
+            if not nm:
+                continue
+            name = nm.group(1).strip()
+            if not name or re.search(_SEEDPOOL_JUNK_RE, name):
+                continue
+            sz = re.search(r'torrent-search--list__size">\s*<span>([^<]+)</span>', row)
+            sd = re.search(r'torrent-search--list__seeders">\s*<a[^>]*>\s*<span>(\d+)</span>', row)
+            lc = re.search(r'torrent-search--list__leechers">\s*<a[^>]*>\s*<span>(\d+)</span>', row)
+            typ = re.search(r'torrent-search--list__type">\s*([^<]+?)\s*</span>', row)
+            rows.append({
+                'id': tid,
+                'name': name,
+                'size_str': sz.group(1).strip() if sz else '',
+                'seeders': int(sd.group(1)) if sd else 0,
+                'leechers': int(lc.group(1)) if lc else 0,
+                'type': typ.group(1).strip() if typ else '',
+                'freeleech': 1 if 'torrent-icons__freeleech' in row else 0,
+                'doubleup': 1 if 'torrent-icons__double-upload' in row else 0,
+                'internal': 1 if ('torrent-icons__internal' in row or 'Internal' in row) else 0,
+            })
+        except Exception:
+            continue
+    return rows
+
+
+def _seedpool_has_video(tdata):
+    """Anti-fake: verifica daca .torrentul contine macar un fisier video.
+    Torrenturile-fake (schema comuna pe trackere) contin doar .exe/.scr cu
+    nume de release frumos. La eroare de parsare NU bloca sursa."""
+    try:
+        i = tdata.find(b'4:info')
+        if i < 0:
+            return True
+        obj, end = _sp_bdecode(tdata, i + 6)
+        if not isinstance(obj, dict):
+            return True
+
+        def _is_video(nb):
+            n = nb.decode('utf-8', errors='ignore').lower()
+            return any(n.endswith(e) for e in _SEEDPOOL_VIDEO_EXTS)
+
+        nm = obj.get(b'name')
+        if isinstance(nm, bytes) and _is_video(nm):
+            return True
+        fl = obj.get(b'files')
+        if isinstance(fl, list):
+            for it in fl:
+                if isinstance(it, dict):
+                    p = it.get(b'path')
+                    if isinstance(p, list) and p and isinstance(p[-1], bytes) and _is_video(p[-1]):
+                        return True
+        return False
+    except Exception:
+        return True
+
+
+def scrape_seedpool(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    xbmc.log("[TMDb Movies] [SeedPool] scrape_seedpool called: imdb_id=%s content_type=%s" % (imdb_id, content_type), xbmc.LOGERROR)
+    if ADDON.getSetting('use_p2p_seedpool') == 'false':
+        return None
+
+    username = ADDON.getSetting('seedpool_username').strip()
+    password = ADDON.getSetting('seedpool_password').strip()
+    fallback_enabled = ADDON.getSetting('seedpool_fallback_name') == 'true'
+
+    if not username or not password:
+        xbmc.log("[TMDb Movies] [SeedPool] missing username or password", xbmc.LOGERROR)
+        return None
+
+    session = _seedpool_get_session(username, password)
+    if session is None:
+        return None
+
+    found_rows = {}
+
+    def fetch_search(params):
+        nonlocal session
+        try:
+            r = session.get(_SEEDPOOL_BASE + '/torrents', params=params, timeout=15)
+            if r.status_code != 200:
+                xbmc.log("[TMDb Movies] [SeedPool] search HTTP %d" % r.status_code, xbmc.LOGERROR)
+                return False
+            # Sesiune expirata server-side -> re-login fortat + retry
+            if 'name="password"' in r.text:
+                xbmc.log("[TMDb Movies] [SeedPool] session expired, re-login", xbmc.LOGERROR)
+                s2 = _seedpool_get_session(username, password, force=True)
+                if not s2:
+                    return False
+                session = s2
+                r = s2.get(_SEEDPOOL_BASE + '/torrents', params=params, timeout=15)
+                if r.status_code != 200 or 'name="password"' in r.text:
+                    return False
+            n0 = len(found_rows)
+            for row in _seedpool_parse_rows(r.text):
+                found_rows.setdefault(row['id'], row)
+            return len(found_rows) > n0
+        except Exception as e:
+            xbmc.log("[TMDb Movies] [SeedPool] search error: %s" % str(e), xbmc.LOGERROR)
+            return False
+
+    # 1. IMDb search
+    if imdb_id and str(imdb_id).startswith('tt'):
+        fetch_search({'imdbId': str(imdb_id)})
+
+    # 2. Fallback name search
+    if not found_rows and fallback_enabled and title_query:
+        q = title_query + (" " + year_query if year_query else "")
+        fetch_search({'name': q})
+
+    if not found_rows:
+        xbmc.log("[TMDb Movies] [SeedPool] no torrents found", xbmc.LOGERROR)
+        return None
+
+    # 3. .torrent -> info_hash -> magnet (parallel; TorrServer nu are cookies)
+    from concurrent.futures import ThreadPoolExecutor
+    rows = sorted(found_rows.values(), key=lambda x: x['seeders'], reverse=True)[:30]
+
+    def build_magnet(row):
+        try:
+            rd = session.get('%s/torrents/download/%s' % (_SEEDPOOL_BASE, row['id']), timeout=20)
+            # Trackerul poate throttle-a burst-uri de download - un singur retry
+            if rd.status_code != 200:
+                time.sleep(0.7)
+                rd = session.get('%s/torrents/download/%s' % (_SEEDPOOL_BASE, row['id']), timeout=20)
+            if rd.status_code != 200 or len(rd.content) < 100:
+                return None
+            ih = _seedpool_info_hash(rd.content)
+            if not ih:
+                return None
+            if not _seedpool_has_video(rd.content):
+                xbmc.log("[TMDb Movies] [SeedPool] FAKE skipped (fara fisiere video): %s" % row['name'][:70], xbmc.LOGERROR)
+                return None
+            ann = _seedpool_extract_announce(rd.content)
+            # Bytes raw pentru upload direct in TorrServer (metadata instant,
+            # fara BEP-9 pe magnet pur - blocat pe unele setup-uri)
+            row['torrent_b64'] = base64.b64encode(rd.content).decode('ascii')
+            mag = 'magnet:?xt=urn:btih:%s&dn=%s' % (ih, quote(row['name']))
+            if ann:
+                mag += '&tr=' + quote(ann, safe='')
+            row['magnet'] = mag
+            return row
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        built = list(ex.map(build_magnet, rows))
+
+    # Completam announce-ul pentru magnetii construiti inainte de prima
+    # extractie reusita (race intre workerii paraleli)
+    ann_cached = _seedpool_announce
+    if ann_cached:
+        for row in built:
+            if row and row.get('magnet') and '&tr=' not in row['magnet']:
+                row['magnet'] += '&tr=' + quote(ann_cached, safe='')
+
+    ok_rows = [r for r in built if r]
+    xbmc.log("[TMDb Movies] [SeedPool] %d magnets built from %d torrents" % (len(ok_rows), len(rows)), xbmc.LOGERROR)
+
+    streams = []
+    for row in ok_rows:
+        name = row['name']
+        seeders = row['seeders']
+        leechers = row['leechers']
+        display_name = name + " [S: %d P: %d]" % (seeders, leechers)
+
+        q_label = 'SD'
+        name_upper = name.upper()
+        if '2160P' in name_upper or '4K' in name_upper:
+            q_label = '4K'
+        elif '1080P' in name_upper:
+            q_label = '1080p'
+        elif '720P' in name_upper:
+            q_label = '720p'
+        elif '480P' in name_upper or 'SD' in name_upper:
+            q_label = 'SD'
+
+        streams.append({
+            'url': row['magnet'],
+            'name': display_name,
+            'title': display_name,
+            'quality': q_label,
+            'size': row['size_str'],
+            '_torrent_b64': row.get('torrent_b64', ''),
+            'info': {
+                'seeders': seeders,
+                'peers': leechers,
+                'indexer': row['type'],
+                'freeleech': row['freeleech'],
+                'doubleup': row['doubleup'],
+                'internal': row['internal'],
+                'quality': q_label,
+                'releaseGroup': _extract_release_group(name),
+            },
+            'provider_id': 'p2p_seedpool'
+        })
+
+    if content_type == 'tv' and (season is not None) and streams:
+        xbmc.log("[TMDb Movies] [SeedPool] applying tv pack filter: season=%s episode=%s" % (season, episode), xbmc.LOGERROR)
+        streams = _filter_tv_packs(streams, season, episode)
+    if streams:
+        xbmc.log("[TMDb Movies] [SeedPool] %d streams returned" % len(streams), xbmc.LOGERROR)
+    return streams if streams else None
+
+
 # --- SpeedApp API helpers ---
 _speedapp_channel_lock = threading.Lock()
 _speedapp_channel_ids = None
@@ -6854,7 +7188,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
-        ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true' or ADDON.getSetting('use_p2p_knaben') == 'true' or ADDON.getSetting('use_p2p_thepiratebay') == 'true'
+        ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_seedpool') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true' or ADDON.getSetting('use_p2p_knaben') == 'true' or ADDON.getSetting('use_p2p_thepiratebay') == 'true'
         
         if needs_title:
             try:
@@ -6929,6 +7263,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'p2p_comet': ('Comet P2P', lambda: scrape_p2p_comet(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_mediafusion': ('MediaFusion P2P', lambda: scrape_p2p_mediafusion(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_speedapp': ('SpeedApp', lambda: scrape_speedapp(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_seedpool': ('SeedPool', lambda: scrape_seedpool(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_knaben': ('Knaben', lambda: scrape_knaben(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_thepiratebay': ('The Pirate Bay', lambda: scrape_thepiratebay(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_custom1': ('P2P Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom1', ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1')),
@@ -6943,7 +7278,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:
         for pid in target_providers:

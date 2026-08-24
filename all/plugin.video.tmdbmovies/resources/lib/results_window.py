@@ -141,6 +141,7 @@ AIO_ADDON_COLORS = {
     'p2p_mediafusion':'FF7B68EE',
     'p2p_filelist':   'FF00BFFF',
     'p2p_speedapp':   'FF50C878',
+    'p2p_seedpool':   'FF32CD32',
     'p2p_knaben':     'FFDAA520',
     'p2p_thepiratebay': 'FF8B4513',
     'p2p_custom1':    'FFDAA520',
@@ -505,12 +506,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # FileList / SpeedApp numele imediat dupa size
             _fl_handled = False
             _sa_handled = False
+            _sp_handled = False
             if provider_id == 'p2p_filelist':
                 parts.append(f"[COLOR FF00BFFF][B]FileList[/B][/COLOR]")
                 _fl_handled = True
             elif provider_id == 'p2p_speedapp':
                 parts.append("[COLOR FFFFFF00][B]SpeedApp[/B][/COLOR]")
                 _sa_handled = True
+            elif provider_id == 'p2p_seedpool':
+                parts.append("[COLOR FFFF5555][B]SeedPool[/B][/COLOR]")
+                _sp_handled = True
             
             # P2P flags (FREE/2X/INT/HALF)
             if is_p2p and provider_id == 'p2p_filelist':
@@ -527,6 +532,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     parts.append("[COLOR FFFFFF00][B]2X[/B][/COLOR]")
                 if info.get('halfdw'):
                     parts.append("[COLOR FF50C878][B]½DW[/B][/COLOR]")
+                if info.get('internal'):
+                    parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
+            if is_p2p and provider_id == 'p2p_seedpool':
+                if info.get('freeleech'):
+                    parts.append("[COLOR FF00FF00][B]FREE[/B][/COLOR]")
+                if info.get('doubleup'):
+                    parts.append("[COLOR FFFFFF00][B]2X[/B][/COLOR]")
                 if info.get('internal'):
                     parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
             
@@ -568,6 +580,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
                 elif _sa_handled:
+                    if ro_dub_tag:
+                        parts.append(ro_dub_tag)
+                elif _sp_handled:
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
                 elif provider_id == 'p2p_filelist':
