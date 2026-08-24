@@ -1,5 +1,6 @@
-1.1.239
+1.1.240
 - Fixed: Library watched sync screen flicker - watchmarks are now written directly to the Kodi DB in one SQL transaction and appear all at once, instead of per-item JSON-RPC updates
+- Fixed Kodi Log Viewer
 
 1.1.238
 - Fixed a minor bug with Arctic Fuse 3

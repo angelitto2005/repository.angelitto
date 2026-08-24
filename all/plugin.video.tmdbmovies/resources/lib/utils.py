@@ -671,10 +671,29 @@ def upload_logfile():
         dialog.ok("Error", f"Load error: {str(e)}")
 
 
+_LOG_ERROR_RE = re.compile(r' (ERROR|error)(?: <[^>]*>)?: ')
+_LOG_WARNING_RE = re.compile(r' (WARNING|warning)(?: <[^>]*>): ')
+
+def _style_kodi_log(text):
+    """Colorare ca la Log Viewer for Kodi: ERROR rosu, WARNING galben (gold).
+    Spatiile de la inceputul liniilor devin non-breaking (textboxul Kodi
+    le colapseaza altfel -> stacktrace-urile ies neindentate)."""
+    out = []
+    for line in text.splitlines():
+        stripped = line.lstrip(' ')
+        if stripped is not line and len(stripped) != len(line):
+            stripped = '\u00a0' * (len(line) - len(stripped)) + stripped
+        if _LOG_ERROR_RE.search(stripped):
+            stripped = _LOG_ERROR_RE.sub(lambda m: '[COLOR red]%s[/COLOR]' % m.group(0), stripped)
+        elif _LOG_WARNING_RE.search(stripped):
+            stripped = _LOG_WARNING_RE.sub(lambda m: '[COLOR gold]%s[/COLOR]' % m.group(0), stripped)
+        out.append(stripped)
+    return '\n'.join(out)
+
 def view_kodi_log():
-    """Deschide kodi.log sau kodi.old.log intr-un textviewer cu font mono.
-    Primul pas: alegerea fisierului (active vs old).
-    Al doilea pas: alegerea ordinii (ascending sau descending)."""
+    """Deschide kodi.log sau kodi.old.log in textviewer-ul nativ al skinului
+    (font mare, identic cu POV - FARA usemono care forteaza fontul mic mono).
+    Culori ERROR/WARNING ca la Log Viewer for Kodi."""
     
     dialog = xbmcgui.Dialog()
     
@@ -718,8 +737,8 @@ def view_kodi_log():
     else:
         heading = f"[B][COLOR FF87CEEB]{log_filename}[/COLOR][/B] - oldest first"
 
-    # 5. Afisarea propriu-zisa
-    dialog.textviewer(heading, '\n'.join(lines), usemono=True)
+    # 5. Afisarea propriu-zisa - fontul nativ al skinului + culori ERROR/WARNING
+    dialog.textviewer(heading, _style_kodi_log('\n'.join(lines)))
     
 
 DONATE_URL = 'https://ko-fi.com/angelitto'
