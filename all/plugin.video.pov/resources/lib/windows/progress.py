@@ -28,18 +28,18 @@ class ProgressMedia(BaseDialog):
 		self.clearProperties()
 		return self.selected
 
-	def iscanceled(self):
-		if self.enable_buttons: return self.selected
-		else: return self.is_canceled
+	def onClick(self, controlID):
+		self.selected = controlID == 10
+		self.close()
 
 	def onAction(self, action):
 		if action in self.closing_actions:
 			self.is_canceled = True
 			self.close()
 
-	def onClick(self, controlID):
-		self.selected = controlID == 10
-		self.close()
+	def iscanceled(self):
+		if self.enable_buttons: return self.selected
+		else: return self.is_canceled
 
 	def allow_buttons(self):
 		self.setProperty('tikiskins.source_progress.buttons', 'true')

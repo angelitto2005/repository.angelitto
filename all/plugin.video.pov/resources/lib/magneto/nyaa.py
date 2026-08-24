@@ -5,9 +5,9 @@
 
 import re
 from urllib.parse import quote_plus, unquote_plus
-from fenom import cleantitle
-from fenom import client
-from fenom import source_utils
+from magneto.modules import cleantitle
+from magneto.modules import client
+from magneto.modules import source_utils
 
 
 class source:
@@ -30,6 +30,7 @@ class source:
 			title = data['tvshowtitle'] if 'tvshowtitle' in data else data['title']
 			title = title.replace('&', 'and').replace('Special Victims Unit', 'SVU').replace('/', ' ')
 			aliases = source_utils.aliases_to_array(data['aliases'])
+			episode_title = data['title'] if 'tvshowtitle' in data else None
 			year = data['year']
 			hdlr = 'S%02dE%02d' % (int(data['season']), int(data['episode'])) if 'tvshowtitle' in data else year
 			hdlr2 = 'S%d - %d' % (int(data['season']), int(data['episode'])) if 'tvshowtitle' in data else year
@@ -75,6 +76,7 @@ class source:
 
 						if hdlr not in name and hdlr2 not in name: continue
 						if source_utils.remove_lang(name, check_foreign_audio): continue
+						name_info = source_utils.info_from_name(name, title, year, hdlr, episode_title)
 						# if undesirables and source_utils.remove_undesirables(name_info, undesirables): continue
 
 						if hdlr in name:
@@ -96,7 +98,7 @@ class source:
 						info = ' | '.join(info)
 
 						sources_append({'provider': 'nyaa', 'source': 'torrent', 'seeders': seeders, 'hash': hash, 'name': name, 'quality': quality,
-										'language': 'en', 'url': url, 'info': info, 'direct': False, 'debridonly': True, 'size': dsize})
+										'language': 'en', 'url': url, 'info': info, 'direct': False, 'debridonly': True, 'size': dsize, 'name_info': name_info})
 			except:
 				source_utils.scraper_error('NYAA')
 				return sources

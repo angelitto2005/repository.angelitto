@@ -6,8 +6,8 @@
 from json import loads as jsloads
 import re
 from urllib.parse import quote
-from fenom import client
-from fenom import source_utils
+from magneto.modules import client
+from magneto.modules import source_utils
 
 SERVER_ERROR = ('521 Origin Down', 'No results returned', 'Connection Time-out', 'Database maintenance')
 

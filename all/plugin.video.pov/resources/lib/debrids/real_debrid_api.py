@@ -4,7 +4,6 @@ from modules import kodi_utils
 # logger = kodi_utils.logger
 
 ls, get_setting, set_setting = kodi_utils.local_string, kodi_utils.get_setting, kodi_utils.set_setting
-auth_url = 'https://app.real-debrid.com/oauth/v2/'
 base_url = 'https://app.real-debrid.com/rest/1.0/'
 timeout = 10.0
 session = requests.Session()
@@ -13,6 +12,7 @@ session.mount('https://app.real-debrid.com', requests.adapters.HTTPAdapter(max_r
 
 class RealDebridAPI:
 	icon = 'realdebrid.png'
+	defaults_to_cloud = True
 
 	def __init__(self):
 		self.token = get_setting('rd.token')
@@ -26,7 +26,7 @@ class RealDebridAPI:
 			response.request.headers['Authorization'] = 'Bearer %s' % self.token
 			response = session.send(response.request, timeout=timeout)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
-		return response.json() if len(response.content) else response
+		return response.json() if response.content else response
 
 	def _get(self, path):
 		return self._request('get', path)
@@ -39,10 +39,11 @@ class RealDebridAPI:
 
 	def refresh_token(self):
 		try:
-			client_id, secret, refresh = get_setting('rd.client_id'), get_setting('rd.secret'), get_setting('rd.refresh')
-			data = {'client_id': client_id, 'client_secret': secret, 'code': refresh, 'grant_type': 'http://oauth.net/grant_type/device/1.0'}
-			url = auth_url + 'token'
-			response = requests.post(url, data=data).json()
+			data = {'grant_type': 'http://oauth.net/grant_type/device/1.0'}
+			data['code'] = get_setting('rd.refresh')
+			data['client_secret'] = get_setting('rd.secret')
+			data['client_id'] = get_setting('rd.client_id')
+			response = requests.post('https://app.real-debrid.com/oauth/v2/token', data=data).json()
 			self.token, refresh = response['access_token'], response['refresh_token']
 			session.headers.update(self.headers())
 			set_setting('rd.token', self.token)
@@ -119,7 +120,7 @@ class RealDebridAPI:
 	def parse_magnet_pack(self, magnet_url, info_hash, errors=False):
 		from modules.source_utils import supported_video_extensions
 		try:
-			extensions = supported_video_extensions()
+			extensions = tuple(supported_video_extensions())
 			torrent_id = self.create_transfer(magnet_url)
 			if not torrent_id: raise Exception('real debrid null magnet')
 			for key in ['ended'] * 3:
@@ -134,7 +135,7 @@ class RealDebridAPI:
 				 'torrent_id': torrent_id,
 				 'filename': item['path'].replace('/', '')}
 				for item, link in zip(selected, torrent_info['links'])
-				if item['path'].lower().endswith(tuple(extensions))
+				if item['path'].lower().endswith(extensions)
 			]
 		except Exception as e:
 			if torrent_id: self.delete_torrent(torrent_id)

@@ -5,21 +5,22 @@ from modules import kodi_utils
 
 ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 base_url = 'https://www.premiumize.me/api/'
-timeout = 10.0
 session = requests.Session()
 session.custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session.mount('https://www.premiumize.me', requests.adapters.HTTPAdapter(max_retries=1))
 
 class PremiumizeAPI:
 	icon = 'premiumize.png'
+	defaults_to_cloud = False
 
 	def __init__(self):
+		self.timeout = int(get_setting('scrapers.timeout.1') or 10)
 		self.token = get_setting('pm.token')
 		session.headers.update(self.headers())
 
 	def _request(self, method, path, data=None):
 		url = base_url + path
-		try: response = session.request(method, url, data=data, timeout=timeout)
+		try: response = session.request(method, url, data=data, timeout=self.timeout)
 		except session.custom_errors: return kodi_utils.notification('%s timeout' % __name__)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
 		return response.json() if 'json' in response.headers.get('Content-Type', '') else response
@@ -80,14 +81,14 @@ class PremiumizeAPI:
 	def parse_magnet_pack(self, magnet_url, info_hash):
 		from modules.source_utils import supported_video_extensions
 		try:
-			extensions = supported_video_extensions()
+			extensions = tuple(supported_video_extensions())
 			torrent_files = self.instant_transfer(magnet_url)
 			return [
 				{'link': item['link'],
 				 'size': item['size'],
 				 'filename': item['path'].split('/')[-1]}
 				for item in torrent_files['content']
-				if item['path'].lower().endswith(tuple(extensions))
+				if item['path'].lower().endswith(extensions)
 			]
 		except: pass
 

@@ -1,5 +1,4 @@
 import json
-from urllib.parse import parse_qsl
 from caches.navigator_cache import navigator_cache
 from modules import kodi_utils, menu_lists as default_menus
 # from modules.kodi_utils import logger
@@ -12,7 +11,7 @@ class MenuEditor:
 	def __init__(self, params):
 		self.params = params
 		if 'menu_item' in params: self.menu_item = json.loads(params.get('menu_item'))
-		else: self.menu_item = dict(parse_qsl(kodi_utils.get_infolabel("ListItem.FileNameAndPath").replace('plugin://plugin.video.pov/?','')))
+		else: self.menu_item = kodi_utils.parsed_query(kodi_utils.get_infolabel('ListItem.FileNameAndPath'))
 		self.params_get, self.menu_item_get = self.params.get, self.menu_item.get
 		if not self.menu_item: self._make_menu_item()
 
@@ -257,7 +256,7 @@ class MenuEditor:
 			self.shortcut_folder_make()
 			try: choice_name, choice_list = navigator_cache.get_shortcut_folders()[0]
 			except: return kodi_utils.notification(32736, 1500)
-		list_items = eval(choice_list)
+		list_items = json.loads(choice_list)
 		name = self.params_get('name') or self.params_get('menu_name_translated')
 		menu_name = self._get_external_name_input(name) or name
 		self.menu_item.update({'name': menu_name, 'iconImage': self.params_get('iconImage') or self.menu_item_get('iconImage')})

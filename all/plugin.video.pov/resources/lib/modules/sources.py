@@ -1,6 +1,6 @@
+import re
 import json
 import time
-import re, random
 from concurrent.futures import ThreadPoolExecutor as TPE, as_completed
 from threading import Thread
 from magneto import sources as magneto_sources
@@ -80,14 +80,12 @@ class Sources:
 	def get_sources(self):
 		start_time = time.monotonic()
 		self.progress_dialog = DialogProgress(getattr(self, 'full_screen', False))
-		self.scraper_processor.prepare_internal()
 		if self.prescrape and any(x in self.active_internal_scrapers for x in default_internal_scrapers):
 			results = self.collect_prescrape_results()
 			if results: results = self.results_processor.process(results)
 		else: results = []
 		if not results:
 			self.prescrape = False
-			if self.active_external: self.scraper_processor.activate_external()
 			self.orig_results = self.collect_results()
 			results = self.results_processor.process(self.orig_results)
 		self.meta.update({'scrape_time': time.monotonic() - start_time})
@@ -95,12 +93,13 @@ class Sources:
 
 	def collect_results(self):
 		self.sources.extend(self.prescrape_sources)
-		self.providers.extend(self.scraper_processor.internal_sources(self.active_internal_scrapers, self.mediatype))
+		self.scraper_processor.activate_internal(False)
 		if self.providers:
-			threads = (Thread(target=self.activate_providers, args=(i[0], i[1], False), name=i[2]) for i in self.providers)
-			self.threads.extend(threads)
+			threads = ((self.activate_providers, (i[0], i[1], False), i[2]) for i in self.providers)
+			self.threads.extend([Thread(target=i[0], args=i[1], name=i[2]) for i in threads])
 			for i in self.threads: i.start()
-		if self.active_external or self.background:
+		self.scraper_processor.activate_external()
+		if self.external_providers or self.background:
 			if self.active_external:
 				args = (
 					self.meta, self.external_providers, self.debrid_torrent_enabled, # self.internal_scraper_names,
@@ -112,10 +111,10 @@ class Sources:
 		return self.sources
 
 	def collect_prescrape_results(self):
-		self.prescrape_scrapers.extend(self.scraper_processor.internal_sources(self.active_internal_scrapers, self.mediatype, True))
+		self.scraper_processor.activate_internal(True)
 		if not self.prescrape_scrapers: return []
-		threads = (Thread(target=self.activate_providers, args=(i[0], i[1], True), name=i[2]) for i in self.prescrape_scrapers)
-		self.prescrape_threads.extend(threads)
+		threads = ((self.activate_providers, (i[0], i[1], True), i[2]) for i in self.prescrape_scrapers)
+		self.prescrape_threads.extend([Thread(target=i[0], args=i[1], name=i[2]) for i in threads])
 		for i in self.prescrape_threads: i.start()
 		self.remove_scrapers.extend(i[2] for i in self.prescrape_scrapers)
 		if self.background: [i.join() for i in self.prescrape_threads]
@@ -143,21 +142,26 @@ class Sources:
 		_total_format = total_format % (int_dialog_hl, '%s')
 		timeout = self.timeout
 		start_time = time.monotonic()
-		end_time = start_time + timeout
-		self.progress_dialog.make(self.meta)
-		while alive_threads := [x.name for x in _threads if x.is_alive()]:
-			if monitor.abortRequested() or time.monotonic() > end_time: break
+		end_time = start_time + timeout + 1
+		if self.progress_dialog.full_screen: self.progress_dialog.make(self.meta)
+		else: progressDialogBG.create('POV', 'POV loading...')
+		while not monitor.abortRequested() and time.monotonic() <= end_time:
 			try:
+				alive_threads = [x.name for x in _threads if x.is_alive()]
+				if not alive_threads: break
 				self.scraper_processor.process_internal_results()
 				int_totals = [_total_format % v for v in self.internal_resolutions.values()]
 				current_progress = time.monotonic() - start_time
 				line2 = dialog_format % (int_dialog_hl, line2_inst, *int_totals)
 				line3 = remaining_format % ', '.join(alive_threads).upper()
 				percent = int((current_progress/float(timeout))*100)
-				self.progress_dialog.update(format_line % (line1, line2, line3), percent)
+				if self.progress_dialog.full_screen:
+					self.progress_dialog.update(format_line % (line1, line2, line3), percent)
+				else: progressDialogBG.update(percent, line3)
 			except: pass
 			sleep(self.sleep_time)
-		self.progress_dialog.kill()
+		if self.progress_dialog.full_screen: self.progress_dialog.kill()
+		else: progressDialogBG.close()
 
 	def _process_post_results(self):
 		if self.ignore_results_filter and self.orig_results:
@@ -208,6 +212,8 @@ class Sources:
 		else: return self.display_results(results)
 
 	def play_file(self, results, source=None):
+		def _fast_to_resolve(item):
+			return 'unrestricted_link' in item or item.get('scrape_provider') == 'aiostreams'
 		try:
 			if source is None:
 				source_index, items = 0, results
@@ -227,7 +233,7 @@ class Sources:
 					if monitor.abortRequested(): break
 					elif self.progress_dialog.full_screen and self.progress_dialog.iscanceled(): break
 					percent = int(((total_items := len(items))-count)/total_items*100)
-					name = (item.get('URLName') or item['name']).upper()
+					name = (item.get('display_name') or item['name']).upper()
 					line1 = item.get('scrape_provider'), item.get('cache_provider'), item.get('provider')
 					if source_index is not None: line1 = ('[B]%02d[/B]' % (source_index + count), *line1)
 					line2 = item.get('size_label', ''), item.get('extraInfo', '')
@@ -237,9 +243,8 @@ class Sources:
 						self.progress_dialog.update(format_line % (line1, line2, name), percent)
 					else: progressDialogBG.update(percent, name)
 				except: pass
-				if 'unrestricted_link' in item:
-					link = item['unrestricted_link']
-					sleep(500)
+				if _fast_to_resolve(item): sleep(500)
+				if 'unrestricted_link' in item: link = item['unrestricted_link']
 				else: link = Source(item, self.meta).resolve_sources()
 				if link is not None: break
 			else:
@@ -270,7 +275,7 @@ class ConfigLoader:
 	def apply(self, source, params=None):
 		if params: source.params = params
 		params_get = source.params.get
-		source.prescrape = self._as_bool(params_get('prescrape'), True)
+		if params: source.prescrape = self._as_bool(params_get('prescrape'), True)
 		source.background = self._as_bool(params_get('background'), False)
 		if source.background: hide_busy_dialog()
 		else: show_busy_dialog()
@@ -401,32 +406,31 @@ class MetaBuilder:
 		return ep_name
 
 class ScraperProcessor:
-	@staticmethod
-	def internal_sources(active_sources, mediatype, prescrape=False):
-		source_list = []
-		source_list_append = source_list.append
-		files = kodi_utils.list_dirs(kodi_utils.scrapers_path)[1]
-		for item in files:
-			try:
-				module_name = item.split('.')[0]
-				if module_name in ('__init__',): continue
-				if module_name not in active_sources: continue
-				if prescrape and not check_prescrape_sources(module_name, mediatype): continue
-				module = manual_function_import('scrapers.%s' % module_name, 'source')
-				source_list_append(('internal', module, module_name))
-			except: pass
-		return source_list
-
 	def __init__(self, source_instance):
 		self.source = source_instance
 
-	def prepare_internal(self):
-		if self.source.active_external and len(self.source.active_internal_scrapers) == 1: return
+	def prepare_internal(self, prescrape=False):
+		if self.source.active_external and ''.join(self.source.active_internal_scrapers) == 'external': return
+		if not prescrape and 'aiostreams' in self.source.active_internal_scrapers:
+			self.source.active_internal_scrapers = ['aiostreams']
 		active_internal_scrapers = [i for i in self.source.active_internal_scrapers if i not in self.source.remove_scrapers]
 		self.source.internal_scraper_names = active_internal_scrapers[:]
 		self.source.active_internal_scrapers = active_internal_scrapers
 
+	def activate_internal(self, prescrape=False):
+		self.prepare_internal(prescrape)
+		append = self.source.prescrape_scrapers.append if prescrape else self.source.providers.append
+		source_path = kodi_utils.translate_path(kodi_utils.scrapers_path)
+		for loader, module_name, is_pkg in __import__('pkgutil').iter_modules([source_path]):
+			if is_pkg: continue
+			if module_name not in self.source.active_internal_scrapers: continue
+			if prescrape and not check_prescrape_sources(module_name, self.source.mediatype): continue
+			try: append(('internal', loader.find_spec(module_name).loader.load_module(module_name).source, module_name))
+			except Exception as e: kodi_utils.logger('POV', 'Error: Loading module: "%s": %s' % (module_name, e))
+
 	def activate_external(self):
+		self.source.external_providers = []
+		if 'aiostreams' in self.source.active_internal_scrapers: return
 		self.source.debrid_enabled = debrid_enabled()
 		self.source.debrid_torrent_enabled = debrid_type_enabled('torrent', self.source.debrid_enabled)
 		if not self.source.debrid_torrent_enabled:
@@ -435,10 +439,10 @@ class ScraperProcessor:
 			return notification(32854) if ''.join(self.source.active_internal_scrapers) == 'external' else None
 #		if not self.source.debrid_torrent_enabled: self.source.exclude_list.extend(scraper_names('torrents'))
 		external_providers = magneto_sources(ret_all=self.source.disabled_ignored)
-		self.source.external_providers = [
+		self.source.external_providers.extend([
 			i for i in external_providers if i[0] not in self.source.exclude_list
 			and (i[1].hasEpisodes if self.source.mediatype == 'episode' else i[1].hasMovies)
-		]
+		])
 		if self.source.mediatype != 'episode': return
 		self.source.external_providers = [(i[0], i[1], '') for i in self.source.external_providers]
 		season_packs, show_packs = pack_enable_check(self.source.meta, self.source.season, self.source.episode)
@@ -464,11 +468,9 @@ class ResultsProcessor:
 		self.source = source_instance
 
 	def process(self, results):
-		if self.source.prescrape:
-			self.source.all_scrapers = self.source.active_internal_scrapers
-		else:
-			all_scrapers = {*self.source.active_internal_scrapers, *self.source.remove_scrapers}
-			self.source.all_scrapers = list(all_scrapers)
+		if self.source.prescrape: self.source.all_scrapers = self.source.active_internal_scrapers
+		elif 'aiostreams' in self.source.active_internal_scrapers: return results
+		else: self.source.all_scrapers = list({*self.source.active_internal_scrapers, *self.source.remove_scrapers})
 		if self.source.ignore_scrape_filters:
 			self.source.filters_ignored = True
 			results = self.sort_results(results)
@@ -578,6 +580,12 @@ class ExternalManager:
 	def dialog_hook(function):
 		def wrapper(instance, *args, **kwargs):
 			if not instance.background:
+				if instance.internal_activated or instance.internal_prescraped:
+					instance.string3 = int_format % (instance.int_dialog_highlight, '%s')
+					instance.string4 = ext_format % (instance.ext_dialog_highlight, '%s')
+				else:
+					instance.string3 = ''
+					instance.string4 = ext_scr_format % (instance.ext_dialog_highlight, ls(32118))
 				hide_busy_dialog()
 				if not instance.progress_dialog.full_screen:
 					progressDialogBG.create('POV', 'POV loading...')
@@ -605,7 +613,7 @@ class ExternalManager:
 		self.processed_internal_scrapers_append = self.processed_internal_scrapers.append
 		self.hostDict, self.sources, self.final_sources = [], [], []
 		self.sleep_time = settings.display_sleep_time()
-		self.timeout = int(self.meta.get('scrape_timeout', '10')) + 1
+		self.timeout = int(self.meta.get('search_info', {}).get('scrape_timeout', '10'))
 		self.int_dialog_highlight = get_setting('int_dialog_highlight', 'dodgerblue')
 		self.ext_dialog_highlight = get_setting('ext_dialog_highlight', 'magenta')
 		self.int_total = total_format % (self.int_dialog_highlight, '%s')
@@ -615,79 +623,69 @@ class ExternalManager:
 
 	@dialog_hook
 	def results(self, info):
-		self.threads = set()
 		tpe = TPE(max(1, len(self.source_dict), len(self.debrid_torrents)))
 		try:
-			random.shuffle(self.source_dict)
-			# shuffle because tpe returns order submitted without as_completed
-			# chose not to use as_completed because status monitored by done and absolute scrape timeout
+			threads = set()
+			total_results = []
 			for provider, module, *pack in self.source_dict:
 				args = (provider, module, *pack) if pack else (provider, module)
 				fut = tpe.submit(ExternalSource(self.meta, self.resolutions).results, info, args)
 				fut.name = pack_display % (provider, *pack) if pack and pack[0] else provider
-				self.threads.add(fut)
-			self.wait()
-			providers = [i for fut in self.threads for i in (fut.result() if fut.done() else [])]
-			if self.meta.get('mediatype') not in ('movie', 'movies'):
-				try: providers.sort(key=lambda k: k.get('package') or '', reverse=True)
-				except: pass
-			self.sources.extend(self.process_duplicates(providers))
+				threads.add(fut)
+			self.thread_monitor(threads, ls(32676), False)
+			threads = [i for i in threads if i.done() and not i.exception()]
+			for fut in as_completed(threads): total_results.extend(fut.result())
+			self.sources.extend(self.process_duplicates(total_results))
 			torrent_sources = [i for i in self.sources if 'torrent' in i['source']]
 			result_hashes = list({i['hash'] for i in torrent_sources})
 			DebridCheck.set_cached_hashes(result_hashes)
-			self.threads = set()
+			threads = set()
 			for item in self.debrid_torrents:
 				fut = tpe.submit(DebridCheck(self.meta, item).cache_check)
 				fut.name = item
-				self.threads.add(fut)
-			self.wait(debrid_check=True)
-			for name, hashes in ((fut.name, fut.result() if fut.done() else []) for fut in self.threads):
-				if name in ('real-debrid', 'alldebrid'): uncached = 'Unchecked %s' % name
-				else: uncached = 'Uncached %s' % name
+				threads.add(fut)
+			self.thread_monitor(threads, ls(32579), True)
+			threads = [i for i in threads if i.done() and not i.exception()]
+			for name, hashes in ((fut.name, fut.result()) for fut in threads):
+				if name in ('realdebrid', 'alldebrid'): uncached = '%s %s' % ('Unchecked', name)
+				else: uncached = '%s %s' % ('Uncached', name)
 				self.final_sources.extend(
 					{**i, 'cache_provider': name if i['hash'] in hashes else uncached, 'debrid': name}
-				for i in torrent_sources)
+					for i in torrent_sources
+				)
 		except: notification(32574)
 		finally: tpe.shutdown(False)
 		return self.final_sources
 
-	def wait(self, debrid_check=False):
-		if not self.background:
-			if self.internal_activated or self.internal_prescraped:
-				string3 = int_format % (self.int_dialog_highlight, '%s')
-				string4 = ext_format % (self.ext_dialog_highlight, '%s')
-			else: string4 = ext_scr_format % (self.ext_dialog_highlight, ls(32118))
-			string1, string2 = ls(32579) if debrid_check else ls(32676), ls(32677)
-			line1 = line2 = line3 = ''
-		len_threads = len(self.threads)
-		end_time = time.monotonic() + self.timeout
-		while alive_threads := (
-			*[x.name for x in self.threads if not x.done()],
-			*[x.name for x in self.internal_scrapers if x.is_alive()]
-		):
-			if monitor.abortRequested() or time.monotonic() > end_time: break
-			if not self.background:
-				try:
-					if self.progress_dialog.full_screen and self.progress_dialog.iscanceled(): break
-					ext_totals = [self.ext_total % v for v in self.resolutions.values()]
-					len_alive_threads = len(alive_threads)
-					progress = int((len_threads-len_alive_threads)/len_threads*100)
-					if self.internal_activated or self.internal_prescraped:
-#						alive_threads.extend(self.process_internal_results())
-						self.process_internal_results()
-						int_totals = [self.int_total % v for v in self.internal_resolutions.values()]
-						line1 = string3 % diag_format % tuple(int_totals)
-						line2 = string4 % diag_format % tuple(ext_totals)
-					else:
-						line1 = string4
-						line2 = diag_format % tuple(ext_totals)
-					if len_alive_threads > 5: line3 = string1 % str(len_threads-len_alive_threads)
-					else: line3 = string1 % ', '.join(alive_threads).upper()
-					if self.progress_dialog.full_screen:
-						self.progress_dialog.update(format_line % (line1, line2, line3), progress)
-					else: progressDialogBG.update(progress, line3)
-				except: pass
+	def thread_monitor(self, threads, status_line='', debrid=False):
+		len_threads = len(threads)
+		end_time = time.monotonic() + self.timeout + 1
+		while not monitor.abortRequested() and time.monotonic() <= end_time:
+			alive_threads = [x.name for x in threads if not x.done()]
+			if not debrid: alive_threads.extend(x.name for x in self.internal_scrapers if x.is_alive())
+			if not alive_threads: break
+			if not self.background: self.progress_update(alive_threads, len_threads, status_line)
 			sleep(self.sleep_time)
+
+	def progress_update(self, alive_threads, len_threads, string1):
+		try:
+			ext_totals = [self.ext_total % v for v in self.resolutions.values()]
+			len_alive_threads = len(alive_threads)
+			progress = int((len_threads-len_alive_threads)/len_threads*100)
+			if self.internal_activated or self.internal_prescraped:
+				self.process_internal_results()
+				int_totals = [self.int_total % v for v in self.internal_resolutions.values()]
+				line1 = self.string3 % diag_format % tuple(int_totals)
+				line2 = self.string4 % diag_format % tuple(ext_totals)
+			else:
+				line1 = self.string4
+				line2 = diag_format % tuple(ext_totals)
+			if len_alive_threads > 5: line3 = string1 % str(len_threads-len_alive_threads)
+			else: line3 = string1 % ', '.join(alive_threads).upper()
+			if self.progress_dialog.full_screen:
+				self.progress_dialog.update(format_line % (line1, line2, line3), progress)
+			else: progressDialogBG.update(progress, line3)
+		except: pass
 
 	def process_duplicates(self, sources):
 		uniqueURLs, uniqueHashes = set(), set()
@@ -796,31 +794,31 @@ class ExternalSource:
 			self.sources.extend(sources)
 
 	def process_sources(self, provider, sources):
-		try:
-			for i in sources:
+		for i in sources:
+			try:
+				i_get = i.get
+				if 'hash' in i: i['hash'] = str(i['hash']).lower()
+				display_name = source_utils.clean_file_name(i_get('name')).replace('html', ' ')
+				quality, extraInfo = get_file_info(name_info=i_get('name_info'))
+				size, size_label, divider = 0, None, None
 				try:
-					i_get = i.get
-					if 'hash' in i: i['hash'] = str(i['hash']).lower()
-					URLName = source_utils.clean_file_name(i_get('name')).replace('html', ' ')
-					quality, extraInfo = get_file_info(name_info=i_get('name_info'))
-					size, size_label, divider = 0, None, None
-					try:
-						size = i_get('size')
-						if 'package' in i and not i_get('true_size', False):
-							if i_get('package') == 'season': divider = self.season_divider
-							else: divider = self.show_divider
-							size = float(size) / divider
-							size_label = '%.2f GB' % size
-						else: size_label = '%.2f GB' % size
-					except: pass
-					i.update({
-						'external': True, 'provider': provider, 'scrape_provider': self.scrape_provider, 'URLName': URLName,
-						'extraInfo': extraInfo, 'quality': quality, 'size_label': size_label, 'size': round(size, 2)
-					})
-					if quality not in self.resolutions: self.resolutions['SD'] += 1
-					else: self.resolutions[quality] += 1
-					self.resolutions['total'] += 1
+					size = i_get('size')
+					if 'package' in i and not i_get('true_size', False):
+						if i_get('package') == 'season': divider = self.season_divider
+						else: divider = self.show_divider
+						size = float(size) / divider
+						size_label = '%.2f GB' % size
+					else: size_label = '%.2f GB' % size
 				except: pass
-		except: pass
+				i.update({
+					'external': True, 'scrape_provider': self.scrape_provider,
+					'provider': provider, 'display_name': display_name,
+					'extraInfo': extraInfo, 'quality': quality,
+					'size_label': size_label, 'size': round(size, 2)
+				})
+				if quality not in self.resolutions: self.resolutions['SD'] += 1
+				else: self.resolutions[quality] += 1
+				self.resolutions['total'] += 1
+			except: pass
 		return sources
 

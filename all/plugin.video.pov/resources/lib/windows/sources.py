@@ -21,7 +21,7 @@ filter_str, clr_filter_str, filters_ignored, start_full_scrape = ls(32152), ls(3
 filter_quality, filter_provider, filter_title, filter_extraInfo = ls(32154), ls(32157), ls(32679), ls(32169)
 run_plugin_str, ignored_str = 'RunPlugin(%s)', '[B][COLOR dodgerblue](%s)[/COLOR][/B]'
 en_seek_str, check_str = '[B]EN: PLAY (SEEK ENABLED)[/B]', '[B]CHECK CACHE STATUS[/B]'
-airlock_str = ls(32016).replace('Add', 'Airlock')
+cache_str, airlock_str = ('CACHED', 'CACHED [B]%s[/B]'), ls(32016).replace('Add', 'Airlock')
 string, upper, lower = str, str.upper, str.lower
 
 class SourceResults(BaseDialog):
@@ -51,15 +51,6 @@ class SourceResults(BaseDialog):
 		hide_busy_dialog()
 		return self.selected
 
-	def get_provider_and_path(self, provider):
-		if provider in info_icons_dict: provider_path = info_icons_dict[provider]
-		else: provider, provider_path = 'folders', info_icons_dict['folders']
-		return provider, provider_path
-
-	def get_quality_and_path(self, quality):
-		quality_path = info_icons_dict[quality]
-		return quality, quality_path
-
 	def onAction(self, action):
 		chosen_listitem = self.get_listitem(self.window_id)
 		if action in self.closing_actions:
@@ -76,12 +67,8 @@ class SourceResults(BaseDialog):
 				return self.close()
 #			source = json.loads(chosen_listitem.getProperty('source'))
 			source = self._results[chosen_listitem.getProperty('source')]
-			magnet_url = str(source.get('url')).startswith('magnet')
-			if magnet_url: link = Source(source, self.meta).manual_add_magnet_to_cloud()
-			else: link = Source(source, self.meta).manual_add_nzb_to_cloud()
-			if link is None: return
-			self.selected = ('play', {**source, 'unrestricted_link': link})
-			return self.close()
+			if not str(source.get('url')).startswith('magnet'): return
+			Source(source, self.meta).manual_add_magnet_to_cloud()
 		elif action == self.info_actions:
 			self.open_info_window(chosen_listitem)
 		elif action in self.context_actions:
@@ -109,7 +96,17 @@ class SourceResults(BaseDialog):
 			elif 'manual_add_magnet_to_cloud' in choice: Source(source, self.meta).manual_add_magnet_to_cloud()
 			elif 'manual_airlock_to_cloud' in choice: Source(source, self.meta).manual_airlock_to_cloud()
 			elif 'unchecked_magnet_status' in choice: Source(source, self.meta).unchecked_magnet_status()
+			elif 'aio_add_to_cloud' in choice: Source(source, self.meta).aio_add_to_cloud()
 			else: self.execute_code(choice)
+
+	def get_provider_and_path(self, provider):
+		if provider in info_icons_dict: provider_path = info_icons_dict[provider]
+		else: provider, provider_path = 'folders', info_icons_dict['folders']
+		return provider, provider_path
+
+	def get_quality_and_path(self, quality):
+		quality_path = info_icons_dict[quality]
+		return quality, quality_path
 
 	def make_items(self):
 		def builder():
@@ -123,8 +120,8 @@ class SourceResults(BaseDialog):
 					source = get('source')
 					quality = get('quality', 'SD')
 					basic_quality, quality_icon = self.get_quality_and_path(lower(quality))
-					try: name = upper(get('URLName', 'N/A'))
-					except: name = 'N/A'
+					name = get('display_name') or 'N/A'
+					name = upper(name)
 					pack = get('package', 'false') in pack_check
 #					if pack: extra_info = '[B]PACK[/B] | %s' % get('extraInfo', '')
 #					else: extra_info = get('extraInfo', 'N/A')
@@ -132,10 +129,9 @@ class SourceResults(BaseDialog):
 					extra_info = get('extraInfo', '') or 'N/A'
 					extra_info = extra_info.rstrip('| ')
 					if scrape_provider == 'external':
-						if 'usenet' in source: source_site = get('tracker')
-						else: source_site = get('provider')
+						source_site = get('provider')
 						source_site = upper(source_site)
-						provider = upper(get('debrid', source_site).replace('.me', ''))
+						provider = upper(get('debrid', source_site))
 						provider_lower = lower(provider)
 						provider_icon = self.get_provider_and_path(provider_lower)[1]
 						if 'cache_provider' in item and 'Uncached' in item['cache_provider']:
@@ -148,8 +144,9 @@ class SourceResults(BaseDialog):
 							if highlight_type == 0: key = 'torrent_highlight'
 							elif highlight_type == 1: key = provider_lower
 							else: key = basic_quality
-							status = 'UNCHECKED' if 'Unchecked' in item['cache_provider'] else 'CACHED'
-							status = '%s [B]%s[/B]' % (status, upper(get('package'))) if pack else '%s' % status
+							status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
+							if 'Unchecked' in item['cache_provider']:
+								status = status.replace('CACHED', 'UNCHECKED')
 							set_property('tikiskins.source_type', status)
 							set_property('tikiskins.highlight', self.info_highlights_dict[key])
 						else:
@@ -158,17 +155,35 @@ class SourceResults(BaseDialog):
 							else: key = basic_quality
 							set_property('tikiskins.source_type', source)
 							set_property('tikiskins.highlight', self.info_highlights_dict[key])
-						set_property('tikiskins.name', name)
-						set_property('tikiskins.provider', provider)
+					elif scrape_provider == 'aiostreams':
+						if 'usenet' in source: source_site = get('tracker')
+						else: source_site = get('provider') or source
+						source_site = upper(source_site)
+						provider = upper(get('debrid', source_site))
+						provider_lower = lower(provider)
+						provider_icon = self.get_provider_and_path(provider_lower)[1]
+						status = upper(source)
+						if get('cached'): status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
+						if get('library'): status = '[B]LIBRARY[/B]'
+						if highlight_type == 0:
+							if 'debrid' in get('source'): key = 'torrent_highlight'
+							else: key = 'hoster_highlight'
+						elif highlight_type == 1:
+							if provider_lower in self.info_highlights_dict: key = provider_lower
+							else: key = 'hoster_highlight'
+						else: key = basic_quality
+						set_property('tikiskins.source_type', status)
+						set_property('tikiskins.highlight', self.info_highlights_dict[key])
 					else:
 						source_site = upper(source)
 						provider, provider_icon = self.get_provider_and_path(lower(source))
-						if highlight_type in (0, 1): key = provider
+						provider = upper(provider)
+						if highlight_type in (0, 1): key = lower(provider)
 						else: key = basic_quality
-						set_property('tikiskins.highlight', self.info_highlights_dict[key])
-						set_property('tikiskins.name', name)
 						set_property('tikiskins.source_type', 'DIRECT')
-						set_property('tikiskins.provider', upper(provider))
+						set_property('tikiskins.highlight', self.info_highlights_dict[key])
+					set_property('tikiskins.name', name)
+					set_property('tikiskins.provider', provider)
 					set_property('tikiskins.source_site', source_site)
 					set_property('tikiskins.provider_icon', provider_icon)
 					set_property('tikiskins.quality_icon', quality_icon)
@@ -210,8 +225,8 @@ class SourceResults(BaseDialog):
 		self.setProperty('tikiskins.scrape_time', '%.2f' % self.meta['scrape_time'])
 
 	def open_info_window(self, chosen_listitem):
-			kwargs = {'item': chosen_listitem, 'fanart': self.fanart}
-			self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
+		kwargs = {'item': chosen_listitem, 'fanart': self.fanart}
+		self.open_window(('windows.sources', 'ResultsInfo'), 'sources_info.xml', **kwargs)
 
 	def filter_results(self):
 		choices = [(filter_quality, 'quality'), (filter_provider, 'provider'), (filter_title, 'keyword_title'), (filter_extraInfo, 'extra_info')]
@@ -237,7 +252,6 @@ class SourceResults(BaseDialog):
 		else:
 			if main_choice == 'provider':
 				sort_ranks = provider_sort_ranks()
-				sort_ranks['premiumize'] = sort_ranks.pop('premiumize.me', 99)
 				choice_sorter = sorted(sort_ranks.keys(), key=sort_ranks.get)
 				choice_sorter = [upper(i) for i in choice_sorter]
 			else: choice_sorter = quality_choices
@@ -329,7 +343,7 @@ class ResultsContextMenu(BaseDialog):
 			chosen_listitem = self.get_listitem(self.window_id)
 			self.selected = chosen_listitem.getProperty('tikiskins.context.action')
 			return self.close()
-		elif action in self.context_actions: return self.close()
+		if action in self.context_actions: return self.close()
 
 	def make_menu(self):
 		append = self.item_list.append
@@ -337,7 +351,7 @@ class ResultsContextMenu(BaseDialog):
 		name, provider_source = self.item.get('name'), self.item.get('source')
 		magnet_url, info_hash = self.item.get('url', 'None'), self.item.get('hash', 'None')
 		scrape_provider, cache_provider = self.item.get('scrape_provider'), self.item.get('cache_provider', 'None')
-		if next((True for x in ('real-debrid', 'alldebrid') if x in cache_provider), False):
+		if next((True for x in ('realdebrid', 'alldebrid') if x in cache_provider), False):
 			append(self.make_contextmenu_item(check_str, run_plugin_str, {'mode': 'unchecked_magnet_status'}))
 		if 'easynews' in scrape_provider:
 			append(self.make_contextmenu_item(en_seek_str, run_plugin_str, {'mode': 'seekable_easynews'}))
@@ -346,6 +360,12 @@ class ResultsContextMenu(BaseDialog):
 		else: append(self.make_contextmenu_item(filter_str, run_plugin_str, {'mode': 'results_filter'}))
 		append(self.make_contextmenu_item(extra_info_str, run_plugin_str, {'mode': 'results_info'}))
 		if 'Uncached' in cache_provider: return
+		if scrape_provider == 'aiostreams':
+			down_params = {'mode': 'downloader', 'action': 'None', 'url': self.item.get('url_dl')}
+			cloud_params = {'mode': 'aio_add_to_cloud'} if self.item.get('debrid') else {}
+			append(self.make_contextmenu_item(down_file_str, run_plugin_str, down_params))
+			if cloud_params: append(self.make_contextmenu_item(cloud_str, run_plugin_str, cloud_params))
+			return
 		down_params = {
 			'mode': 'downloader', 'highlight': self.highlight, 'url': None,
 			'source': source_json, 'meta': meta_json, 'name': self.meta.get('rootname', ''),

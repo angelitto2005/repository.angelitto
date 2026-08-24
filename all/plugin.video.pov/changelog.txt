@@ -1,14 +1,26 @@
 
+  [COLOR dodgerblue][B]Version 6.08[/B][/COLOR]
+* Changed Easynews scraper to use seas_ep_filter like other cloud scrapers.
+* Changed AIOStreams behavior, allowing internal debrid cloud scrapers to run
+  only when "Check Before Full Search" is enabled.
++ Added AIOStreams to Settings/Sources, see Help in settings.
++ Added separate states for Movies/TV Shows for Watchlist Sort Type.
++ Added MDBList Calendar, shares Settings/My Lists/Calendar.
++ Added support for seasons and episodes in MDBList lists.
++ Added Trending This Week TMDB Movies/TV Shows in case Trakt revokes client_id.
+- Removed torboxnews.  TorBox to completely remove search api.
+
   [COLOR dodgerblue][B]Version 6.07[/B][/COLOR]
-- Shuffling the deck chairs on the Titanic.
-- Added My Services/TorBox Cloud/Add or Remove Airlock to folders context menu.
-- Added Airlock to Cloud to context menu for TorBox cached results.
-- Added Settings/Features/Smart Play/Play Next Episode From TV Shows.
+* Legacy code for MDBList apikey will soon be removed in favor of MDBList OAuth
+  authorization.  Re-authorization now is recommended to keep functionality.
+* Changed to MDBList OAuth authorization.
++ Added My Services/TorBox Cloud/Add or Remove Airlock to folders context menu.
++ Added Airlock to Cloud to context menu for TorBox cached results.
++ Added Settings/Features/Smart Play/Play Next Episode From TV Shows.
   When enabled, directly from the TV Shows Menu the addon will skip season browse and
   attempt to source the "Next Episode" from watched history or S01E01 if no
   watched history.  When enabled a Browse option is added to the Options... context menu.
-- Added bitsearch.
-- Removed torrentdownload.
++ Added bitsearch.
 
   [COLOR dodgerblue][B]Version 6.06[/B][/COLOR]
 - Changed cloud scrapers to "Filter Results with Aliases".
@@ -183,7 +195,7 @@
 - Watched/In Progress TV Shows and Next Episodes now respect Trakt Dropped TV Shows.
 - Removed Next Episode Manager.
 - Added Edit List Properties to TMDB Lists context menu.
-- Probable Fix for Real Debrid, requires reauthorization.
+- Probable Fix for Real Debrid, requires re-authorization.
 - Changed MDBList.  "the call is coming from inside the house"
 - Fixed slow Export to TMDB for MDBList Public/Personal lists.
 - Changed Trakt Watchlist Export to TMDB, sent in ascending collected_at sequence.

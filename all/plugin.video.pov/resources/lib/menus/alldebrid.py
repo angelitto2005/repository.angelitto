@@ -11,7 +11,7 @@ folder_str, file_str, delete_str, down_str = ls(32742).upper(), ls(32743).upper(
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path(Debrid.icon)
 default_art = {'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon}
-extensions = supported_video_extensions()
+extensions = tuple(supported_video_extensions())
 
 class Menu(Debrid):
 	def run(self, params):
@@ -56,7 +56,7 @@ class Menu(Debrid):
 	def browse_cloud(self, items):
 		for count, item in enumerate(items, 1):
 			try:
-				if not item['n'].lower().endswith(tuple(extensions)): continue
+				if not item['n'].lower().endswith(extensions): continue
 				cm = []
 				cm_append = cm.append
 				name = clean_file_name(item['n']).upper()
@@ -80,7 +80,7 @@ class Menu(Debrid):
 		items.sort(key=lambda k: k['date'], reverse=True)
 		for count, item in enumerate(items, 1):
 			try:
-				if not item['filename'].lower().endswith(tuple(extensions)): continue
+				if not item['filename'].lower().endswith(extensions): continue
 				cm = []
 				cm_append = cm.append
 				name = clean_file_name(item['filename']).upper()

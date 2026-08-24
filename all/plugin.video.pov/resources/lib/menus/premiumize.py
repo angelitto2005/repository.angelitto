@@ -10,7 +10,7 @@ folder_str, file_str, down_str, archive_str, rename_str, delete_str = ls(32742).
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path(Debrid.icon)
 default_art = {'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon}
-extensions = supported_video_extensions()
+extensions = tuple(supported_video_extensions())
 
 class Menu(Debrid):
 	def run(self, params):
@@ -36,7 +36,7 @@ class Menu(Debrid):
 		items.sort(key=lambda k: k['name'])
 		for count, item in enumerate(items, 1):
 			try:
-				if not ('link' in item and item['link'].lower().endswith(tuple(extensions))) and item['type'] != 'folder': continue
+				if not ('link' in item and item['link'].lower().endswith(extensions)) and item['type'] != 'folder': continue
 				cm = []
 				cm_append = cm.append
 				file_type = item['type']

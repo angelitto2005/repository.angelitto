@@ -98,7 +98,7 @@
       <fanart>fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.pov" version="6.07.06" name="POV" provider-name="kodifitzwell">
+</addon><addon id="plugin.video.pov" version="6.08.13" name="POV" provider-name="kodifitzwell">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0" />
 		<import addon="script.module.requests" />
@@ -840,7 +840,7 @@
 		<disclaimer>The author does not host or own any content found within this addon. The author is not responsible for the content found using this addon. The author is not responsible for the use of this addon.</disclaimer>
 		<assets><icon>resources/magneto.png</icon></assets>
 	</extension>
-</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.203" provider-name="gujal">
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.207" provider-name="gujal">
     <requires>
         
         <import addon="script.module.six" />

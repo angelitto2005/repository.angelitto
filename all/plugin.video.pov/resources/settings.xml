@@ -2,6 +2,8 @@
 <settings>
 	<!-- Sources -->
 	<category label="Sources">
+		<setting label="Timeout" type="lsep" />
+		<setting id="scrapers.timeout.1" label="Scraper/Debrid Timeout (secs)" type="number" default="20" />
 		<setting label="External Scrapers" type="lsep" />
 		<setting id="provider.external" label="Enable" type="bool" default="true" />
 		<setting id="filter.foreign.single.audio" label="Remove identified Foreign single audio sources" type="bool" default="true" />
@@ -11,10 +13,11 @@
 		<setting id="debug.enabled" label="Enable Debug" type="bool" default="false" />
 		<setting id="debug.location" label="Logging Location" type="enum" default="0" values="Kodi Log|Addon Log" enable="eq(-1,true)" visible="eq(-1,true)" />
 		<setting label="Test All Source Providers (Magneto)" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=speedTest)" />
-		<setting label="Sources" type="lsep" />
+		<setting label="External Sources" type="lsep" />
 		<setting id="provider.bitsearch" label="bitsearch" type="bool" default="false" />
 		<setting id="provider.nyaa" label="nyaa" type="bool" default="false" />
 		<setting id="provider.piratebay" label="piratebay" type="bool" default="true" />
+		<setting id="provider.torrentdownload" label="torrentdownload" type="bool" default="false" />
 		<setting id="provider.torrentio" label="torrentio" type="bool" default="true" />
 		<setting id="provider.torrentsdb" label="torrentsdb" type="bool" default="false" />
 		<setting id="provider.bitmagnet" label="bitmagnet" type="bool" default="false" />
@@ -26,6 +29,17 @@
 		<setting id="provider.zilean" label="zilean" type="bool" default="false" />
 			<setting id="zilean.url" label="zilean instance" type="enum" default="0" values="Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
 		<setting id="provider.dmm" label="dmm" type="bool" default="false" />
+		<setting label="AIOStreams" type="lsep" />
+		<setting id="provider.aiostreams" label="Enable" type="bool" default="false" />
+		<setting id="aio.instance" type="enum" label="Provider" default="0" values="Kuu|Custom|Viren|Yeb|Midnight" enable="true" />
+		<setting id="aio.ku_url" type="text" label="Url" default="https://aiostreams.stremio.ru" enable="false" visible="eq(-1,0)" />
+		<setting id="aio.custom_url" type="text" label="Url" default="" visible="eq(-2,1)" />
+		<setting id="aio.viren_url" type="text" label="Url" default="https://aiostreams.viren070.me" enable="false" visible="eq(-3,2)" />
+		<setting id="aio.yeb_url" type="text" label="Url" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-4,3)" />
+		<setting id="aio.midnight_url" type="text" label="Url" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-5,4)" />
+		<setting id="aio.username" type="text" label="Username" default="" />
+		<setting id="aio.password" type="text" label="Password" default="" />
+		<setting label="-- Help --" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=aioHelp)" />
 	</category>
 	<!-- Provider Accounts -->
 	<category label="My Services">
@@ -36,7 +50,7 @@
 		<setting id="pm.account_id" label="Customer ID" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
 		<setting id="pm.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
 		<setting id="pm.hoster.enabled" label="Use Hoster Services" type="bool" default="false" enable="false" visible="false" />
-		<setting id="store_torrent.premiumize.me" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
+		<setting id="store_torrent.premiumize" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
 		<setting id="provider.pm_cloud" label="Search PM Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
 			<setting id="pm_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.pm_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
@@ -45,21 +59,17 @@
 		<setting id="pm.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-10,true)+!eq(-11,)" />
 		<!-- TorBox-->
 		<setting label="TorBox" type="lsep" />
-		<setting id="tb_refer_link" type="text" default="https://tinyurl.com/2d2ra6jq" visible="false" />
 		<setting id="tb.token" label="tb token" type="text" default="" visible="false" />
 		<setting id="tb.enabled" label="Enable" type="bool" default="true" visible="!eq(-1,)" />
 		<setting id="tb.account_id" label="Customer ID" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
 		<setting id="tb.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
 		<setting id="store_torrent.torbox" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-3,true)+!eq(-4,)" />
-		<setting id="provider.torboxnews" label="Use Usenet Services" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
-		<setting id="store_usenet.torbox" label="Add Resolved Usenet to Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
-		<setting id="tb.user_engines_only" label="Filter User Usenet Services Only" type="bool" default="false" visible="eq(-6,true)+!eq(-7,)" />
-		<setting id="provider.tb_cloud" label="Search TB Cloud" type="bool" default="false" visible="eq(-7,true)+!eq(-8,)" />
-			<setting id="tb_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-8,true)+!eq(-9,)" />
-			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-9,true)+!eq(-10,)" />
-			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-10,true)+!eq(-11,)" />
-		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-11,true)+!eq(-12,)" />
-		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-12,true)+!eq(-13,)" />
+		<setting id="provider.tb_cloud" label="Search TB Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
+			<setting id="tb_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
+			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
+			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
+		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
+		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-9,true)+!eq(-10,)" />
 		<!-- Offcloud -->
 		<setting label="Offcloud" type="lsep" />
 		<setting id="oc.token" label="oc token" type="text" default="" visible="false" />
@@ -76,7 +86,6 @@
 	<category label="My Services">
 		<!-- Real Debrid -->
 		<setting label="Real Debrid" type="lsep" />
-		<setting id="rd_refer_link" type="text" default="https://tinyurl.com/2db65q28" visible="false" />
 		<setting id="rd.client_id" type="text" default="" visible="false" />
 		<setting id="rd.secret" type="text" default="" visible="false" />
 		<setting id="rd.refresh" type="text" default="" visible="false" />
@@ -85,7 +94,7 @@
 		<setting id="rd.username" label="Username" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
 		<setting id="rd.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
 		<setting id="rd.hoster.enabled" label="Use Hoster Services" type="bool" default="false" enable="false" visible="false" />
-		<setting id="store_torrent.real-debrid" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
+		<setting id="store_torrent.realdebrid" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
 		<setting id="provider.rd_cloud" label="Search RD Cloud" type="bool" default="false" visible="eq(-5,true)+!eq(-6,)" />
 			<setting id="rd_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="check.rd_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-7,true)+!eq(-8,)" />
@@ -122,7 +131,8 @@
 	<!-- My Lists -->
 	<category label="My Lists">
 		<!-- Trakt Calendar -->
-		<setting label="Trakt Calendar" type="lsep" />
+		<setting label="Trakt/MDBList Calendar" type="lsep" />
+		<setting id="calendar.include_airdate" label="Include Airdate In Title" type="bool" default="true" />
 		<setting id="trakt.calendar_focus_today" label="Set Focus to Today's Date" type="bool" default="true" />
 		<setting id="trakt.calendar_sort_order" label="Sort Order" type="enum" default="0" values="Descending|Ascending" />
 		<setting id="trakt.calendar_previous_days" label="Show Previous Days" type="number" default="7" />
@@ -140,7 +150,9 @@
 		<setting id="trakt.reverse" label="Reverse Added/Released Sort Direction" type="bool" default="false" />
 		<!-- MDBList -->
 		<setting label="MDBList" type="lsep" />
-		<setting id="mdblist.token" label="API Key" type="text" default="" visible="false" />
+		<setting id="mdblist.refresh" type="text" default="" visible="false" />
+		<setting id="mdblist.expires" type="text" default="" visible="false" />
+		<setting id="mdblist.token" type="text" default="" visible="false" />
 		<setting id="mdblist_user" label="Username" type="text" default="" enable="false" />
 		<!-- TMDB -->
 		<setting label="TMDB Lists" type="lsep" />
@@ -164,10 +176,10 @@
 		<setting id="pov.max_threads" label="Maximum threads" type="slider" default="100" range="20,10,100" option="int" />
 		<!-- Downloads -->
 		<setting label="Downloads" type="lsep" />
-		<setting id="movie_download_directory" label="Movies Directory" type="folder" default="special://profile/addon_data/plugin.video.pov/Movies Downloads/" />
-		<setting id="tvshow_download_directory" label="TV Shows Directory" type="folder" default="special://profile/addon_data/plugin.video.pov/TV Show Downloads/" />
-		<setting id="premium_download_directory" label="Premium Files Directory" type="folder" default="special://profile/addon_data/plugin.video.pov/Premium Downloads/" />
-		<setting id="image_download_directory" label="Image Files Directory" type="folder" default="special://profile/addon_data/plugin.video.pov/Image Downloads/" />
+		<setting id="movie_download_directory" label="Movies Directory" type="folder" option="writeable" default="special://profile/addon_data/plugin.video.pov/Movies Downloads/" />
+		<setting id="tvshow_download_directory" label="TV Shows Directory" type="folder" option="writeable" default="special://profile/addon_data/plugin.video.pov/TV Show Downloads/" />
+		<setting id="premium_download_directory" label="Premium Files Directory" type="folder" option="writeable" default="special://profile/addon_data/plugin.video.pov/Premium Downloads/" />
+		<setting id="image_download_directory" label="Image Files Directory" type="folder" option="writeable" default="special://profile/addon_data/plugin.video.pov/Image Downloads/" />
 		<!-- UTC Time Offset -->
 		<setting label="UTC Time Offset" type="lsep" />
 		<setting id="datetime.offset" label="UTC (+/-)" type="slider" default="0" range="-15,1,15" option="int" />
@@ -223,7 +235,8 @@
 		<setting id="sort.progress" label="In Progress Sort Type" type="enum" default="0" values="Title|Recently Watched" />
 		<setting id="sort.watched" label="Watched Sort Type" type="enum" default="0" values="Title|Recently Watched" />
 		<setting id="sort.collection" label="Collection Sort Type" type="enum" default="0" values="Title|Date Added|Release Date" />
-		<setting id="sort.watchlist" label="Watchlist Sort Type" type="enum" default="0" values="Title|Date Added|Release Date" />
+		<setting id="sort.watchlist_movies" label="Watchlist Sort Type (Movies)" type="enum" default="0" values="Title|Date Added|Release Date" />
+		<setting id="sort.watchlist_shows" label="Watchlist Sort Type (TV Shows)" type="enum" default="0" values="Title|Date Added|Release Date" />
 		<setting id="ignore_articles" label="Ignore Articles When Sorting Lists" type="bool" default="true" />
 	</category>
 	<!-- Playback -->
@@ -272,7 +285,6 @@
 		<setting id="torrent.display.uncached" label="Display Uncached Torrents" type="bool" default="false" />
 		<setting id="search.enable.yearcheck" label="Check Year Before Search" type="bool" default="false" />
 		<setting id="ignore_results_filter" label="Ignore All Filters When No Results Available" type="bool" default="true" />
-		<setting id="scrapers.timeout.1" label="Scraper Timeout" type="number" default="10" />
 		<!-- Language -->
 		<setting label="Language" type="lsep" />
 		<setting id="results.language_filter" label="Priority Language Sort to Top" type="bool" default="false" />
@@ -333,6 +345,8 @@
 		<!-- Trakt -->
 		<setting id="trakt.client_id" type="text" default="6bc29124c3d9466e06a3ed19a7b5976fcb28311008401e1ce04cf08196f8b16a" visible="false" />
 		<setting id="trakt.client_secret" type="text" default="99478842b17d44d7accafef45c6c1bbba235792753c195069ae149595cd3a919" visible="false" />
+		<!-- MDBList -->
+		<setting id="mdblist.client_id" type="text" default="TlibB0hxTOxCFONKaR1W8J35eHc0ls7SP9ZhqHCl" visible="false" />
 	</category>
 	<!-- Context Menu -->
 	<category label="Context Menu">

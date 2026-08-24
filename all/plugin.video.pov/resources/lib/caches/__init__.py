@@ -1,3 +1,4 @@
+import json
 from modules import kodi_utils
 # logger = kodi_utils.logger
 
@@ -29,4 +30,10 @@ class BaseCache:
 
 	def _get_timestamp(self, date_time):
 		return int(date_time.timestamp())
+
+	def jsloads(self, data_str):
+		return json.loads(data_str) if data_str else None
+
+	def jsdumps(self, obj):
+		return json.dumps(obj)
 

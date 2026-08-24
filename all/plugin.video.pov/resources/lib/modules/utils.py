@@ -109,15 +109,7 @@ def make_day(today, date, date_format, use_words=True):
 	if day_diff == -1: day = ls(32848).upper()
 	elif day_diff == 0: day = ls(32849).upper()
 	elif day_diff == 1: day = ls(32850).upper()
-	elif 1 < day_diff < 7: day = ls({
-		'Monday': 32971,
-		'Tuesday': 32972,
-		'Wednesday': 32973,
-		'Thursday': 32974,
-		'Friday': 32975,
-		'Saturday': 32976,
-		'Sunday': 32977
-	}[date.strftime('%A')])
+	elif 1 < day_diff < 7: day = date.strftime('%A').upper()
 	return day
 
 def subtract_dates(date1, date2):

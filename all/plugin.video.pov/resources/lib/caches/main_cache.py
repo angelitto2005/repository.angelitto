@@ -3,7 +3,7 @@ from caches import BaseCache, maincache_db, get_property, set_property, clear_pr
 # from modules.kodi_utils import logger
 
 BASE_GET = 'SELECT data, expires FROM maincache WHERE id = ? AND expires > ?'
-BASE_SET = 'INSERT OR REPLACE INTO maincache (id, data, expires) VALUES (?, ?, ?)'
+BASE_SET = 'INSERT OR REPLACE INTO maincache VALUES (?, ?, ?)'
 BASE_DELETE = 'DELETE FROM maincache WHERE id = ?'
 LIKE_SELECT, LIKE_SELECT_ADD = 'SELECT id FROM maincache WHERE %s', 'id LIKE ?'
 
@@ -19,7 +19,7 @@ class MainCache(BaseCache):
 			self.dbcur.execute(BASE_GET, (string, current_time))
 			data = self.dbcur.fetchone()
 			if not data: return result
-			result, expiry = eval(data[0]), data[1]
+			result, expiry = self.jsloads(data[0]), data[1]
 			self.set_memory_cache(result, string, expiry)
 		except: pass
 		return result
@@ -27,7 +27,7 @@ class MainCache(BaseCache):
 	def set(self, string, data, expiration):
 		try:
 			expires = self._get_timestamp(datetime.now() + expiration)
-			self.dbcur.execute(BASE_SET, (string, repr(data), int(expires)))
+			self.dbcur.execute(BASE_SET, (string, int(expires), self.jsdumps(data)))
 			self.set_memory_cache(data, string, int(expires))
 		except: pass
 
@@ -36,7 +36,7 @@ class MainCache(BaseCache):
 		try:
 			cachedata = get_property(string)
 			if cachedata:
-				cachedata = eval(cachedata)
+				cachedata = self.jsloads(cachedata)
 				if cachedata[0] > current_time: result = cachedata[1]
 		except: pass
 		return result
@@ -44,7 +44,7 @@ class MainCache(BaseCache):
 	def set_memory_cache(self, data, string, expires):
 		try:
 			cachedata = (expires, data)
-			cachedata = repr(cachedata)
+			cachedata = self.jsdumps(cachedata)
 			set_property(string, cachedata)
 		except: pass
 

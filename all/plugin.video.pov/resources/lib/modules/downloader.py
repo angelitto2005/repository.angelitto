@@ -9,11 +9,10 @@ from modules.settings import download_directory, get_art_provider
 from modules.source_utils import clean_file_name, find_season_in_release_title
 # from modules.kodi_utils import logger
 
-ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
-levels = ['../../../..', '../../..', '../..', '..']
+ctx = ssl.create_default_context()
 ls, user_agent = kodi_utils.local_string, kodi_utils.xbmc.getUserAgent()
 poster_empty = kodi_utils.media_path('box_office.png')
-image_extensions, video_extensions = (
+image_extensions, video_extensions, levels = (
 	'jpg', 'jpeg', 'jpe', 'jif', 'jfif', 'jfi', 'bmp', 'dib', 'png', 'gif', 'webp', 'tiff', 'tif',
 	'psd', 'raw', 'arw', 'cr2', 'nrw', 'k25', 'jp2', 'j2k', 'jpf', 'jpx', 'jpm', 'mj2'
 ), (
@@ -22,35 +21,45 @@ image_extensions, video_extensions = (
 	'dat', 'mpg', 'mpeg', 'mp4', 'mkv', 'mk3d', 'avc', 'vp3', 'svq3', 'nuv', 'viv', 'dv', 'fli', 'flv', 'wpl',
 	'xspf', 'vdr', 'dvr-ms', 'xsp', 'mts', 'm2t', 'm2ts', 'evo', 'ogv', 'sdp', 'avs', 'rec', 'url', 'pxml',
 	'vc1', 'h264', 'rcv', 'rss', 'mpls', 'mpl', 'webm', 'bdmv', 'bdm', 'wtv', 'trp', 'f4v', 'pvr', 'disc'
-)
+), ['../../../..', '../../..', '../..', '..']
+
+def _select_pack_choices(params, source, pack_choices):
+	if len(pack_choices) <= 1: return next(([i] for i in pack_choices), None)
+	heading = clean_file_name(source.get('name'))
+	preselect = list(range(len(pack_choices)))
+	kwargs = {'heading': heading, 'highlight': params['highlight'], 'preselect': preselect}
+	kwargs.update({'items': json.dumps(pack_choices), 'multi_choice': 'true'})
+	return kodi_utils.select_dialog(pack_choices, **kwargs)
+
+def _execute_downloads(params, source, meta, chosen_list):
+	show_package = source.get('package') == 'show'
+	default_name = '%s (%s)' % (clean_file_name(get_title(meta)), meta.get('year'))
+	default_foldername = kodi_utils.dialog.input(ls(32228), defaultt=default_name)
+	for item in chosen_list:
+		item_data = {**params, 'default_foldername': default_foldername, 'pack_files': item}
+		if show_package:
+			season = find_season_in_release_title(item['filename'])
+			if season:
+				meta = {**meta, 'season': season}
+				item_data['meta'] = json.dumps(meta)
+		Thread(target=Downloader(item_data).run).start()
+
+def meta_downloader(params):
+	source, meta = json.loads(params['source']), json.loads(params['meta'])
+	pack_choices = debrid.Source(source, meta).browse_packs(download=True)
+	if not pack_choices: return kodi_utils.notification(32692)
+	chosen_list = _select_pack_choices(params, source, pack_choices)
+	if not chosen_list: return
+	size_label = sum(i['size'] for i in chosen_list) / (1024 * 1024)
+	text = '%s[CR]%s' % (ls(32688) % size_label, ls(32689))
+	if not kodi_utils.confirm_dialog(text=text): return
+	_execute_downloads(params, source, meta, chosen_list)
 
 def factory(params):
 	action = params.get('action')
 	if 'meta' in action and params.get('magnet_url') != 'None':
-		source, meta = json.loads(params['source']), json.loads(params['meta'])
-		pack_choices = debrid.Source(source, meta).browse_packs(download=True)
-		if not pack_choices: return kodi_utils.notification(32692)
-		if len(pack_choices) > 1:
-			heading = clean_file_name(source.get('name'))
-			preselect = list(range(len(pack_choices)))
-			kwargs = {'heading': heading, 'highlight': params['highlight'], 'preselect': preselect}
-			kwargs.update({'items': json.dumps(pack_choices), 'multi_choice': 'true'})
-			chosen_list = kodi_utils.select_dialog(pack_choices, **kwargs)
-		else: chosen_list = next(([i] for i in pack_choices), None)
-		if not chosen_list: return
-		size_label = sum(i['size'] for i in chosen_list) / (1024 * 1024)
-		text = '%s[CR]%s' % (ls(32688) % size_label, ls(32689))
-		if not kodi_utils.confirm_dialog(text=text): return
-		show_package = source.get('package') == 'show'
-		default_name = '%s (%s)' % (clean_file_name(get_title(meta)), meta.get('year'))
-		default_foldername = kodi_utils.dialog.input(ls(32228), defaultt=default_name)
-		for item in chosen_list:
-			item = {**params, 'default_foldername': default_foldername, 'pack_files': item}
-			if show_package:
-				season = find_season_in_release_title(item['pack_files']['filename'])
-				if season: meta.update({'season': season}), item.update({'meta': json.dumps(meta)})
-			Thread(target=Downloader(item).run).start()
-	elif action == 'image':
+		return meta_downloader(params)
+	if action == 'image':
 		for item in ('thumb_url', 'image_url'):
 			url = params.pop(item)
 			Downloader({**params, 'url': url, 'mediatype': item}).run()
@@ -102,7 +111,7 @@ class Downloader:
 		if url in (None, 'None', ''):
 			if 'meta' in self.action and 'pack_files' in self.params:
 				link = self.params_get('pack_files')['link']
-				debrid_function = debrid.import_debrid(self.provider)
+				debrid_function = debrid.import_debrid(self.provider.split()[-1])
 				url = debrid_function.unrestrict_link(link)
 			else:
 				source = json.loads(self.params_get('source'))

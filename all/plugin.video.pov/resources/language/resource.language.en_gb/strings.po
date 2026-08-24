@@ -6,6 +6,10 @@
 msgid ""
 msgstr ""
 
+msgctxt "#32000"
+msgid "POV"
+msgstr ""
+
 msgctxt "#32003"
 msgid "Databases"
 msgstr ""
@@ -26,18 +30,6 @@ msgctxt "#32016"
 msgid "[B]Add to Cloud[/B]"
 msgstr ""
 
-msgctxt "#32022"
-msgid "Page"
-msgstr ""
-
-msgctxt "#32023"
-msgid "Alphabet"
-msgstr ""
-
-msgctxt "#32024"
-msgid "Disable"
-msgstr ""
-
 msgctxt "#32027"
 msgid "Off"
 msgstr ""
@@ -50,14 +42,6 @@ msgctxt "#32029"
 msgid "TV Shows"
 msgstr ""
 
-msgctxt "#32031"
-msgid "Choose Files to Download"
-msgstr ""
-
-msgctxt "#32036"
-msgid "POV"
-msgstr ""
-
 msgctxt "#32037"
 msgid "Trakt"
 msgstr ""
@@ -68,14 +52,6 @@ msgstr ""
 
 msgctxt "#32054"
 msgid "Real Debrid"
-msgstr ""
-
-msgctxt "#32055"
-msgid "Enable"
-msgstr ""
-
-msgctxt "#32059"
-msgid "Remove Authorization"
 msgstr ""
 
 msgctxt "#32061"
@@ -102,24 +78,12 @@ msgctxt "#32068"
 msgid "TMDb"
 msgstr ""
 
-msgctxt "#32069"
-msgid "Furk"
-msgstr ""
-
 msgctxt "#32070"
 msgid "Easynews"
 msgstr ""
 
-msgctxt "#32075"
-msgid "Most Favorited This Week"
-msgstr ""
-
 msgctxt "#32081"
 msgid "Trakt Calendar"
-msgstr ""
-
-msgctxt "#32087"
-msgid "Trakt Cache"
 msgstr ""
 
 msgctxt "#32089"
@@ -130,68 +94,12 @@ msgctxt "#32090"
 msgid "On"
 msgstr ""
 
-msgctxt "#32092"
-msgid "Keywords"
-msgstr ""
-
 msgctxt "#32096"
 msgid "Internal Scrapers"
 msgstr ""
 
-msgctxt "#32097"
-msgid "PM Cloud"
-msgstr ""
-
-msgctxt "#32098"
-msgid "RD Cloud"
-msgstr ""
-
-msgctxt "#32099"
-msgid "AD Cloud"
-msgstr ""
-
 msgctxt "#32107"
 msgid "Downloads"
-msgstr ""
-
-msgctxt "#32108"
-msgid "Folders 1-5"
-msgstr ""
-
-msgctxt "#32109"
-msgid "Choose Folder Scraper"
-msgstr ""
-
-msgctxt "#32110"
-msgid "Folder 1"
-msgstr ""
-
-msgctxt "#32111"
-msgid "Folder 2"
-msgstr ""
-
-msgctxt "#32112"
-msgid "Folder 3"
-msgstr ""
-
-msgctxt "#32113"
-msgid "Folder 4"
-msgstr ""
-
-msgctxt "#32114"
-msgid "Folder 5"
-msgstr ""
-
-msgctxt "#32115"
-msgid "Display Name"
-msgstr ""
-
-msgctxt "#32116"
-msgid "Movies Directory"
-msgstr ""
-
-msgctxt "#32117"
-msgid "TV Shows Directory"
 msgstr ""
 
 msgctxt "#32118"
@@ -208,10 +116,6 @@ msgstr ""
 
 msgctxt "#32135"
 msgid "Scrape with Custom Values"
-msgstr ""
-
-msgctxt "#32137"
-msgid "Default Scrapers"
 msgstr ""
 
 msgctxt "#32139"
@@ -278,10 +182,6 @@ msgctxt "#32198"
 msgid "[B]Trakt Lists Manager[/B]"
 msgstr ""
 
-msgctxt "#32199"
-msgid "Trakt List"
-msgstr ""
-
 msgctxt "#32200"
 msgid "[B]MDBList Manager[/B]"
 msgstr ""
@@ -316,10 +216,6 @@ msgstr ""
 
 msgctxt "#32241"
 msgid "Quality"
-msgstr ""
-
-msgctxt "#32246"
-msgid "Subtitles"
 msgstr ""
 
 msgctxt "#32247"
@@ -378,16 +274,8 @@ msgctxt "#32461"
 msgid "Latest Releases"
 msgstr ""
 
-msgctxt "#32462"
-msgid "Top 10 Box Office"
-msgstr ""
-
 msgctxt "#32463"
 msgid "Blockbusters"
-msgstr ""
-
-msgctxt "#32464"
-msgid "In Theaters"
 msgstr ""
 
 msgctxt "#32466"
@@ -404,10 +292,6 @@ msgstr ""
 
 msgctxt "#32470"
 msgid "Genres"
-msgstr ""
-
-msgctxt "#32471"
-msgid "Languages"
 msgstr ""
 
 msgctxt "#32472"
@@ -432,14 +316,6 @@ msgstr ""
 
 msgctxt "#32477"
 msgid "Search"
-msgstr ""
-
-msgctxt "#32478"
-msgid "Airing Today"
-msgstr ""
-
-msgctxt "#32479"
-msgid "On the Air"
 msgstr ""
 
 msgctxt "#32480"
@@ -472,10 +348,6 @@ msgstr ""
 
 msgctxt "#32487"
 msgid "Help"
-msgstr ""
-
-msgctxt "#32490"
-msgid "None Found"
 msgstr ""
 
 msgctxt "#32494"
@@ -554,10 +426,6 @@ msgctxt "#32514"
 msgid "Shortcut Folders"
 msgstr ""
 
-msgctxt "#32515"
-msgid "Sources Folders"
-msgstr ""
-
 msgctxt "#32524"
 msgid "Cache"
 msgstr ""
@@ -582,20 +450,8 @@ msgctxt "#32531"
 msgid "Videos"
 msgstr ""
 
-msgctxt "#32532"
-msgid "Hoster"
-msgstr ""
-
 msgctxt "#32533"
 msgid "Scrapers"
-msgstr ""
-
-msgctxt "#32535"
-msgid "Torrent"
-msgstr ""
-
-msgctxt "#32536"
-msgid "Specific"
 msgstr ""
 
 msgctxt "#32537"
@@ -910,20 +766,8 @@ msgctxt "#32676"
 msgid "[B]Remaining providers:[/B] %s"
 msgstr ""
 
-msgctxt "#32677"
-msgid "Total"
-msgstr ""
-
 msgctxt "#32679"
 msgid "Filter Title"
-msgstr ""
-
-msgctxt "#32682"
-msgid "Clear Current Folder"
-msgstr ""
-
-msgctxt "#32683"
-msgid "Choose New Folder"
 msgstr ""
 
 msgctxt "#32686"
@@ -956,14 +800,6 @@ msgstr ""
 
 msgctxt "#32699"
 msgid "Clear All History"
-msgstr ""
-
-msgctxt "#32700"
-msgid "Navigate to: [B]%s[/B]"
-msgstr ""
-
-msgctxt "#32701"
-msgid "Enter the following code: [B]%s[/B]"
 msgstr ""
 
 msgctxt "#32702"
@@ -1018,10 +854,6 @@ msgctxt "#32719"
 msgid "Add [B]'%s'[/B] to a [B]Shortcut Folder[/B]"
 msgstr ""
 
-msgctxt "#32720"
-msgid "Add a Trakt list to [B]'%s'[/B] Menu"
-msgstr ""
-
 msgctxt "#32721"
 msgid "Re-add a removed item from [B]'%s'[/B] Menu"
 msgstr ""
@@ -1056,10 +888,6 @@ msgstr ""
 
 msgctxt "#32731"
 msgid "[B]Add to a Shortcut Folder[/B]"
-msgstr ""
-
-msgctxt "#32733"
-msgid "POV Cloud Transfer"
 msgstr ""
 
 msgctxt "#32736"
@@ -1158,14 +986,6 @@ msgctxt "#32777"
 msgid "Log Utils"
 msgstr ""
 
-msgctxt "#32778"
-msgid "[B]PERSONAL:[/B] [I]%s[/I]"
-msgstr ""
-
-msgctxt "#32779"
-msgid "[B]LIKED:[/B] [I]%s[/I]"
-msgstr ""
-
 msgctxt "#32780"
 msgid "[B]Make a new Trakt list[/B]"
 msgstr ""
@@ -1184,14 +1004,6 @@ msgstr ""
 
 msgctxt "#32785"
 msgid "Delete"
-msgstr ""
-
-msgctxt "#32786"
-msgid "[B]Remove from history[/B]"
-msgstr ""
-
-msgctxt "#32787"
-msgid "Kodi Library Sync Complete"
 msgstr ""
 
 msgctxt "#32788"
@@ -1236,10 +1048,6 @@ msgstr ""
 
 msgctxt "#32808"
 msgid "Disable All Filters for Search?"
-msgstr ""
-
-msgctxt "#32812"
-msgid "Cleaned Addon: [B]%s[/B]"
 msgstr ""
 
 msgctxt "#32813"
@@ -1326,10 +1134,6 @@ msgctxt "#32850"
 msgid "Tomorrow"
 msgstr ""
 
-msgctxt "#32851"
-msgid "Jump To Action Switched to [B]%s[/B]"
-msgstr ""
-
 msgctxt "#32852"
 msgid "Local Subtitles Found"
 msgstr ""
@@ -1344,10 +1148,6 @@ msgstr ""
 
 msgctxt "#32855"
 msgid "Show Log Errors Only?"
-msgstr ""
-
-msgctxt "#32856"
-msgid "Syncing Kodi Library Watched Status"
 msgstr ""
 
 msgctxt "#32857"
@@ -1366,34 +1166,6 @@ msgctxt "#32964"
 msgid "Jump To..."
 msgstr ""
 
-msgctxt "#32971"
-msgid "MONDAY"
-msgstr ""
-
-msgctxt "#32972"
-msgid "TUESDAY"
-msgstr ""
-
-msgctxt "#32973"
-msgid "WEDNESDAY"
-msgstr ""
-
-msgctxt "#32974"
-msgid "THURSDAY"
-msgstr ""
-
-msgctxt "#32975"
-msgid "FRIDAY"
-msgstr ""
-
-msgctxt "#32976"
-msgid "SATURDAY"
-msgstr ""
-
-msgctxt "#32977"
-msgid "SUNDAY"
-msgstr ""
-
 msgctxt "#32978"
 msgid "Set Language Invoker (ADVANCED!!)"
 msgstr ""
@@ -1403,11 +1175,11 @@ msgid "[B]Reuse Langauage Invoker[/B] is currently set to %s.[CR][CR]Do you wish
 msgstr ""
 
 msgctxt "#32980"
-msgid "Changing this setting can create problems within POV. Continue?"
+msgid "Changing this setting may cause addon instability. Continue?"
 msgstr ""
 
 msgctxt "#32981"
-msgid "POV will reload your profile to refresh the addon.xml"
+msgid "Refreshing addon.xml by profile reload."
 msgstr ""
 
 msgctxt "#32982"

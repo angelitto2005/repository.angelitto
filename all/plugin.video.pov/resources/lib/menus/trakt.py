@@ -90,7 +90,7 @@ def trakt_account_info():
 		append('[B]Movies:[/B] [B]%s[/B] Collected, [B]%s[/B] Watched for [B]%s[/B]' % (movies_collected, movies_watched, movies_watched_minutes))
 		append('[B]Cache Integrity:[/B] %s' % db_status.upper())
 		kodi_utils.hide_busy_dialog()
-		return kodi_utils.show_text(ls(32037).upper(), '\n\n'.join(body), font_size='large')
+		return kodi_utils.show_text(ls(32037).upper(), '[CR]'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
 
 class BaseTraktList(list_helper.BaseList):

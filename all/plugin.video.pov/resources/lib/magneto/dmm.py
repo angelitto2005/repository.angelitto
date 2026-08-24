@@ -6,8 +6,8 @@
 import ctypes, random, time
 from json import loads as jsloads
 import queue
-from fenom import client
-from fenom import source_utils
+from magneto.modules import client
+from magneto.modules import source_utils
 
 
 class source:

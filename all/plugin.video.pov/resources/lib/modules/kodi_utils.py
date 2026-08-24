@@ -1,6 +1,6 @@
 import json
 import sqlite3 as database
-from urllib.parse import urlencode, parse_qsl
+from urllib.parse import urlencode, urlparse, parse_qsl
 import xbmc, xbmcgui, xbmcplugin, xbmcvfs
 from xbmcaddon import Addon
 
@@ -8,12 +8,6 @@ addon_object, window, execJSONRPC = Addon(), xbmcgui.Window(10000), xbmc.execute
 player, xbmc_player, monitor, xbmc_monitor = xbmc.Player(), xbmc.Player, xbmc.Monitor(), xbmc.Monitor
 dialog, progressDialog, progressDialogBG = xbmcgui.Dialog(), xbmcgui.DialogProgress(), xbmcgui.DialogProgressBG()
 get_addoninfo, get_infolabel, get_visibility = addon_object.getAddonInfo, xbmc.getInfoLabel, xbmc.getCondVisibility
-window_xml_info_action, window_xml_dialog = xbmcgui.ACTION_SHOW_INFO, xbmcgui.WindowXMLDialog
-window_xml_closing_actions = (xbmcgui.ACTION_PARENT_DIR, xbmcgui.ACTION_PREVIOUS_MENU, xbmcgui.ACTION_STOP, xbmcgui.ACTION_NAV_BACK)
-window_xml_selection_actions = (xbmcgui.ACTION_SELECT_ITEM, xbmcgui.ACTION_MOUSE_START)
-window_xml_context_actions = (xbmcgui.ACTION_CONTEXT_MENU, xbmcgui.ACTION_MOUSE_RIGHT_CLICK, xbmcgui.ACTION_MOUSE_LONG_CLICK)
-window_xml_left_action, window_xml_right_action = xbmcgui.ACTION_MOVE_LEFT, xbmcgui.ACTION_MOVE_RIGHT
-window_xml_up_action, window_xml_down_action = xbmcgui.ACTION_MOVE_UP, xbmcgui.ACTION_MOVE_DOWN
 
 navigator_db   = 'special://profile/addon_data/plugin.video.pov/navigator.db'
 watched_db     = 'special://profile/addon_data/plugin.video.pov/watched.db'
@@ -28,11 +22,11 @@ external_db    = 'special://profile/addon_data/plugin.video.pov/providerscache.d
 scrapers_path  = 'special://home/addons/plugin.video.pov/resources/lib/scrapers/'
 databases_path = 'special://profile/addon_data/plugin.video.pov/'
 packages_path  = 'special://home/addons/packages/'
+indicators_dict = {0: watched_db, 1: trakt_db, 2: mdbl_db}
 
-current_dbs           = ('settings.xml', 'debridcache.db', 'watched.db', 'maincache.db', 'metacache.db', 'fenomundesirables.db',
-						'navigator.db', 'providerscache.db', 'traktcache.db', 'mdblcache.db', 'views.db', 'fenomcache.db')
-indicators_dict       = {0: watched_db, 1: trakt_db, 2: mdbl_db}
-myvideos_db_paths     = {19: '119', 20: '121', 21: '131', 22: '146'}
+def current_dbs():
+	return {'settings.xml', 'fenomcache.db', 'traktcache.db', 'mdblcache.db', 'watched.db',
+			'maincache.db', 'metacache.db', 'navigator.db', 'views.db', 'debridcache.db', 'providerscache.db'}
 
 def logger(heading, function):
 	xbmc.log('>> %s <<: %s' % (heading, function), 1)
@@ -40,6 +34,10 @@ def logger(heading, function):
 def argv1():
 	try: return __import__('sys').argv[1]
 	except: return '-1'
+
+def parsed_query(url):
+	try: return dict(parse_qsl(urlparse(url).query))
+	except: return dict()
 
 def database_connect(file, **kwargs):
 	return database.connect(translate_path(file), **kwargs)
@@ -102,6 +100,9 @@ def convert_language(lang, format='long'):
 def supported_media():
 	return xbmc.getSupportedMedia('video')
 
+def translate_path(path):
+	return xbmcvfs.translatePath(path)
+
 def path_exists(path):
 	return xbmcvfs.exists(path)
 
@@ -136,9 +137,6 @@ def local_string(string):
 	except: _string = addon_object.getLocalizedString(_string)
 	return _string or string
 
-def translate_path(path):
-	return xbmcvfs.translatePath(path)
-
 def sleep(time):
 	return xbmc.sleep(time)
 
@@ -158,7 +156,8 @@ def current_window_id():
 	return xbmcgui.Window(xbmcgui.getCurrentWindowId())
 
 def get_video_database_path():
-	return 'special://profile/Database/MyVideos%s.db' % myvideos_db_paths[get_kodi_version()]
+	version = {19: '119', 20: '121', 21: '131', 22: '146'}[get_kodi_version()]
+	return 'special://profile/Database/MyVideos%s.db' % version
 
 def show_busy_dialog():
 	return execute_builtin('ActivateWindow(busydialognocancel)')
@@ -220,8 +219,8 @@ def select_dialog(function_list, **kwargs):
 	else:
 		preselect = kwargs.get('preselect') if kwargs.get('preselect') is not None else -1
 		selection = dialog.select(heading, list(_builder()), preselect=preselect, useDetails=details)
-	if selection in ([], -1, None): return None
-	if multi_choice: return [function_list[i] for i in selection]
+	if isinstance(selection, list) and multi_choice: return [function_list[i] for i in selection]
+	if selection in (-1, None): return None
 	return function_list[selection]
 
 def show_text(heading, text=None, file=None, font_size='small', kodi_log=False):
@@ -288,10 +287,9 @@ def set_view_mode(view_type, content='files', is_widget=None):
 	if not view_id: return
 	try:
 		for _ in range(60):
-			if container_content() == content: break
 			sleep(50)
-		else: return
-		execute_builtin('Container.SetViewMode(%s)' % view_id)
+			if container_content() != content: continue
+			return execute_builtin('Container.SetViewMode(%s)' % view_id)
 	except: pass
 
 def clear_view(view_type):
@@ -302,9 +300,9 @@ def clear_view(view_type):
 		dbcur.execute("""PRAGMA synchronous = OFF""")
 		dbcur.execute("""PRAGMA journal_mode = OFF""")
 		dbcur.execute("""SELECT view_type FROM views""")
-		for item in dbcur.fetchall():
-			dbcur.execute("""DELETE FROM views WHERE view_type = ?""", (item[0],))
-			clear_property('pov_%s' % item[0])
+		for item in dbcur.fetchall(): clear_property('pov_%s' % item[0])
+		dbcur.execute("""DELETE FROM views""")
+		dbcur.execute("""VACUUM""")
 		dbcon = database_connect('special://profile/Database/ViewModes6.db')
 		dbcur = dbcon.cursor()
 		dbcur.execute("""DELETE FROM view WHERE path LIKE 'plugin://plugin.video.pov/%'""")
@@ -402,7 +400,7 @@ def make_settings_dict():
 	except Exception as e: logger('make_settings_dict error', str(e))
 	return settings_dict
 
-def clean_settings():
+def clean_settings(silent=False):
 	import xml.etree.ElementTree as ET
 	addon_ids = 'plugin.video.pov'
 	default_xml = 'special://home/addons/%s/resources/settings.xml' % addon_ids
@@ -419,8 +417,9 @@ def clean_settings():
 		for item in removed_settings: root.remove(item)
 		with open_file(profile_xml, 'w') as xml_file: xml_file.write(ET.tostring(root))
 		text = local_string(32813) % len(removed_settings) if removed_settings else 32576
-		notification(text, 1500)
-	except: notification(32574, 1500)
+		if not silent: notification(text, 1500)
+	except:
+		if not silent: notification(32574, 1500)
 
 def open_settings(query, addon='plugin.video.pov'):
 	hide_busy_dialog()

@@ -64,7 +64,7 @@ class TVShows:
 			tmdb_id, tvdb_id, imdb_id = meta_get('tmdb_id'), meta_get('tvdb_id'), meta_get('imdb_id')
 			try: tags = [i for i in (imdb_id, string(tmdb_id), string(tvdb_id)) if i not in ('', 'None', None)]
 			except: tags = []
-			valid_seasons = (True for i in meta_get('season_data') if i['episode_count'])
+			valid_seasons = (True for i in meta_get('season_data') if i['episode_count'] and i['season_number'])
 			if self.smart_play == 2 or (self.smart_play == 1 and self.is_widget):
 				url_params = build_url({'mode': 'smart_play_media', 'tmdb_id': tmdb_id})
 			elif self.all_episodes == 2 or (self.all_episodes == 1 and sum(valid_seasons) == 1):
@@ -163,9 +163,9 @@ class TVShows:
 		except: pass
 
 class Menu(TVShows):
-	personal_dict = {'watched_tvshows': ('caches.watched_cache', 'get_watched_movie_tvshow'), 'in_progress_tvshows': ('caches.watched_cache', 'get_in_progress_tvshows'), 'favorites_tvshows': ('caches.favorites_cache', 'get_favorites'), 'dropped_tvshows': ('caches.favorites_cache', 'get_dropped')}
+	personal_dict = {'watched_tvshows': ('caches.watched_cache', 'get_watched_movie_tvshow'), 'in_progress_tvshows': ('caches.watched_cache', 'get_in_progress_tvshows'), 'favorites_tvshows': ('indexers.local_api', 'local_favorites'), 'dropped_tvshows': ('indexers.local_api', 'local_droplist')}
 	tmdb_special_key_dict = {'tmdb_tv_networks': 'network_id', 'tmdb_tv_year': 'year', 'tmdb_tvanime_year': 'year'}
-	tmdb_main = ('tmdb_tv_popular', 'tmdb_tv_premieres', 'tmdb_tv_upcoming', 'tmdb_tvanime_popular', 'tmdb_tvanime_premieres')
+	tmdb_main = ('tmdb_tv_trending', 'tmdb_tv_popular', 'tmdb_tv_premieres', 'tmdb_tv_upcoming', 'tmdb_tvanime_popular', 'tmdb_tvanime_premieres')
 	trakt_main = ('trakt_tv_trending', 'trakt_tv_trending_recent', 'trakt_tv_most_watched', 'trakt_tvanime_trending', 'trakt_tvanime_most_watched')
 	tmdb_personal = ('tmdb_watchlist', 'tmdb_favorites', 'tmdb_recommendations')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_favorites', 'trakt_droplist', 'trakt_collection_lists', 'trakt_watchlist_lists')
@@ -212,9 +212,8 @@ class Menu(TVShows):
 				if isinstance(page_no, int) and total_pages > page_no:
 					self.new_page = {'new_page': string(page_no + 1)}
 			elif self.action in Menu.mdblist_personal:
-				self.id_type = 'trakt_dict'
 				data, total_pages = function('shows', page_no)
-				self.list = [{'imdb': i['imdb_id'], 'tmdb': i['id']} for i in data]
+				self.list = [i['id'] for i in data]
 				if total_pages > 2: self.total_pages = total_pages
 				if total_pages > page_no: self.new_page = {'new_page': string(page_no + 1)}
 			elif self.action in Menu.personal_dict:
@@ -236,7 +235,7 @@ class Menu(TVShows):
 				self.list = [i['id'] for i in data['results']]
 				if data['page'] < data['total_pages']:
 					self.new_page = {'new_page': string(data['page'] + 1), key: function_var}
-			elif self.action == 'tmdb_tv_discover':
+			elif self.action in ('tmdb_media_discover', 'tmdb_tv_discover'):
 				from menus.discover import set_history
 				name, query = self.params['name'], self.params['query']
 				if page_no == 1: set_history('tvshow', name, query)

@@ -154,9 +154,9 @@ class Movies:
 		except: pass
 
 class Menu(Movies):
-	personal_dict = {'watched_movies': ('caches.watched_cache', 'get_watched_movie_tvshow'), 'in_progress_movies': ('caches.watched_cache', 'get_in_progress_items'), 'favorites_movies': ('caches.favorites_cache', 'get_favorites')}
+	personal_dict = {'watched_movies': ('caches.watched_cache', 'get_watched_movie_tvshow'), 'in_progress_movies': ('caches.watched_cache', 'get_in_progress_items'), 'favorites_movies': ('indexers.local_api', 'local_favorites')}
 	tmdb_special_key_dict = {'tmdb_movies_networks': 'company', 'tmdb_movies_year': 'year', 'tmdb_moviesanime_year': 'year'}
-	tmdb_main = ('tmdb_movies_popular', 'tmdb_movies_latest_releases', 'tmdb_movies_premieres', 'tmdb_movies_upcoming', 'tmdb_movies_blockbusters', 'tmdb_oscar_winners', 'tmdb_moviesanime_popular', 'tmdb_moviesanime_latest_releases')
+	tmdb_main = ('tmdb_movies_trending', 'tmdb_movies_popular', 'tmdb_movies_latest_releases', 'tmdb_movies_premieres', 'tmdb_movies_upcoming', 'tmdb_movies_blockbusters', 'tmdb_oscar_winners', 'tmdb_moviesanime_popular', 'tmdb_moviesanime_latest_releases')
 	trakt_main = ('trakt_movies_trending', 'trakt_movies_trending_recent', 'trakt_movies_most_watched', 'trakt_moviesanime_trending', 'trakt_moviesanime_most_watched')
 	tmdb_personal = ('tmdb_watchlist', 'tmdb_favorites', 'tmdb_recommendations')
 	trakt_personal = ('trakt_collection', 'trakt_watchlist', 'trakt_favorites', 'trakt_collection_lists', 'trakt_watchlist_lists')
@@ -221,9 +221,8 @@ class Menu(Movies):
 				if isinstance(page_no, int) and total_pages > page_no:
 					self.new_page = {'new_page': string(page_no + 1)}
 			elif self.action in Menu.mdblist_personal:
-				self.id_type = 'trakt_dict'
 				data, total_pages = function('movies', page_no)
-				self.list = [{'imdb': i['imdb_id'], 'tmdb': i['id']} for i in data]
+				self.list = [i['id'] for i in data]
 				if total_pages > 2: self.total_pages = total_pages
 				if total_pages > page_no: self.new_page = {'new_page': string(page_no + 1)}
 			elif self.action in Menu.personal_dict:
@@ -246,7 +245,7 @@ class Menu(Movies):
 				self.list = [i['id'] for i in data['results']]
 				if data['page'] < data['total_pages']:
 					self.new_page = {'new_page': string(data['page'] + 1), key: function_var}
-			elif self.action == 'tmdb_movies_discover':
+			elif self.action in ('tmdb_media_discover', 'tmdb_movies_discover'):
 				from menus.discover import set_history
 				name, query = params_get('name'), params_get('query')
 				if page_no == 1: set_history('movie', name, query)

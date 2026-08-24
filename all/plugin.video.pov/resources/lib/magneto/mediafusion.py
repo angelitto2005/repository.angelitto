@@ -4,7 +4,7 @@
 """
 
 import re, requests
-from fenom import source_utils
+from magneto.modules import source_utils
 
 
 class source:

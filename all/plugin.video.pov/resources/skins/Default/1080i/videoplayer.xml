@@ -10,24 +10,27 @@
 			<width>1920</width>
 			<height>1080</height>
 		</control>
+		<!-- POV Logo -->
 		<control type="group">
-			<left>20</left>
-			<top>20</top>
+			<animation effect="fade" start="0" end="100" delay="400" time="500">WindowOpen</animation>
 			<control type="image">
+				<left>35</left>
+				<top>20</top>
 				<width>60</width>
 				<height>60</height>
 				<aspectratio aligny="top">keep</aspectratio>
 				<texture>$INFO[Window.Property(tikiskins.pov.icon)]</texture>
 			</control>
-			<control type="group">
-				<left>70</left>
-				<top>13</top>
-				<control type="label">
-					<width>auto</width>
-					<height>20</height>
-					<font>font10</font>
-					<label>[UPPERCASE]Press BACK to Exit[/UPPERCASE]</label>
-				</control>
+			<control type="label">
+				<left>100</left>
+				<top>37</top>
+				<width>auto</width>
+				<height>20</height>
+				<font>font10</font>
+				<textcolor>FFFFFFFF</textcolor>
+				<align>left</align>
+				<aligny>center</aligny>
+				<label>[UPPERCASE]Press BACK to Exit[/UPPERCASE]</label>
 			</control>
 		</control>
 		<control type="progress" id="5000">

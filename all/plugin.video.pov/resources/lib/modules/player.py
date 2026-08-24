@@ -40,7 +40,7 @@ class POVPlayer(kodi_utils.xbmc_player):
 		except: pass
 
 	def onPlayBackStopped(self):
-		self.playback_event = 'stop'
+		self.playback_event = None
 
 	def run(self, url=None, meta=None, progress_media=None):
 		if not url: return
@@ -78,7 +78,6 @@ class POVPlayer(kodi_utils.xbmc_player):
 					self.autoscrape_next_episode = False
 				self.exec_task('episode_handler')
 			if self.volume_check: kodi_utils.volume_checker()
-			kodi_utils.sleep(1000)
 			while self.isPlayingVideo(): self.check_playback_events()
 			if not self.media_marked: self.media_watched_marker()
 			ws.clear_local_bookmarks()
@@ -169,25 +168,32 @@ class POVPlayer(kodi_utils.xbmc_player):
 		self.media_marked = True
 		try:
 			if self.current_point >= self.set_watched:
-				if self.mediatype == 'movie': watched_function, watched_params = ws.mark_as_watched_unwatched_movie, {
-					'mode': 'mark_as_watched_unwatched_movie', 'action': 'mark_as_watched', 'refresh': 'false', 'from_playback': 'true',
+				if self.mediatype == 'movie': watched_params, watched_function = {
+					'mode': 'mark_as_watched_unwatched_movie', 'action': 'mark_as_watched',
+					'refresh': 'false', 'from_playback': 'true',
 					'tmdb_id': self.tmdb_id, 'title': self.title, 'year': self.year
-				}
-				else: watched_function, watched_params = ws.mark_as_watched_unwatched_episode, {
-					'mode': 'mark_as_watched_unwatched_episode', 'action': 'mark_as_watched', 'refresh': 'false', 'from_playback': 'true',
-					'tmdb_id': self.tmdb_id, 'title': self.title, 'year': self.year, 'tvdb_id': self.tvdb_id, 'season': self.season, 'episode': self.episode
-				}
-				self.exec_task('media_watched', watched_function, watched_params)
-			else:
-				kodi_utils.clear_property('pov_total_autoplays')
-				if not self.current_point >= self.set_resume: return
-				ws.set_bookmark(self.mediatype, self.tmdb_id, self.curr_time, self.total_time, self.title, self.season, self.episode)
+					}, ws.mark_as_watched_unwatched_movie
+				else: watched_params, watched_function = {
+					'mode': 'mark_as_watched_unwatched_episode', 'action': 'mark_as_watched',
+					'refresh': 'false', 'from_playback': 'true',
+					'tmdb_id': self.tmdb_id, 'title': self.title, 'year': self.year,
+					'tvdb_id': self.tvdb_id, 'season': self.season, 'episode': self.episode
+					}, ws.mark_as_watched_unwatched_episode
+				return self.exec_task('media_watched', watched_function, watched_params)
+			kodi_utils.clear_property('pov_total_autoplays')
+			if self.current_point < self.set_resume: return
+			self.exec_task(
+				'media_bookmark', self.mediatype,
+				self.tmdb_id, self.curr_time, self.total_time,
+				self.title, self.season, self.episode
+			)
 		except: pass
 
 	def bookmarkPOV(self):
 		bookmark = 0
 		watched_indicators = settings.watched_indicators()
-		try: resume_point, curr_time, resume_id = ws.detect_bookmark(ws.get_bookmarks(watched_indicators, self.mediatype), self.tmdb_id, self.season, self.episode)
+		bookmarks = ws.get_bookmarks(watched_indicators, self.mediatype)
+		try: resume_point, curr_time, resume_id = ws.detect_bookmark(bookmarks, self.tmdb_id, self.season, self.episode)
 		except: resume_point, curr_time = 0, 0
 		resume_check = float(resume_point)
 		if resume_check > 0:
@@ -226,7 +232,12 @@ class POVPlayer(kodi_utils.xbmc_player):
 
 	def exec_task(self, task_name, *args):
 		try:
-			if task_name == 'media_watched':
+			if task_name == 'media_bookmark':
+				# isPlayingVideo is False before onPlayBackStopped called, ensure player cleanup
+				# completed or container_refresh in set_bookmark will sometimes crash container
+				_ = any(kodi_utils.sleep(500) or not self.playback_event for i in range(4))
+				if args: ws.set_bookmark(*args)
+			elif task_name == 'media_watched':
 				if args: Thread(target=args[0], args=(args[1],)).start()
 			elif task_name == 'episode_handler':
 				Thread(target=self.episode_handler).start()

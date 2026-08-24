@@ -11,7 +11,7 @@ _add_str, _rem_str, airlock_str = ls(32602).replace(' To', ''), ls(32603).replac
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path(Debrid.icon)
 default_art = {'icon': default_icon, 'poster': default_icon, 'thumb': default_icon, 'fanart': fanart, 'banner': default_icon}
-extensions = supported_video_extensions()
+extensions = tuple(supported_video_extensions())
 
 class Menu(Debrid):
 	def run(self, params):
@@ -43,8 +43,8 @@ class Menu(Debrid):
 				else: airlock_value, func_str, res_str = 'true', _add_str, folder_str
 				display = '%02d | [B]%s[/B] | [I]%s [/I]' % (count, res_str, clean_file_name(item['name']).upper())
 				url_params = {'mode': 'torbox.tb_browse_cloud', 'folder_id': item['folder_id']}
-				airlock_params = {'mode': 'torbox.tb_airlock', 'folder_id': item['folder_id'], 'airlock': airlock_value}
 				delete_params = {'mode': 'torbox.tb_delete', 'folder_id': item['folder_id']}
+				airlock_params = {'mode': 'torbox.tb_airlock', 'folder_id': item['folder_id'], 'airlock': airlock_value}
 				cm_append(('[B]%s %s[/B]' % (delete_str, folder_str.capitalize()), 'RunPlugin(%s)' % build_url(delete_params)))
 				cm_append(('[B]%s %s[/B]' % (func_str, airlock_str.capitalize()), 'RunPlugin(%s)' % build_url(airlock_params)))
 				url = build_url(url_params)
@@ -58,7 +58,7 @@ class Menu(Debrid):
 	def browse_cloud(sel, items):
 		for count, item in enumerate(items, 1):
 			try:
-				if not item['short_name'].lower().endswith(tuple(extensions)): continue
+				if not item['short_name'].lower().endswith(extensions): continue
 				cm = []
 				cm_append = cm.append
 				name = clean_file_name(item['short_name']).upper()
@@ -80,13 +80,13 @@ class Menu(Debrid):
 
 	def cloud_delete(self, folder_id):
 		if not kodi_utils.confirm_dialog(): return
-		result = self.get_function(folder_id, True)(folder_id)
+		result = self.delete_torrent(folder_id)
 		if not result: return kodi_utils.notification(32574)
 		self.clear_cache()
 		kodi_utils.container_refresh()
 
 	def cloud_airlock(self, folder_id, airlock_value):
-		if 'false' == airlock_value and not kodi_utils.confirm_dialog(): return
+		if airlock_value == 'false' and not kodi_utils.confirm_dialog(): return
 		request_id, mediatype = folder_id.split(',')
 		result = self.toggle_airlock(mediatype, request_id, airlock_value)
 		if not result: return kodi_utils.notification(32574)

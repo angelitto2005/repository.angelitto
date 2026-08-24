@@ -1,5 +1,7 @@
 from indexers import mdblist_api, list_helper
+from menus.episodes import Episodes
 from menus.movies import Movies
+from menus.seasons import Seasons
 from menus.tvshows import TVShows
 from modules import kodi_utils
 # logger = kodi_utils.logger
@@ -40,7 +42,7 @@ def mdbl_account_info():
 		append('[B]API Request Limit:[/B] %s' % api_requests)
 		append('[B]API Request Remaining:[/B] %s' % remaining)
 		kodi_utils.hide_busy_dialog()
-		return kodi_utils.show_text('MDBList'.upper(), '\n\n'.join(body), font_size='large')
+		return kodi_utils.show_text('MDBList'.upper(), '[CR]'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
 
 class BaseMdblList(list_helper.BaseList):
@@ -83,31 +85,36 @@ class SearchMdblLists(BaseMdblList):
 
 	def add_next_page(self):
 		if int(self.pages) <= int(self.page): return
-		url = {'mode': 'build_mdbl_list.search_mdb_lists', 'search_title': self.search_title, 'new_page': int(self.page) + 1}
+		url = {'mode': 'build_mdbl_list.search_mdbl_lists', 'search_title': self.search_title, 'new_page': int(self.page) + 1}
 		kodi_utils.add_dir(self.handle, url, nextpage_str)
 
 class GetMdblLists(BaseMdblList):
 	def __init__(self, params):
 		super().__init__(params)
 		self.sort_method = 'label'
+		self.list_type = params['list_type']
 
 	def fetch_results(self):
 		self.lists = []
-		for i in ('my_lists', 'external'):
+		if self.list_type == 'liked_lists': lists = ('liked_lists',)
+		else: lists = ('my_lists', 'external')
+		for i in lists:
 			items = mdblist_api.mdbl_get_lists(i)
 			if isinstance(items, list): self.lists.extend(items)
 
 	def parse_item(self, item):
-		list_type = 'external' if 'source' in item else 'my_lists'
+		if self.list_type == 'liked_lists': list_type = 'liked_lists'
+		else: list_type = 'external' if 'source' in item else 'my_lists'
 		return item, list_type
 
 	def get_display_and_plot(self, item, name, item_count, user):
-		display = '%s (x%s)' % (name, item_count) if item_count else name
-		if 'source' in item: display = '[COLOR cyan][I]%s[/I][/COLOR]' % display
-		elif item.get('dynamic'): display = '[COLOR magenta][I]%s[/I][/COLOR]' % display
-		elif item.get('private'): display = '[I]%s[/I]' % display
-		plot = '[B]Likes[/B]: %s' % item.get('likes')
-		return display, plot
+		privacy = item.get('private')
+		if self.list_type == 'liked_lists':
+			display = '%s (x%s) - [I]%s[/I]' % (name, item_count, user) if item_count else '%s - [I]%s[/I]' % (name, user)
+		else:
+			display = '%s (x%s)' % (name, item_count) if item_count else name
+			if privacy: display = '[I]%s[/I]' % display
+		return display, None
 
 class GetTopLists(BaseMdblList):
 	def fetch_results(self):
@@ -126,13 +133,22 @@ class MdblistBuilder(list_helper.BaseMediaListBuilder):
 
 	def process_media_types(self, queue, process_list):
 		movies, tvshows = Movies({'id_type': 'trakt_dict'}), TVShows({'id_type': 'trakt_dict'})
+		episodes, seasons = Episodes({'id_type': 'trakt_dict'}), Seasons({'id_type': 'trakt_dict'})
 		for idx, tag in enumerate(process_list, 1):
 			mtype = tag['mediatype']
 			if   mtype == 'movie':
 				queue.put((movies.build_movie_content, idx, {'imdb': tag['imdb_id'], 'tmdb': tag['id']}))
 			elif mtype == 'show':
 				queue.put((tvshows.build_tvshow_content, idx, {'imdb': tag['imdb_id'], 'tmdb': tag['id']}))
-		return {'movies': movies, 'tvshows': tvshows}
+			elif mtype == 'episode':
+				tmdb_id = tag.get('show_id') or tag.get('show_tmdb') or ''
+				ids = {'media_ids': {'tmdb': tmdb_id}, 'season': tag['season_number'], 'episode': tag['episode_number']}
+				queue.put((episodes.build_episode_content, idx, ids))
+			elif mtype == 'season':
+				tmdb_id = tag.get('show_id') or tag.get('show_tmdb') or ''
+				ids = {'tmdb_id': tmdb_id, 'season': tag['season_number'], 'sort': idx}
+				queue.put((seasons.build_season_list, ids))
+		return {'movies': movies, 'tvshows': tvshows, 'episodes': episodes, 'seasons': seasons}
 
 class MdbListManager(list_helper.BaseListManager):
 	setting_key = 'mdblist_user'

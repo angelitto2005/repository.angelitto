@@ -1,5 +1,6 @@
 from threading import Thread
 from indexers.metadata import tvshow_meta, season_episodes_meta, art_infodict, episode_infodict, info_tagger
+from indexers.mdblist_api import mdbl_get_my_calendar
 from indexers.trakt_api import trakt_fetch_collection_watchlist, trakt_get_my_calendar, trakt_get_my_anime_calendar, trakt_anime_calendar
 from caches.watched_cache import get_resumetime, set_resumetime, get_watched_status_episode, get_watched_info_tv, get_bookmarks, get_next_episodes, get_in_progress_items
 from modules import kodi_utils, settings
@@ -9,7 +10,6 @@ from modules.utils import get_next_episode_pointer, adjust_premiered_date, make_
 
 KODI_VERSION, make_cast_list = kodi_utils.get_kodi_version(), kodi_utils.make_cast_list
 string, ls, build_url, default_duration = str, kodi_utils.local_string, kodi_utils.build_url, 3600
-calendar_sort_order, calendar_focus_today = settings.calendar_sort_order, settings.calendar_focus_today
 nextep_content_settings, nextep_display_settings = settings.nextep_content_settings, settings.nextep_display_settings
 thumb_fanart_info, default_all_episodes = settings.thumb_fanart, settings.default_all_episodes
 single_ep_display_title, single_ep_format = settings.single_ep_display_title, settings.single_ep_format
@@ -19,7 +19,7 @@ run_plugin, container_refresh, container_update = 'RunPlugin(%s)', 'Container.Re
 fanart_empty = kodi_utils.get_addoninfo('fanart')
 poster_empty = kodi_utils.media_path('box_office.png')
 watched_str, unwatched_str, extras_str, options_str = ls(32642), ls(32643), ls(32645), ls(32646)
-clearprog_str, browse_str, browse_seas_str, today_str = ls(32651), ls(32652), ls(32544), ls(32849).upper()
+clearprog_str, browse_str, browse_seas_str = ls(32651), ls(32652), ls(32544)
 traktmanager_str, mdblmanager_str, unaired_label, date_label = ls(32198), ls(32200), 'cyan', 'magenta'
 
 class Episodes:
@@ -184,7 +184,7 @@ class Episodes:
 				if unaired: highlight_color = self.nextep_unaired_color
 				else: highlight_color = self.nextep_unwatched_color if unwatched else ''
 			else: # trakt_calendar
-				airdate = ('[[COLOR ', date_label, ']', display_premiered, '[/COLOR]] ')
+				airdate = ('[[COLOR ', date_label, ']', display_premiered, '[/COLOR]] ') if self.calendar_include_airdate else ''
 				highlight_color = unaired_label if unaired else ''
 			italics_open, italics_close = ('[I]', '[/I]') if highlight_color else ('', '')
 			if highlight_color:
@@ -218,9 +218,10 @@ class Menu(Episodes):
 		}.items() if key in mode), None)
 		if callable(func): func(params_get)
 		if self.list: kodi_utils.add_items(__handle__, self.worker())
-		if self.list_type == 'trakt_calendar' and calendar_focus_today():
-			labels = enumerate((i[1].getLabel() for i in self.items), 1)
-			index = next((i for i, x in labels if today_str in x), None)
+		if self.list_type == 'trakt_calendar' and self.calendar_focus_today:
+			current_date = str(self.current_date)
+			labels = enumerate((i[1].getProperty('pov_first_aired') for i in self.items), 1)
+			index = next((i for i, x in labels if x in current_date), None)
 		else: index = False
 		kodi_utils.set_category(__handle__, category)
 		kodi_utils.set_sort_method(__handle__, sort_type)
@@ -248,23 +249,33 @@ class Menu(Episodes):
 #		try: self.list.extend(watchlist)
 #		except: pass
 
+	def _setup_calendar_display(self):
+		calendar_display_settings = settings.calendar_display_settings()
+		self.calendar_focus_today = calendar_display_settings['focus_today']
+		self.calendar_sort_order = calendar_display_settings['sort_order']
+		self.calendar_include_airdate = calendar_display_settings['include_airdate']
+
 	def _setup_my_calendar(self, params_get):
 		recently_aired = params_get('recently_aired')
-		self.list = trakt_get_my_calendar(recently_aired, self.current_date)
+		func = mdbl_get_my_calendar if 'mdbl' in params_get('mode') else trakt_get_my_calendar
+		self.list = func(recently_aired, self.current_date)
 		if recently_aired:
 			self.list_type = 'trakt_recently_aired'
 			self.list = self.list[:20]
 		else:
 			self.list_type = 'trakt_calendar'
 			self.list = sorted(self.list, key=lambda k: k['sort_title'])
+		self._setup_calendar_display()
 
 	def _setup_my_anime_calendar(self, params_get):
 		self.list = sorted(trakt_get_my_anime_calendar(self.current_date), key=lambda k: k['sort_title'])
 		self.list_type = 'trakt_calendar'
+		self._setup_calendar_display()
 
 	def _setup_anime_calendar(self, params_get):
 		self.list = sorted(trakt_anime_calendar(self.current_date), key=lambda k: k['sort_title'])
 		self.list_type = 'trakt_calendar'
+		self._setup_calendar_display()
 
 	def _sort_next_episode(self):
 		def func(function):
@@ -279,8 +290,7 @@ class Menu(Episodes):
 		if sort_airing_today_to_top: self.items.sort(key=lambda k: aired_today(k[1]), reverse=True)
 
 	def _sort_calendar(self):
-		reverse = calendar_sort_order() == 0 if self.list_type == 'trakt_calendar' else True
+		reverse = self.calendar_sort_order == 0 if self.list_type == 'trakt_calendar' else True
 		self.items.sort(key=lambda k: int(k[1].getProperty('pov_sort_order')))
 		self.items.sort(key=lambda k: k[1].getProperty('pov_first_aired'), reverse=reverse)
-
 

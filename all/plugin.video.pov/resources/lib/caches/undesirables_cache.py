@@ -1,5 +1,5 @@
-from fenom.control import multiselectDialog, notification, yesnoDialog, dialog
-from fenom.undesirables import Undesirables
+from magneto.modules.control import multiselectDialog, notification, yesnoDialog, dialog
+from magneto.modules.undesirables import Undesirables
 
 
 def undesirablesUserRemove():

@@ -1,3 +1,4 @@
+import json
 from modules.kodi_utils import trakt_db, database_connect
 from modules.utils import chunks
 # from modules.kodi_utils import logger
@@ -59,9 +60,11 @@ def cache_trakt_object(function, string, url):
 	dbcur = TraktCache().dbcur
 	dbcur.execute(TC_BASE_GET, (string,))
 	cached_data = dbcur.fetchone()
-	if cached_data: return eval(cached_data[0])
+	try:
+		if cached_data: return json.loads(cached_data[0])
+	except: pass
 	result = function(url)
-	dbcur.execute(TC_BASE_SET, (string, repr(result)))
+	dbcur.execute(TC_BASE_SET, (string, json.dumps(result)))
 	return result
 
 def reset_activity(latest_activities):
@@ -71,9 +74,9 @@ def reset_activity(latest_activities):
 		dbcur = TraktCache().dbcur
 		dbcur.execute(TC_BASE_GET, (string,))
 		cached_data = dbcur.fetchone()
-		if cached_data: cached_data = eval(cached_data[0])
+		if cached_data: cached_data = json.loads(cached_data[0])
 		else: cached_data = default_activities()
-		dbcur.execute(TC_BASE_SET, (string, repr(latest_activities)))
+		dbcur.execute(TC_BASE_SET, (string, json.dumps(latest_activities)))
 	except: pass
 	return cached_data
 

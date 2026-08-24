@@ -14,8 +14,8 @@ default_external_scrapers = ('external',)
 plswait_str, checking_debrid_str, remaining_debrid_str = ls(32577), ls(32578), ls(32579)
 
 debrid_list = (
-	('real-debrid', 'rd', real_debrid_api.RealDebridAPI),
-	('premiumize.me', 'pm', premiumize_api.PremiumizeAPI),
+	('realdebrid', 'rd', real_debrid_api.RealDebridAPI),
+	('premiumize', 'pm', premiumize_api.PremiumizeAPI),
 	('alldebrid', 'ad', alldebrid_api.AllDebridAPI),
 	('torbox', 'tb', torbox_api.TorBoxAPI),
 	('offcloud', 'oc', offcloud_api.OffcloudAPI),
@@ -30,6 +30,11 @@ def debrid_enabled():
 
 def debrid_type_enabled(debrid_type, enabled_debrids):
 	return [i[0] for i in debrid_list if i[0] in enabled_debrids and get_setting('%s.%s.enabled' % (i[1], debrid_type)) == 'true']
+
+def play_from_cloud(params):
+	source = Source.fromcloud(params)
+	url = source.resolve_internal_sources(source.direct_debrid_link)
+	return kodi_utils.execute_builtin('PlayMedia(%s)' % url)
 
 class Source:
 	@classmethod
@@ -68,12 +73,12 @@ class Source:
 	def resolve_external_sources(self, title, season, episode):
 		from modules.source_utils import supported_video_extensions, seas_ep_filter, extras_filter
 		try:
-			extensions = supported_video_extensions()
+			extensions = tuple(supported_video_extensions())
 			extras_filtering_list = tuple(i for i in extras_filter() if i not in title.lower())
 			if self.url.startswith('magnet'):
-				is_nzb, store_to_cloud = False, settings.store_resolved_torrent_to_cloud(self.debrid)
-			else: is_nzb, store_to_cloud = True, settings.store_resolved_usenet_to_cloud(self.debrid)
-			if self.debrid in ('real-debrid', 'alldebrid'): args = self.url, self.hash, True
+				store_to_cloud = settings.store_resolved_torrent_to_cloud(self.debrid)
+			else: store_to_cloud = settings.store_resolved_usenet_to_cloud(self.debrid)
+			if self.debrid in ('realdebrid', 'alldebrid'): args = self.url, self.hash, True
 			else: args = self.url, self.hash
 			api = import_debrid(self.debrid)
 			files = api.parse_magnet_pack(*args)
@@ -82,7 +87,7 @@ class Source:
 			for i in files or []:
 				torrent_id, filename = i.get('torrent_id'), i['filename'].lower()
 				if filename.endswith('.m2ts'): raise Exception('_m2ts_check failed')
-				if not filename.endswith(tuple(extensions)): continue
+				if not filename.endswith(extensions): continue
 				if season:
 					if not seas_ep_filter(season, episode, filename): continue
 				elif any(x in filename for x in extras_filtering_list): continue
@@ -90,20 +95,18 @@ class Source:
 			if not selected_files: raise Exception('selected_files failed')
 			if not season: selected_files.sort(key=lambda k: k['size'], reverse=True)
 			file_key = next((i['link'] for i in selected_files), None)
-			if is_nzb: file_url = api.unrestrict_usenet(file_key)
-			else: file_url = api.unrestrict_link(file_key)
-			if self.debrid in ('premiumize.me', 'offcloud'):
+			file_url = api.unrestrict_link(file_key)
+			if not api.defaults_to_cloud:
 				if store_to_cloud: Thread(target=api.create_transfer, args=(self.url,)).start()
-			if self.debrid in ('real-debrid', 'alldebrid', 'torbox'):
-				if not store_to_cloud: self._delete(api, torrent_id, is_nzb)
+			if api.defaults_to_cloud:
+				if not store_to_cloud: self._delete(api, torrent_id)
 			return file_url
 		except Exception as e:
 			kodi_utils.logger('resolve_external_sources exception', f"{e}\n{self.dumps()}")
-			if files and torrent_id: self._delete(api, torrent_id, is_nzb)
+			if files and torrent_id: self._delete(api, torrent_id)
 
-	def _delete(self, api, torrent_id, is_nzb):
-		target = api.delete_usenet if is_nzb else api.delete_torrent
-		Thread(target=target, args=(torrent_id,)).start()
+	def _delete(self, api, torrent_id):
+		Thread(target=api.delete_torrent, args=(torrent_id,)).start()
 
 	def resolve_internal_sources(self, direct_debrid_link=False):
 		try:
@@ -114,11 +117,14 @@ class Source:
 				if direct_debrid_link: url = self.url_dl
 				else: url = alldebrid_api.AllDebridAPI().unrestrict_link(self.id)
 			elif self.scrape_provider == 'tb_cloud':
-				url = torbox_api.TorBoxAPI().get_function(self.id)(self.id)
+				url = torbox_api.TorBoxAPI().unrestrict_link(self.id)
 			elif self.scrape_provider == 'easynews':
 				from debrids.easynews_api import EasyNewsAPI
 				url = EasyNewsAPI().unrestrict_link(self.url_dl)
 				if not direct_debrid_link: url += '|seekable=0'
+			elif self.scrape_provider == 'aiostreams':
+				from scrapers.aiostreams import unrestrict_link
+				url = unrestrict_link(self.url_dl)
 			else: url = self.url_dl
 			return url
 		except Exception as e:
@@ -144,6 +150,16 @@ class Source:
 		url_dl = chosen_result['link']
 		return api.unrestrict_link(url_dl)
 
+	def manual_add_magnet_to_cloud(self):
+		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
+		show_busy_dialog()
+		api = import_debrid(self.debrid)
+		api.clear_cache()
+		result = api.create_transfer(self.url)
+		hide_busy_dialog()
+		if result: notification(32576)
+		else: notification(32575)
+
 	def unchecked_magnet_status(self):
 		show_busy_dialog()
 		api = import_debrid(self.debrid)
@@ -153,47 +169,6 @@ class Source:
 		torrent_id = next((i['torrent_id'] for i in result if 'torrent_id' in i), None)
 		if torrent_id: Thread(target=api.delete_torrent, args=(torrent_id,)).start()
 		ok_dialog(text='Cached at [B]%s[/B]' % self.debrid.upper())
-
-	def nzb_cache_and_play(self):
-		line, status_str = '%s[CR]%s[CR]STATUS: %s', '[B]%s[/B] (%2d%%)'
-		title, season, episode = self.meta['title'], self.meta['season'], self.meta['episode']
-		if season and episode: line1 = '%s (S%sE%s)' % (title, season, episode)
-		else: line1 = '%s (%s)' % (title, self.meta['year'])
-		kodi_utils.progressDialog.create('POV', '')
-		kodi_utils.progressDialog.update(0, line % (line1, '', '[B]GRAB...[/B]'))
-		try:
-			api = import_debrid(self.debrid)
-			nzb_id = api.create_transfer(self.url, self.name)
-			if not nzb_id: return kodi_utils.notification(32574)
-			resolved_link = None
-			data = {'files': []}
-			while not data['files']:
-				if kodi_utils.progressDialog.iscanceled(): return kodi_utils.notification(32736)
-				line2 = 'ETA: %s' % data.get('eta', 'NA')
-				progress = int(float(data.get('progress', '0')) * 100)
-				status = status_str % (data.get('download_state', '...').upper(), progress)
-				kodi_utils.progressDialog.update(progress, line % (line1, line2, status))
-				kodi_utils.sleep(500)
-				result = api.nzb_info(nzb_id)
-				if result and 'id' in result: data = result
-			else: resolved_link = self.resolve_external_sources(title, season, episode)
-		finally: kodi_utils.progressDialog.close()
-		return kodi_utils.notification(32574) if not resolved_link else resolved_link
-
-	def manual_add_nzb_to_cloud(self):
-		if self.debrid in ('torbox',) and self.meta:
-			args = 'POV', '[CR]%s' % ls(32831) % self.debrid.upper()
-			choice = kodi_utils.dialog.yesnocustom(*args, customlabel='Cache/Play')
-		else: choice = confirm_dialog(text=ls(32831) % self.debrid.upper())
-		if choice == 2: return self.nzb_cache_and_play()
-		if choice in (-1, 0, False): return
-		show_busy_dialog()
-		api = import_debrid(self.debrid)
-		api.clear_cache()
-		result = api.create_transfer(self.url, self.name)
-		hide_busy_dialog()
-		if result: notification(32576)
-		else: notification(32575)
 
 	def manual_airlock_to_cloud(self):
 		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
@@ -208,14 +183,16 @@ class Source:
 		if result: notification(32576)
 		else: notification(32575)
 
-	def manual_add_magnet_to_cloud(self):
+	def aio_add_to_cloud(self):
 		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
-		show_busy_dialog()
-		api = import_debrid(self.debrid)
-		api.clear_cache()
-		result = api.create_transfer(self.url)
-		hide_busy_dialog()
-		if result: notification(32576)
+		if not getattr(self, 'url_dl', False): return notification(32576)
+		url, *headers = self.url_dl.rsplit('|', 1)
+		try: headers = dict(kodi_utils.parse_qsl(*headers))
+		except: headers = dict()
+		response = requests.get(url, headers=headers, stream=True, timeout=10)
+		if not response.ok: return notification(32576)
+		chunk = next(response.iter_content(chunk_size=1048576), b'')
+		if len(chunk): notification(32576)
 		else: notification(32575)
 
 class DebridCheck:
@@ -271,7 +248,7 @@ class DebridCheck:
 		return checked_hashes
 
 import re, random, requests
-from fenom.client import randomagent
+from magneto.modules.client import randomagent
 
 session = requests.session()
 session.headers.update({'User-Agent': randomagent(), 'Accept': 'application/json'})

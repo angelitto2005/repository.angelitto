@@ -5,7 +5,7 @@ from modules.settings import filter_by_name, easynews_language_filter
 
 internal_results, check_title = source_utils.internal_results, source_utils.check_title
 clean_file_name, clean_title = source_utils.clean_file_name, source_utils.clean_title
-get_file_info = source_utils.get_file_info
+get_file_info, seas_ep_filter = source_utils.get_file_info, source_utils.seas_ep_filter
 
 class source(Debrid):
 	scrape_provider = 'easynews'
@@ -26,16 +26,18 @@ class source(Debrid):
 				try:
 					if filter_lang and not any(i in lang_filters for i in item['language']) : continue
 					if not check_title(title, item['name'], self.aliases): continue
+					if season:
+						if not seas_ep_filter(season, episode, item['name']): continue
 					normalized = clean_title(item['name'])
 
-					URLName = clean_file_name(item['name']).replace('html', ' ')
+					display_name = clean_file_name(item['name']).replace('html', ' ')
 					file_dl, size = item['url_dl'], round(float(int(item['rawSize']))/1073741824, 2)
 					video_quality, details = get_file_info(name_info=normalized)
 					sources_append({
 						'direct': True,
 						'source': self.scrape_provider, 'scrape_provider': self.scrape_provider,
 						'id': file_dl, 'url_dl': file_dl,
-						'name': URLName, 'URLName': URLName,
+						'name': display_name, 'display_name': display_name,
 						'extraInfo': details, 'quality': video_quality,
 						'size': size, 'size_label': '%.2f GB' % size
 					})

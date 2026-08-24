@@ -6,7 +6,6 @@ from modules.settings import enabled_debrids_check, filter_by_name
 internal_results, check_title = source_utils.internal_results, source_utils.check_title
 clean_file_name, clean_title = source_utils.clean_file_name, source_utils.clean_title
 get_file_info, seas_ep_filter = source_utils.get_file_info, source_utils.seas_ep_filter
-extensions, extras_filter = source_utils.supported_video_extensions(), source_utils.extras_filter()
 
 class source(Debrid):
 	scrape_provider = 'pm_cloud'
@@ -21,11 +20,12 @@ class source(Debrid):
 			else: self.aliases = source_utils.get_aliases_titles(info.get('aliases', []))
 			self._scrape_cloud()
 			if not self.scrape_results: return internal_results(self.scrape_provider, self.sources)
-			extras_filtering_list = tuple(i for i in extras_filter if i not in title.lower())
+			extensions = tuple(source_utils.supported_video_extensions())
+			extras_filtering_list = tuple(i for i in source_utils.extras_filter() if i not in title.lower())
 			for item in self.scrape_results:
 				try:
 					normalized = clean_title(item['filename'])
-					if not normalized.endswith(tuple(extensions)): continue
+					if not normalized.endswith(extensions): continue
 					for i in ('filename', 'folder_name'):
 						if check_title(title, item[i], self.aliases): break
 					else: continue
@@ -33,7 +33,7 @@ class source(Debrid):
 						if not seas_ep_filter(season, episode, item['filename']): continue
 					elif any(x in normalized for x in extras_filtering_list): continue
 
-					URLName = clean_file_name(item['filename']).replace('html', ' ')
+					display_name = clean_file_name(item['filename']).replace('html', ' ')
 					file_dl = self.get_item_details(item['link'])['link']
 					size = round(float(int(item['size']))/1073741824, 2)
 					video_quality, details = get_file_info(name_info=normalized)
@@ -41,7 +41,7 @@ class source(Debrid):
 						'direct': True,
 						'source': self.scrape_provider, 'scrape_provider': self.scrape_provider,
 						'id': file_dl, 'url_dl': file_dl,
-						'name': URLName, 'URLName': URLName,
+						'name': display_name, 'display_name': display_name,
 						'extraInfo': details, 'quality': video_quality,
 						'size': size, 'size_label': '%.2f GB' % size
 					})

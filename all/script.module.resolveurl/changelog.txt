@@ -1,20 +1,31 @@
-Version 5.1.203 (Jun 13, 2026)
+Version 5.1.207 (Aug 22, 2027)
 - Code Base Changes:
-    - Add QR-Code support for debrid auth
-    - Add json support to Net
-    - helpers b64urldecode function
-    - add ecdsa library
+    - TLS handling
 
 - Resolvers Added:
-    - None
+    - allvideo
+    - firestream
+    - playmate
+    - vidbasic
 
 - Resolvers Fixed/Updated:
+    - abyss
+    - anonmp4
     - byse
-    - mixdrop
-    - voe
+    - embedojo
+    - filelions
+    - kinoger
+    - peertube
+    - streamix
+    - uqload
+    - veev
+    - vidbasic
+    - vids_st
+    - voesx
 
 - Resolvers Removed
-    - uptobox
+    - None
+
 
 - Languages Added/Updated
-    - All
+    - None

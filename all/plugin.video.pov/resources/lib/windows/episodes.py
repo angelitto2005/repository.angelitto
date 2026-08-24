@@ -29,15 +29,15 @@ class NextEpisode(BaseDialog):
 		self.clearProperties()
 		return self.selected
 
-	def onAction(self, action):
-		if action in self.closing_actions:
-			self.closed = True
-			self.close()
-
 	def onClick(self, controlID):
 		self.closed = True
 		self.selected = self.actions[controlID]
 		self.close()
+
+	def onAction(self, action):
+		if action in self.closing_actions:
+			self.closed = True
+			self.close()
 
 	def set_properties(self):
 		if self.function == 'confirm': prompt = 'Still watching?'

@@ -1,3 +1,4 @@
+import json
 from modules.kodi_utils import mdbl_db, database_connect
 from modules.utils import chunks
 # from modules.kodi_utils import logger
@@ -59,9 +60,11 @@ def cache_mdbl_object(function, string, url):
 	dbcur = MDBLCache().dbcur
 	dbcur.execute(MC_BASE_GET, (string,))
 	cached_data = dbcur.fetchone()
-	if cached_data: return eval(cached_data[0])
+	try:
+		if cached_data: return json.loads(cached_data[0])
+	except: pass
 	result = function(url)
-	dbcur.execute(MC_BASE_SET, (string, repr(result)))
+	dbcur.execute(MC_BASE_SET, (string, json.dumps(result)))
 	return result
 
 def reset_activity(latest_activities):
@@ -71,9 +74,9 @@ def reset_activity(latest_activities):
 		dbcur = MDBLCache().dbcur
 		dbcur.execute(MC_BASE_GET, (string,))
 		cached_data = dbcur.fetchone()
-		if cached_data: cached_data = eval(cached_data[0])
+		if cached_data: cached_data = json.loads(cached_data[0])
 		else: cached_data = default_activities()
-		dbcur.execute(MC_BASE_SET, (string, repr(latest_activities)))
+		dbcur.execute(MC_BASE_SET, (string, json.dumps(latest_activities)))
 	except: pass
 	return cached_data
 
@@ -98,6 +101,12 @@ def clear_mdbl_list_data(list_type):
 		dbcur.execute(DELETE, (string,))
 	except: pass
 
+def clear_mdbl_calendar():
+	try:
+		dbcur = MDBLCache().dbcur
+		dbcur.execute(DELETE_LIKE, ('mdbl_get_my_calendar_%',))
+	except: return
+
 def clear_all_mdbl_cache_data(refresh=True):
 	try:
 		dbcur = MDBLCache().dbcur
@@ -117,10 +126,12 @@ def default_activities():
 			'season_watched_at': '',
 			'episode_watched_at': '',
 			'rated_at': '',
+			'journal_at': '',
 			'collected_at': '',
 			'dropped_at': '',
 			'paused_at': '',
 			'episode_paused_at': '',
-			'list_updated_at': ''
+			'list_updated_at': '',
+			'server_time': ''
 			}
 

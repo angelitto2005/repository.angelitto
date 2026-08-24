@@ -4,8 +4,8 @@
 """
 
 import re, requests
-from fenom import source_utils
-from fenom.control import setting as getSetting
+from magneto.modules import source_utils
+from magneto.modules.control import setting as getSetting
 
 
 class source:

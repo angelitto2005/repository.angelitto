@@ -38,15 +38,14 @@ class ExternalProvidersCache(BaseCache):
 			current_time = self._get_timestamp(datetime.now())
 			self.dbcur.execute(SELECT_RESULTS, (source, mediatype, tmdb_id, title, year, season, episode, current_time))
 			cache_data = self.dbcur.fetchone()
-			if not cache_data: raise Exception('disk cache false')
-			result = eval(cache_data[0])
+			if cache_data: result = self.jsloads(cache_data[0])
 		except: pass
 		return result
 
 	def set(self, source, mediatype, tmdb_id, title, year, season, episode, results, expire_time):
 		try:
 			expires = self._get_timestamp(datetime.now() + timedelta(hours=expire_time))
-			self.dbcur.execute(INSERT_RESULTS, (source, mediatype, tmdb_id, title, year, season, episode, repr(results), int(expires)))
+			self.dbcur.execute(INSERT_RESULTS, (source, mediatype, tmdb_id, title, year, season, episode, expires, self.jsdumps(results)))
 		except: pass
 
 	def delete(self, source, mediatype, tmdb_id, title, season, episode):

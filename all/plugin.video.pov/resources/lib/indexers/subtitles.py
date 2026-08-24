@@ -5,7 +5,6 @@ from modules import kodi_utils
 
 ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 timeout = 20.0
-action_dict = {'0': 'off', '1': 'auto'}
 
 def _get(url, params=None, stream=False, retry=False):
 	response = requests.get(url, params=params, stream=stream, timeout=timeout)
@@ -65,12 +64,12 @@ class Subtitles(kodi_utils.xbmc_player):
 		return True
 
 	def run(self, query, imdb_id, season, episode, poster):
+		subs_action = {'0': 'off', '1': 'auto'}[get_setting('subtitles.subs_action', '0')]
+		if subs_action not in ('auto',): return
 		language_choices = {k: v['long'] for k, v in meta_languages.items() if v['long']}
-		self.manifest = get_setting('subtitles.manifest')
-		self.auto_enable = get_setting('subtitles.auto_enable') == 'true'
 		self.language1 = language_choices[get_setting('subtitles.language')]
-		self.subs_action = action_dict[get_setting('subtitles.subs_action', '0')]
-		if self.subs_action not in ('auto',): return
+		self.auto_enable = get_setting('subtitles.auto_enable') == 'true'
+		self.manifest = get_setting('subtitles.manifest')
 		self.imdb_id, self.season, self.episode, self.poster = imdb_id, season, episode, poster
 		self.subtitle_path = 'special://temp/'
 		if season: self.sub_filename = 'POVSubs_%s_%s_%s' % (self.imdb_id, self.season, self.episode)

@@ -1,7 +1,14 @@
+import xbmcgui
 from modules import kodi_utils
 from modules.utils import manual_function_import
 # from modules.kodi_utils import logger
 
+window_xml_info_action = xbmcgui.ACTION_SHOW_INFO
+window_xml_closing_actions = (xbmcgui.ACTION_STOP, xbmcgui.ACTION_PARENT_DIR, xbmcgui.ACTION_PREVIOUS_MENU, xbmcgui.ACTION_NAV_BACK)
+window_xml_selection_actions = (xbmcgui.ACTION_SELECT_ITEM, xbmcgui.ACTION_MOUSE_START)
+window_xml_context_actions = (xbmcgui.ACTION_CONTEXT_MENU, xbmcgui.ACTION_MOUSE_RIGHT_CLICK, xbmcgui.ACTION_MOUSE_LONG_CLICK)
+window_xml_left_action, window_xml_right_action = xbmcgui.ACTION_MOVE_LEFT, xbmcgui.ACTION_MOVE_RIGHT
+window_xml_up_action, window_xml_down_action = xbmcgui.ACTION_MOVE_UP, xbmcgui.ACTION_MOVE_DOWN
 location = kodi_utils.skin_location()
 
 def open_window(import_info, skin_xml, **kwargs):
@@ -41,19 +48,19 @@ def videoplayer(url, close_action=None, callback=None):
 	while player.isPlayingVideo(): kodi_utils.sleep(200)
 	if player.playback_event and callable(callback): callback()
 
-class BaseDialog(kodi_utils.window_xml_dialog):
+class BaseDialog(xbmcgui.WindowXMLDialog):
 	fanart = kodi_utils.get_addoninfo('fanart')
 	icon = kodi_utils.get_addoninfo('icon')
 	def __init__(self, *args):
-		kodi_utils.window_xml_dialog.__init__(self, args)
-		self.closing_actions = kodi_utils.window_xml_closing_actions
-		self.selection_actions = kodi_utils.window_xml_selection_actions
-		self.context_actions = kodi_utils.window_xml_context_actions
-		self.info_actions = kodi_utils.window_xml_info_action
-		self.left_actions = kodi_utils.window_xml_left_action
-		self.right_actions = kodi_utils.window_xml_right_action
-		self.up_actions = kodi_utils.window_xml_up_action
-		self.down_actions = kodi_utils.window_xml_down_action
+		xbmcgui.WindowXMLDialog.__init__(self, args)
+		self.info_actions = window_xml_info_action
+		self.closing_actions = window_xml_closing_actions
+		self.selection_actions = window_xml_selection_actions
+		self.context_actions = window_xml_context_actions
+		self.left_actions = window_xml_left_action
+		self.right_actions = window_xml_right_action
+		self.up_actions = window_xml_up_action
+		self.down_actions = window_xml_down_action
 		self.player = kodi_utils.player
 		self.setProperty('tikiskins.pov.icon', self.icon)
 

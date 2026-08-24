@@ -39,22 +39,22 @@ class MetaCache(BaseCache):
 			else: self.dbcur.execute(GET_SEASON, (media_id, current_time))
 			data = self.dbcur.fetchone()
 			if not data: return meta
-			meta, expiry = eval(data[0]), data[1]
+			meta, expiry = self.jsloads(data[0]), data[1]
 			self.set_memory_cache(mediatype, id_type, meta, expiry, media_id)
 		except: pass
 		return meta
 
 	def set(self, mediatype, id_type, meta, expiration=30, tmdb_id=None):
 		try:
-			if mediatype in movie_show:
-				media_id, command = str(meta[id_type]), SET_MOVIE_SHOW
-				args = mediatype, str(meta['tmdb_id']), meta['imdb_id'], str(meta['tvdb_id']), repr(meta)
-			else:
-				media_id, command = str(tmdb_id), SET_SEASON
-				args = media_id, repr(meta)
 			expires = datetime.now() + timedelta(days=expiration)
 			expires = self._get_timestamp(datetime.combine(expires, datetime.min.time()))
-			self.dbcur.execute(command, (*args, expires))
+			if mediatype in movie_show:
+				media_id, command = str(meta[id_type]), SET_MOVIE_SHOW
+				args = mediatype, str(meta['tmdb_id']), meta['imdb_id'], str(meta['tvdb_id']), expires
+			else:
+				media_id, command = str(tmdb_id), SET_SEASON
+				args = media_id, expires
+			self.dbcur.execute(command, (*args, self.jsdumps(meta)))
 		except: return
 		self.set_memory_cache(mediatype, id_type, meta, expires, media_id)
 
@@ -78,7 +78,7 @@ class MetaCache(BaseCache):
 			else: prop_string = prop_dict.get('meta_season') % media_id
 			cachedata = get_property(prop_string)
 			if cachedata:
-				cachedata = eval(cachedata)
+				cachedata = self.jsloads(cachedata)
 				if cachedata[0] > current_time: result = cachedata[1]
 		except: pass
 		return result
@@ -89,7 +89,7 @@ class MetaCache(BaseCache):
 			if mediatype in movie_show:
 				cachedata, prop_string = (expires, meta), prop_dict.get('meta') % (mediatype, id_type, media_id)
 			else: cachedata, prop_string = (expires, meta), prop_dict.get('meta_season') % media_id
-			set_property(prop_string, repr(cachedata))
+			set_property(prop_string, self.jsdumps(cachedata))
 		except: pass
 
 	def delete_memory_cache(self, mediatype, id_type, media_id):
@@ -104,14 +104,14 @@ class MetaCache(BaseCache):
 			current_time = self._get_timestamp(datetime.now())
 			self.dbcur.execute(GET_FUNCTION, (prop_string, current_time))
 			cache_data = self.dbcur.fetchone()
-			if cache_data: result = eval(cache_data[0])
+			if cache_data: result = self.jsloads(cache_data[0])
 		except: pass
 		return result
 
 	def set_function(self, prop_string, result, expiration):
 		try:
 			expires = self._get_timestamp(datetime.now() + expiration)
-			self.dbcur.execute(SET_FUNCTION, (prop_string, repr(result), expires))
+			self.dbcur.execute(SET_FUNCTION, (prop_string, expires, self.jsdumps(result)))
 		except: pass
 
 	def delete_all_seasons_memory_cache(self, media_id, total_seasons=None):
@@ -127,7 +127,7 @@ class MetaCache(BaseCache):
 				try:
 					mediatype, tmdb_id = str(i[0]), str(i[1])
 					if mediatype == 'tvshow':
-						total_seasons = eval(i[2]).get('total_seasons')
+						total_seasons = self.jsloads(i[2]).get('total_seasons')
 						self.delete_all_seasons_memory_cache(tmdb_id, total_seasons)
 					self.delete_memory_cache(mediatype, 'tmdb_id', tmdb_id)
 				except: pass
@@ -137,14 +137,9 @@ class MetaCache(BaseCache):
 		except: pass
 
 	def prefetch(self, limit=500):
-		for db_type, tmdb_id, meta, expires in self.dbcur.execute("""
-			SELECT db_type, tmdb_id, meta, expires
-			FROM metadata
-			WHERE tmdb_id IS NOT NULL
-			ORDER BY expires DESC
-			LIMIT ?
-		""", (limit,)):
-			try: self.set_memory_cache(db_type, 'tmdb_id', eval(meta), expires, tmdb_id)
+		command = 'SELECT db_type, tmdb_id, meta, expires FROM metadata ORDER BY expires DESC LIMIT ?'
+		for db_type, tmdb_id, meta, expires in self.dbcur.execute(command, (limit,)).fetchall():
+			try: self.set_memory_cache(db_type, 'tmdb_id', self.jsloads(meta), expires, tmdb_id)
 			except: pass
 		for i in (self.dbcur, self.dbcon): i.close()
 

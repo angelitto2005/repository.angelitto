@@ -59,6 +59,6 @@ def account_info(params):
 		append(ls(32761) % usage_info[0].replace('Gigs', 'GB'))
 		append(ls(32762) % usage_info[1].replace('Gigs', 'GB'))
 		kodi_utils.hide_busy_dialog()
-		return kodi_utils.show_text(ls(32070).upper(), '\n\n'.join(body), font_size='large')
+		return kodi_utils.show_text(ls(32070).upper(), '[CR]'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
 

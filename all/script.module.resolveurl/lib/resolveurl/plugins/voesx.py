@@ -27,7 +27,7 @@ class VoeResolver(ResolveUrl):
     name = 'Voe'
     domains = [
         'voe.sx', 'voe-unblock.com', 'voe-unblock.net', 'voeunblock.com', 'un-block-voe.net',
-        'voeunbl0ck.com', 'voeunblck.com', 'voeunblk.com', 'voe-un-block.com', 'jonathansociallike.com'
+        'voeunbl0ck.com', 'voeunblck.com', 'voeunblk.com', 'voe-un-block.com', 'jonathansociallike.com',
         'voeun-block.net', 'v-o-e-unblock.com', 'edwardarriveoften.com', 'nathanfromsubject.com',
         'audaciousdefaulthouse.com', 'launchreliantcleaverriver.com', 'kennethofficialitem.com',
         'reputationsheriffkennethsand.com', 'fittingcentermondaysunday.com', 'lukecomparetwo.com',
@@ -56,7 +56,11 @@ class VoeResolver(ResolveUrl):
         'lukesitturn.com', 'mikaylaarealike.com', 'christopheruntilpoint.com', 'walterprettytheir.com',
         'crystaltreatmenteast.com', 'lauradaydo.com', 'smoki.cc', 'lancewhosedifficult.com',
         'ogladaj.me', 'dianaavoidthey.com', 'jefferycontrolmodel.com', 'marissasharecareer.com',
-        'charlestoughrace.com', 'ianrequireadult.com', 'timmaybealready.com', 'jessicayeahcatch.com'
+        'charlestoughrace.com', 'ianrequireadult.com', 'timmaybealready.com', 'jessicayeahcatch.com',
+        'kinoger.ru', 'johnbeyondnation.com', 'jeanprofessorcentral.com', 'juliewomanwish.com',
+        'garylargeavailable.com', 'jennifereconomicgive.com', 'pamelachangemission.com',
+        'ellenpoliticalfollow.com', 'caseyimpactstation.com', 'matthewhotelscience.com',
+        'jessicachoosemake.com', 'stevenfamilyedge.com'
     ]
     domains += ['voeunblock{}.com'.format(x) for x in range(1, 11)]
     pattern = (
@@ -83,8 +87,11 @@ class VoeResolver(ResolveUrl):
         r'jonathansociallike|mariatheserepublican|johnalwayssame|jilliandescribecompany|'
         r'lukesitturn|mikaylaarealike|christopheruntilpoint|walterprettytheir|crystaltreatmenteast|'
         r'lauradaydo|smoki|lancewhosedifficult|ogladaj|dianaavoidthey|jefferycontrolmodel|marissasharecareer|'
-        r'charlestoughrace|ianrequireadult|timmaybealready|jessicayeahcatch|'
-        r'(?:v-?o-?e)?(?:-?un-?bl[o0]?c?k\d{0,2})?(?:-?voe)?)\.(?:sx|com|net|cc|me))/'
+        r'charlestoughrace|ianrequireadult|timmaybealready|jessicayeahcatch|kinoger|johnbeyondnation|'
+        r'jeanprofessorcentral|juliewomanwish|garylargeavailable|jennifereconomicgive|'
+        r'pamelachangemission|ellenpoliticalfollow|caseyimpactstation|matthewhotelscience|'
+        r'jessicachoosemake|stevenfamilyedge|'
+        r'(?:v-?o-?e)?(?:-?un-?bl[o0]?c?k\d{0,2})?(?:-?voe)?)\.(?:sx|com|net|cc|me|ru))/'
         r'(?:e/)?([0-9A-Za-z]+)'
     )
 
@@ -106,7 +113,10 @@ class VoeResolver(ResolveUrl):
                 s = self.voe_decode(r.group(1), repl.group(1))
                 sources = [(s.get(x).split("?")[0].split(".")[-1], s.get(x)) for x in ['file', 'source', 'direct_access_url'] if x in s.keys()]
                 if len(sources) > 1:
-                    sources.sort(key=lambda x: int(re.sub(r"\D", "", x[0])))
+                    if self.get_setting('prefer_hls') == 'true':
+                        sources.sort(key=lambda x: 0 if 'm3u8' in x[0].lower() else 1)
+                    else:
+                        sources.sort(key=lambda x: int(re.sub(r"\D", "", x[0])))
                     headers.update({'verifypeer': 'false'})
                 stream_url = helpers.pick_source(sources) + helpers.append_headers(headers)
                 if subs:
@@ -133,6 +143,12 @@ class VoeResolver(ResolveUrl):
 
     def get_url(self, host, media_id):
         return self._default_get_url(host, media_id, template='https://{host}/e/{media_id}')
+
+    @classmethod
+    def get_settings_xml(cls):
+        xml = super(cls, cls).get_settings_xml()
+        xml.append('<setting id="{0}_prefer_hls" type="bool" label="Prefer HLS over MP4" default="false"/>'.format(cls.__name__))
+        return xml
 
     @staticmethod
     def voe_decode(ct, luts):

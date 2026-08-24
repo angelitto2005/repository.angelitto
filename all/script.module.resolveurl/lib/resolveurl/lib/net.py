@@ -216,8 +216,15 @@ class Net:
         if not self._ssl_verify or node == 'xboxone':
             try:
                 import ssl
-                ctx = ssl.create_default_context()
-                ctx.maximum_version = ssl.PROTOCOL_TLSv1_3
+                if six.PY3:
+                    ctx = ssl.create_default_context()
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1_1
+                    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+                else:
+                    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
+                    ctx.options |= ssl.OP_NO_SSLv2
+                    ctx.options |= ssl.OP_NO_SSLv3
+                    ctx.options |= ssl.OP_NO_TLSv1
                 ctx.set_alpn_protocols(['http/1.1'])
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
@@ -230,13 +237,15 @@ class Net:
         else:
             try:
                 import ssl
-                ctx = ssl.create_default_context(cafile=CERT_FILE)
-                ctx.maximum_version = ssl.PROTOCOL_TLSv1_3
-                ctx.set_alpn_protocols(['http/1.1'])
-                if self._http_debug:
-                    handlers += [urllib_request.HTTPSHandler(context=ctx, debuglevel=1)]
-                else:
-                    handlers += [urllib_request.HTTPSHandler(context=ctx)]
+                if ssl.OPENSSL_VERSION_INFO > (3, 0, 0):
+                    ctx = ssl.create_default_context(cafile=CERT_FILE)
+                    ctx.minimum_version = ssl.TLSVersion.TLSv1_1
+                    ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+                    ctx.set_alpn_protocols(['http/1.1'])
+                    if self._http_debug:
+                        handlers += [urllib_request.HTTPSHandler(context=ctx, debuglevel=1)]
+                    else:
+                        handlers += [urllib_request.HTTPSHandler(context=ctx)]
             except:
                 pass
 
@@ -408,27 +417,7 @@ class Net:
                 if 'challenge' in e.hdrs.get('cf-mitigated', ''):
                     from resolveurl.resolver import ResolverError
                     raise ResolverError('Cloudflare challenge')
-                import ssl
-                ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-                ctx.set_alpn_protocols(['http/1.1'])
-                handlers = [urllib_request.HTTPSHandler(context=ctx)]
-                opener = urllib_request.build_opener(*handlers)
-                try:
-                    response = opener.open(req, timeout=timeout)
-                except urllib_error.HTTPError as e:
-                    if e.code == 403:
-                        ctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1_1)
-                        ctx.set_alpn_protocols(['http/1.1'])
-                        handlers = [urllib_request.HTTPSHandler(context=ctx)]
-                        opener = urllib_request.build_opener(*handlers)
-                        try:
-                            response = opener.open(req, timeout=timeout)
-                        except urllib_error.HTTPError:
-                            raise
-                        except urllib_error.URLError:
-                            raise
-            else:
-                raise
+            raise
 
         return HttpResponse(response)
 

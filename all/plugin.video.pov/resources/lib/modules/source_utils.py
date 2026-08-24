@@ -27,6 +27,7 @@ PATTERNS = {
 	'DOLBY_VISION': ('[B]D/VISION[/B]', r'(?:\b|_)(dolby\.vision|dolbyvision|\.dovi\.|\.dv\.)(?:\b|_)'),
 	'HDR': ('[B]HDR[/B]', r'(?:\b|_)(2160p\.uhd\.bluray|2160p\.uhd\.blu\.ray|2160p\.bluray\.hevc\.truehd|2160p\.blu\.ray\.hevc\.truehd|2160p\.bluray\.hevc\.dts\.hd\.ma|2160p\.blu\.ray\.hevc\.dts\.hd\.ma|\.hdr\.|hdr10|hdr\.10|uhd\.bluray\.2160p|uhd\.blu\.ray\.2160p)(?:\b|_)'),
 	'HDR_TRUE': ('[B]HDR[/B]', r'(?:\b|_)(?:\.hdr\.|hdr10|hdr\.10)(?:\b|_)'),
+	'HDR10PLUS': ('[B]HDR10+[/B]', r'(?:\b|_)(?:hdr10(?:[+.\s-]?plus|\+))(?:\b|_)'),
 
 	'CODEC_H264': ('AVC', r'(?:\b|_)(avc|h264|h\.264|x264|x\.264)(?:\b|_)'),
 	'CODEC_AV1': ('[B]AV1[/B]', r'\.av1\.'),
@@ -232,16 +233,21 @@ def get_file_info(name_info=None, url=None):
 		info_append(get_tag('SDR'))
 	elif match('DOLBY_VISION'):
 		info_append(get_tag('DOLBY_VISION'))
-		if match('HDR_TRUE'):
+		if match('HDR10PLUS'):
+			info_append(get_tag('HDR10PLUS'))
+			info_append('[B]HYBRID[/B]')
+		elif match('HDR_TRUE'):
 			info_append(get_tag('HDR_TRUE'))
 			info_append('[B]HYBRID[/B]')
+	elif match('HDR10PLUS'):
+		info_append(get_tag('HDR10PLUS'))
 	elif match('HDR') or (('2160p' in fmt) and match('REMUX')):
 		info_append('[B]HDR[/B]')
 
 	if match('CODEC_H264'):        info_append(get_tag('CODEC_H264'))
 	elif match('CODEC_AV1'):       info_append(get_tag('CODEC_AV1'))
 	elif match('CODEC_H265'):      info_append(get_tag('CODEC_H265'))
-	elif '[B]HDR[/B]' in info or '[B]D/VISION[/B]' in info:
+	elif any(i in info for i in ('[B]HDR[/B]', '[B]D/VISION[/B]', '[B]HDR10+[/B]')):
 		info_append('[B]HEVC[/B]')
 	elif match('CODEC_XVID'):      info_append(get_tag('CODEC_XVID'))
 	elif match('CODEC_DIVX'):      info_append(get_tag('CODEC_DIVX'))
@@ -288,11 +294,18 @@ def get_file_info(name_info=None, url=None):
 
 def check_title(title, release_title, aliases=None, year=''):
 	try:
-		if isinstance(aliases, list): all_titles = [title, *aliases]
-		else: all_titles = [title]
-		all_titles = (re.escape(clean_title(i)) for i in all_titles)
-		pattern = re.compile(r'\b(?:%s)\b' % '|'.join(all_titles), re.I)
-		return bool(pattern.search(clean_title(release_title)))
+		cleaned_title = clean_title(title)
+		if not cleaned_title: return False
+		cleaned_release = clean_title(release_title)
+		if not cleaned_release: return False
+		filter_list = [cleaned_title]
+		if isinstance(aliases, list):
+			for alias in aliases:
+				a = clean_title(alias)
+				if a: filter_list.append(a)
+		escaped_titles = '|'.join(re.escape(i) for i in filter_list)
+		pattern = re.compile(r'\b(?:' + escaped_titles + r')\b', re.I)
+		return bool(pattern.search(cleaned_release))
 	except: pass
 
 def clean_title(title):
