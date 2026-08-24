@@ -602,11 +602,26 @@ def sync_library(force=False):
     threading.Thread(target=_run_sync, args=(dest,), daemon=True).start()
     _notify('Library sync started in background...', 2000)
 
-def _sync_watched_to_kodi():
-    log('Syncing watched status to Kodi library...')
-    import json as _json
+def _find_myvideos_db():
+    """Return the path to the newest MyVideos*.db in special://database."""
+    import glob
+    base = xbmcvfs.translatePath('special://database/')
+    best = None
+    best_ver = -1
+    for p in glob.glob(os.path.join(base, 'MyVideos*.db')):
+        ver = ''.join(ch for ch in os.path.basename(p).replace('MyVideos', '').replace('.db', '') if ch.isdigit())
+        try:
+            v = int(ver)
+        except ValueError:
+            continue
+        if v > best_ver:
+            best_ver = v
+            best = p
+    return best
 
-    # ── Read watched data from the active provider DB (Trakt / MDBList / Simkl) ──
+def _read_provider_watched():
+    """Read watched data from the active provider DB (Trakt / MDBList / Simkl).
+    Returns (watched_movies, watched_eps) or None on error."""
     try:
         from resources.lib.watched_provider import _get_provider_raw
         _prov = _get_provider_raw()
@@ -637,13 +652,133 @@ def _sync_watched_to_kodi():
             c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM trakt_watched_episodes ORDER BY tmdb_id")
             watched_eps = [dict(r) for r in c.fetchall()]
             conn.close()
+        return watched_movies, watched_eps
     except Exception as e:
         log(f'Cannot read watched data: {e}', xbmc.LOGWARNING)
-        return
+        return None
 
+def _sync_watched_direct_sql(watched_movies, watched_eps):
+    """Write playCount/lastPlayed DIRECTLY into MyVideos*.db (single transaction).
+
+    Why not JSON-RPC Set*Details: each call fires a VideoLibrary.OnUpdate
+    announcement; Kodi's media window refreshes for EVERY announcement, so
+    marking thousands of episodes flickers the screen and blocks input until
+    the whole batch finishes (kodi.log: 'CGUIMediaWindow::OnMessage - updating
+    in progress' spam every ~10s). Direct SQL produces ZERO announcements;
+    one single UI refresh at the end shows all checkmarks at once.
+    Returns number of updated rows (0 = nothing to do).
+    """
+    import sqlite3
+    db_path = _find_myvideos_db()
+    if not db_path:
+        raise Exception('MyVideos database not found')
+    conn = sqlite3.connect(db_path, timeout=15)
+    try:
+        c = conn.cursor()
+
+        def _kodi_ts(ts):
+            if not ts:
+                return None
+            return str(ts)[:19].replace('T', ' ')
+
+        updates = []  # (playCount, lastPlayed, idFile)
+
+        # ── Movies: tmdb -> [(idFile, playcount, lastplayed)] ──
+        kodi_movies = {}
+        q = ("SELECT u.value, f.idFile, COALESCE(f.playCount,0), f.lastPlayed "
+             "FROM uniqueid u "
+             "JOIN movie m ON m.idMovie=u.media_id "
+             "JOIN files f ON f.idFile=m.idFile "
+             "WHERE u.media_type='movie' AND u.type='tmdb'")
+        for tid, idf, pc, lp in c.execute(q):
+            kodi_movies.setdefault(str(tid), []).append((idf, pc or 0, lp))
+
+        n_mov_new = n_mov_lp = 0
+        for wm in watched_movies:
+            tid = str(wm['tmdb_id'])
+            lp = _kodi_ts(wm.get('last_watched_at'))
+            for idf, pc, klp in kodi_movies.get(tid, []):
+                if pc < 1:
+                    updates.append((1, lp or klp, idf))
+                    n_mov_new += 1
+                elif lp and not klp:
+                    updates.append((pc, lp, idf))
+                    n_mov_lp += 1
+
+        # ── Episodes: (show tmdb, season, episode) -> [(idFile, playcount, lastplayed)] ──
+        # episode.c12 = season, episode.c13 = episode number (strings)
+        kodi_eps = {}
+        q = ("SELECT us.value, e.c12, e.c13, f.idFile, COALESCE(f.playCount,0), f.lastPlayed "
+             "FROM episode e "
+             "JOIN tvshow s ON s.idShow=e.idShow "
+             "JOIN uniqueid us ON us.media_id=s.idShow AND us.media_type='tvshow' AND us.type='tmdb' "
+             "JOIN files f ON f.idFile=e.idFile")
+        for stid, sn, en, idf, pc, lp in c.execute(q):
+            try:
+                key = (str(stid), int(sn), int(en))
+            except (TypeError, ValueError):
+                continue
+            kodi_eps.setdefault(key, []).append((idf, pc or 0, lp))
+
+        n_ep_new = n_ep_lp = 0
+        for we in watched_eps:
+            try:
+                key = (str(we['tmdb_id']), int(we['season']), int(we['episode']))
+            except (TypeError, ValueError):
+                continue
+            lp = _kodi_ts(we.get('last_watched_at'))
+            for idf, pc, klp in kodi_eps.get(key, []):
+                if pc < 1:
+                    updates.append((1, lp or klp, idf))
+                    n_ep_new += 1
+                elif lp and not klp:
+                    updates.append((pc, lp, idf))
+                    n_ep_lp += 1
+
+        if not updates:
+            log('Watched sync (direct SQL): nothing to update')
+            return 0
+
+        start_t = time.time()
+        c.executemany("UPDATE files SET playCount=?, lastPlayed=? WHERE idFile=?", updates)
+        conn.commit()
+        elapsed = time.time() - start_t
+        log(f'Watched sync (direct SQL): {len(updates)} items updated in {elapsed:.2f}s '
+            f'(movies new={n_mov_new} lp={n_mov_lp}; episodes new={n_ep_new} lp={n_ep_lp})')
+        return len(updates)
+    finally:
+        conn.close()
+
+def _sync_watched_to_kodi():
+    log('Syncing watched status to Kodi library...')
+    res = _read_provider_watched()
+    if res is None:
+        return
+    watched_movies, watched_eps = res
     if not watched_movies and not watched_eps:
         log('No watched items to sync')
         return
+
+    # Fast path: direct SQL write - zero announcements, zero flicker
+    try:
+        n = _sync_watched_direct_sql(watched_movies, watched_eps)
+        if n > 0:
+            # ONE single UI refresh at the end -> all checkmarks appear at once
+            try:
+                from resources.lib.watched_provider import refresh_ui
+                refresh_ui()
+            except Exception:
+                xbmc.executebuiltin('Container.Refresh')
+            return
+        return  # nothing to update - no refresh, no fallback (same as old behavior)
+    except Exception as e:
+        log(f'Direct SQL watched sync failed ({e}) - falling back to JSON-RPC', xbmc.LOGWARNING)
+
+    # Fallback: legacy JSON-RPC batch (fires one announcement per item - may flicker)
+    _sync_watched_to_kodi_jsonrpc(watched_movies, watched_eps)
+
+def _sync_watched_to_kodi_jsonrpc(watched_movies, watched_eps):
+    import json as _json
 
     # ── Fetch Kodi library (with playcount + lastplayed to skip already-watched) ──
     try:
