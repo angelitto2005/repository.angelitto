@@ -1,18 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Skip Intro (stil POV) — fereastra mica in dreapta sus care intreaba
-daca vrei sa sari peste generic. Datele vin din introdb.app +
-theintrodb.org (aceleasi surse folosite de POV/Fen).
 
-Flow:
-  1. `execute_skip_intro(player)` e apelat dintr-un thread daemon la
-     pornirea playback-ului unui episod.
-  2. Se rezolva imdb_id (din player.imdb_id sau get_external_ids).
-  3. SegmentScraper interogheaza ambele API-uri (primul raspuns valid castiga).
-  4. Se asteapta ca pozitia curenta sa intre in intervalul intro.
-  5. SkipIntroWindow apare in dreapta sus (Skip / No, countdown 10s).
-  6. Skip -> seekTime(intro_end). No / timeout -> se inchide silentios.
-"""
 
 import threading
 import xbmc
@@ -74,7 +61,7 @@ class SegmentScraper:
 
 
 # =============================================================================
-# Skip Intro Window (dreapta sus, stil POV: transparent, fanart + butoane)
+# Skip Intro Window (dreapta sus: transparent, fanart + butoane)
 # =============================================================================
 class SkipIntroWindow(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
@@ -160,11 +147,6 @@ def execute_skip_intro(player):
         if not player.season or not player.episode:
             return
 
-        # Asteptam ca video-ul sa fie CHIAR vizibil (fullscreenvideo activ).
-        # Fara asta, pe surse lente (deschidere 10-20s), IsPlaying() e true in
-        # timp ce ecranul inca arata lista -> fereastra de skip aparea in dreapta
-        # sus inainte sa porneasca imaginea. Iesim daca playback-ul se opreste.
-        for _ in range(120):  # max ~60s; de regula fullscreen apare in <2s
             try:
                 if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
                     break

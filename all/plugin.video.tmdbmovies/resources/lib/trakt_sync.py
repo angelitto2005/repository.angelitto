@@ -251,11 +251,6 @@ def parse_trakt_date(date_str):
         return datetime.datetime.min
 
 def needs_sync(section, remote_activities, local_sync_data, provider=''):
-    """
-    Verifica daca o sectiune necesita sincronizare.
-    Returneaza True = trebuie sync, False = skip.
-    provider: 'TRAKT' sau 'MDB' (prefix in log).
-    """
     pfx = f'[{provider} ' if provider else '['
     # 1. Verificam activities
     if not remote_activities or not isinstance(remote_activities, dict): 
@@ -313,10 +308,6 @@ def needs_sync(section, remote_activities, local_sync_data, provider=''):
 def sync_full_library(silent=False, force=False):
     from resources.lib import trakt_api
 
-    # --- PRE-IMPORT modulele grele INAINTE de furtuna de thread-uri paralele
-    # ale sync-ului. Fara asta, o navigare a userului in aceeasi fereastra de
-    # timp poate deadlocka pe primul-import (interpret Python partajat intre
-    # serviciu si plugin) = spinner infinit fara log. Cand e cald: <5ms.
     try:
         from resources.lib.utils import warm_import_modules
         warm_import_modules()
@@ -469,10 +460,6 @@ def sync_full_library(silent=False, force=False):
     finally:
         window.clearProperty('tmdbmovies_sync_active')
         window.clearProperty('tmdbmovies_sync_started')
-        # Invalideaza fast cache-ul RAM — altfel listele (watchlist, favorites,
-        # user lists) se re-randeaza din get_fast_cache() cu datele vechi,
-        # desi DB-ul a fost actualizat de sync. Fara clear, filmul marcat
-        # watched pe server ramane verde in lista pana la restart Kodi.
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
@@ -1230,18 +1217,9 @@ def _sync_tmdb_account_list_single(cursor, list_type, media_type, results, page=
         
         poster = item.get('poster_path', '')
         overview = item.get('overview', '')
-        
-        # --- FORMULA MAGICA PENTRU SORTARE CORECTA ---
-        # 1. API-ul returneaza cele mai noi primele (Pagina 1).
-        # 2. Vrem ca Pagina 1 sa aiba timestamp MAI MARE decat Pagina 2.
-        # 3. Scadem (Page * 1000 secunde) din timpul curent.
-        # Astfel: Pagina 1 e "Acum - 1000s", Pagina 2 e "Acum - 2000s".
-        # La sortare DESC, Pagina 1 va fi sus.
-        # Scadem si indexul pentru a pastra ordinea corecta in cadrul paginii (item 1 > item 2).
-        
+                
         sort_timestamp = base_time - (page * 1000) - index
         added_at = str(sort_timestamp)
-        # ---------------------------------------------
         
         full_date = year_raw if len(year_raw) >= 8 else ''
         if media_type == 'movie':
@@ -2152,9 +2130,6 @@ def cleanup_database():
         c.execute("DELETE FROM meta_cache_items WHERE expires < ?", (current_time,))
         c.execute("DELETE FROM meta_cache_seasons WHERE expires < ?", (current_time,))
         
-        # 2. LIMITARE CANTITATIVA (Nou)
-        # Pastreaza doar ultimele 200 de intrari accesate (bazat pe expires care e in viitor)
-        # Sterge tot ce e in plus fata de cele mai noi 200
         c.execute("""DELETE FROM meta_cache_items WHERE tmdb_id NOT IN (
             SELECT tmdb_id FROM meta_cache_items ORDER BY expires DESC LIMIT 200
         )""")
@@ -2507,15 +2482,6 @@ def _sync_up_next(c, token):
     from resources.lib import trakt_api
     from resources.lib.config import TRAKT_CLIENT_ID, API_KEY
 
-    # Momentul de inceput al sync-ului (acelasi format ca mark_as_watched_internal:
-    # datetime.datetime.now() local, "%Y-%m-%dT%H:%M:%S.000Z"). Se foloseste mai jos
-    # ca sa pastram randurile marcate local in timpul ACESTUI sync: un serial nou
-    # inceput (ex. primul episod vizionat) are mark local cu last_watched_at mai
-    # nou decat snapshot-ul API-ului, si DELETE-ul de mai jos l-ar sterge oricum.
-    # Auto-corectare: un mark doar-local (push esuat) dispare din trakt_watched_episodes
-    # la sync-ul urmator (mirror DELETE+re-insert in _sync_watched, care ruleaza
-    # INAINTE de _sync_up_next in sync_full_sync), deci subquery-ul nu il mai gas
-    # si randul din trakt_next_episodes se sterge. Max 30 minute staleness.
     sync_start = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     watched = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
@@ -2548,23 +2514,9 @@ def _sync_up_next(c, token):
     
     worker_args = [(item, token, TRAKT_CLIENT_ID, API_KEY) for item in top_shows]
 
-    # --- INCEPUT MODIFICARE: Reducem max_workers pentru a evita eroarea 429 ---
-    # 20 de fire simultane este prea mult pentru Trakt si cauzeaza "Too Many Requests".
-    # 5 fire de executie ofera un echilibru perfect intre viteza si stabilitate (cum are SALTS).
     with ThreadPoolExecutor(max_workers=5) as executor:
-    # --- SFARSIT MODIFICARE ---
         results = list(executor.map(fetch_up_next_worker, worker_args))
-    
-    # Stergem tabelul doar inainte de scriere, DAR pastram randurile care au un
-    # episod vizionat (last_watched_at) mai nou decat startul acestui sync — adica
-    # exact randurile adaugate instant (refresh_next_episode) dupa ce mark-ul a
-    # fost salvat local in timpul rularii acestui sync (cazul serialelor abia
-    # incepute, ex. Ride or Die). NOTA: un mark doar-local (push catre Trakt esuat)
-    # este sters deja de mirror-ul _sync_watched din acest sync (trakt_watched_episodes
-    # e re-scris din server inainte de _sync_up_next), deci subquery-ul de mai jos
-    # nu il mai gaseste si randul dispare la sync-ul urmator — niciun rand nu ramane
-    # blocat la nesfarsit. Serialele hidden/dropped sunt si asa filtrate la afisare
-    # in get_next_episodes (tmdb_api.py), deci nu pot reaparea in UI.
+
     c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
               "(SELECT tmdb_id FROM trakt_watched_episodes WHERE last_watched_at >= ?)",
               (sync_start,))
@@ -2852,9 +2804,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     except: pass
     finally: conn.close()
 
-    # 2b. STERGERE DIN WATCHLIST LOCAL (paritate server: Trakt scoate automat
-    # din watchlist cand marchezi vizionat — POST /sync/history cu watched_at).
-    # Film = dispare mereu; serial = doar cand e marcat complet (season=None).
+    # 2b. STERGERE DIN WATCHLIST LOCAL
     try:
         if content_type == 'movie' or content_type in ['tv', 'show'] and season is None:
             conn = get_connection()
@@ -3140,9 +3090,6 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 # TMDB UP NEXT (watchlist TMDb + progresul providerului activ de watched status)
 # =============================================================================
 def _tmdb_next_episode_scan(show_details, watched_set, watched_last):
-    """Calculeaza urmatorul episod nevizionat din sezoanele TMDb (100% local).
-    Paritate cu logica din refresh_next_episode: scan dupa ultimul vizionat
-    cronologic, fallback scanare de la inceput (gap-uri)."""
     next_ep = None
     if watched_last:
         last_s, last_e = watched_last
@@ -3189,8 +3136,6 @@ def _tmdb_next_to_air(show_details):
 
 
 def _tmdb_first_episode(show_details):
-    """Primul episod (S1E1) pentru serialele neincepute. Fallback pe
-    next_episode_to_air daca sezonul 1 nu e inca disponibil in TMDb."""
     try:
         seasons = (show_details or {}).get('seasons') or []
         for s in seasons:
@@ -3222,16 +3167,6 @@ def _tmdb_ep_meta(tmdb_id, season, episode):
 
 
 def sync_tmdb_up_next(c):
-    """Construieste TMDB Up Next: serialele TV din watchlist-ul TMDb (mirror local)
-    + urmatorul episod nevizionat calculat cu progresul providerului activ de watched
-    status (Trakt/MDBList/Simkl) + serialele cu progres din next_episodes-ul providerului
-    activ care NU sunt in watchlist-ul TMDb (pool extins — paritate cu numarul de
-    intrari din lista Next Episodes a providerului). Serialele neincepute primesc
-    primul episod (S1E1 via _tmdb_first_episode) — filtrul tmdb_upnext_show_unstarted
-    se aplica DOAR la afisare (get_next_episodes). DELETE mirror: serialele scoase
-    din watchlist, fara progres sau terminate dispar din tabela. Episoadele
-    viitoare/TBA raman in tabela — filtrarea pe upnext_show_future se face la
-    afisare (paritate Trakt/MDBList/Simkl)."""
     import datetime
     from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
     from resources.lib import tmdb_api
@@ -3268,10 +3203,6 @@ def sync_tmdb_up_next(c):
                                ep_title, ep_overview or overview, w['last_at'] or now_str,
                                poster, air_date, len(w['set'])))
 
-        # Pool extins: serialele cu progres din next_episodes-ul providerului activ
-        # (trakt/mdblist/simkl_next_episodes) care NU sunt in watchlist-ul TMDb.
-        # Doar cele cu cel putin un episod vizionat (w['set'] ne gol) — unstarted
-        # din pool nu au sens (nu sunt in watchlist-ul TMDb).
         try:
             prov = _get_provider_raw()
             prov_tbl = {'trakt': 'trakt_next_episodes',
@@ -3319,10 +3250,6 @@ def sync_tmdb_up_next(c):
 
 
 def refresh_next_episode_tmdb(tmdb_id):
-    """Recalculeaza episodul Up Next TMDB local dupa mark watched/unwatched
-    (paritate refresh_next_episode). Serialul trebuie sa fie in watchlist-ul TMDb
-    SAU in next_episodes-ul providerului activ (pool extins); altfel randul se
-    sterge. Calcul 100% local + sezoane TMDb — fara race-uri."""
     import datetime
     from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
     from resources.lib import tmdb_api
@@ -3347,13 +3274,6 @@ def refresh_next_episode_tmdb(tmdb_id):
         if in_watchlist:
             in_pool = True
         else:
-            # RACE-GUARD: refresh_next_episode (provider) ruleaza in thread daemon
-            # (mark_as_watched_internal intoarce imediat, refresh-ul insereaza randul
-            # in next_episodes-ul providerului la ~100ms-1s). Fara re-verificare,
-            # un mark watched proaspat vedea pool-ul GOl si stergea randul TMDB pe
-            # care refresh-ul providerului tocmai il crea (Hacks S1E1, 2026-08-19).
-            # Se aplica la toti cei 3 provideri (trakt/mdblist/simkl — toti cu
-            # refresh in daemon thread).
             in_pool = False
             try:
                 prov = _get_provider_raw()
@@ -3418,10 +3338,6 @@ def refresh_next_episode_tmdb(tmdb_id):
 # SALTS IMPLEMENTATION: NATIVE KODI LIBRARY JSON-RPC SYNC
 # =============================================================================
 def update_kodi_library_watchstatus(mediatype, action, title, year, season=None, episode=None):
-    """
-    Sincronizeaza bifa instantaneu cu libraria locala Kodi prin JSON-RPC.
-    Aceasta metoda NU declanseaza alarme/scanari din partea altor addonuri.
-    """
     try:
         import json
         import xbmc
@@ -3500,10 +3416,6 @@ def update_kodi_library_watchstatus(mediatype, action, title, year, season=None,
 # KODI LIBRARY JSON-RPC SYNC (INFALLIBLE TMDB ID MATCH)
 # =============================================================================
 def update_kodi_library_watchstatus(mediatype, action, title, tmdb_id=None, season=None, episode=None):
-    """
-    Sincronizeaza bifa instantaneu cu libraria locala Kodi prin JSON-RPC.
-    Foloseste TMDb ID pentru potrivire exacta si evita problemele cu anul lansarii.
-    """
     try:
         import json
         import xbmc

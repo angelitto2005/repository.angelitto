@@ -214,6 +214,108 @@ def _build_strm_url_episode(tmdb_id, season, episode, title, show_title):
 def _build_nfo_content(tmdb_type, tmdb_id):
     return f'{TMDB_URL}/{tmdb_type}/{tmdb_id}'
 
+# MIRROR IN KODI LIBRARY (switch library_mirror_lists): sterge din listele
+# exportate in Kodi itemele care nu mai exista in lista sursa. DOAR cand e ON.
+_MIRROR_REMOVED = 0  # contor global, resetat la inceputul fiecarui sync
+
+def _mirror_enabled():
+    try:
+        return ADDON.getSetting('library_mirror_lists') == 'true'
+    except Exception:
+        return False
+
+def _extract_tmdb_ids(items, source=None):
+    ids = set()
+    for it in (items or []):
+        if not isinstance(it, dict):
+            continue
+        tid = None
+        if source == 'trakt':
+            m = it.get('movie') or it.get('show') or it
+            if isinstance(m, dict):
+                tid = (m.get('ids') or {}).get('tmdb')
+        elif source == 'mdblist':
+            tid = it.get('tmdb_id') or it.get('tmdbid') or it.get('show_tmdbid') or it.get('id')
+            if not tid:
+                m = it.get('movie') or it.get('show') or it
+                if isinstance(m, dict):
+                    tid = (m.get('ids') or {}).get('tmdb')
+        else:
+            tid = it.get('id') or it.get('tmdb_id')
+        try:
+            ids.add(str(int(tid)))
+        except (TypeError, ValueError):
+            if tid:
+                ids.add(str(tid))
+    return ids
+
+_NFO_TMDB_RE = re.compile(r'themoviedb\.org/(?:movie|tv)/(\d+)')
+
+def _prune_list_folder(basedir, source_tmdb_ids):
+    """Sterge folderele a caror tmdb_id nu mai e in lista sursa."""
+    global _MIRROR_REMOVED
+    if not _mirror_enabled():
+        return 0
+    if not os.path.isdir(basedir):
+        return 0
+    removed = 0
+    try:
+        folders = os.listdir(basedir)
+    except Exception as e:
+        log(f'Mirror prune: cannot list {basedir}: {e}', xbmc.LOGWARNING)
+        return 0
+    for f in folders:
+        fpath = os.path.join(basedir, f)
+        if not os.path.isdir(fpath):
+            continue
+        nfo = None
+        for n in ('movie.nfo', 'tvshow.nfo'):
+            cand = os.path.join(fpath, n)
+            if os.path.exists(cand):
+                nfo = cand
+                break
+        if not nfo:
+            continue
+        tid = None
+        try:
+            with open(nfo, 'r', encoding='utf-8') as fh:
+                m = _NFO_TMDB_RE.search(fh.read())
+                if m:
+                    tid = m.group(1)
+        except Exception:
+            pass
+        if tid is None or tid in source_tmdb_ids:
+            continue
+        try:
+            import shutil
+            shutil.rmtree(fpath)
+            removed += 1
+            log(f'Mirror prune removed: {f} (tmdb {tid})')
+        except Exception as e:
+            log(f'Mirror prune failed {fpath}: {e}', xbmc.LOGWARNING)
+    if removed:
+        _MIRROR_REMOVED += removed
+    return removed
+
+def _wait_scan_and_clean_finished(timeout=900):
+    """Asteapta ca scanarea sa se termine inainte de CleanLibrary."""
+    try:
+        mon = xbmc.Monitor()
+    except Exception:
+        mon = None
+    start = time.time()
+    time.sleep(3)
+    while time.time() - start < timeout:
+        try:
+            scanning = xbmc.getCondVisibility('Library.IsScanningVideo') == 1
+            cleaning = xbmc.getCondVisibility('Library.IsCleaningVideo') == 1
+        except Exception:
+            scanning = cleaning = False
+        if not scanning and not cleaning:
+            break
+        if mon and mon.waitForAbort(2):
+            break
+
 # =============================================================================
 # NAME HELPERS
 # =============================================================================
@@ -1151,6 +1253,15 @@ def _run_post_sync():
     except:
         pass
 
+    if _mirror_enabled():
+        _wait_scan_and_clean_finished()
+        try:
+            xbmc.executeJSONRPC('{"jsonrpc":"2.0","method":"VideoLibrary.Clean",'
+                                 '"params":{"showdialogs":false},"id":1}')
+            log(f'Mirror triggered CleanLibrary (pruned {_MIRROR_REMOVED} items this sync)')
+        except Exception as e:
+            log(f'Mirror CleanLibrary failed: {e}', xbmc.LOGWARNING)
+
     # Salveaza timestamp-ul ultimului sync
     now_ts = time.time()
     try:
@@ -1167,6 +1278,8 @@ def _run_post_sync():
                                    ADDON_ICON, 3000)
 
 def _do_sync(dest, pbg):
+    global _MIRROR_REMOVED
+    _MIRROR_REMOVED = 0
     tmdb_selected = get_selected_tmdb_lists()
     trakt_selected = get_selected_trakt_lists()
     mdblist_selected = get_selected_mdblist_lists()
@@ -1276,6 +1389,7 @@ def _export_watchlist_movies(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Added: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
 
 def _export_watchlist_tv(dest, pbg, hdg):
     base = os.path.join(dest, 'TMDb Lists', 'TMDB Watchlist TV').replace('\\', '/')
@@ -1292,6 +1406,8 @@ def _export_watchlist_tv(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Updated: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
 
 def _export_favorites_movies(dest, pbg, hdg):
     base = os.path.join(dest, 'TMDb Lists', 'TMDB Favorites Movies').replace('\\', '/')
@@ -1306,6 +1422,7 @@ def _export_favorites_movies(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Added: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
 
 def _export_favorites_tv(dest, pbg, hdg):
     base = os.path.join(dest, 'TMDb Lists', 'TMDB Favorites TV').replace('\\', '/')
@@ -1322,6 +1439,7 @@ def _export_favorites_tv(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Updated: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
 
 def _export_custom_list(dest, list_id, list_name, pbg, hdg):
     items = get_tmdb_list_items(list_id)
@@ -1347,6 +1465,7 @@ def _export_custom_list(dest, list_id, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'tmdb'))
 
 # =============================================================================
 # TRAKT EXPORT FUNCTIONS
@@ -1367,6 +1486,7 @@ def _export_trakt_watchlist_movies(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Added: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'trakt'))
 
 def _export_trakt_watchlist_tv(dest, pbg, hdg):
     base = os.path.join(dest, 'Trakt Lists', 'Trakt Watchlist TV').replace('\\', '/')
@@ -1386,6 +1506,7 @@ def _export_trakt_watchlist_tv(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Updated: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'trakt'))
 
 def _export_trakt_favorites_movies(dest, pbg, hdg):
     base = os.path.join(dest, 'Trakt Lists', 'Trakt Favorites Movies').replace('\\', '/')
@@ -1403,6 +1524,7 @@ def _export_trakt_favorites_movies(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Added: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'trakt'))
 
 def _export_trakt_favorites_tv(dest, pbg, hdg):
     base = os.path.join(dest, 'Trakt Lists', 'Trakt Favorites TV').replace('\\', '/')
@@ -1422,6 +1544,7 @@ def _export_trakt_favorites_tv(dest, pbg, hdg):
                 pbg.update(-1, hdg, f'Updated: {title} ({year})')
             elif result == STATUS_SKIP:
                 pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'trakt'))
 
 def _export_trakt_custom_list(dest, slug, list_name, pbg, hdg):
     username = _trakt_get_username()
@@ -1460,6 +1583,7 @@ def _export_trakt_custom_list(dest, slug, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Updated: {title} ({year})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'trakt'))
 
 # =============================================================================
 # MDBLIST EXPORT FUNCTIONS
@@ -1525,6 +1649,7 @@ def _export_mdblist_watchlist(dest, pbg, hdg, media_type):
                     pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'mdblist'))
 
 
 def _export_mdblist_favorites(dest, pbg, hdg, media_type):
@@ -1567,6 +1692,7 @@ def _export_mdblist_favorites(dest, pbg, hdg, media_type):
                     pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+        _prune_list_folder(base, _extract_tmdb_ids(items, 'mdblist'))
         return
     for item in items:
         obj = item.get('movie', item.get('show', {})) or {}
@@ -1596,6 +1722,7 @@ def _export_mdblist_favorites(dest, pbg, hdg, media_type):
                     pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'mdblist'))
 
 
 def _export_mdblist_custom_list(dest, list_id, list_name, pbg, hdg):
@@ -1634,6 +1761,7 @@ def _export_mdblist_custom_list(dest, list_id, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
                 elif result == STATUS_SKIP:
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+    _prune_list_folder(base, _extract_tmdb_ids(items, 'mdblist'))
 
 # =============================================================================
 # LIBRARY CHECK / REMOVE (for dynamic context menu)

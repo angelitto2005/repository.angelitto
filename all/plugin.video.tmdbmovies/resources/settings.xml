@@ -411,6 +411,7 @@
         <setting type="lsep" label="Advanced"/>
         <setting id="library_ignore_folderchecking" type="bool" label="Ignore folder creation checks" default="false"/>
         <setting id="library_alternative_nfo" type="bool" label="Use alternative .nfo filename" default="false"/>
+        <setting id="library_mirror_lists" type="bool" label="Mirror lists: remove deleted site items from Kodi library" default="false"/>
     </category>
 
     <!-- 9. SUBTITLES -->

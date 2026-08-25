@@ -1,22 +1,4 @@
 # -*- coding: utf-8 -*-
-# =============================================================================
-# DETONATE - cloud.mail.ru public folders (Bollywood section)
-#
-# Flow (verificat live pe API real, 2026-08-20):
-#   1. Listare folder public:
-#        GET https://cloud.mail.ru/api/v2/folder?weblink=PKz7/7ATNUQoQk
-#      -> body.list: [{name, kind: folder|file, size, weblink, mtime, hash}]
-#      NOTA: parametrul weblink trebuie sa fie DOAR hash-ul "XXXX/YYYY"
-#      (fara https://cloud.mail.ru/public/ - acel format da 400 "invalid").
-#   2. Dispatcher (token de sesiune, se roteste):
-#        GET https://cloud.mail.ru/api/v2/dispatcher
-#      -> body.weblink_get.url = https://clocloNN.cloud.mail.ru/public/TOKEN/g/no
-#   3. Download direct:
-#        {weblink_get}/{weblink_cale}   (calea URL-encoded)
-#      -> HTTP 301 catre https://clocloNN.datacloudmail.ru/public/get/.../no/file
-#      -> fisierul direct, suporta Range requests (206) - playback Kodi OK.
-#   4. Playlist HLS (videowl/0p/{b64}.m3u8) cere auth -> NU folosim.
-# =============================================================================
 
 import json
 import os
@@ -30,10 +12,6 @@ import xbmc
 import xbmcgui
 import xbmcplugin
 
-# HANDLE NU se importa prin valoare (from config import HANDLE)! Cu RLI
-# interpreterul se reutilizeaza intre invocari: copia ar ramane la handle-ul
-# primei invocari, iar endOfDirectory(handle-vechi) lasa job-ul real de
-# director in asteptare = spinner infinit. Acces DINAMIC via _config.HANDLE.
 from resources.lib import config as _config
 from resources.lib.config import ADDON
 
@@ -101,8 +79,6 @@ def _log(msg, level=xbmc.LOGINFO):
 
 
 def _dbg(msg):
-    """Log de navigatie (per-invocare) - doar la LOGDEBUG, ca log-ul normal
-    sa ramana curat; reapar cu debug logging enabled in Kodi."""
     _log(msg, xbmc.LOGDEBUG)
 
 
@@ -123,8 +99,6 @@ def _get_json(url, timeout=8):
 # =============================================================================
 
 def _to_weblink(part):
-    """Normalizeaza o intrare (URL complet sau hash) la forma hash XXXX/YYYY.
-    Intoarce '' daca intrarea nu e un link cloud.mail.ru valid."""
     part = (part or '').strip()
     if not part:
         return ''
@@ -137,9 +111,6 @@ def _to_weblink(part):
 
 
 def get_links():
-    """Linkuri hardcodate (HARDCODED_LINKS), normalizate la hash si
-    deduplicate pastrand ordinea. Fara citire de setari - sectiunea e
-    mereu activa si zero apeluri JSON-RPC per invocare."""
     out = []
     for _year, links in HARDCODED_LINKS.items():
         for l in links:
@@ -154,9 +125,6 @@ def get_links():
 # =============================================================================
 
 def _load_cache():
-    """Incarca cache-ul din JSON. Accepta orice dict cu 'entries' sau 'meta'.
-    Meta-urile din versiuni vechi (meta_ver diferit) sunt aruncate - pot
-    contine potriviri gresite de dinainte de preferinta Bollywood."""
     if not _CACHE_FILE:
         return {}
     try:
@@ -192,9 +160,6 @@ def _save_cache(cache):
 
 
 def clear_detonate_cache():
-    """Sterge complet fisierul detonate_cache.json (entries + meta) si
-    cache-ul RAM de foldere/dispatcher. La urmatoarea deschidere,
-    folderele se re-aduc din cloud si metadatele se cauta din nou pe TMDb."""
     with _cache_lock:
         _folder_cache.clear()
         _dispatcher_cache.update({'ts': 0, 'url': ''})
@@ -209,9 +174,6 @@ def clear_detonate_cache():
 
 
 def _ensure_cache(links):
-    """Asigura ca toate weblink-urile sunt in cache. La prima vizita face
-    fetch PARALEL (5 workeri, max ~8s per request); la urmatoarele incarca
-    din JSON. Intoarce dict-ul entries {weblink: {'root_name', 'listing'}}."""
     cache = _load_cache()
     entries = cache.get('entries', {})
     cache_age = time.time() - cache.get('last_update', 0)
@@ -219,8 +181,6 @@ def _ensure_cache(links):
     missing = [wl for wl in links if wl not in entries]
 
     if missing:
-        # Fetch paralel: spinner-ul primei intrari = durata celui mai lent
-        # request, nu suma tuturor (inainte secvential: 10 x timeout potential).
         from concurrent.futures import ThreadPoolExecutor
         try:
             with ThreadPoolExecutor(max_workers=5) as ex:
@@ -252,9 +212,7 @@ def _ensure_cache(links):
 
 
 def _run_background_refresh_slice(links, budget=10.0):
-    """Re-verifica listarile folderelor (la 24h) INLINE, cu buget de timp.
-    Daca bugetul nu ajunge pentru toate, nu salveaza nimic - RAM cache-ul
-    face a doua incercare (in aceeasi sesiune) aproape instant."""
+    """Re-verifica listarile folderelor (la 24h) INLINE, cu buget de timp."""
     try:
         old = _load_cache()
         deadline = time.time() + budget
@@ -289,13 +247,6 @@ def _run_background_refresh_slice(links, budget=10.0):
 
 
 def _prefetch_slice(links, budget=1.5):
-    """O felie de prefetch rulata INLINE la deschiderea radacinii: cauta
-    metadatele lipsa folder cu folder pina se termina bugetul de timp.
-    Fara threaduri (Kodi le asteapta la iesirea scriptului - 'waiting on
-    thread') si fara RunPlugin (executebuiltin e SINCRON pt URL-uri de
-    plugin - blocheaza randarea radacinii cit lucreaza worker-ul). Folderele
-    complet cache-uite sunt verificate instant; la fiecare vizita a radacinii
-    se umfla inca o bucata din meta-cache, pina e totul sincronizat."""
     try:
         entries = _load_cache().get('entries', {})
         if not entries:
@@ -332,9 +283,6 @@ def _prefetch_slice(links, budget=1.5):
 
 
 def run_meta_prefetch(links):
-    """Sincronizeaza metadatele TMDb pentru TOATE folderele: cauta filmele
-    lipsa din meta-cache si le salveaza in JSON. Apeleata din detonate_worker
-    (script separat) - intrarea ulterioara in orice an e instant."""
     entries = _load_cache().get('entries', {})
     t0 = time.time()
     total_new = 0
@@ -346,8 +294,6 @@ def run_meta_prefetch(links):
             continue
         root_name = entry.get('root_name', '')
         listing = entry.get('listing', [])
-        # Colecteaza fisierele video ale folderului (radacina-an sau filme
-        # directe cu anul in nume; subfolderele se incarca la navigare).
         files = [it for it in listing
                  if it.get('kind') == 'file' and _is_video(it.get('name', ''))]
         if not files:
@@ -364,8 +310,6 @@ def run_meta_prefetch(links):
 
 
 def run_background_refresh(links):
-    """Re-verifica toate weblink-urile si actualizeaza JSON-ul daca au aparut
-    filme noi. Apeleata din detonate_worker (script separat)."""
     old = _load_cache()
     old_names = set()
     for e in old.get('entries', {}).values():
@@ -401,9 +345,6 @@ def run_background_refresh(links):
 # =============================================================================
 
 def _fetch_folder(weblink):
-    """Listeaza folderul public. Cache RAM 300s. Returneaza (nume, list[])
-    sau (None, None). Numele folderului poate fi el insusi un an (ex: radacina
-    '2026' contine direct filmele - verificat pe API real)."""
     now = time.time()
     hit = _folder_cache.get(weblink)
     if hit and (now - hit[0]) < _CACHE_TTL:
@@ -457,11 +398,7 @@ _TAG_RE = re.compile(
 
 
 def clean_title(name):
-    """Extrage titlu + an din numele fisierului (ex: 'Alpha 2026 Kannada HQ
-    HDRip - 720p - x264 - DD5.1 ... .mkv' -> 'Alpha', '2026')."""
     base = os.path.splitext(str(name))[0]
-    # Normalize URL-encoded '+' to space (cloud.mail.ru links use + for space,
-    # but os.path.basename(unquote(...)) only decodes %XX, not +).
     base = base.replace('+', ' ')
     year = ''
     head = base
@@ -510,12 +447,6 @@ def _is_video(name):
 # =============================================================================
 
 def _search_variants(title):
-    """Genereaza variante de cautare pt titluri 'stricate' de numele de
-    fisier. Verificat live pe TMDb (2026-08-21):
-      - 'Arjun SO Vyjayanthi' -> 0 rezultate; 'Arjun Vyjayanthi' (fara
-        tokenul scurt SO) -> MATCH 1447219 'Arjun S/O Vyjayanthi'
-      - 'Badass RaviKumar' -> 0 rezultate; 'Badass Ravi Kumar' (camelCase
-        spart) si 'BadassRaviKumar' (fara spatii) -> MATCH 1043887"""
     variants = [title]
     # camelCase: litera mica urmata de majuscula -> spatiu (RaviKumar -> Ravi Kumar)
     camel = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', title)
@@ -534,11 +465,6 @@ def _search_variants(title):
 
 
 def _short_fallback_queries(title):
-    """Fallback-uri scurte pt titluri compuse pe care TMDb le rejecteaza cu 0
-    rezultate (ex 'Crakk Jeetegaa Toh Jiyegaa' -> 0, dar 'Crakk' -> filmul corect
-    id 1215938). TMDb search e prost la intrebari lungi de transliterare: inloc
-    de a incerca doar variantele compuse, dam si partea dinainte de ' - ' (titlul
-    principal fara subtitlu), primele 2 cuvinte si primul cuvant."""
     out = []
     if ' - ' in title:
         head = title.split(' - ', 1)[0].strip()
@@ -557,11 +483,6 @@ def _short_fallback_queries(title):
 
 
 def _search_tmdb(title, year):
-    """Cauta filmul pe TMDb si intoarce tmdb_id sau None. Doua cereri per
-    varianta: cu anul din fisier (filtru server-side - pt titluri generice
-    ca 'Captain' filmul tamil nici nu apare in primele 20 fara filtru) si
-    fara an (pt ani gresiti in nume, ex Kill 2023 vs 2024). Rezultatele
-    combinate se dedupeaza si se scoruiesc (_pick_best_result)."""
     try:
         from resources.lib.tmdb_api import get_tmdb_search_results
 
@@ -575,11 +496,6 @@ def _search_tmdb(title, year):
             except Exception:
                 return []
 
-        # Scor maxim GLOBAL peste toate variantele (cu anul din fisier si
-        # fara). Ponderile din _score_item decid: indian+an (5) bate un titlu
-        # identic non-indian fara an (4) - fix 'A R M'/'ARM' (filmul EN 2021)
-        # si 'S I T'/'Sit' EN 2016; iar titlul identic + indian + an (9)
-        # domina mereu - fix 'Kill' an gresit, 'Don 1' -> 'Don'.
         best_overall_score, best_overall_id = -1, None
         for query in _search_variants(title):
             seen_ids = set()
@@ -598,11 +514,6 @@ def _search_tmdb(title, year):
             score = _score_item(best, year, query)
             if score > best_overall_score:
                 best_overall_score, best_overall_id = score, tid
-        # Fallback: titlurile compuse (ex 'Crakk Jeetegaa Toh Jiyegaa') dau 0
-        # rezultate pe TMDb desi filmul exista. Incercam variante scurte
-        # (partea dinainte de ' - ', primele 2 cuvinte, primul cuvant). Poarta
-        # minima: scor >= 4 (titlu identic SAU indian+an) ca sa nu luam un
-        # rezultat complet strain.
         if best_overall_id is None:
             for q in _short_fallback_queries(title):
                 seen_ids = set()
@@ -628,8 +539,6 @@ def _search_tmdb(title, year):
 
 
 def _lookup(title, year):
-    """Cautare + detalii TMDb pentru un film. Intoarce dict de detalii sau {}.
-    Respecta deadline-ul global (listele raman rapide la prima vizita)."""
     key = (str(title).lower().strip(), str(year))
     tid = _search_cache.get(key)
     if tid is None:
@@ -651,36 +560,19 @@ def _lookup(title, year):
         return {}
 
 
-# Chei pastrate in meta-cache-ul JSON (restul detaliilor TMDb sunt aruncate
-# ca sa nu umfle fisierul; watched/resume NU se cache-uiesc - se citesc live).
 _META_KEYS = ('id', 'tmdb_id', 'title', 'original_title', 'name', 'overview',
               'poster_path', 'backdrop_path', 'vote_average', 'vote_count',
               'release_date', 'runtime', 'genres', 'tagline',
               'production_companies', 'original_language')
 
-# Limbi indiene - Detonate e sectiune Bollywood, deci filmele cu original
-# language indian au prioritate la cautare. Fix verificat live (2026-08-21):
-#   'Leo' 2023 -> primul rezultat e Leo american (en, 1075794); cel corect
-#        e Leo tamil (ta, 949229) pe pozitia 2
-#   'Kill' 2024 -> primul rezultat e 'Kill Code' (en, 2026); cel corect e
-#        Kill hindi (hi, 1160018) pe pozitia 3
 _INDIAN_LANGS = ('hi', 'ta', 'te', 'kn', 'ml', 'bn', 'mr', 'pa', 'gu')
 
 
 def _norm_title(s):
-    """Normalizare pt comparare titluri: litere mici, doar alfanumerice
-    ('Arjun S/O Vyjayanthi' == 'Arjun SO Vyjayanthi' -> 'arjunsovyjayanthi')."""
     return re.sub(r'[^a-z0-9]', '', str(s or '').lower())
 
 
 def _score_item(it, year, query=''):
-    """Scor pt un rezultat TMDb:
-      +4 titlu identic cu interogarea (normalizat, vs title/original_title)
-      +3 limba originala indiana (Detonate = sectiune Bollywood)
-      +2 anul identic
-    Indian+an (5) trebuie sa bata un titlu identic non-indian (4): fisierul
-    'A.R.M 2024' - varianta compacta 'ARM' exacteaza si un film EN 'ARM'
-    din 2021, desi cel corect e A.R.M malayalam 2024."""
     q = _norm_title(query)
     score = 0
     titles = (it.get('title'), it.get('original_title'), it.get('name'))
@@ -694,10 +586,6 @@ def _score_item(it, year, query=''):
 
 
 def _pick_best_result(results, year, query=''):
-    """Alege rezultatul cu cel mai mare scor (_score_item). Titlul identic
-    primul: la 'Kill' an 2023 (anul din numele fisierului, gresit - filmul
-    e 2024), 'Kill Shot' bn 2023 batea 'Kill' hi 2024 pe vechiul criteriu
-    an+limba. Egalitate de scor -> ordinea TMDb (relevanta)."""
     if not results:
         return None
     best, best_score = None, -1
@@ -709,17 +597,10 @@ def _pick_best_result(results, year, query=''):
 
 
 def _slim_meta(meta):
-    """Pastreaza doar cheile necesare randarii dintr-un dict de detalii TMDb."""
     return {k: meta[k] for k in _META_KEYS if k in meta}
 
 
 def _enrich_movies(files, deadline=None):
-    """Lookup TMDb paralel (max 8 workeri) pentru toate filmele dintr-o
-    lista. Metadatele gasite se persista in JSON cache per nume de fisier:
-    la a 2-a intrare in folder randarea e instant, zero HTTP. NU blocheaza
-    peste deadline (implicit ~5s; _prefetch_slice trimite bugetul propriu):
-    cererile in-flight sunt abandonate, endOfDirectory pleaca la timp.
-    Intoarce {nume_fisier: detalii}."""
     out = {}
     jobs = []
     try:
@@ -757,8 +638,6 @@ def _enrich_movies(files, deadline=None):
                     out[name] = meta
                     new_metas[name] = _slim_meta(meta)
         except Exception:
-            # Timeout (sau altceva): pastram ce am adunat; restul se reiau
-            # la urmatoarea intrare (meta-cache-ul nu le-a salvat inca).
             pass
     except Exception as e:
         _log("Enrich error: " + repr(e))
@@ -767,7 +646,6 @@ def _enrich_movies(files, deadline=None):
             ex.shutdown(wait=False)
         except Exception:
             pass
-    # Persista noile metadate in JSON (merge cu ce exista deja)
     if new_metas:
         try:
             with _cache_lock:
@@ -790,7 +668,6 @@ def _base_url():
 
 
 def _media_icon(name):
-    """Cale completa catre o iconita din resources/media (rezolvabila de skin)."""
     try:
         return os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', name)
     except Exception:
@@ -803,14 +680,10 @@ _CLEAR_CM = [('[B][COLOR FFFF5555]Clear Detonate Cache[/COLOR][/B]',
 
 def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
                 year=None, plot='', clear_cache=False):
-    """Folder cu info complet pt skin-uri list/widelist (panoul din stanga):
-    title + year + plot via set_metadata (InfoTagVideo), icon cu cale absoluta."""
     url = _base_url() + '?' + urlencode(params)
     li = xbmcgui.ListItem(label=label)
     icon_path = icon if ('/' in icon or '\\' in icon or icon.startswith('Default')) else _media_icon(icon)
     li.setArt({'icon': icon_path, 'thumb': icon_path, 'poster': icon_path})
-    # Fara 'mediatype' in info: set_metadata ar seta si dbtype pe ListItem,
-    # iar folderele nu trebuie sa aiba dbtype (AF3 il foloseste pt badge-uri).
     info = {'title': title or label}
     if year:
         try:
@@ -830,9 +703,6 @@ def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
 
 
 def _add_movie(handle, entry, meta=None):
-    """Adauga un fisier video ca item playable. Cand lookup-ul TMDb a reusit
-    (meta): poster/fanart/plot/rating/durata + bifa watched + cerculet de
-    resume de la providerul activ (via set_metadata)."""
     name = entry.get('name', '')
     weblink = entry.get('weblink', '')
     title, year = clean_title(name)
@@ -857,8 +727,6 @@ def _add_movie(handle, entry, meta=None):
         except Exception:
             pass
 
-    # Culoarea verde pt vazute se aplica pe titlu INAINTE de tag-urile
-    # size/quality (inainte era dupa, iar '[COLOR' din [COLOR gray] o bloca).
     label = title
     if year:
         label += " (" + year + ")"
@@ -942,9 +810,6 @@ def _add_movie(handle, entry, meta=None):
         if year:
             li.setInfo('video', {'year': int(year)})
 
-    # Context menu complet (My Trakt / My TMDB / My MDBList / My Simkl /
-    # Mark Watched-Unwatched / Add to Favorites / Delete Resume etc.) -
-    # acelasi meniu ca in restul addonului, gate-uit de Settings > Menu.
     cm = []
     if tmdb_id:
         try:
@@ -968,9 +833,6 @@ def _add_movie(handle, entry, meta=None):
 # =============================================================================
 
 def _safe_end(func):
-    """Garanteaza inchiderea directorului chiar daca randarea pica. Fara asta,
-    o exceptie neprinsa lasa plugin-ul fara endOfDirectory -> Kodi tine spinner-
-    ul de buffering la nesfarsit si apoi logheaza 'GetDirectory failed'."""
     import functools
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -998,9 +860,6 @@ def _safe_end(func):
 
 @_safe_end
 def list_years():
-    """Radacina Detonate: ani (radacina insasi numita cu anul, subfoldere
-    ^\\d{4}$ sau anul extras din numele fisierelor), alte foldere, filme directe.
-    Foloseste cache JSON pentru incarcare instant la vizitele urmatoare."""
     handle = _config.HANDLE
     _t0 = time.time()
     _dbg("Opening Detonate root...")
@@ -1069,20 +928,12 @@ def list_years():
     xbmcplugin.endOfDirectory(handle)
     _dbg("Root: endOfDirectory OK")
 
-    # Sync inline pe buget de timp: cauta metadatele lipsa pentru foldere
-    # pina se termina bugetul (1.5s), restul la urmatoarea deschidere a
-    # radacinii. Fara threaduri (waiting on thread) si fara RunPlugin
-    # (executebuiltin sincron blocheaza randarea).
     _prefetch_slice(links)
     _dbg("Root rendered in {:.2f}s".format(time.time() - _t0))
 
 
 @_safe_end
 def list_year(year):
-    """Filmele din anul dat, colectate din toate link-urile configurate.
-    Surse posibile: radacina numita cu anul, subfolder numit cu anul,
-    sau filme cu anul in nume aflate direct in radacina.
-    Foloseste cache JSON pentru listing-urile radacina (instant)."""
     handle = _config.HANDLE
     _t0 = time.time()
     links = get_links()
@@ -1137,8 +988,6 @@ def list_year(year):
 
 @_safe_end
 def list_all():
-    """Toate filmele din toate link-urile configurate, combinate intr-o singura
-    lista, sortate descrescator dupa an, apoi alfabetic."""
     handle = _config.HANDLE
     _t0 = time.time()
     _dbg("Opening Detonate All...")
@@ -1223,19 +1072,8 @@ def list_folder(weblink):
 # =============================================================================
 # Playback
 # =============================================================================
-# CRITIC (descoperit pe API real, 2026-08-20): token-ul din URL-ul de redirect
-# (datacloudmail.ru/public/get/{token}/no/{file}) e LEGAT de User-Agent-ul
-# cererii care a primit 301-ul. Daca addonul urmareste redirect-ul cu UA Mozilla
-# si da lui Kodi URL-ul final, Kodi deschide cu UA-ul lui (Kodi/21.0) -> 403.
-# De aceea biblioteca mailru-cloud-guest-api intoarce DOAR URL-ul start
-# (weblink_get + cale) fara sa urmareasca redirect-ul: downloader-ul urmareste
-# 301 cu propriul UA in aceeasi lant de cereri -> token valid.
-# Fix: NU urmarim redirect-ul in Python; Kodi urmareste 301 cu UA-ul lui.
 
 def play_movie(weblink, tmdb_id=''):
-    """Playback direct: URL-ul start (weblink_get + cale) dat direct lui Kodi,
-    care urmareste 301 cu propriul UA (token valid). Cu tmdb_id: art/plot
-    din cache-ul TMDb (instant, deja populat de lista)."""
     handle = _config.HANDLE
     base = _get_dispatcher_url()
     if not base:

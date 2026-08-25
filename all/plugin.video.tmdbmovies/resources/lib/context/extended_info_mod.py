@@ -184,12 +184,6 @@ def action_play_dialog(tmdb_id, media_type, season=None, episode=None, title='')
         t.start()
 
 def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=''):
-    """
-    Deschide meniul contextual direct in fereastra Extended Info.
-    Adaptat exact dupa meniul contextual principal (My Trakt, My TMDB, My Plays, etc).
-    Optiunile se filtreaza dupa setarile show/hide din pagina Menu — lista e dinamica,
-    deci indicii nu mai sunt hardcodati.
-    """
     # Extragem anul si imdb_id din fereastra pentru functia 'My Plays'
     imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
     year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
@@ -1260,8 +1254,6 @@ class EpisodeInfo(xbmcgui.WindowXMLDialog):
                 self.setProperty('movie.poster', still)
                 self.setProperty('movie.fanart', still)
                 self.setProperty('fanart', still)
-                # COMENTAM linia veche
-                # self.setProperty('ImageFilter', still)
             
             # --- MODIFICARE BACKGROUND EPISOD ---
             texture_path = os.path.join(ADDON_PATH, 'resources', 'skins', 'Default', 'media', 'texture.png')
@@ -2321,9 +2313,6 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
     def fill_actor_youtube_videos(self, list_id, actor_name, popular_movies):
         # --- LOGICA VIDEO ACTOR: INTERVIURI & BEST OF (GOOGLE API) ---
         try:
-            # IMPORTANT: Verificarea controlului trebuie facuta pe thread-ul principal
-            # Dar cum suntem in thread secundar, riscam sa nu il gaseasca.
-            # Totusi, in Kodi Python, getControl merge si din thread de obicei.
             
             search_query = f"{actor_name} interview best moments"
             results = get_youtube_api_data(search_query)
@@ -2358,9 +2347,7 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
                     li.setArt({'thumb': icon, 'icon': icon})
                     li.setProperty('youtube_id', video_id)
                     list_items.append(li)
-            
-            # Adaugarea itemelor in lista trebuie facuta cu grija.
-            # Daca fereastra s-a inchis intre timp, va da eroare, asa ca folosim try-except
+
             if control_exists(self, list_id):
                 ctl = self.getControl(list_id)
                 ctl.addItems(list_items)

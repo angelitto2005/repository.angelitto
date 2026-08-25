@@ -41,10 +41,6 @@ _last_notify_time = 0
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-# Cream o sesiune persistenta pentru Trakt, care refoloseste conexiunile (mai rapid)
-# si reincearca automat la anumite erori (ex: 502, 503, 504).
-# NU punem retry automat pe 429 aici, pentru ca vrem sa-l controlam manual 
-# in `trakt_api_request` citind header-ul `Retry-After`.
 TRAKT_SESSION = requests.Session()
 _retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
 TRAKT_SESSION.mount('https://api.trakt.tv', HTTPAdapter(pool_maxsize=50, max_retries=_retries))
@@ -301,7 +297,7 @@ def trakt_auth():
         return
 
     # ══════════════════════════════════════════════════════════
-    # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
+    # QR CODE AUTH — dialog custom cu QR + cod
     # doModal() pe MAIN THREAD (input garantat); polling in background
     # ══════════════════════════════════════════════════════════
     from resources.lib.utils import make_qr
@@ -432,9 +428,6 @@ def trakt_revoke():
 
 
 # ===================== TRAKT API REQUEST =====================
-# ══════════════════════════════════════════════════════════
-# MODIFICAT: trakt_api_request — retry pe 401
-# ══════════════════════════════════════════════════════════
 def _do_request(method, url, headers, data=None, params=None):
     """Executa cererea folosind sesiunea globala Trakt."""
     # --- INCEPUT MODIFICARE: Folosim TRAKT_SESSION in loc de requests ---
@@ -549,12 +542,6 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
 # ===================== PAGINATED LIST HELPER =====================
 
 def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
-    """
-    Preia TOATE paginile de la un endpoint Trakt paginat.
-    - Prima pagina e ceruta cu flag pagination=True (returneaza si page_count).
-    - Paginile ramase sunt fetch-uite in paralel cu ThreadPoolExecutor.
-    Returneaza lista completa combinata.
-    """
     p = dict(params or {})
     # Trakt limiteaza la 250 per pagina pentru majoritatea endpoint-urilor
     p.setdefault('limit', 250)
@@ -1083,10 +1070,6 @@ def get_trakt_calendar(endpoint, days=30, start_date=None):
 # ===================== TRAKT CALENDAR =====================
 
 def get_trakt_hidden_calendar_shows():
-    """
-    Preia serialele hidden din calendar.
-    Returneaza dict cu seturi SEPARATE per tip de ID.
-    """
     hidden = {
         'trakt': set(),
         'imdb': set(),
@@ -1115,10 +1098,6 @@ def get_trakt_hidden_calendar_shows():
 
 
 def _filter_hidden_from_calendar(calendar_data):
-    """
-    Filtreaza episoadele din calendar care apartin serialelor hidden.
-    Compara FIECARE tip de ID separat (tmdb cu tmdb, tvdb cu tvdb, etc.)
-    """
     if not calendar_data or not isinstance(calendar_data, list):
         return calendar_data
 
@@ -1147,11 +1126,6 @@ def _filter_hidden_from_calendar(calendar_data):
 
 
 def _filter_specials_from_calendar(calendar_data):
-    """
-    Filtreaza episoadele din sezonul 0 (specials) din calendar.
-    Specials (S00E78 etc.) nu au ce cauta in calendarul de episoade —
-    Trakt le intoarce cu first_aired, dar MDBList nu le afiseaza.
-    """
     if not calendar_data or not isinstance(calendar_data, list):
         return calendar_data
     filtered = []
@@ -1359,10 +1333,6 @@ def rebuild_watched_cache():
 
 
 def check_auto_sync():
-    """
-    Verifica daca e nevoie de sincronizare si o ruleaza in fundal (thread separat)
-    folosind noul sistem Smart Sync din trakt_sync.
-    """
     token = get_trakt_token()
     if not token:
         return
@@ -1374,12 +1344,6 @@ def check_auto_sync():
     t.start()
 
 def get_watched_counts(tmdb_id, content_type, season_num=None):
-    """
-    Returneaza numarul de vizionari DIRECT din baza de date SQL.
-    - movie: 1 daca e vizionat, 0 altfel
-    - tv: numarul total de episoade vizionate
-    - season: numarul de episoade vizionate din sezonul specificat
-    """
     from resources.lib import trakt_sync
     
     str_id = str(tmdb_id)
@@ -1956,16 +1920,11 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
     
     if val_10 > 0:
         if service == 'trakt':
-            # RESTAURARE SCALA 1-10: Trakt site mapreaza 1-10 la 0.5-5.0 stele.
-            # Daca userul alege butonul 3, trimitem 3, iar pe site apare 1.5 stele.
             val_final = val_10
             
             if content_type == 'movie':
                 data = {'movies':[{'ids': {'tmdb': int(tmdb_id)}, 'rating': val_final}]}
             else:
-                # Payload corect per tip (show/season/episode) — reuse din tmdb_api.
-                # Inainte construia seasons/episodes cu int(season)/int(episode) →
-                # crash la show/season (int(None)) → ratingul nu ajungea niciodata.
                 from resources.lib.tmdb_api import _trakt_rating_payload
                 data = _trakt_rating_payload(tmdb_id, content_type, season, episode, val_final)
             
@@ -2463,11 +2422,6 @@ def trakt_list_items(params):
     # Prefetch-ul este critic aici pentru History TV (unde lipsesc date in SQL)
     prefetch_metadata_parallel(paginated_items, filter_type if filter_type else 'movie')
 
-    # API lists (public/user/liked): prefetch-ul are deadline 1.1s si poate rata
-    # iteme — fetch-ul ramas CONCURRENT cu semafor (max 8 requesturi in paralel).
-    # Fara semafor, 40 de thread-uri x 2 requesturi (EN + localizare) = ~80 in
-    # paralel -> TMDB da rate-limit/429 -> timeout -> pagina mai LENTA, nu mai
-    # rapida. Loop-ul citeste apoi doar din RAM pool (zero HTTP in randare).
     if not is_sql_data and data:
         import threading as _th
         _missing = []
@@ -2551,13 +2505,6 @@ def trakt_list_items(params):
                 'first_air_date': release_date
             }
         else:
-            # API Data (public/user lists, liked lists): Trakt nu trimite posterul
-            # TMDb in items (images.poster e lista/dict de URL-uri Trakt, pe alt CDN
-            # — _process_*_item lipeaza IMG_BASE peste orice poster_path ne-gol,
-            # deci URL-urile Trakt ies 404). Posterul/backdrop-ul trebuie sa vina
-            # din metadata TMDb: RAM pool/SQLite (populat de prefetch) sau
-            # lightweight fetch care populeaza si pool-ul — de acolo _process_*_item
-            # ia si runtime-ul real (altfel filmele arata 2:00:00, default 7200s).
             mtype = item.get('type', 'movie')
             if mtype in ['show', 'season', 'episode']: current_media_type = 'tv'
             raw = item.get(mtype, item)
@@ -2834,10 +2781,6 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
 
 # ===================== TRAKT SCROBBLE (NOU) =====================
 def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress):
-    """
-    Trimite statusul redarii catre Trakt (start, pause, stop).
-    action: 'start', 'pause', 'stop'
-    """
     if not get_trakt_token():
         return
 
@@ -3053,8 +2996,6 @@ def trakt_period_dialog(params):
 
 
 def _view_trakt_my_calendar():
-    """My Calendar (stil MDB): filme + episoade din watchlist/collection, o singura pagina,
-    date formatate, sortare, today on top, click pe lansat -> surse."""
     from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel, get_tmdb_item_details, _get_full_context_menu
     from resources.lib.cache import ram_pool_get
     from resources.lib.mdblist_sync import get_cached, set_cached
@@ -3090,10 +3031,6 @@ def _view_trakt_my_calendar():
         shows_data = get_trakt_calendar_shows(start_date=start.strftime('%Y-%m-%d'), days=total_days, limit=500)
         movies_data = get_trakt_calendar_movies(start_date=start.strftime('%Y-%m-%d'), days=total_days, limit=500)
         movies_data = movies_data or []
-        # Calendarul Trakt e cache-uit server-side: filmele adaugate recent in
-        # watchlist pot sa apara cu intarziere. Facem merge cu watchlist-ul
-        # proaspat (/sync/watchlist e mereu la zi) pentru filmele care se
-        # incadreaza in fereastra calendarului.
         try:
             wl_movies = get_trakt_watchlist('movies') or []
             existing = set()
@@ -3107,10 +3044,6 @@ def _view_trakt_my_calendar():
                 except Exception:
                     continue
             end_date = start + _dt.timedelta(days=total_days)
-            # Calendarul Trakt e cache-uit server-side, dar merge-ul trebuie
-            # sa respecte fereastra configurata (past days): fara extindere de
-            # 60 de zile in trecut, altfel filmele deja lansate din watchlist
-            # apareau oricat de mic ar fi fost past days.
             merge_start = start
             for wl_item in wl_movies:
                 try:

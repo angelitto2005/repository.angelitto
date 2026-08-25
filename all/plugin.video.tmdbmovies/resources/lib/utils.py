@@ -37,12 +37,6 @@ def reset_debug_cache():
     _debug_cache = None
 
 
-# Modulele grele ale addonului, pre-importate la pornirea serviciului intr-un
-# SINGUR thread secvential. Kodi ruleaza TOATE invocarile (serviciu + plugin +
-# widgeturi) in acelasi interpret Python: primul-import concomitent pe module
-# suprapuse (navigare user vs sync de provider switch) poate deadlocka
-# permanent threadul pluginului = spinner infinit fara niciun log. Cu toate
-# modulele deja in sys.modules, invocarile ulterioare nu mai importa nimic.
 _WARM_IMPORT_MODULES = (
     'resources.lib.menus',
     'resources.lib.cache',
@@ -66,9 +60,6 @@ _WARM_IMPORT_MODULES = (
 
 
 def warm_import_modules():
-    """Import secvential al modulelor grele (intr-un singur thread — paralel
-    ar recreeaza exact deadlock-ul pe care il previne). Rapid cand e cald
-    (<5ms); prima rulare citeste fisierele .py o singura data."""
     import importlib
     t0 = time.time()
     done = 0
@@ -93,11 +84,6 @@ def warm_import_modules():
 
 
 def log(msg, level=xbmc.LOGINFO):
-    """
-    Log messages respecting the debug setting from addon.
-    - LOGERROR and LOGWARNING: always logged
-    - LOGINFO and LOGDEBUG: only if debug is enabled
-    """
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
         xbmc.log(f"[TMDb Movies] {msg}", level)
         return
@@ -155,10 +141,6 @@ def write_json(filepath, data):
 
 
 def clean_text(text):
-    """
-    Clean text of non-standard characters (emoji, flags, symbols).
-    Keeps only: Letters (A-Z), Numbers (0-9), Basic punctuation (.-_()[]).
-    """
     if not text:
         return ""
     
@@ -186,8 +168,6 @@ def get_json(url):
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         
-        # Reduced timeout: If TMDb doesn't respond in 5 sec, cut the connection
-        # This prevents the "waiting on thread" message
         r = SESSION.get(url, headers=get_headers(), timeout=5, verify=False)
         r.raise_for_status()
         return r.json()
@@ -195,11 +175,6 @@ def get_json(url):
         return {}
 
 def paginate_list(item_list, page, limit=20):
-    """
-    Essential function for the new cache system.
-    Receives a long list (e.g. 100 movies) and returns only the 20
-    for the current page, plus the total number of pages.
-    """
     if not item_list:
         return [], 0
     count = len(item_list)
@@ -413,10 +388,6 @@ def set_resume_point(li, resume_seconds, total_seconds):
 # =============================================================================
 
 def build_downloads_list(params):
-    """
-    Builds the list of downloaded files.
-    Folders have custom menu, files use native Kodi menu.
-    """
     try:
         handle = int(sys.argv[1])
     except:
@@ -548,10 +519,6 @@ def rename_download_folder(params):
 # =============================================================================
 
 def clean_settings():
-    """
-    Compares user's settings.xml with the official one from the addon.
-    Removes any 'dead' setting (that no longer exists in the addon).
-    """
     import xml.etree.ElementTree as ET
     from resources.lib.config import ADDON, ADDON_DATA_DIR
     
@@ -675,9 +642,6 @@ _LOG_ERROR_RE = re.compile(r' (ERROR|error)(?: <[^>]*>)?: ')
 _LOG_WARNING_RE = re.compile(r' (WARNING|warning)(?: <[^>]*>): ')
 
 def _style_kodi_log(text):
-    """Colorare ca la Log Viewer for Kodi: ERROR rosu, WARNING galben (gold).
-    Spatiile de la inceputul liniilor devin non-breaking (textboxul Kodi
-    le colapseaza altfel -> stacktrace-urile ies neindentate)."""
     out = []
     for line in text.splitlines():
         stripped = line.lstrip(' ')
@@ -691,9 +655,6 @@ def _style_kodi_log(text):
     return '\n'.join(out)
 
 def view_kodi_log():
-    """Deschide kodi.log sau kodi.old.log in textviewer-ul nativ al skinului
-    (font mare, identic cu POV - FARA usemono care forteaza fontul mic mono).
-    Culori ERROR/WARNING ca la Log Viewer for Kodi."""
     
     dialog = xbmcgui.Dialog()
     
@@ -745,12 +706,6 @@ DONATE_URL = 'https://ko-fi.com/angelitto'
 
 
 def show_donate_link():
-    """Dialog donatie cu QR code static (resources/media/donate_qr.png) + link vizibil.
-
-    Imaginea e bundled in addon (generata o singura data cu segno) — alte
-    addon-uri o pot copia direct, fara dependenta de segno.
-    Fallback la Dialog.ok doar-text daca PNG-ul lipseste.
-    """
     qr_path = os.path.join(ADDON_PATH, 'resources', 'media', 'donate_qr.png')
     if not xbmcvfs.exists(qr_path):
         # Comprimat la exact 3 randuri - GARANTAT fara scroll!
@@ -965,14 +920,6 @@ def perform_mdblist_backup(manual=False):
 
 
 def make_qr(url, filename='auth_qr.png'):
-    """Genereaza un QR code PNG (segno bundled) si returneaza calea imaginii.
-
-    Stil Umbrella: salveaza in profilul addonului ca sa fie afisat in dialogul
-    de autorizare. Returneaza None daca generarea esueaza (fallback la text).
-
-    IMPORTANT: numele de fisier primeste un sufix unic (timestamp) ca Kodi sa
-    nu afiseze o textura stale din cache (aceeasi cale = aceeasi textura).
-    """
     if not url:
         return None
     try:

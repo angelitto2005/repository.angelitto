@@ -10,13 +10,6 @@ import xbmcvfs
 
 from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL
 
-# FARA cache la nivel de modul: Kodi reutilizeaza procesul Python al addon-ului
-# intre navigari, deci un cache permanent (ex. _PROVIDER_CACHE) ar ramane STALE
-# cand providerul se schimba din Setari — UI-ul ar continua sa citeasca vechiul
-# provider pana la restart. ADDON.getSetting e deja mtime-validat in config.py
-# (re-parseaza settings.xml doar cand fisierul se schimba) — citirea directa
-# e ieftina (un stat + lookup) si mereu actuala.
-
 def _get_provider_raw():
     try:
         idx = int(ADDON.getSetting('watched_status_provider') or '0')
@@ -37,31 +30,18 @@ def _invalidate_fast_cache():
         pass
 
 def _on_home_widget():
-    """Detecteaza daca suntem pe Home/widget (nu in interiorul addonului).
-    La fel ca POV: daca Container.PluginName NU e addonul nostru, suntem pe
-    Home/widget -> trebuie UpdateLibrary (nu Container.Refresh, care nu atinge
-    widget-urile de pe Home). La orice eroare presupunem Home (sigur: UpdateLibrary
-    e nevinovat, doar emite OnUpdate)."""
     try:
         return 'tmdbmovies' not in xbmc.getInfoLabel('Container.PluginName')
     except:
         return True
 
 def widget_refresh():
-    """Reimprospateaza TOATE widget-urile din skin (AF3 asculta de evenimentul
-    VideoLibrary.OnUpdate). UpdateLibrary(video, special://skin/foo) e trucul POV:
-    path-ul nu exista deci nu scaneaza nimic real, dar Kodi emite OnUpdate -> toate
-    widget-urile (Next Episodes, In Progress, etc.) se re-randa in ~5s.
-    Fara asta, Container.Refresh doar reimprospateaza containerul activ, NU widget-urile
-    de pe Home -> cerculetul de resume ramane pana la restart Kodi (vezi Android/AF3)."""
     try:
         xbmc.executebuiltin('UpdateLibrary(video,special://skin/foo)')
     except:
         pass
 
 def refresh_ui():
-    """Refresh UI in functie de context: pe Home/widget -> UpdateLibrary (toate
-    widget-urile), in interiorul addonului -> Container.Refresh (containerul activ)."""
     try:
         if _on_home_widget():
             widget_refresh()
@@ -169,10 +149,6 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
             _invalidate_fast_cache()
 
 def _kodi_delete_resume_bookmark(tmdb_id, content_type, season=None, episode=None):
-    """Sterge bookmark-ul de resume din baza video Kodi (MyVideos*.db) pentru acest item.
-    Fara asta, dupa "Delete Resume" din context menu, dialogul NATIV de resume ar mai aparea
-    la click (GetResumeString citeste bookmark-ul din baza Kodi, nu progress-ul local).
-    Context menu-ul trimite type=episode, dar URL-ul din baza Kodi are type=tv."""
     try:
         content_type = 'tv' if content_type in ('tv', 'episode') else 'movie'
         import glob
@@ -246,10 +222,6 @@ def get_episode_watched_count(tmdb_id):
         return _chk(tmdb_id)
 
 def get_watched_episodes_set(tmdb_id):
-    """Setul de episoade vizionate + ultimul vizionat cronologic din providerul activ.
-    Returneaza dict {'set': set((s,e),...), 'last': (s,e) sau None, 'last_at': str sau ''}.
-    Fiecare modul provider are propriul DB (trakt_sync.db / mdblist_sync.db / simkl_sync.db),
-    deci interogam prin get_connection() a modulului activ cu numele tabelei sale."""
     prov = _get_provider_raw()
     tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes'}[prov]
     res = {'set': set(), 'last': None, 'last_at': ''}
@@ -300,12 +272,6 @@ def get_season_watched_count(tmdb_id, season):
         return _chk(tmdb_id, season)
 
 def sync_full_library(silent=False, force=False):
-    # Sincronizam TOTI serviciile autorizate: providerul activ primul (date
-    # interferente + non-interferente + TMDb), apoi celelalte servicii, daca sunt
-    # autorizate — gate-ul intern din fiecare sync_full_library exclude datele
-    # interferente (watched/playback/upnext) ale serviciilor inactive, deci intra
-    # doar datele lor proprii (watchlist/dropped/ratings/collection etc).
-    # Locks separate per serviciu — fara blocaje; fara creds, functiile fac early return.
     prov = _get_provider_raw()
     from resources.lib.trakt_sync import sync_full_library as _trakt_sync
     from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
