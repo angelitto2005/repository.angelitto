@@ -1,4 +1,4 @@
-1.1.241
+1.1.242
 - Added an optional switch library_mirror_lists (default off) so that when you remove a movie/show from a TMDB/Trakt/MDBList list on the site, the next Library Sync also removes it from your Kodi library.
 
 1.1.240

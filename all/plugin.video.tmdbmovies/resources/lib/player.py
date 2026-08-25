@@ -2559,7 +2559,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             if '_torrent_b64' in _sd:
                 _tb = _sd['_torrent_b64']
                 _sd['_torrent_b64'] = '<%d chars>' % len(_tb) if isinstance(_tb, str) else '<bytes>'
-            xbmc.log(f"[TMDb Movies] đź§˛ STREAM DATA đź§˛:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
+            xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
         # --------------------------
