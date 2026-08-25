@@ -75,7 +75,7 @@
             <screenshot>resources/screenshots/webui.png</screenshot>
         </assets>
     </extension>
-</addon><addon id="plugin.video.hublive" name="HubLive" version="1.4" provider-name="1X si Geamanu">
+</addon><addon id="plugin.video.hublive" name="HubLive" version="1.7.0" provider-name="1X si Geamanu">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" />
@@ -83,6 +83,7 @@
   <extension point="xbmc.python.pluginsource" library="main.py">
     <provides>video</provides>
   </extension>
+  <extension point="xbmc.service" library="service.py" start="startup" />
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">Hub Live Plugin</summary>
     <description lang="en_GB">Plays a premium M3U list with dynamic token generation.</description>

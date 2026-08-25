@@ -471,6 +471,7 @@ class EpgManager(threading.Thread):
                     headers=headers,
                     cookies=cookies,
                     timeout=(self.connect_timeout, self.read_timeout),
+                    verify=False,
                 )
                 r.raise_for_status()
                 if not r.content:

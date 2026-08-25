@@ -1,15 +1,34 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="General">
-        <setting id="servers_json_url" type="text" label="Servers JSON URL (leave empty for local file)" default="https://raw.githubusercontent.com/staycanuca/hub/refs/heads/main/servers.json" />
+        <setting id="servers_json_url" type="text" label="Servers JSON URL (leave empty for local file)" default="https://raw.githubusercontent.com/staycanuca/hub/main/servers.json" />
     </category>
 
     <category label="Server Settings">
         <setting id="server_check_enabled" type="bool" label="Verificare automata stare servere (ON/OFF) la deschidere" default="false" />
+        <setting id="mega_search_mode" type="select" label="Mega search Live: mod cautare" values="Rapid (doar playlisturile ratb)|Complet (toate serverele)" default="0" />
+        <setting id="live_catalog_source" type="select" label="Sursa categoriilor si canalelor Live" values="RATB cu fallback portal|Doar portal|Doar RATB" default="0" />
+        <setting id="mega_search_fetch_missing_lists" type="bool" label="Mega search: descarca listele lipsa daca nu exista cache" default="true" />
+        <setting id="mega_search_fetch_batch_size" type="number" label="Mega search: numar portaluri per lot fallback" default="5" />
+    </category>
+
+    <category label="Index cautare ratb">
+        <setting id="playlist_index_url" type="text" label="URL manifest index ratb" default="https://raw.githubusercontent.com/unicsuc/ratb/main/search-index/manifest.json" />
+        <setting id="playlist_index_check_hours" type="number" label="Interval verificare index ratb (ore)" default="12" />
+        <setting id="playlist_index_auto_update" type="bool" label="Actualizeaza automat indexul ratb" default="true" />
     </category>
 
     <category label="EPG Settings">
         <setting id="epg_enabled" type="bool" label="Enable EPG (Electronic Program Guide)" default="false" />
         <setting id="epg_cache_duration" type="number" label="EPG Cache Duration (minutes)" default="30" />
+    </category>
+
+    <category label="Playback Settings">
+        <setting id="live_auto_reconnect" type="bool" label="Auto reconnect for live streams" default="true" />
+        <setting id="auth_max_attempts" type="number" label="Max MAC attempts for auth/search/playback" default="6" />
+        <setting id="live_max_reconnect_attempts" type="number" label="Max live reconnect attempts" default="3" />
+        <setting id="live_reconnect_delay" type="number" label="Delay before live reconnect (seconds)" default="2" />
+        <setting id="live_startup_timeout" type="number" label="Live startup timeout before retry (seconds)" default="12" />
+        <setting id="live_retry_on_stopped" type="bool" label="Retry on ambiguous stop events (may restart after manual stop)" default="false" />
     </category>
 </settings>
