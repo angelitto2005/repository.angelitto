@@ -249,7 +249,7 @@ def deduplicate_streams(streams):
         else:
             duplicates_removed += 1
     
-    log(f"[DEDUP] âś“ Result: {len(streams)} -> {len(unique_streams)} (removed {duplicates_removed} duplicates)")
+    log(f"[DEDUP] ✓ Result: {len(streams)} -> {len(unique_streams)} (removed {duplicates_removed} duplicates)")
     
     return unique_streams
     
@@ -1770,11 +1770,11 @@ def start_playback_monitor(player_instance, dialog=None):
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] âś“ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] âś“ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
+        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
         # ============================================================
         # FIX ANTI-DUMMY: STERGEM BIFA PUSA DE KODI DIN GRESEALA
@@ -1847,7 +1847,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 )
                 
                 player_instance._send_trakt_scrobble('pause', last_known_progress)
-                log(f"[PLAYER-MONITOR] âś“ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
+                log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
                 # FIX RESUME: Verificam daca exista deja un resume valid (>3min) inainte de a-l sterge
@@ -2466,7 +2466,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if is_valid:
                     valid_url = url
                     valid_index = i
-                    log(f"[PLAYER] âś“ SURSA VALIDA: {i + 1}")
+                    log(f"[PLAYER] ✓ SURSA VALIDA: {i + 1}")
                     break
             except Exception as e:
                 log(f"[PLAYER] Error verificare: {e}")
