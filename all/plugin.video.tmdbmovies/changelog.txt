@@ -1,5 +1,6 @@
-1.1.244
+1.1.245
 - Fixed duplicate movie folders (Library import) on year change (TMDb) and permanently missing .strm files — both now self-repair at next sync.
+- Fixed P2P providers Menu
 
 1.1.243
 - Added an optional switch library_mirror_lists (default off) so that when you remove a movie/show from a TMDB/Trakt/MDBList list on the site, the next Library Sync also removes it from your Kodi library.
