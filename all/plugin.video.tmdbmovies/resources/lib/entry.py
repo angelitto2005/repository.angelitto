@@ -149,12 +149,12 @@ def build_fast_menu(items, content_type='', no_cache=False):
 # MENIURI STATICE (CITITE LOCAL, FARA API)
 # =============================================================================
 
-def get_settings_menu_items():
-    """Construieste meniul de setari citind fisierele local."""
+def get_providers_menu_items():
+    """Construieste directorul Providers - cei 4 provideri (cele 8 setari conectare)."""
     items = []
     profile = get_profile()
     addon = get_addon()
-    
+
     # TMDB Status
     tmdb_user = None
     try:
@@ -194,7 +194,7 @@ def get_settings_menu_items():
 
     if mdblist_token or mdblist_api_key:
         display_name = mdblist_username or mdblist_status_raw.replace('Connected: ', '')
-        items.append({'name': f'[B][COLOR lightskyblue]MDBList: {display_name}[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR lightskyblue]MDBList: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect MDBList[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'mdblist_revoke', 'folder': False})
     else:
         items.append({'name': '[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_auth', 'folder': False})
@@ -214,22 +214,35 @@ def get_settings_menu_items():
             except:
                 pass
         display_name = simkl_username or 'Connected'
-        items.append({'name': f'[B][COLOR mediumpurple]Simkl: {display_name}[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR mediumpurple]Simkl: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect Simkl[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'simkl_revoke', 'folder': False})
     else:
         items.append({'name': '[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_auth', 'folder': False})
 
+    return items
+
+
+def get_settings_menu_items():
+    """Construieste meniul Settings - providerii grupati in directorul Providers."""
+    items = []
+    addon = get_addon()
+    items.append({'name': '[B]Addon Settings[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
+    items.append({'name': '[B]My Providers[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'providers_menu'})
+    trakt_user = None
+    token = addon.getSetting('trakt_access_token')
+    if token:
+        raw_status = addon.getSetting('trakt_status')
+        trakt_user = raw_status.replace('Conectat: ', '').replace('Connected: ', '') or 'User'
+    mdblist_token = addon.getSetting('mdblist_access_token')
+    mdblist_api_key = addon.getSetting('mdblist_api')
+    simkl_token = addon.getSetting('simkl_access_token')
     if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token:
         items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
         items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
-
-    items.append({'name': 'Addon Settings', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
-    
     items.append({'name': '[B][COLOR FF87CEEB]Open Kodi Log File[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'view_kodi_log', 'folder': False})
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
     items.append({'name': '[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
-        
     return items
 
 def get_search_menu_items():
@@ -391,6 +404,10 @@ def run_plugin():
     
     if mode == 'settings_menu':
         build_fast_menu(get_settings_menu_items())
+        return
+
+    if mode == 'providers_menu':
+        build_fast_menu(get_providers_menu_items())
         return
 
     if mode == 'search_menu':
