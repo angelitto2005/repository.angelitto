@@ -437,6 +437,52 @@ def _cleanup_stale_show_folders(basedir, tmdb_id, current_folder, show_path):
         except Exception as e:
             log(f'Cannot remove folder {dname}: {e}', xbmc.LOGWARNING)
 
+def _cleanup_stale_movie_folders(basedir, tmdb_id, current_folder):
+    """Sterge folderele surori ale filmului cu acelasi tmdb_id in movie.nfo
+    si acelasi titlu de baza (anul din release_date s-a schimbat/aparut:
+    'Titlu' langa 'Titlu (2026)' -> film dublu in Kodi)."""
+    if not os.path.isdir(basedir):
+        return
+    def _base_name(folder_name):
+        m = re.match(r'^(.*?)\s*\(\d{4}\)$', folder_name)
+        return (m.group(1) if m else folder_name).lower()
+    cur_base = _base_name(current_folder)
+    cur_abs = os.path.normcase(os.path.abspath(os.path.join(basedir, current_folder)))
+    search = str(tmdb_id)
+    try:
+        entries = os.listdir(basedir)
+    except Exception as e:
+        log(f'Cannot list {basedir}: {e}', xbmc.LOGWARNING)
+        return
+    for dname in entries:
+        if dname == current_folder:
+            continue
+        if _base_name(dname) != cur_base:
+            continue
+        dpath = os.path.join(basedir, dname)
+        if not os.path.isdir(dpath):
+            continue
+        if os.path.normcase(os.path.abspath(dpath)) == cur_abs:
+            continue
+        nfo = os.path.join(dpath, 'movie.nfo')
+        try:
+            with open(nfo, 'r', encoding='utf-8') as f:
+                if search not in f.read():
+                    continue
+        except Exception:
+            continue
+        log(f'Removing stale movie folder (year changed): {dname}')
+        try:
+            if xbmcvfs.rmdir(dpath.replace('\\', '/'), force=True):
+                continue
+        except Exception:
+            pass
+        try:
+            import shutil
+            shutil.rmtree(dpath)
+        except Exception as e:
+            log(f'Cannot remove folder {dname}: {e}', xbmc.LOGWARNING)
+
 # =============================================================================
 # MEDIA EXPORTERS
 # =============================================================================
@@ -445,20 +491,25 @@ def export_movie(basedir, tmdb_id, title, year):
     filepath = os.path.join(basedir, folder).replace('\\', '/')
     nfo = _build_nfo_content('movie', tmdb_id)
     nfo_full = os.path.join(filepath, 'movie.nfo').replace('\\', '/')
-    if os.path.exists(nfo_full):
+    strm_full = os.path.join(filepath, 'movie.strm').replace('\\', '/')
+    skip = False
+    if os.path.exists(nfo_full) and os.path.exists(strm_full):
         try:
             with open(nfo_full, 'r', encoding='utf-8') as f:
                 if str(tmdb_id) in f.read():
-                    return STATUS_SKIP
+                    skip = True
         except:
             pass
-    strm = _build_strm_url_movie(tmdb_id, title, year)
-    ok_nfo = _write_file(nfo, filepath, 'movie.nfo')
-    ok_strm = _write_file(strm, filepath, 'movie.strm')
-    if ok_nfo and ok_strm:
-        return STATUS_OK
-    log(f'Failed to export movie: {title} ({year})')
-    return STATUS_ERROR
+    if not skip:
+        strm = _build_strm_url_movie(tmdb_id, title, year)
+        ok_nfo = _write_file(nfo, filepath, 'movie.nfo')
+        ok_strm = _write_file(strm, filepath, 'movie.strm')
+        if not (ok_nfo and ok_strm):
+            log(f'Failed to export movie: {title} ({year})')
+            _cleanup_stale_movie_folders(basedir, tmdb_id, folder)
+            return STATUS_ERROR
+    _cleanup_stale_movie_folders(basedir, tmdb_id, folder)
+    return STATUS_SKIP if skip else STATUS_OK
 
 def export_tvshow(basedir, tmdb_id, title, year, seasons_data):
     folder = _get_show_name(title, year)
