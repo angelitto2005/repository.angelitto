@@ -227,7 +227,7 @@ def get_settings_menu_items():
     items = []
     addon = get_addon()
     items.append({'name': '[B]Addon Settings[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
-    items.append({'name': '[B]My Providers[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'providers_menu'})
+    items.append({'name': '[B]My Providers[/B]', 'iconImage': 'DefaultAddonWebSkin.png', 'mode': 'providers_menu'})
     trakt_user = None
     token = addon.getSetting('trakt_access_token')
     if token:
@@ -237,8 +237,8 @@ def get_settings_menu_items():
     mdblist_api_key = addon.getSetting('mdblist_api')
     simkl_token = addon.getSetting('simkl_access_token')
     if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token:
-        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
-        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'trakt_sync_action', 'folder': False})
+        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
+        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_action', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
     items.append({'name': '[B][COLOR FF87CEEB]Open Kodi Log File[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'view_kodi_log', 'folder': False})
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})

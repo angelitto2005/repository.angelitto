@@ -3604,6 +3604,10 @@ def trakt_account_info():
 
         # --- LIMITE CONT (din /users/settings) ---
         limits = settings_data.get('limits', {})
+        try:
+            xbmc.log(f"[TRAKT] /users/settings vip={vip} limits={json.dumps(limits)}", xbmc.LOGINFO)
+        except:
+            pass
         wl_lim = (limits.get('watchlist') or {}).get('item_count')
         lst_lim = (limits.get('list') or {}).get('item_count')
         lst_cnt = (limits.get('list') or {}).get('count')
