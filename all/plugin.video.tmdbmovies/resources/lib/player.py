@@ -3554,6 +3554,9 @@ def list_sources(params):
                                 meta_dict['title'] = final_title
                             if ep.get('vote_average'):
                                 meta_dict['rating'] = ep.get('vote_average')
+                            if ep.get('runtime'):
+                                try: meta_dict['duration'] = int(ep.get('runtime')) * 60
+                                except: pass
                             break
                             
             if details.get('backdrop_path'):
