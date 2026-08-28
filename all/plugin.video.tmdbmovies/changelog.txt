@@ -1,3 +1,7 @@
+1.1.249
+- Estuary OSD: enrich playback info for DialogVideoInfo (2x Info) - show tagline/genres, resolution, rating stars and duration in header and stream name under plot via VideoInfoTag without skin mod
+- Fix missing taglines in movie/TV lists: prefetch now copies EN tagline when localized tagline is empty, lists show motto (EN+localized) without per-item network fallback
+
 1.1.248
 - Speed up TMDB Up Next sync by batching watched queries and parallelizing show/season fetches
 - Fix TMDb custom lists ordering when adding items

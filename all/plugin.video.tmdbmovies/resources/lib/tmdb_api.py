@@ -176,7 +176,7 @@ def prefetch_metadata_parallel(items, media_type):
                 # titlul ramane in script non-latin (CJK/cyrilic/etc.) —
                 # completam din EN ca lista sa aiba plot si titlu lizibil.
                 localized_title = data.get('title') or data.get('name') or ''
-                if url_lang != 'en-US' and (not data.get('overview') or _NON_LATIN_RE.search(localized_title)):
+                if url_lang != 'en-US' and (not data.get('overview') or not data.get('tagline') or _NON_LATIN_RE.search(localized_title)):
                     try:
                         url_en = f"{BASE_URL}/{endpoint}/{tid}?api_key={API_KEY}&language=en-US"
                         res_en = prefetch_session.get(url_en, headers=get_headers(), timeout=1.0)
@@ -210,7 +210,7 @@ def prefetch_metadata_parallel(items, media_type):
         threads.append(t)
         t.start()
     
-    deadline = time.time() + 1.1
+    deadline = time.time() + 1.5
     for t in threads:
         remaining = deadline - time.time()
         if remaining > 0:
@@ -5835,6 +5835,8 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
     current_lang = 'en' if skip_localization else get_plot_language_code()
     
     from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
+    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
+    from resources.lib import trakt_sync
     # 1. Check global RAM pool — skip if language doesn't match
     pool_data = ram_pool_get(str_id)
     if pool_data and pool_data.get('_cached_lang') == current_lang:
@@ -5848,8 +5850,6 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
             ram_pool_set(str_id, ram_data)
             return _ensure_clearlogo(ram_data)
     
-    from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
-    from resources.lib import trakt_sync
     data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
     
     if data:

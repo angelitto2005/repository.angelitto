@@ -2572,6 +2572,65 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             win = xbmcgui.Window(10000)
             win.setProperty('tmdbmovies.release_name', str(release_name_for_subs))
         except: pass
+
+        try:
+            try:
+                _skin = ADDON.getSetting('skin_type')
+            except:
+                _skin = '0'
+            if _skin == '0':
+                _plot_orig = info_tag.get('plot', '') or ''
+                _tagline = info_tag.get('tagline', '') or ''
+                _genre_list = info_tag.get('genre', []) or []
+                if isinstance(_genre_list, str):
+                    _genre_list = [g.strip() for g in _genre_list.split(',') if g.strip()]
+                _genre_str = ', '.join(_genre_list) if _genre_list else ''
+                _rating = float(info_tag.get('rating', 0) or 0)
+                _votes = int(info_tag.get('votes', 0) or 0)
+                _duration = int(info_tag.get('duration', 0) or 0)
+                _quality = info_extr.get('quality', '') or current_stream.get('quality', '')
+                _size = info_extr.get('size', '') or current_stream.get('size', '')
+                _provider = info_extr.get('provider', '') or ''
+                header_parts = []
+                if _tagline:
+                    header_parts.append(f"[B][COLOR FFFF69B4]{_tagline}[/COLOR][/B]")
+                if _genre_str:
+                    header_parts.append(f"[B][COLOR FF00CED1]{_genre_str}[/COLOR][/B]")
+                header = " | ".join(header_parts) if header_parts else ""
+                meta_line = []
+                if _quality:
+                    c_qual = "FF00FFFF" if _quality == "4K" else ("FF00FF7F" if _quality == "1080p" else ("FFFFD700" if _quality == "720p" else "FF00BFFF"))
+                    meta_line.append(f"[B][COLOR {c_qual}]{_quality}[/COLOR][/B]")
+                if _rating > 0:
+                    meta_line.append(f"[B][COLOR FFFFD700]★ {_rating:.1f}[/COLOR][/B]" + (f"[COLOR FFAAAAAA] ({_votes})[/COLOR]" if _votes else ""))
+                if _duration > 0:
+                    mins = _duration // 60
+                    h, m = divmod(mins, 60)
+                    dur_str = f"{h}h {m}m" if h else f"{m}m"
+                    meta_line.append(f"[B][COLOR FF87CEEB]{dur_str}[/COLOR][/B]")
+                elif _size:
+                    meta_line.append(f"[B][COLOR FFFFEA00]{_size}[/COLOR][/B]")
+                if _provider:
+                    meta_line.append(f"[COLOR FFBA55D3]{_provider}[/COLOR]")
+                meta_str = "  •  ".join(meta_line) if meta_line else ""
+                enriched = ""
+                if header:
+                    enriched += header + "\n"
+                if meta_str:
+                    enriched += meta_str + "\n"
+                enriched += _plot_orig
+                _stream_label = clean_text(release_name_for_subs) if 'clean_text' in globals() else release_name_for_subs
+                _stream_label = _stream_label.strip()
+                if len(_stream_label) > 130:
+                    _stream_label = _stream_label[:127] + "..."
+                if _stream_label:
+                    enriched += f"\n[COLOR FF20B2AA]Source:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]"
+                    if _size or _quality:
+                        enriched += f"  • [B][COLOR yellow]{_size}[/COLOR][/B] • [B][COLOR {c_qual}]{_quality}[/COLOR][/B]" if _size and _quality else ""
+                info_tag['plot'] = enriched
+                info_tag['tagline'] = ""
+        except:
+            pass
         
         li = xbmcgui.ListItem(label=info_tag['title'], path=valid_url)
         # SKIP KODI HEAD REQUEST (STAT) - Previne lag-ul de 20 secunde la sursele Debrid/AIO
@@ -3449,6 +3508,15 @@ def list_sources(params):
             meta_dict['plot'] = details.get('overview', '')
             meta_dict['rating'] = details.get('vote_average', 0.0)
             meta_dict['votes'] = details.get('vote_count', 0)
+            if details.get('tagline'):
+                meta_dict['tagline'] = details.get('tagline')
+            rt = details.get('runtime')
+            if rt:
+                try: meta_dict['duration'] = int(rt) * 60
+                except: pass
+            elif details.get('episode_run_time') and isinstance(details.get('episode_run_time'), list) and details.get('episode_run_time')[0]:
+                try: meta_dict['duration'] = int(details.get('episode_run_time')[0]) * 60
+                except: pass
             
             if details.get('genres'):
                 meta_dict['genre'] = [g['name'] for g in details['genres']]
@@ -3595,6 +3663,8 @@ def list_sources(params):
         if meta_dict.get('cast'): info_tag['cast'] = meta_dict['cast']
         if meta_dict.get('premiered'): info_tag['premiered'] = meta_dict['premiered']
         if meta_dict.get('mpaa'): info_tag['mpaa'] = meta_dict['mpaa']
+        if meta_dict.get('tagline'): info_tag['tagline'] = meta_dict['tagline']
+        if meta_dict.get('duration'): info_tag['duration'] = meta_dict['duration']
 
         if final_imdb_id: info_tag['imdbnumber'] = final_imdb_id
         if c_type == 'tv':
