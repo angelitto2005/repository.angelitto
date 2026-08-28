@@ -248,6 +248,41 @@ def get_watched_episodes_set(tmdb_id):
         pass
     return res
 
+def get_watched_episodes_set_batch(tmdb_ids):
+    prov = _get_provider_raw()
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes'}[prov]
+    result = {}
+    ids = [str(x) for x in (tmdb_ids or []) if x]
+    if not ids:
+        return result
+    for tid in ids:
+        result[tid] = {'set': set(), 'last': None, 'last_at': ''}
+    try:
+        mod = get_source_module()
+        conn = mod.get_connection()
+        cur = conn.cursor()
+        chunk_size = 400
+        for i in range(0, len(ids), chunk_size):
+            chunk = ids[i:i + chunk_size]
+            placeholders = ','.join(['?'] * len(chunk))
+            cur.execute(f"SELECT tmdb_id, season, episode, last_watched_at FROM {tbl} WHERE tmdb_id IN ({placeholders})", chunk)
+            for row in cur.fetchall():
+                tid, s, e, at = str(row[0]), row[1], row[2], row[3]
+                if tid not in result:
+                    continue
+                if not s or not e:
+                    continue
+                result[tid]['set'].add((int(s), int(e)))
+                if at:
+                    cur_last = result[tid]['last_at']
+                    if not cur_last or at > cur_last:
+                        result[tid]['last'] = (int(s), int(e))
+                        result[tid]['last_at'] = at
+        conn.close()
+    except Exception:
+        pass
+    return result
+
 def _refresh_tmdb_up_next(tmdb_id):
     """Recalculeaza randul TMDB Up Next dupa mark watched/unwatched (daca TMDb e conectat)."""
     try:

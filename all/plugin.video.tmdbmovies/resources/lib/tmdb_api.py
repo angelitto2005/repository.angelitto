@@ -3057,13 +3057,20 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             conn = trakt_sync.get_connection()
             c = conn.cursor()
             # 1. Verificam daca item-ul exista deja (contorul nu se incrementeaza la duplicate)
-            c.execute("SELECT 1 FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
+            c.execute("SELECT sort_index FROM tmdb_custom_list_items WHERE list_id=? AND tmdb_id=?", 
                       (str(list_id), str(tmdb_id)))
-            is_duplicate = c.fetchone() is not None
+            row_dup = c.fetchone()
+            is_duplicate = row_dup is not None
             
-            # 2. Inseram item-ul in baza locala (INSERT OR REPLACE pentru update sigur)
+            # 2. Inseram item-ul in baza locala - sort_index = min-1 ca sa fie primul (newest first)
+            if is_duplicate:
+                new_idx = row_dup[0]
+            else:
+                c.execute("SELECT MIN(sort_index) FROM tmdb_custom_list_items WHERE list_id=?", (str(list_id),))
+                row_min = c.fetchone()
+                new_idx = (row_min[0] - 1) if row_min and row_min[0] is not None else 0
             c.execute("INSERT OR REPLACE INTO tmdb_custom_list_items VALUES (?,?,?,?,?,?,?,?)", 
-                      (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview, -1))
+                      (str(list_id), str(tmdb_id), media_type_normalized, d_title, d_year, d_poster, d_overview, new_idx))
             
             # 3. Actualizam contorul doar daca e item nou (nu duplicat)
             if is_duplicate:
@@ -5819,13 +5826,13 @@ def _extract_mpaa(data, content_type):
         pass
 
 
-def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
-    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista)."""
+def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localization=False):
+    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista). skip_localization=True sare al 2-lea GET RO."""
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     str_id = str(tmdb_id)
     
     from resources.lib.config import get_plot_language_code
-    current_lang = get_plot_language_code()
+    current_lang = 'en' if skip_localization else get_plot_language_code()
     
     from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
     # 1. Check global RAM pool — skip if language doesn't match
@@ -5848,16 +5855,23 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
     if data:
         cached_lang = data.get('_cached_lang', 'en')
         if cached_lang == current_lang:
-            ram_pool_set(str_id, data)
-            ram_cache_set_tvshow(str_id, data)
-            return _ensure_clearlogo(data)
+            if lightweight or not data.get('_lightweight'):
+                ram_pool_set(str_id, data)
+                ram_cache_set_tvshow(str_id, data)
+                return _ensure_clearlogo(data)
     
     append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
     
     try:
-        res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
-        if res_en.status_code != 200: return None
+        res_en = None
+        for _attempt in range(3):
+            res_en = SESSION.get(url_en, headers=get_headers(), timeout=5)
+            if res_en.status_code == 429 and _attempt < 2:
+                xbmc.sleep(1000 * (_attempt + 1))
+                continue
+            break
+        if res_en is None or res_en.status_code != 200: return None
         data = res_en.json()
         
         data['_cached_lang'] = 'en'
@@ -5869,10 +5883,16 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
         if en_logos:
             data['clearlogo'] = en_logos[0]['file_path']
         
-        if current_lang != 'en':
+        if not skip_localization and current_lang != 'en':
             tmdb_lang = LANG_TO_TMDB.get(current_lang, 'en-US')
             url_target = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language={tmdb_lang}&append_to_response=images&include_image_language={get_plot_img_lang()}"
-            res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
+            res_target = None
+            for _attempt2 in range(3):
+                res_target = SESSION.get(url_target, headers=get_headers(), timeout=5)
+                if res_target.status_code == 429 and _attempt2 < 2:
+                    xbmc.sleep(1000 * (_attempt2 + 1))
+                    continue
+                break
             
             if res_target.status_code == 200:
                 data_target = res_target.json()
@@ -5901,11 +5921,21 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False):
         _ensure_clearlogo(data)
         ram_pool_set(str_id, data)
         ram_cache_set_tvshow(tmdb_id, data)
-        if not lightweight:
-            conn = trakt_sync.get_connection()
-            trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
-            conn.commit()
-            conn.close()
+        try:
+            existing = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
+            should_store = True
+            if existing and existing.get('_cached_lang') == data.get('_cached_lang'):
+                if not lightweight and existing.get('_lightweight'):
+                    should_store = True
+                elif lightweight and not existing.get('_lightweight'):
+                    should_store = False
+            if should_store:
+                conn = trakt_sync.get_connection()
+                trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
+                conn.commit()
+                conn.close()
+        except:
+            pass
         return data
     except Exception as e:
         import xbmc

@@ -687,8 +687,8 @@ def add_to_trakt_watchlist(tmdb_id, media_type, notify=True):
             poster = details.get('poster_path', '')
             overview = details.get('overview', '')
             
-            # Data format Trakt (ISO) pentru sortare corecta
-            added_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            # Data format Trakt (ISO) cu microsecunde pentru sortare corecta la adaugari rapide
+            added_at = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%fZ")
             
             conn = trakt_sync.get_connection()
             # Inseram fix 9 valori, matching exact structura tabelului
@@ -902,7 +902,7 @@ def add_to_trakt_list(list_slug, tmdb_id, media_type):
             overview = details.get('overview', '')
             
             from datetime import datetime
-            added_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+            added_iso = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             conn = trakt_sync.get_connection()
             # 1. Verificam daca exista deja (contorul nu se incrementeaza la duplicate)
             cur = conn.execute("SELECT 1 FROM user_list_items WHERE list_slug=? AND media_type=? AND tmdb_id=?",

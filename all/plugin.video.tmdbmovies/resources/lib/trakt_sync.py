@@ -3168,41 +3168,19 @@ def _tmdb_ep_meta(tmdb_id, season, episode):
 
 def sync_tmdb_up_next(c):
     import datetime
-    from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from resources.lib.watched_provider import get_watched_episodes_set_batch, _get_provider_raw, get_source_module
     from resources.lib import tmdb_api
 
+    t0 = time.time()
     try:
         c.execute("SELECT tmdb_id, title, poster, overview FROM tmdb_account_lists "
                   "WHERE list_type='watchlist' AND media_type='tv' ORDER BY added_at DESC")
-        rows = c.fetchall()
-        wl_ids = {str(r['tmdb_id']) for r in rows}
+        wl_rows = c.fetchall()
+        wl_ids = {str(r['tmdb_id']) for r in wl_rows}
 
-        clean_rows = []
-        for row in rows:
-            tid = str(row['tmdb_id'])
-            show_title = row['title'] or 'Unknown Show'
-            poster = row['poster'] or ''
-            overview = row['overview'] or ''
-
-            show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
-            if not show_details:
-                continue
-
-            w = get_watched_episodes_set(tid)
-            if w['set']:
-                next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
-            else:
-                next_ep = _tmdb_first_episode(show_details)
-
-            if not next_ep:
-                continue  # terminat / fara date TMDb
-
-            ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
-            now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            clean_rows.append((tid, show_title, next_ep['season'], next_ep['number'],
-                               ep_title, ep_overview or overview, w['last_at'] or now_str,
-                               poster, air_date, len(w['set'])))
-
+        pool_ids = []
         try:
             prov = _get_provider_raw()
             prov_tbl = {'trakt': 'trakt_next_episodes',
@@ -3212,34 +3190,119 @@ def sync_tmdb_up_next(c):
                 pconn = get_source_module().get_connection()
                 pcur = pconn.cursor()
                 pcur.execute("SELECT DISTINCT tmdb_id FROM %s" % prov_tbl)
-                pool_ids = [str(r[0]) for r in pcur.fetchall()]
+                raw_pool = [str(r[0]) for r in pcur.fetchall()]
                 pconn.close()
-                for tid in pool_ids:
-                    if tid in wl_ids:
-                        continue
-                    show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
-                    if not show_details:
-                        continue
-                    w = get_watched_episodes_set(tid)
-                    if not w['set']:
-                        continue
-                    next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
-                    if not next_ep:
-                        continue
-                    ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
-                    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                    poster = get_poster_from_db(tid, 'show') or show_details.get('poster_path', '')
-                    clean_rows.append((tid, show_details.get('name', 'Unknown Show'),
-                                       next_ep['season'], next_ep['number'], ep_title,
-                                       ep_overview, w['last_at'] or now_str,
-                                       poster, air_date, len(w['set'])))
+                pool_ids = [tid for tid in raw_pool if tid not in wl_ids]
         except Exception as e:
             log(f"[TMDB SYNC] Up Next pool extension error: {e}", xbmc.LOGERROR)
+            pool_ids = []
+
+        all_tids = list(wl_ids) + pool_ids
+        if not all_tids:
+            c.execute("DELETE FROM tmdb_next_episodes")
+            log(f"[TMDB SYNC] Up Next: 0 seriale (watchlist TMDb + pool {_get_provider_raw()}).")
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
+            return
+
+        watched_map = get_watched_episodes_set_batch(all_tids)
+
+        show_map = {}
+        def _fetch_show(tid):
+            try:
+                skip = tid in wl_ids
+                return tid, tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=skip)
+            except:
+                return tid, None
+
+        t_show_start = time.time()
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(_fetch_show, tid): tid for tid in all_tids}
+            for f in as_completed(futures):
+                tid, data = f.result()
+                if data:
+                    show_map[tid] = data
+        log(f"[TMDB SYNC] Up Next show_details: {len(show_map)}/{len(all_tids)} in {time.time() - t_show_start:.1f}s (10 workers, lightweight, wl EN-only, pool localized)")
+
+        pending = []
+        for row in wl_rows:
+            tid = str(row['tmdb_id'])
+            show_details = show_map.get(tid)
+            if not show_details:
+                continue
+            w = watched_map.get(tid) or {'set': set(), 'last': None, 'last_at': ''}
+            if w['set']:
+                next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+            else:
+                next_ep = _tmdb_first_episode(show_details)
+            if not next_ep:
+                continue
+            pending.append({
+                'tid': tid,
+                'show_title': row['title'] or 'Unknown Show',
+                'poster': row['poster'] or '',
+                'overview': row['overview'] or '',
+                'w': w,
+                'next_ep': next_ep,
+                'is_pool': False,
+                'show_details': show_details
+            })
+
+        for tid in pool_ids:
+            show_details = show_map.get(tid)
+            if not show_details:
+                continue
+            w = watched_map.get(tid) or {'set': set(), 'last': None, 'last_at': ''}
+            if not w['set']:
+                continue
+            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+            if not next_ep:
+                continue
+            pending.append({
+                'tid': tid,
+                'show_title': show_details.get('name', 'Unknown Show'),
+                'poster': get_poster_from_db(tid, 'show') or show_details.get('poster_path', ''),
+                'overview': '',
+                'w': w,
+                'next_ep': next_ep,
+                'is_pool': True,
+                'show_details': show_details
+            })
+
+        t_season_start = time.time()
+        def _fetch_meta(entry):
+            try:
+                tid = entry['tid']
+                s = entry['next_ep']['season']
+                e = entry['next_ep']['number']
+                ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, s, e)
+                return entry, ep_title, ep_overview, air_date
+            except:
+                return entry, '', '', ''
+
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            futures = {ex.submit(_fetch_meta, entry): entry for entry in pending}
+            season_results = []
+            for f in as_completed(futures):
+                season_results.append(f.result())
+
+        clean_rows = []
+        now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        for entry, ep_title, ep_overview, air_date in season_results:
+            w = entry['w']
+            next_ep = entry['next_ep']
+            clean_rows.append((entry['tid'], entry['show_title'], next_ep['season'], next_ep['number'],
+                               ep_title, ep_overview or entry['overview'], w['last_at'] or now_str,
+                               entry['poster'], air_date, len(w['set'])))
 
         c.execute("DELETE FROM tmdb_next_episodes")
         if clean_rows:
             c.executemany("INSERT OR REPLACE INTO tmdb_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)", clean_rows)
-        log(f"[TMDB SYNC] Up Next: {len(clean_rows)} seriale (watchlist TMDb + pool {_get_provider_raw()}).")
+        elapsed = time.time() - t0
+        log(f"[TMDB SYNC] Up Next: {len(clean_rows)} seriale (watchlist TMDb + pool {_get_provider_raw()}) in {elapsed:.1f}s (show {time.time()-t_season_start:.1f}s season phase).")
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()

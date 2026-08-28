@@ -1,3 +1,7 @@
+1.1.248
+- Speed up TMDB Up Next sync by batching watched queries and parallelizing show/season fetches
+- Fix TMDb custom lists ordering when adding items
+
 1.1.247
 - Fixed duplicate movie folders (Library import) on year change (TMDb) and permanently missing .strm files — both now self-repair at next sync.
 - Fixed P2P providers Menu
