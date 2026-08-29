@@ -159,6 +159,40 @@ def _tier_matches(tier, cat, is_cached):
 ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
+# AFISAREA NUMELUI PROVIDERULUI (RESPECTA NUMELE PERSONALIZATE)
+# =============================================================================
+def get_provider_display_name(provider_id):
+    """Numele vizibil al unui provider, respectand setarile custom_*_name."""
+    if not provider_id:
+        return ''
+    pid = str(provider_id).lower()
+    try:
+        custom_val = ADDON.getSetting(f'{pid}_name')
+    except Exception:
+        custom_val = ''
+    if custom_val:
+        return custom_val
+    display_map = {
+        'sooti': 'Sootio', 'webstreamr': 'Webstreamr', 'streamvix': 'StreamVix',
+        'vidlink': 'VidLink', 'vsembed': 'VSEmbed', 'videasy': 'VidEasy',
+        'netmirror': 'NetMirror', 'vidmody': 'Vidmody', 'movieblast': 'MovieBlast',
+        'moviebox': 'MovieBox', 'onlykdrama': 'OnlyKDrama', 'hdhub4u': 'HDHub4u',
+        'mkvcinemas': 'MKVCinemas', 'moviesdrive': 'MoviesDrive', 'hdhub': 'HDHub',
+        'torrentio': 'Torrentio', 'primesrcme': 'PrimeSrc', 'vaplayer': 'VAPlayer',
+        'flixer': 'Flixer', 'fshdnet': 'FSHDnet', 'aiostreams': 'AIOStreams',
+        'mediafusion': 'MediaFusion', 'comet': 'Comet', 'meteor': 'Meteor',
+        'usenet': 'Usenet',
+        'p2p_yts': 'YTS', 'p2p_torrentio': 'Torrentio P2P', 'p2p_comet': 'Comet P2P',
+        'p2p_mediafusion': 'MediaFusion P2P', 'p2p_filelist': 'FileList',
+        'p2p_speedapp': 'SpeedApp', 'p2p_seedpool': 'SeedPool', 'p2p_knaben': 'Knaben',
+        'p2p_thepiratebay': 'TPB',
+        'real-debrid': 'Real-Debrid', 'premiumize': 'Premiumize',
+        'torbox': 'TorBox', 'alldebrid': 'AllDebrid',
+    }
+    return display_map.get(pid, pid.replace('p2p_', '').replace('custom', 'Custom ').title() or pid.upper())
+
+
+# =============================================================================
 # HELPER GLOBAL PENTRU IDENTIFICAREA PROVIDERILOR (FALLBACK)
 # =============================================================================
 def get_fallback_provider_id(name_string):
@@ -841,6 +875,10 @@ def extract_stream_info(stream):
                     server = potential_server
         except:
             pass
+    
+    # 2f. P2P/Stremio: parser-ul a extras indexerul real in 'server' la top-level
+    if not server:
+        server = stream.get('server', '')
     
     # 3. GROUP (doar daca nu avem source_provider)
     group = ""
@@ -2195,7 +2233,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     elif '720' in _clean_i: bridge_quality = '720p'
                     elif '4k' in _clean_i: bridge_quality = '4K'
                     else: bridge_quality = 'SD'
-                    _pr = stream.get('provider_id', '').replace('p2p_', '').upper()
+                    _pr = get_provider_display_name(stream.get('provider_id', ''))
                     _inf = stream.get('info', {}) or {}
                     _p1 = [f'[COLOR FFCCCCFF][B]{i+1:02d}[/B][/COLOR]']
                     if _pr:

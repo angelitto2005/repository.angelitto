@@ -4317,6 +4317,10 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
         if clean and not is_valid_filename(clean): indexer = clean
+    # Emoji/flag cleanup from indexer (EX: 'EXT 🇬🇧 / 🇷🇺 / 🇺🇦' -> 'EXT')
+    if indexer:
+        indexer = re.sub(r'[\U0001F000-\U0001FFFF\u2600-\u27BF\uFE0F]', '', indexer)
+        indexer = re.sub(r'^[\s/]+|[\s/]+$', '', indexer)
     # Garbage validation: none, emoji, codec terms, GB/MB
     if indexer and (indexer.lower() == 'none' or re.search(r'[🗂️⚙️💾📅🏴]', indexer)):
         indexer = ''

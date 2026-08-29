@@ -77,7 +77,7 @@ _RO_DUB_RE = _cached_re(r'(?i)(?:\bRO[\s._-]?DUB(?:BED)?\b|\bROMANIAN\b|\bLIMBA.
 AIO_ADDON_COLORS = {
     'comet':          'FFFF4500',
     'mediafusion':    'FFFF4500',
-    'torrentio':      'FF7B68EE',
+    'torrentio':      'FFFF4500',
     'jackettio':      'FF32CD32',
     'orionoid':       'FFFFA500',
     'easynews':       'FF00CED1',
@@ -138,16 +138,16 @@ AIO_ADDON_COLORS = {
     'p2p_yts':        'FFDAA520',
     'p2p_torrentio':  'FFDAA520',
     'p2p_comet':      'FFCC8899',
-    'p2p_mediafusion':'FF7B68EE',
+    'p2p_mediafusion':'FFFF4500',
     'p2p_filelist':   'FF00BFFF',
     'p2p_speedapp':   'FF50C878',
     'p2p_seedpool':   'FF32CD32',
     'p2p_knaben':     'FFDAA520',
     'p2p_thepiratebay': 'FF8B4513',
-    'p2p_custom1':    'FFDAA520',
-    'p2p_custom2':    'FFCC8899',
-    'p2p_custom3':    'FF7B68EE',
-    'p2p_custom4':    'FF00BFFF',
+    'p2p_custom1':    'FFE238EC',
+    'p2p_custom2':    'FFE238EC',
+    'p2p_custom3':    'FFE238EC',
+    'p2p_custom4':    'FFE238EC',
     'p2p_custom5':    'FFE238EC',
 }
 
@@ -622,7 +622,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 else:
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
-                    if source_provider and source_provider.lower() != provider.lower():
+                    _sp_dupe = bool(source_provider and provider and source_provider.lower() in provider.lower())
+                    if source_provider and not _sp_dupe and source_provider.lower() != provider.lower():
                         parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                     else:
                         parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
