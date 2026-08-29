@@ -590,14 +590,14 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         parts.append(ro_dub_tag)
                     parts.append(f"[COLOR {p_color}][B]FileList[/B][/COLOR]")
                     fl_indexer = info.get('indexer', '')
-                    if fl_indexer and not ro_dub_tag:
+                    if show_indexers and fl_indexer and not ro_dub_tag:
                         parts.append(f"[COLOR lightskyblue][B]{fl_indexer}[/B][/COLOR]")
                 elif provider_id == 'p2p_speedapp':
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
                     parts.append(f"[COLOR {p_color}][B]SpeedApp[/B][/COLOR]")
                     sa_indexer = info.get('indexer', '')
-                    if sa_indexer and not ro_dub_tag:
+                    if show_indexers and sa_indexer and not ro_dub_tag:
                         parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
                 elif provider_id == 'p2p_knaben':
                     if ro_dub_tag:
@@ -617,7 +617,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                     else:
                         parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
-                    if server and server.lower() not in [provider.lower(), source_provider.lower()]:
+                    if show_indexers and server and server.lower() not in [provider.lower(), source_provider.lower()]:
                         parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
                 else:
                     if ro_dub_tag:
@@ -627,7 +627,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         parts.append(f"[COLOR {p_color}][B]{provider} [COLOR FF7B68EE]{source_provider}[/B][/COLOR]")
                     else:
                         parts.append(f"[COLOR {p_color}][B]{provider}[/B][/COLOR]")
-                    if server and server.lower() not in [provider.lower(), source_provider.lower()]:
+                    if show_indexers and server and server.lower() not in [provider.lower(), source_provider.lower()]:
                         parts.append(f"[COLOR FF7B68EE][B]{server}[/B][/COLOR]")
 
             if release_group:
