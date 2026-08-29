@@ -557,6 +557,81 @@ def _view_account():
             f'[B][COLOR lightskyblue]API Requests:[/COLOR][/B] {api_used} / {api_limit}',
             f'[B][COLOR lightskyblue]API Requests Remaining:[/COLOR][/B] [B][COLOR {"FF6AFB92" if remaining > 100 else "FFE41B17"}]{remaining}[/COLOR][/B]',
         ]
+        try:
+            import sqlite3, os
+            from resources.lib.mdblist_sync import DB_PATH as _MDB_DB
+            from resources.lib.mdblist_sync import init_database as _mdb_init
+            _mdb_init()
+            if os.path.exists(_MDB_DB):
+                _conn = sqlite3.connect(_MDB_DB)
+                _c = _conn.cursor()
+                lines.append('')
+                lines.append('[B][COLOR FFFDBD01]--- Account ---[/COLOR][/B]')
+                try:
+                    _c.execute("SELECT COUNT(*) FROM mdblist_watchlist WHERE media_type='movie'")
+                    _wl_m = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_watchlist WHERE media_type IN ('show','tv')")
+                    _wl_s = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_watchlist")
+                    _wl = _c.fetchone()[0] or 0
+                    if _wl:
+                        lines.append(f'  Watchlist: [B]{_wl}[/B] items ([B]{_wl_m}[/B] Movies + [B]{_wl_s}[/B] Shows)')
+                    else:
+                        lines.append(f'  Watchlist: [B]{_wl}[/B] items')
+                except:
+                    try:
+                        _c.execute("SELECT COUNT(*) FROM mdblist_watchlist")
+                        _wl = _c.fetchone()[0] or 0
+                        lines.append(f'  Watchlist: [B]{_wl}[/B] items')
+                    except: pass
+                try:
+                    _c.execute("SELECT COUNT(*) FROM mdblist_collection WHERE media_type='movie'")
+                    _col_m = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_collection WHERE media_type IN ('show','tv')")
+                    _col_s = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_collection")
+                    _col = _c.fetchone()[0] or 0
+                    if _col:
+                        lines.append(f'  Collection: [B]{_col}[/B] items ([B]{_col_m}[/B] Movies + [B]{_col_s}[/B] Shows)')
+                    else:
+                        lines.append(f'  Collection: [B]{_col}[/B] items')
+                except:
+                    try:
+                        _c.execute("SELECT COUNT(*) FROM mdblist_collection")
+                        _col = _c.fetchone()[0] or 0
+                        lines.append(f'  Collection: [B]{_col}[/B] items')
+                    except: pass
+                try:
+                    _c.execute("SELECT COUNT(*) FROM mdblist_ratings")
+                    _rat = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_ratings WHERE media_type='movie'")
+                    _rat_m = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_ratings WHERE media_type='show'")
+                    _rat_s = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_ratings WHERE media_type='episode'")
+                    _rat_e = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(*) FROM mdblist_ratings WHERE media_type='season'")
+                    _rat_se = _c.fetchone()[0] or 0
+                    if _rat:
+                        lines.append(f'  Ratings Given: [B]{_rat}[/B] (Movies: {_rat_m}, Shows: {_rat_s}, Seasons: {_rat_se}, Episodes: {_rat_e})')
+                    else:
+                        lines.append(f'  Ratings Given: [B]{_rat}[/B]')
+                except: pass
+                try:
+                    _c.execute("SELECT COUNT(*) FROM mdblist_dropped")
+                    _drp = _c.fetchone()[0] or 0
+                    lines.append(f'  Dropped Shows: [B]{_drp}[/B]')
+                except: pass
+                try:
+                    _c.execute("SELECT COUNT(*) FROM mdblist_watched_movies")
+                    _hist_m = _c.fetchone()[0] or 0
+                    _c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM mdblist_watched_episodes")
+                    _hist_s = _c.fetchone()[0] or 0
+                    lines.append(f'  History: [B]{_hist_m}[/B] movies, [B]{_hist_s}[/B] shows')
+                except: pass
+                _conn.close()
+        except:
+            pass
         xbmcgui.Dialog().textviewer('[B][COLOR lightskyblue]MDBList Account[/COLOR][/B]', '\n'.join(lines))
     except Exception as e:
         xbmc.log(f'[mdblist] _view_account error: {e}', xbmc.LOGERROR)

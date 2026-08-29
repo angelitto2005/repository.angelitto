@@ -251,7 +251,19 @@ def _view_account():
 
     # --- Utilizare cont din mirror local (paritate trakt_account_info "Limits") ---
     if is_authenticated():
-        wl_n = rat_n = drp_n = hist_m = hist_s = 0
+        wl_n = wl_m = wl_s = wl_a = rat_n = rat_m = rat_s = rat_e = drp_n = hist_m = hist_s = 0
+        try:
+            # Watchlist counts din sursa live filtrata (paritate cu submeniurile
+            # de status: _fetch_status_items aplica _filter_fully_watched la
+            # 'watching', deci serialele la zi cu difuzarea nu se numara).
+            ptw = _fetch_status_items('plantowatch') or {}
+            wat = _fetch_status_items('watching') or {}
+            wl_m = sum(len((d.get('movies') or [])) for d in (ptw, wat))
+            wl_s = sum(len((d.get('shows') or [])) for d in (ptw, wat))
+            wl_a = sum(len((d.get('anime') or [])) for d in (ptw, wat))
+            wl_n = wl_m + wl_s + wl_a
+        except:
+            wl_n = wl_m = wl_s = wl_a = 0
         try:
             import sqlite3
             from resources.lib import simkl_sync
@@ -260,10 +272,14 @@ def _view_account():
             if os.path.exists(DB_PATH):
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
-                c.execute("SELECT COUNT(*) FROM simkl_watchlist")
-                wl_n = c.fetchone()[0] or 0
                 c.execute("SELECT COUNT(*) FROM simkl_ratings")
                 rat_n = c.fetchone()[0] or 0
+                c.execute("SELECT COUNT(*) FROM simkl_ratings WHERE media_type='movie'")
+                rat_m = c.fetchone()[0] or 0
+                c.execute("SELECT COUNT(*) FROM simkl_ratings WHERE media_type IN ('show','tv')")
+                rat_s = c.fetchone()[0] or 0
+                c.execute("SELECT COUNT(*) FROM simkl_ratings WHERE media_type='episode'")
+                rat_e = c.fetchone()[0] or 0
                 c.execute("SELECT COUNT(*) FROM simkl_dropped")
                 drp_n = c.fetchone()[0] or 0
                 c.execute("SELECT COUNT(*) FROM simkl_watched_movies")
@@ -274,9 +290,18 @@ def _view_account():
         except:
             pass
         labels.append(('[B][COLOR FFFDBD01]--- Account ---[/COLOR][/B]', None, False))
-        labels.append(('  Watchlist: [B]%d[/B] items (movies + shows)' % wl_n, None, False))
-        labels.append(('  Ratings: [B]%d[/B]' % rat_n, None, False))
-        labels.append(('  Dropped: [B]%d[/B]' % drp_n, None, False))
+        if wl_a:
+            labels.append(('  Watchlist: [B]%d[/B] items ([B]%d[/B] Movies + [B]%d[/B] Shows + [B]%d[/B] Anime)' % (wl_n, wl_m, wl_s, wl_a), None, False))
+        else:
+            labels.append(('  Watchlist: [B]%d[/B] items ([B]%d[/B] Movies + [B]%d[/B] Shows)' % (wl_n, wl_m, wl_s), None, False))
+        if rat_n:
+            if rat_e:
+                labels.append(('  Ratings Given: [B]%d[/B] (Movies: %d, Shows: %d, Episodes: %d)' % (rat_n, rat_m, rat_s, rat_e), None, False))
+            else:
+                labels.append(('  Ratings Given: [B]%d[/B] (Movies: %d, Shows: %d)' % (rat_n, rat_m, rat_s), None, False))
+        else:
+            labels.append(('  Ratings Given: [B]%d[/B]' % rat_n, None, False))
+        labels.append(('  Dropped Shows: [B]%d[/B]' % drp_n, None, False))
         labels.append(('  History: [B]%d[/B] movies, [B]%d[/B] shows' % (hist_m, hist_s), None, False))
 
     if is_authenticated():

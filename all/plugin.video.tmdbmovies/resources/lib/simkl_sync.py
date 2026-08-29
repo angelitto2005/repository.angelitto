@@ -349,12 +349,18 @@ def sync_watchlist_local(items):
             if not isinstance(item, dict):
                 continue
             mt = item.get('mediatype') or item.get('type') or ''
-            if mt in ('show', 'tv', 'series', 'tvshow', 'anime'):
+            if mt == 'anime':
+                mt = 'anime'
+            elif mt in ('show', 'tv', 'series', 'tvshow'):
                 mt = 'tv'
             elif mt == 'movie':
                 mt = 'movie'
             else:
-                mt = 'tv' if 'show' in item or 'seasons' in item else 'movie'
+                # fallback: detect anime wrapper
+                if 'anime' in item:
+                    mt = 'anime'
+                else:
+                    mt = 'tv' if 'show' in item or 'seasons' in item else 'movie'
             inner = item.get('show') or item.get('movie') or item.get('anime') or item
             ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
             tmdb_id = str(ids.get('tmdb', '') or inner.get('tmdb_id', '') or item.get('tmdb_id', '') or '')
@@ -1125,7 +1131,7 @@ def _sync_watchlist(api):
         if not data or not isinstance(data, dict):
             return
         items = []
-        for key, mt in (('shows', 'tv'), ('anime', 'tv'), ('movies', 'movie')):
+        for key, mt in (('shows', 'tv'), ('anime', 'anime'), ('movies', 'movie')):
             for item in data.get(key, []) or []:
                 if isinstance(item, dict):
                     it = dict(item)

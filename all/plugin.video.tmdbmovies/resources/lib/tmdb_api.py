@@ -2138,6 +2138,47 @@ def tmdb_account_info():
     if rec_n:
         body.append(f'  Recommendations: {val(rec_n)}')
 
+    # --- Ratings given (live, v3 rated endpoints with Bearer) ---
+    try:
+        aid = session.get('account_id')
+        if aid:
+            def _rated_total(path):
+                try:
+                    res = tmdb_auth_request(path, method='GET', params={'language': 'en-US', 'page': 1, 'sort_by': 'created_at.desc'}, v4=False)
+                    if isinstance(res, dict):
+                        if 'total_results' in res:
+                            return int(res.get('total_results') or 0)
+                        if 'total_pages' in res and 'results' in res:
+                            # fallback: daca API nu da total_results, numaram prima pagina + estimam
+                            return len(res.get('results') or [])
+                    return 0
+                except:
+                    return 0
+            r_m = _rated_total(f"/account/{aid}/rated/movies")
+            r_tv = _rated_total(f"/account/{aid}/rated/tv")
+            r_ep = _rated_total(f"/account/{aid}/rated/tv/episodes")
+            r_total = r_m + r_tv + r_ep
+            # fallback: daca endpoint-ul episoadelor nu exista (404 -> 0), incercam si v4
+            if r_total == 0 and (r_m == 0 and r_tv == 0):
+                # v4 rated nu exista documentat, dar incercam pentru compatibilitate
+                try:
+                    res4 = tmdb_auth_request(f"/account/{aid}/rated/tv/episodes", method='GET', v4=True)
+                    if isinstance(res4, dict) and 'total_results' in res4:
+                        r_ep = int(res4.get('total_results') or 0)
+                        r_total = r_m + r_tv + r_ep
+                except:
+                    pass
+            body.append('')
+            body.append(section('--- Ratings Given ---'))
+            if r_ep:
+                body.append(f'  Total: {val(r_total)} (Movies: {r_m}, TV Shows: {r_tv}, Episodes: {r_ep})')
+            else:
+                body.append(f'  Total: {val(r_total)} (Movies: {r_m}, TV Shows: {r_tv})')
+            if r_total == 0:
+                body.append(f'  [COLOR gray]No ratings yet[/COLOR]')
+    except:
+        pass
+
     text = '\n'.join(body)
     xbmcgui.Dialog().textviewer('[B][COLOR FF00CED1]TMDB ACCOUNT INFO[/COLOR][/B]', text)
 

@@ -3615,29 +3615,70 @@ def trakt_account_info():
         col_lim = (limits.get('collection') or {}).get('item_count')
         rec_lim = (limits.get('recommendations') or {}).get('item_count')
 
-        # Utilizare curenta watchlist din DB locala (instant, offline)
-        wl_now = 0
+        # Utilizare curenta watchlist din DB locala (instant, offline) - cu breakdown
+        wl_now = wl_movies = wl_shows = 0
+        fav_now = fav_movies = fav_shows = 0
+        lst_items_total = lst_movies = lst_shows = 0
         try:
             from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist'")
-            wl_now = c.fetchone()[0]
+            wl_now = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist' AND media_type='movie'")
+            wl_movies = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist' AND media_type='show'")
+            wl_shows = c.fetchone()[0] or 0
+            c.execute("SELECT COALESCE(SUM(item_count),0) FROM user_lists")
+            lst_items_total = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM user_list_items WHERE media_type='movie'")
+            lst_movies = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM user_list_items WHERE media_type='show'")
+            lst_shows = c.fetchone()[0] or 0
+            # fallback: daca user_list_items e incomplet (doar iteme cu tmdb), folosim sum item_count
+            if lst_items_total < (lst_movies + lst_shows):
+                lst_items_total = lst_movies + lst_shows
+            c.execute("SELECT COUNT(*) FROM trakt_favorites")
+            fav_now = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM trakt_favorites WHERE media_type='movie'")
+            fav_movies = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM trakt_favorites WHERE media_type='show'")
+            fav_shows = c.fetchone()[0] or 0
             conn.close()
+        except: pass
+
+        # Dropped Shows (hidden) din DB locala
+        dropped_cnt = 0
+        try:
+            from resources.lib import trakt_sync as _ts
+            _conn2 = _ts.get_connection()
+            _c2 = _conn2.cursor()
+            _c2.execute("SELECT COUNT(*) FROM trakt_hidden_shows")
+            dropped_cnt = _c2.fetchone()[0] or 0
+            _conn2.close()
         except: pass
 
         body.append('')
         body.append(section('--- Limits ---'))
         if wl_lim:
-            body.append(f'  Watchlist: {val(f"{wl_now}/{wl_lim}")} items (movies + shows)')
+            body.append(f'  Watchlist: {val(f"{wl_now}/{wl_lim}")} items ([B]{wl_movies}[/B] Movies + [B]{wl_shows}[/B] Shows)')
         if lst_cnt and lst_lim:
-            body.append(f'  Personal Lists: {val(f"{lst_cnt} lists / {lst_lim} items each")}')
+            body.append(f'  Personal Lists: {val(f"{lst_cnt} lists / {lst_lim} items each")} - total [B]{lst_items_total}[/B] items')
         if fav_lim:
-            body.append(f'  Favorites: {val(fav_lim)}')
+            body.append(f'  Favorites: {val(f"{fav_now}/{fav_lim}")} items ([B]{fav_movies}[/B] Movies + [B]{fav_shows}[/B] Shows)')
         if col_lim:
-            body.append(f'  Collection: {val(col_lim)}')
+            # Collection din stats (offline)
+            try:
+                _col_m = stats.get('movies', {}).get('collected', 0) if stats else 0
+                _col_s = stats.get('shows', {}).get('collected', 0) if stats else 0
+                _col_total = _col_m + _col_s
+                body.append(f'  Collection: {val(f"{_col_total}/{col_lim}")} items ([B]{_col_m}[/B] Movies + [B]{_col_s}[/B] Shows)')
+            except:
+                body.append(f'  Collection: {val(col_lim)}')
         if rec_lim:
             body.append(f'  Recommendations: {val(rec_lim)}')
+        if dropped_cnt:
+            body.append(f'  Dropped Shows: {val(dropped_cnt)}')
 
         if stats:
             movies = stats.get('movies', {})
@@ -3655,8 +3696,8 @@ def trakt_account_info():
             body.append(section('--- Episodes ---'))
             body.append(f'  Watched: {val(episodes.get("watched", 0))}  |  Hours: {val(episodes.get("minutes", 0) // 60)}')
             
-            body.append(section('--- Ratings ---'))
-            body.append(f'  Total given: {val(ratings.get("total", 0))}')
+            body.append(section('--- Ratings Given ---'))
+            body.append(f'  Total: {val(ratings.get("total", 0))}')
 
         text = '\n'.join(body)
         xbmcgui.Dialog().textviewer('[B][COLOR pink]TRAKT ACCOUNT INFO[/COLOR][/B]', text)
