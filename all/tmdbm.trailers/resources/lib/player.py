@@ -541,6 +541,218 @@ def _fast_extract(video_id):
     return data
 
 
+_TMDB_API_KEY = '8ad3c21a92a64da832c559d58cc63ab4'
+
+# Clip/spot alternative videos shorter than this (seconds) are deprioritized
+# in favor of real trailer-length clips.
+_MIN_TRAILER_DURATION = 30
+
+
+def _search_innertube(query, max_results=5):
+    """Search YouTube via the same ios_testsuite client used for playback.
+    Returns a list of (video_id, title) for real video results."""
+    import re as _re
+    import requests as _rq
+    cpn = ''.join(random.choice(
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_')
+        for _ in range(16))
+    payload = {
+        'context': {'client': {
+            'clientName': 'IOS',
+            'clientVersion': '20.20.7',
+            'deviceMake': 'Apple',
+            'deviceModel': 'iPhone16,2',
+            'osName': 'iOS',
+            'osVersion': '18.5.0.22F76',
+            'platform': 'MOBILE',
+            'hl': 'en',
+            'gl': 'US',
+        }},
+        'cpn': cpn,
+        'query': query,
+    }
+    headers = {
+        'Origin': 'https://m.youtube.com',
+        'User-Agent': _IOS_TS_UA,
+        'X-YouTube-Client-Name': '5',
+        'X-YouTube-Client-Version': '20.20.7',
+        'Content-Type': 'application/json',
+    }
+    try:
+        r = _rq.post('https://www.youtube.com/youtubei/v1/search?prettyPrint=false',
+                     data=json.dumps(payload), headers=headers, timeout=20)
+        body = r.json()
+    except Exception as e:
+        _log('search innertube error: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
+        return []
+
+    out = []
+    seen_ids = set()
+
+    def push(vid, title):
+        if vid in seen_ids or not vid:
+            return
+        seen_ids.add(vid)
+        out.append((vid, title.strip()))
+        return len(out) >= max_results
+
+    def walk(node, cur_title=''):
+        if len(out) >= max_results:
+            return True
+        if isinstance(node, dict):
+            vr = node.get('videoRenderer')
+            if isinstance(vr, dict):
+                vid = vr.get('videoId') or ''
+                runs = (vr.get('title') or {}).get('runs') or []
+                t = ''.join(x.get('text', '') for x in runs) if runs else (
+                    (vr.get('title') or {}).get('simpleText') or '')
+                if push(vid, t):
+                    return True
+            # New 'element' format: compactVideoModel holds title+watchEndpoint
+            cvm = node.get('compactVideoModel')
+            if isinstance(cvm, dict):
+                try:
+                    cur_title = cvm['compactVideoData']['videoData']['metadata']['title']
+                except Exception:
+                    cur_title = ''
+            w = node.get('watchEndpoint')
+            if isinstance(w, dict) and w.get('videoId'):
+                if push(w['videoId'], cur_title or ''):
+                    return True
+            for v in node.values():
+                if walk(v, cur_title):
+                    return True
+        elif isinstance(node, list):
+            for v in node:
+                if walk(v, cur_title):
+                    return True
+        return False
+
+    try:
+        contents = body['contents']['sectionListRenderer']['contents']
+    except Exception:
+        contents = None
+    if contents is None:
+        try:
+            contents = body['contents']['twoColumnSearchResultsRenderer'][
+                'primaryContents']['sectionListRenderer']['contents']
+        except Exception:
+            contents = []
+
+    done = False
+    for sec in contents:
+        if done:
+            break
+        done = walk(sec)
+
+    if not out and contents:
+        _log('search returned no parseable results for "{}"'.format(query),
+             xbmc.LOGWARNING)
+    return out
+
+
+def _tmdb_alt_videos(tmdb_id, dbtype, excluded):
+    """Other playable TMDb videos for the same title, prioritizing real
+    trailers (with 'trailer' in the name) over teasers/clips/spots."""
+    import requests as _rq
+    if not tmdb_id:
+        return []
+    media_type = 'tv' if (dbtype or '').lower() in ('tvshow', 'tv') else 'movie'
+    try:
+        url = ('https://api.themoviedb.org/3/{}/{}'
+               '/videos?api_key={}&language=en-US').format(
+                   media_type, tmdb_id, _TMDB_API_KEY)
+        r = _rq.get(url, timeout=10)
+        data = r.json()
+    except Exception as e:
+        _log('TMDb alt videos error: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
+        return []
+    scored = []
+    for v in (data.get('results') or []):
+        if not (v.get('site') == 'YouTube' and v.get('key')):
+            continue
+        if v['key'] in excluded:
+            continue
+        name = (v.get('name') or '').lower()
+        vtype = (v.get('type') or '').lower()
+        score = 0
+        if 'trailer' in name:
+            score += 3
+        if vtype == 'trailer':
+            score += 2
+        elif vtype == 'teaser':
+            score += 1
+        scored.append((score, v['key']))
+    scored.sort(key=lambda x: -x[0])
+    result = [k for _, k in scored]
+    if result:
+        _log('Found {} alt TMDb trailer candidate(s)'.format(len(result)))
+    return result
+
+
+def _try_alt_trailer(video_id, title, year, tmdb_id, dbtype, excluded):
+    """Find and return playable data for an ALTERNATIVE trailer when the
+    requested one is blocked (geo/availability). Tries TMDb alternates first,
+    then a YouTube search by title. Prefers real trailer-length clips
+    (>= MIN_TRAILER_DURATION s) over short spots/teasers; falls back to the
+    longest servable clip if none is trailer-length. Returns data or None."""
+    import re as _re
+    candidates = []
+    try:
+        candidates += _tmdb_alt_videos(tmdb_id, dbtype, excluded)
+    except Exception:
+        pass
+    if title:
+        queries = []
+        if year and str(year).isdigit():
+            queries.append('{title} {year} official trailer'.format(
+                title=title, year=year))
+        queries.append('{t} trailer'.format(t=title))
+        if not candidates:
+            queries.append(title)
+        for q in queries:
+            for vid, _t in _search_innertube(q):
+                if vid not in excluded and vid not in candidates:
+                    candidates.append(vid)
+            if candidates:
+                break
+    seen = set()
+    servable = []
+    for vid in candidates:
+        if vid in seen:
+            continue
+        seen.add(vid)
+        try:
+            data = _extract_innertube_ios(vid)
+        except Exception:
+            continue
+        try:
+            ok, bad = _check_urls_servable(data)
+        except Exception:
+            ok, bad = False, '?'
+        if ok:
+            dur = 0
+            try:
+                dur = int(float(data.get('duration') or 0))
+            except Exception:
+                dur = 0
+            _log('Alt trailer {vid} playable (duration {d}s)'.format(vid=vid, d=dur))
+            servable.append((dur, vid, data))
+    if not servable:
+        return None
+    servable.sort(key=lambda x: x[0], reverse=True)
+    pick = None
+    for dur, vid, data in servable:
+        if dur >= _MIN_TRAILER_DURATION:
+            pick = (vid, data)
+            break
+    if pick is None:
+        pick = (servable[0][1], servable[0][2])
+    _log('Selected alt trailer {vid} (duration {d}s)'.format(
+        vid=pick[0], d=pick[1].get('duration')))
+    return pick[1]
+
+
 _RES_LEVELS = (720, 1080, 2160)
 
 
@@ -809,7 +1021,8 @@ def _find_clean_progressive(data):
 _last_extract_time = 0
 
 
-def play_youtube(video_id, title=None, genre=None, year=None):
+def play_youtube(video_id, title=None, genre=None, year=None,
+                 tmdb_id=None, dbtype=None):
     _cleanup_old_mpd()
 
     # Rate-limit: random delay between extractions to avoid bot detection
@@ -831,14 +1044,24 @@ def play_youtube(video_id, title=None, genre=None, year=None):
     # format when the DASH URL-set is tainted/blocked.
     data = None
     raw_tainted = None
+    last_err = ''
+    permanent = False
     for attempt in range(3):
         data = _fast_extract(video_id)
         if data:
             break
         try:
             raw_tainted = _extract_innertube_ios(video_id)
-        except Exception:
+        except Exception as _e:
+            last_err = str(_e)
             raw_tainted = None
+        permanent = ('UNPLAYABLE' in last_err
+                     or 'not available' in last_err
+                     or 'country' in last_err.lower())
+        if permanent:
+            _log('Permanent unavailability (geo-block); skipping retries',
+                 xbmc.LOGWARNING)
+            break
         _log('Extraction attempt {} failed; retrying ({}/3)'.format(
             attempt + 1, attempt + 1), xbmc.LOGWARNING)
         xbmc.sleep(int(1500 + random.random() * 2000))
@@ -850,9 +1073,20 @@ def play_youtube(video_id, title=None, genre=None, year=None):
             _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
                 fallback_fmt.get('format_id')), xbmc.LOGWARNING)
         else:
-            err_msg = 'Extraction failed for ' + video_id
-            _log(err_msg, xbmc.LOGERROR)
-            raise Exception(err_msg)
+            # Permanent unavailability (geo-block etc.) -> try an alternate
+            # trailer automatically so playback still works.
+            permanent = ('UNPLAYABLE' in last_err
+                         or 'not available' in last_err
+                         or 'country' in last_err.lower())
+            if permanent:
+                alt = _try_alt_trailer(video_id, title, year, tmdb_id, dbtype,
+                                       excluded={video_id})
+                if alt:
+                    data = alt
+            if not data:
+                err_msg = 'Extraction failed for ' + video_id
+                _log(err_msg, xbmc.LOGERROR)
+                raise Exception(err_msg)
 
     _log('Title: {} | Duration: {}s'.format(
         (data or {}).get('title', '?'), (data or {}).get('duration', '?')))
