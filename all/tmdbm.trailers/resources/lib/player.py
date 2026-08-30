@@ -21,6 +21,35 @@ ADDON_PROFILE = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 ADDON_ID = ADDON.getAddonInfo('id')
 ADDON_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('path'))
 
+
+def _get_setting(name, default=''):
+    """Read a setting fresh at call time.
+    With reuselanguageinvoker the single ADDON object caches setting values
+    at import time, so values changed in Settings while the Python process
+    stays alive are not seen. Reading through JSON-RPC (Settings Manager)
+    bypasses that stale C++ cache; falls back to the cached getter."""
+    try:
+        import xbmc as _x
+        res = _x.executeJSONRPC(
+            '{{"jsonrpc":"2.0","method":"Settings.GetSettingValue",'
+            '"params":{{"setting":"{}.{}"}},"id":1}}'.format(_ADDON_NS, name))
+        import json as _json
+        obj = _json.loads(res)
+        val = obj.get('result', {}).get('value')
+        if val is not None:
+            return str(val)
+    except Exception:
+        pass
+    try:
+        return ADDON.getSetting(name)
+    except Exception:
+        return default
+
+
+_ADDON_NS = 'tmdbm.trailers'
+
+
+
 _lib_path = os.path.join(ADDON_PATH, 'resources', 'lib')
 if _lib_path not in sys.path:
     sys.path.insert(0, _lib_path)
@@ -535,12 +564,13 @@ def _max_res_height():
     'Auto' follows the TV's native resolution (falls back to 1080p when
     the display size is unknown)."""
     try:
-        idx = int(ADDON.getSetting('trailer_max_res') or 0)
+        idx = int(_get_setting('trailer_max_res', '0') or 0)
     except Exception:
         idx = 0
+    h = _screen_height()
+    _log('max_res: idx={} screen={}'.format(idx, h), getattr(xbmc, 'LOGDEBUG', 4))
     if idx == 0:
         # Auto: snap the panel height onto our quality ladder
-        h = _screen_height()
         if h >= 2160:
             return 2160
         if h >= 1080:
@@ -601,17 +631,32 @@ def _build_mpd(data, proxy_base=''):
         candidates = [h for h in heights if h <= cap_height]
         target_height = max(candidates) if candidates else min(heights)
 
+    # Fixed mode (1=720p, 2=1080p, 3=4K): pin the video ladder to the single
+    # target height so ISA cannot drop below it on a smaller window/network.
+    # Auto (0) keeps the full ladder below the cap (adaptive).
+    fixed_mode = False
+    try:
+        fixed_mode = int(_get_setting('trailer_max_res', '0') or 0) != 0
+    except Exception:
+        fixed_mode = False
+
     for fmt in data.get('formats', []):
         if 'container' not in fmt:
             continue
         container = fmt['container']
         if container == 'mp4_dash' and _is_video_codec(fmt):
             # Full ladder below the cap so ISA can adapt to network speed
-            if 0 < fmt.get('height', 0) <= target_height:
+            if fixed_mode:
+                if fmt.get('height', 0) == target_height:
+                    groups['video/mp4'].append(fmt)
+            elif 0 < fmt.get('height', 0) <= target_height:
                 groups['video/mp4'].append(fmt)
         elif (allow_vp9 and container == 'webm_dash'
               and _is_video_codec(fmt)):
-            if 0 < fmt.get('height', 0) <= target_height:
+            if fixed_mode:
+                if fmt.get('height', 0) == target_height:
+                    groups['video/webm'].append(fmt)
+            elif 0 < fmt.get('height', 0) <= target_height:
                 groups['video/webm'].append(fmt)
 
     if not groups:
