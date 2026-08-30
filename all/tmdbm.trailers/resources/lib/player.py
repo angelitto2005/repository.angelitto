@@ -293,25 +293,6 @@ def _stop_proxy():
         _proxy_port = None
 
 
-_js_runtimes_cache = None
-
-def _get_js_runtimes():
-    global _js_runtimes_cache
-    if _js_runtimes_cache is not None:
-        return _js_runtimes_cache
-    try:
-        from js_runtime import install_js
-        runtime = install_js()
-        _js_runtimes_cache = runtime or {}
-        if _js_runtimes_cache:
-            _log('JS runtime: {}'.format(list(_js_runtimes_cache.keys())[0]))
-        return _js_runtimes_cache
-    except Exception as e:
-        _log('JS runtime install failed: {}'.format(e), xbmc.LOGWARNING)
-        _js_runtimes_cache = {}
-        return _js_runtimes_cache
-
-
 def _discover_dash_ranges(url, headers=None, timeout=15):
     """Discover initRange/indexRange by walking top-level MP4 boxes (ftyp/moov/sidx).
 
@@ -781,15 +762,6 @@ def _find_clean_progressive(data):
 
 
 _last_extract_time = 0
-_client_idx = 0
-_CLIENT_ROTATION = [
-    ['android_vr', 'android'],
-    ['android', 'ios'],
-    ['ios', 'web_embedded'],
-    ['web_embedded', 'default'],
-    ['default', 'android_vr'],
-]
-
 
 
 def play_youtube(video_id, title=None, genre=None, year=None):
@@ -805,94 +777,37 @@ def play_youtube(video_id, title=None, genre=None, year=None):
         xbmc.sleep(int(wait * 1000))
     _last_extract_time = time.time()
 
-    js_runtimes = _get_js_runtimes()
-
-    ydl_opts = {
-        'format': 'best/bestvideo+bestaudio',
-        'check_formats': False,
-        'cachedir': ADDON_PROFILE,
-        'js_runtimes': js_runtimes,
-        'quiet': True,
-        'no_warnings': True,
-    }
-
-    if not js_runtimes:
-        # Patch INNERTUBE_CLIENTS with newer versions + testsuite params
-        # (same as plugin.video.youtube's ios_testsuite/android_testsuite)
-        try:
-            from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
-            android = INNERTUBE_CLIENTS.get('android')
-            if android:
-                android['INNERTUBE_CONTEXT']['client']['clientVersion'] = '20.10.38'
-                android['PLAYER_PARAMS'] = '2AMB'
-            ios = INNERTUBE_CLIENTS.get('ios')
-            if ios:
-                ios['INNERTUBE_CONTEXT']['client']['clientVersion'] = '20.20.7'
-                ios['PLAYER_PARAMS'] = '2AMB'
-        except Exception:
-            pass
-
     url = 'https://www.youtube.com/watch?v={}'.format(video_id)
     _log('Extracting: {}'.format(url))
 
-    # Rotate player clients on each call; if blocked, try next client.
-    # Re-extract (up to MAX_ATTEMPTS) when the URL-set is tainted: googlevideo
-    # sometimes issues URLs whose tail is 403-rejected (see _check_urls_servable).
-    global _client_idx
-    rotation = list(_CLIENT_ROTATION)
-    errors = []
-    last_tainted = None
+    # Innertube-only extraction (pure Python, no yt-dlp, no JS runtime,
+    # no third-party binaries): replicates plugin.video.youtube's working
+    # ios_testsuite client. Falls back to an emergency progressive (muxed)
+    # format when the DASH URL-set is tainted/blocked.
+    data = None
+    raw_tainted = None
+    for attempt in range(3):
+        data = _fast_extract(video_id)
+        if data:
+            break
+        try:
+            raw_tainted = _extract_innertube_ios(video_id)
+        except Exception:
+            raw_tainted = None
+        _log('Extraction attempt {} failed; retrying ({}/3)'.format(
+            attempt + 1, attempt + 1), xbmc.LOGWARNING)
+        xbmc.sleep(int(1500 + random.random() * 2000))
+
     fallback_fmt = None
-    max_attempts = 3
-    # Fast path first: pure-innertube ios_testsuite (no yt-dlp, no PO tokens,
-    # clean URLs up to 4K). Falls back to the classic rotation on failure.
-    data = _fast_extract(video_id)
     if not data:
-        for attempt in range(max_attempts):
-            for _ in range(len(rotation)):
-                clients = rotation[_client_idx % len(rotation)]
-                _client_idx += 1
-                extractor_args = {'youtube': {'player_client': clients}}
-                ydl_opts['extractor_args'] = extractor_args
-                client_label = '+'.join(clients)
-                _log('Attempt with client: {}'.format(client_label))
-
-                try:
-                    from yt_dlp import YoutubeDL
-                    with YoutubeDL(ydl_opts) as ydl:
-                        data = ydl.extract_info(url, download=False)
-                except Exception as e:
-                    msg = str(e)
-                    errors.append('{}: {}'.format(client_label, msg))
-                    _log('Client {} failed: {}'.format(client_label, msg), xbmc.LOGWARNING)
-                    if 'Sign in to confirm' not in msg and 'HTTP Error' not in msg:
-                        raise
-                    xbmc.sleep(int(2000 + random.random() * 3000))
-                    continue
-                if data:
-                    break
-            if not data:
-                continue
-            ok, bad_id = _check_urls_servable(data)
-            if ok:
-                break
-            last_tainted = data
-            data = None
-            _log('Extraction {} tainted on format {}; re-extracting ({}/{})'.format(
-                attempt + 1, bad_id, attempt + 1, max_attempts), xbmc.LOGWARNING)
-            xbmc.sleep(int(1500 + random.random() * 2000))
-        if not data:
-            fallback_fmt = _find_clean_progressive(last_tainted) if last_tainted else None
-            if fallback_fmt:
-                _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
-                    fallback_fmt.get('format_id')), xbmc.LOGWARNING)
-            else:
-                err_msg = 'All clients failed: {}'.format(' | '.join(errors))
-                _log(err_msg, xbmc.LOGERROR)
-                raise Exception(err_msg)
-
-    if not data:
-        raise Exception('No data returned for video_id: {}'.format(video_id))
+        fallback_fmt = _find_clean_progressive(raw_tainted) if raw_tainted else None
+        if fallback_fmt:
+            _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
+                fallback_fmt.get('format_id')), xbmc.LOGWARNING)
+        else:
+            err_msg = 'Extraction failed for ' + video_id
+            _log(err_msg, xbmc.LOGERROR)
+            raise Exception(err_msg)
 
     _log('Title: {} | Duration: {}s'.format(
         (data or {}).get('title', '?'), (data or {}).get('duration', '?')))
