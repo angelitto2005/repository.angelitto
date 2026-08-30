@@ -1,3 +1,6 @@
+1.1.254
+- Trailers now pass TMDb context (tmdb_id/dbtype/title/year) from all play paths (context menu, details, episodes, Extended Info, play_trailer), enabling the tmdbm.trailers geo-blocked fallback to auto-switch to an alternate trailer when the original is UNPLAYABLE.
+
 1.1.253
 - Estuary OSD: enrich playback info for DialogVideoInfo (2x Info) - show tagline/genres, resolution, rating stars and duration in header and stream name under plot via VideoInfoTag without skin mod
 - Fix missing taglines in movie/TV lists: prefetch now copies EN tagline when localized tagline is empty, lists show motto (EN+localized) without per-item network fallback

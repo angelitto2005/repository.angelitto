@@ -392,11 +392,24 @@ def get_trailer_mode():
     except:
         return 'yt-dlp'
 
-def get_trailer_url(video_id):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
     mode = get_trailer_mode()
+    extra = ''
+    parts = []
+    if tmdb_id:
+        parts.append(('tmdb_id', str(tmdb_id)))
+    if dbtype:
+        parts.append(('dbtype', str(dbtype)))
+    if title:
+        parts.append(('title', str(title)))
+    if year:
+        parts.append(('year', str(year)))
+    if parts:
+        from urllib.parse import urlencode
+        extra = '&' + urlencode(parts)
     if mode == 'youtube_plugin':
         return f"plugin://plugin.video.youtube/play/?video_id={video_id}"
-    return f"plugin://tmdbm.trailers/play/?video_id={video_id}"
+    return f"plugin://tmdbm.trailers/play/?video_id={video_id}{extra}"
 
 def get_plot_img_lang():
     """Returns include_image_language parameter for the plot language."""

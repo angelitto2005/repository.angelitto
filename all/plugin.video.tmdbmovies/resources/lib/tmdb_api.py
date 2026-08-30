@@ -4798,7 +4798,9 @@ def show_info_dialog(params):
     # Construire URL Final (folosind setarea trailer_player)
     if found_video:
         from resources.lib.config import get_trailer_url as _gtu
-        trailer_url = _gtu(found_video.get('key'))
+        _yr = (data.get('release_date') or data.get('first_air_date') or '')[:4]
+        trailer_url = _gtu(found_video.get('key'), tmdb_id=tmdb_id,
+                           dbtype=content_type, title=title, year=_yr)
     # --- SFARSIT MODIFICARE ---
 
 
@@ -5171,14 +5173,17 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     # --- LOGICA TRAILER ---
     trailer_url = ''
     priority_types = ['Trailer', 'Teaser']
-    
+    _show_title = show_data.get('name') if show_data else title
+    _dbtype = specific_type if specific_type in ('movie', 'tv', 'season', 'episode') else 'tv'
+
     # 1. Cautam trailer in datele sezonului/episodului
     videos = data.get('videos', {}).get('results', [])
     for vid_type in priority_types:
         for v in videos:
             if v.get('site') == 'YouTube' and v.get('type') == vid_type:
                 from resources.lib.config import get_trailer_url as _gtu
-                trailer_url = _gtu(v.get('key'))
+                trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
+                                  dbtype=_dbtype, title=_show_title, year='')
                 break
         if trailer_url:
             break
@@ -5190,7 +5195,8 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
             for v in show_videos:
                 if v.get('site') == 'YouTube' and v.get('type') == vid_type:
                     from resources.lib.config import get_trailer_url as _gtu
-                    trailer_url = _gtu(v.get('key'))
+                    trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
+                                      dbtype=_dbtype, title=_show_title, year='')
                     break
             if trailer_url:
                 break

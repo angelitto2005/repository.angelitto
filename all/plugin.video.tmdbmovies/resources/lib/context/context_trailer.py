@@ -153,7 +153,8 @@ def main():
 
     if video_id:
         from resources.lib.trailer_player import get_trailer_url, has_tmdbm_trailers, has_youtube_plugin
-        url = get_trailer_url(video_id)
+        url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                              title=title, year=year)
         if not url:
             return
         li = xbmcgui.ListItem(path=url)

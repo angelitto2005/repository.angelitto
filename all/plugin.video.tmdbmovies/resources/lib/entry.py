@@ -492,7 +492,17 @@ def run_plugin():
         video_id = params.get('video_id')
         if video_id:
             from resources.lib.trailer_player import play_trailer
-            play_trailer(video_id)
+            _tid = params.get('tmdb_id') or params.get('tmdb')
+            _dbtype = params.get('dbtype')
+            _ttl = params.get('title')
+            _yr = params.get('year')
+            if not _tid or not _dbtype or not _ttl:
+                _tid = _tid or xbmc.getInfoLabel('ListItem.UniqueID(tmdb)') or ''
+                _dbtype = _dbtype or xbmc.getInfoLabel('ListItem.DBTYPE').lower().strip() or ''
+                _ttl = _ttl or xbmc.getInfoLabel('ListItem.Title') or ''
+                _yr = _yr or xbmc.getInfoLabel('ListItem.Year') or ''
+            play_trailer(video_id, tmdb_id=_tid, dbtype=_dbtype,
+                         title=_ttl, year=_yr)
         return
 
     if mode == 'noop':

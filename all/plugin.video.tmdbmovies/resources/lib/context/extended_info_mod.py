@@ -2501,7 +2501,9 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                     t = meta.get('title') or meta.get('name')
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data, title=t, genre=g)
+                    play_youtube_and_return(next_data, title=t, genre=g,
+                                            tmdb_id=current.get('tmdb_id'),
+                                            dbtype=current.get('media_type'))
                     continue
                 else:
                     handle_next_info(wd.next_info)
@@ -2523,7 +2525,9 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                     t = meta.get('title') or meta.get('name')
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data, title=t, genre=g)
+                    play_youtube_and_return(next_data, title=t, genre=g,
+                                            tmdb_id=current.get('tmdb_id'),
+                                            dbtype=current.get('media_type'))
                     continue
                 else:
                     handle_next_info(wd.next_info)
@@ -2548,7 +2552,9 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                     t = meta.get('title') or meta.get('name') or current.get('tv_name')
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
-                    play_youtube_and_return(next_data, title=t, genre=g)
+                    play_youtube_and_return(next_data, title=t, genre=g,
+                                            tmdb_id=current.get('tv_id'),
+                                            dbtype='tv' if current.get('type') == 'season' else None)
                     continue
                 log(f"[RunLoop] Season Next Info: {wd.next_info}")
                 handle_next_info_season(wd.next_info, current)
@@ -2578,21 +2584,17 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
     
     NAVIGATION_STACK.clear()
 
-def play_youtube_and_return(yt_id, title=None, genre=None):
+def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=None, year=None):
     from resources.lib.trailer_player import get_trailer_mode, get_trailer_url
     mode = get_trailer_mode()
     if mode == 'youtube_plugin':
         url = f"plugin://plugin.video.youtube/play/?video_id={yt_id}"
     else:
-        url = get_trailer_url(yt_id)
-        if title or genre:
-            params = {}
-            if title:
-                params['title'] = title
-            if genre:
-                params['genre'] = genre
+        url = get_trailer_url(yt_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                              title=title, year=year)
+        if genre:
             from urllib.parse import urlencode
-            url = '{}&{}'.format(url, urlencode(params))
+            url = '{}&{}'.format(url, urlencode({'genre': genre}))
     li = xbmcgui.ListItem(path=url)
     if title:
         tag = li.getVideoInfoTag()

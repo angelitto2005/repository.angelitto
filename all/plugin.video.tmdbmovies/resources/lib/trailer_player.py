@@ -55,12 +55,28 @@ def _notify_no_trailer_addon():
         _icon(), 5000
     )
 
-def get_trailer_url(video_id):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+    from urllib.parse import urlencode
     mode = get_trailer_mode()
+    extra = ''
+    parts = []
+    if tmdb_id:
+        parts.append(('tmdb_id', str(tmdb_id)))
+    if dbtype:
+        parts.append(('dbtype', str(dbtype)))
+    if title:
+        parts.append(('title', str(title)))
+    if year:
+        parts.append(('year', str(year)))
+    if parts:
+        extra = '&' + urlencode(parts)
+
+    base = '{TRAILER_PLAYER}/play/?video_id={vid}'.format(
+        TRAILER_PLAYER=TRAILER_PLAYER, vid=video_id)
 
     if mode == 'yt-dlp':
         if has_tmdbm_trailers():
-            return f"{TRAILER_PLAYER}/play/?video_id={video_id}"
+            return base + extra
         _notify_install_tmdbm()
         if has_youtube_plugin():
             return f"{YOUTUBE_PLUGIN}/play/?video_id={video_id}"
@@ -72,20 +88,22 @@ def get_trailer_url(video_id):
             return f"{YOUTUBE_PLUGIN}/play/?video_id={video_id}"
         _notify_install_youtube()
         if has_tmdbm_trailers():
-            return f"{TRAILER_PLAYER}/play/?video_id={video_id}"
+            return base + extra
         _notify_no_trailer_addon()
         return None
 
     return None
 
-def play_trailer(video_id):
-    url = get_trailer_url(video_id)
+def play_trailer(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+    url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                          title=title, year=year)
     if url:
         xbmc.executebuiltin(f'RunPlugin({url})')
 
-def play_trailer_blocking(video_id):
+def play_trailer_blocking(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
     """Play trailer and block until playback finishes."""
-    url = get_trailer_url(video_id)
+    url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                          title=title, year=year)
     if not url:
         return
     xbmc.Player().play(url)
