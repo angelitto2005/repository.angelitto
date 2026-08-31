@@ -507,7 +507,9 @@ def _extract_innertube_ios(video_id):
             continue  # webm/vp9 etc - not used by our MPD pipeline
         formats.append(fmt)
     if not formats:
-        raise Exception('innertube returned no usable formats')
+        ps = body.get('playabilityStatus') or {}
+        raise Exception('playability {} {} no usable formats'.format(
+            status, (ps.get('reason') or ''))[:160])
     # Original audio only: when the response carries multiple audio tracks
     # (original + dubs), keep exclusively the original/main ones.
     orig_audio = [f for f in formats
@@ -542,6 +544,17 @@ def _fast_extract(video_id):
 
 
 _TMDB_API_KEY = '8ad3c21a92a64da832c559d58cc63ab4'
+
+
+def _is_permanent_error(msg):
+    """True when an extraction error means the video can never be played
+    (private/geo-block/deleted/age-restricted), so retries are pointless and
+    we should skip straight to an alternate trailer."""
+    if not msg:
+        return False
+    low = msg.lower()
+    return any(h in low for h in ('unplayable', 'login_required', 'not available',
+                                  'private', 'deleted', 'removed')) or 'country' in low
 
 # Clip/spot alternative videos shorter than this (seconds) are deprioritized
 # in favor of real trailer-length clips.
@@ -651,13 +664,21 @@ def _search_innertube(query, max_results=5):
     return out
 
 
-def _tmdb_alt_videos(tmdb_id, dbtype, excluded):
-    """Other playable TMDb videos for the same title, prioritizing real
-    trailers (with 'trailer' in the name) over teasers/clips/spots."""
+def _tmdb_alt_videos(tmdb_id, dbtype, season=None, excluded=None):
+    """Other playable TMDb videos for the same title, prioritizing by what the
+    user actually clicked:
+      - season context: the requested season's trailer first (#100), else the
+        show-level trailer as fallback (#40); other seasons are dropped.
+      - show/tv context: show-level trailers only - season trailers are
+        excluded so a show click never falls on a season 4 trailer.
+    Real trailers (name contains 'trailer') outrank teasers/clips/spots."""
+    import re as _re
     import requests as _rq
     if not tmdb_id:
         return []
-    media_type = 'tv' if (dbtype or '').lower() in ('tvshow', 'tv') else 'movie'
+    excluded = excluded or set()
+    media_type = 'tv' if (dbtype or '').lower() in ('tvshow', 'tv', 'season') else 'movie'
+    want_season = season is not None and str(season).isdigit()
     try:
         url = ('https://api.themoviedb.org/3/{}/{}'
                '/videos?api_key={}&language=en-US').format(
@@ -673,10 +694,26 @@ def _tmdb_alt_videos(tmdb_id, dbtype, excluded):
             continue
         if v['key'] in excluded:
             continue
-        name = (v.get('name') or '').lower()
+        name = (v.get('name') or '')
+        low = name.lower()
         vtype = (v.get('type') or '').lower()
+        m = _re.search(r'(?:season|sezonul|sezoane|sezon)\s*(\d{1,2})|\bs(\d{1,2})\b', low)
+        named_season = int(m.group(1) or m.group(2)) if m else None
+        is_season_trailer = named_season is not None
         score = 0
-        if 'trailer' in name:
+        if media_type == 'tv':
+            if want_season:
+                if named_season == int(season):
+                    score = 100
+                elif is_season_trailer:
+                    continue  # other seasons are not what we want
+                else:
+                    score = 40  # show-level trailer as fallback
+            else:
+                if is_season_trailer:
+                    continue  # show click must not pick a season trailer
+                score = 0
+        if 'trailer' in low:
             score += 3
         if vtype == 'trailer':
             score += 2
@@ -686,51 +723,47 @@ def _tmdb_alt_videos(tmdb_id, dbtype, excluded):
     scored.sort(key=lambda x: -x[0])
     result = [k for _, k in scored]
     if result:
-        _log('Found {} alt TMDb trailer candidate(s)'.format(len(result)))
+        _log('Found {} alt TMDb trailer candidate(s) (dbtype={}, season={})'.format(
+            len(result), dbtype, season))
     return result
 
 
-def _try_alt_trailer(video_id, title, year, tmdb_id, dbtype, excluded):
+def _try_alt_trailer(video_id, title, year, tmdb_id, dbtype, season=None, excluded=None):
     """Find and return playable data for an ALTERNATIVE trailer when the
-    requested one is blocked (geo/availability). Tries TMDb alternates first,
-    then a YouTube search by title. Prefers real trailer-length clips
-    (>= MIN_TRAILER_DURATION s) over short spots/teasers; falls back to the
-    longest servable clip if none is trailer-length. Returns data or None."""
+    requested one is blocked (private/geo/availability).
+
+    TMDb alternates are authoritative: they share the same tmdb_id and are
+    already filtered by context (_tmdb_alt_videos excludes season trailers on
+    a show click, and prefers the requested season on a season click), so they
+    are tried first in priority order. The YouTube search is only a last resort
+    when every TMDb candidate is unservable, and its loose results are filtered
+    by title match + season context so we never return a trailer from a
+    different show or the wrong season. Returns data or None."""
     import re as _re
-    candidates = []
-    try:
-        candidates += _tmdb_alt_videos(tmdb_id, dbtype, excluded)
-    except Exception:
-        pass
-    if title:
-        queries = []
-        if year and str(year).isdigit():
-            queries.append('{title} {year} official trailer'.format(
-                title=title, year=year))
-        queries.append('{t} trailer'.format(t=title))
-        if not candidates:
-            queries.append(title)
-        for q in queries:
-            for vid, _t in _search_innertube(q):
-                if vid not in excluded and vid not in candidates:
-                    candidates.append(vid)
-            if candidates:
-                break
-    seen = set()
-    servable = []
-    for vid in candidates:
-        if vid in seen:
-            continue
-        seen.add(vid)
-        try:
-            data = _extract_innertube_ios(vid)
-        except Exception:
-            continue
-        try:
-            ok, bad = _check_urls_servable(data)
-        except Exception:
-            ok, bad = False, '?'
-        if ok:
+    excluded = excluded or set()
+    excluded.add(video_id)
+    want_season = season is not None and str(season).isdigit()
+
+    def _pick_servable(cands, prefer_first):
+        """Return extracted data for a servable candidate. When prefer_first is
+        True the candidate order is meaningful (TMDb priority: requested season
+        first, then show-level), so we keep that order; otherwise we fall back
+        to a longer-trailer preference like the original code."""
+        servable = []
+        for vid in cands:
+            if vid in excluded or vid in _pick_servable._seen:
+                continue
+            _pick_servable._seen.add(vid)
+            try:
+                data = _extract_innertube_ios(vid)
+            except Exception:
+                continue
+            try:
+                ok, _bad = _check_urls_servable(data)
+            except Exception:
+                ok = False
+            if not ok:
+                continue
             dur = 0
             try:
                 dur = int(float(data.get('duration') or 0))
@@ -738,19 +771,106 @@ def _try_alt_trailer(video_id, title, year, tmdb_id, dbtype, excluded):
                 dur = 0
             _log('Alt trailer {vid} playable (duration {d}s)'.format(vid=vid, d=dur))
             servable.append((dur, vid, data))
-    if not servable:
+        if not servable:
+            return None
+        if prefer_first:
+            for dur, vid, data in servable:
+                if dur >= _MIN_TRAILER_DURATION:
+                    _log('Selected alt trailer {vid} (duration {d}s)'.format(
+                        vid=vid, d=dur))
+                    return data
+            return servable[0][2]
+        servable.sort(key=lambda x: x[0], reverse=True)
+        for dur, vid, data in servable:
+            if dur >= _MIN_TRAILER_DURATION:
+                _log('Selected alt trailer {vid} (duration {d}s)'.format(vid=vid, d=dur))
+                return data
+        return servable[0][2]
+    _pick_servable._seen = set()
+
+    # 1) Authoritative TMDb alternates, in priority order (season-first).
+    tmdb_candidates = []
+    try:
+        tmdb_candidates = _tmdb_alt_videos(tmdb_id, dbtype, season=season,
+                                           excluded=excluded)
+    except Exception:
+        pass
+    if tmdb_candidates:
+        data = _pick_servable(tmdb_candidates, prefer_first=True)
+        if data:
+            return data
+
+    # 2) Last resort: strict YouTube search, filtered by context + title match.
+    if not title:
         return None
-    servable.sort(key=lambda x: x[0], reverse=True)
-    pick = None
-    for dur, vid, data in servable:
-        if dur >= _MIN_TRAILER_DURATION:
-            pick = (vid, data)
-            break
-    if pick is None:
-        pick = (servable[0][1], servable[0][2])
-    _log('Selected alt trailer {vid} (duration {d}s)'.format(
-        vid=pick[0], d=pick[1].get('duration')))
-    return pick[1]
+    title_low = title.lower()
+    show_query = title
+    if want_season:
+        show_query = '{} season {}'.format(title, season)
+    queries = []
+    if year and str(year).isdigit():
+        queries.append('{title} {year} official trailer'.format(
+            title=show_query, year=year))
+    queries.append('{t} trailer'.format(t=show_query))
+    if not want_season:
+        queries.append(title)
+
+    def _yt_search(strict, require_title=True, require_kw=True):
+        found = []
+        for q in queries:
+            for vid, t in _search_innertube(q):
+                tl = (t or '').lower()
+                if require_kw and 'trailer' not in tl and 'teaser' not in tl:
+                    continue
+                if require_title and not _title_similar(title_low, tl):
+                    continue
+                if strict and not want_season and _re.search(
+                        r'\b(?:season|sezon|sezoane)\b|\bs\d{1,2}\b', tl):
+                    continue
+                if vid in excluded or vid in found:
+                    continue
+                found.append(vid)
+            if found:
+                break
+        return found
+
+    def _try_yt(strict, **kw):
+        cands = _yt_search(strict, **kw)
+        if not cands:
+            return None
+        return _pick_servable(cands, prefer_first=False)
+
+    # Prefer exact show + trailer + context, then relax step by step so a
+    # private/odd search result never leaves the user with no fallback trailer.
+    data = _try_yt(strict=True)
+    if data:
+        return data
+    data = _try_yt(strict=False, require_kw=True)
+    if data:
+        return data
+    # last resorts: give up on the title/season match but still want a real
+    # trailer clip (and finally any servable video) so playback never blanks.
+    data = _try_yt(strict=False, require_title=False, require_kw=True)
+    if data:
+        return data
+    data = _try_yt(strict=False, require_title=False, require_kw=False)
+    return data
+
+
+def _title_similar(show_low, result_low):
+    """Return True when a YouTube result title plausibly belongs to the show we
+    are looking for. The show's base name must appear in the result; this stops
+    loose searches from picking a trailer of a completely different show (e.g.
+    'Outer Banks ...' returning a 'From ...' trailer)."""
+    base = show_low.strip()
+    if not base:
+        return True
+    base = base.split('  ')[0].strip()
+    if base in result_low:
+        return True
+    # tolerate a parenthetical year in the show part
+    no_year = base.split('(')[0].strip()
+    return bool(no_year) and no_year in result_low
 
 
 _RES_LEVELS = (720, 1080, 2160)
@@ -1022,7 +1142,7 @@ _last_extract_time = 0
 
 
 def play_youtube(video_id, title=None, genre=None, year=None,
-                 tmdb_id=None, dbtype=None):
+                 tmdb_id=None, dbtype=None, season=None):
     _cleanup_old_mpd()
 
     # Rate-limit: random delay between extractions to avoid bot detection
@@ -1055,11 +1175,9 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         except Exception as _e:
             last_err = str(_e)
             raw_tainted = None
-        permanent = ('UNPLAYABLE' in last_err
-                     or 'not available' in last_err
-                     or 'country' in last_err.lower())
+        permanent = _is_permanent_error(last_err)
         if permanent:
-            _log('Permanent unavailability (geo-block); skipping retries',
+            _log('Permanent unavailability (private/geo-block); skipping retries',
                  xbmc.LOGWARNING)
             break
         _log('Extraction attempt {} failed; retrying ({}/3)'.format(
@@ -1073,14 +1191,12 @@ def play_youtube(video_id, title=None, genre=None, year=None,
             _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
                 fallback_fmt.get('format_id')), xbmc.LOGWARNING)
         else:
-            # Permanent unavailability (geo-block etc.) -> try an alternate
-            # trailer automatically so playback still works.
-            permanent = ('UNPLAYABLE' in last_err
-                         or 'not available' in last_err
-                         or 'country' in last_err.lower())
+            # Permanent unavailability (private/geo-block etc.) -> try an
+            # alternate trailer automatically so playback still works.
+            permanent = _is_permanent_error(last_err)
             if permanent:
                 alt = _try_alt_trailer(video_id, title, year, tmdb_id, dbtype,
-                                       excluded={video_id})
+                                       season=season, excluded={video_id})
                 if alt:
                     data = alt
             if not data:

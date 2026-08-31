@@ -4795,6 +4795,20 @@ def show_info_dialog(params):
                 found_video = v
                 break
 
+    # 4. Fallback Google YouTube API: daca TMDb nu are niciun trailer, cautam
+    #    pe YouTube direct (inclusiv upload-uri neoficiale), ca la Extended Info.
+    if not found_video and title:
+        try:
+            from resources.lib.context.context_trailer import search_youtube_api
+            _yt_title = data.get('title') or data.get('name') or title
+            _yt_year = (data.get('release_date') or data.get('first_air_date') or '')[:4] or None
+            _yt_id = search_youtube_api(_yt_title, _yt_year)
+            if _yt_id:
+                log(f"[TMDB-INFO] Found trailer via Google YouTube API: {_yt_id}")
+                found_video = {'key': _yt_id, 'site': 'YouTube', 'type': 'Trailer'}
+        except Exception as e:
+            log(f"[TMDB-INFO] Google YouTube API fallback error: {e}", xbmc.LOGWARNING)
+
     # Construire URL Final (folosind setarea trailer_player)
     if found_video:
         from resources.lib.config import get_trailer_url as _gtu
@@ -5176,14 +5190,17 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     _show_title = show_data.get('name') if show_data else title
     _dbtype = specific_type if specific_type in ('movie', 'tv', 'season', 'episode') else 'tv'
 
-    # 1. Cautam trailer in datele sezonului/episodului
+    # 1. Cautam trailer in datele sezonului/episodului. Transmitem contextul de
+    #    sezon catre tmdbm.trailers, ca fallback-ul lui sa aleaga trailerul corect
+    #    al sezonului (nu al serialului) cand lista de aici nu-l are.
     videos = data.get('videos', {}).get('results', [])
     for vid_type in priority_types:
         for v in videos:
             if v.get('site') == 'YouTube' and v.get('type') == vid_type:
                 from resources.lib.config import get_trailer_url as _gtu
                 trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
-                                  dbtype=_dbtype, title=_show_title, year='')
+                                  dbtype=_dbtype, title=_show_title, year='',
+                                  season=season if specific_type == 'season' else None)
                 break
         if trailer_url:
             break
@@ -5196,7 +5213,8 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
                 if v.get('site') == 'YouTube' and v.get('type') == vid_type:
                     from resources.lib.config import get_trailer_url as _gtu
                     trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
-                                      dbtype=_dbtype, title=_show_title, year='')
+                                      dbtype=_dbtype, title=_show_title, year='',
+                                      season=season if specific_type == 'season' else None)
                     break
             if trailer_url:
                 break

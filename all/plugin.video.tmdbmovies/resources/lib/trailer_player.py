@@ -55,7 +55,7 @@ def _notify_no_trailer_addon():
         _icon(), 5000
     )
 
-def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
     from urllib.parse import urlencode
     mode = get_trailer_mode()
     extra = ''
@@ -68,6 +68,8 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
         parts.append(('title', str(title)))
     if year:
         parts.append(('year', str(year)))
+    if season:
+        parts.append(('season', str(season)))
     if parts:
         extra = '&' + urlencode(parts)
 
@@ -94,16 +96,16 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
 
     return None
 
-def play_trailer(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+def play_trailer(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
     url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                          title=title, year=year)
+                          title=title, year=year, season=season)
     if url:
         xbmc.executebuiltin(f'RunPlugin({url})')
 
-def play_trailer_blocking(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+def play_trailer_blocking(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
     """Play trailer and block until playback finishes."""
     url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                          title=title, year=year)
+                          title=title, year=year, season=season)
     if not url:
         return
     xbmc.Player().play(url)

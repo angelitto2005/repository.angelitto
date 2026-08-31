@@ -392,7 +392,7 @@ def get_trailer_mode():
     except:
         return 'yt-dlp'
 
-def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
     mode = get_trailer_mode()
     extra = ''
     parts = []
@@ -404,6 +404,8 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None):
         parts.append(('title', str(title)))
     if year:
         parts.append(('year', str(year)))
+    if season:
+        parts.append(('season', str(season)))
     if parts:
         from urllib.parse import urlencode
         extra = '&' + urlencode(parts)

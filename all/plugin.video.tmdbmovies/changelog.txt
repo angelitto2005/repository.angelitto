@@ -1,4 +1,4 @@
-1.1.254
+1.1.255
 - Trailers now pass TMDb context (tmdb_id/dbtype/title/year) from all play paths (context menu, details, episodes, Extended Info, play_trailer), enabling the tmdbm.trailers geo-blocked fallback to auto-switch to an alternate trailer when the original is UNPLAYABLE.
 
 1.1.253

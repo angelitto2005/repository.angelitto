@@ -10,12 +10,12 @@ ADDON_ID = 'tmdbm.trailers'
 def _log(msg, level=xbmc.LOGDEBUG):
     xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
 
-def play(video_id, title=None, genre=None, year=None, tmdb_id=None, dbtype=None):
+def play(video_id, title=None, genre=None, year=None, tmdb_id=None, dbtype=None, season=None):
     handle = int(sys.argv[1])
     try:
         from player import play_youtube
         li = play_youtube(video_id, title=title, genre=genre, year=year,
-                          tmdb_id=tmdb_id, dbtype=dbtype)
+                          tmdb_id=tmdb_id, dbtype=dbtype, season=season)
         xbmcplugin.setResolvedUrl(handle, True, li)
     except Exception as e:
         _log('Error: {}'.format(str(e)), xbmc.LOGERROR)
@@ -39,10 +39,14 @@ def main():
     year = params.get('year', [None])[0]
     tmdb_id = params.get('tmdb_id', [None])[0]
     dbtype = params.get('dbtype', [None])[0]
+    season_raw = params.get('season', [None])[0]
+    season = None
+    if season_raw and str(season_raw).isdigit():
+        season = int(season_raw)
 
     if route == '/play' and video_id:
         play(video_id, title=title, genre=genre, year=year,
-             tmdb_id=tmdb_id, dbtype=dbtype)
+             tmdb_id=tmdb_id, dbtype=dbtype, season=season)
     else:
         handle = int(sys.argv[1])
         xbmcplugin.setContent(handle, '')
