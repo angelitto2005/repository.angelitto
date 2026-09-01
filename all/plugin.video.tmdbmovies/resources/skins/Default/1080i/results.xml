@@ -109,6 +109,7 @@
                 <width>486</width><height>729</height>
                 <aspectratio aligny="top">keep</aspectratio>
                 <texture background="true" diffuse="thumbs/movieposter_mask.png">$INFO[Container(2000).ListItem.Property(tmdbmovies.poster)]</texture>
+                <enable>false</enable>
             </control>
             <control type="textbox">
                 <left>1395</left><top>845</top>
@@ -118,6 +119,21 @@
                 <label>$INFO[Container(2000).ListItem.Property(tmdbmovies.plot)]</label>
                 <textcolor>FFFFFFFF</textcolor>
                 <autoscroll time="2000" delay="5500" repeat="5000"></autoscroll>
+                <enable>false</enable>
+            </control>
+            <control type="button" id="3000">
+                <left>1395</left><top>100</top>
+                <width>486</width><height>924</height>
+                <texturefocus colordiffuse="00FFFFFF">white.png</texturefocus>
+                <texturenofocus colordiffuse="00FFFFFF">white.png</texturenofocus>
+                <label>-</label>
+                <font>font12</font>
+                <textcolor>00FFFFFF</textcolor>
+                <focusedcolor>00FFFFFF</focusedcolor>
+                <onleft>2000</onleft>
+                <onright>2060</onright>
+                <onup>2000</onup>
+                <ondown>2000</ondown>
             </control>
         </control>
 

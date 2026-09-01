@@ -123,7 +123,7 @@ AIO_ADDON_COLORS = {
     'torrentsdb':     'red',
     'stremthru torz': 'red',
     'nyaa':           'FFDC143C',
-    'webstreamr':     'FF7B68EE',
+    'webstreamr':     'FFC71585',
 
     'sootio':     'lightskyblue',
     'hdhub':      'FF00FA9A',
@@ -131,7 +131,7 @@ AIO_ADDON_COLORS = {
     'vsembed': 'FFFFA500',
     'vaplayer': 'FF00FA9A',
     'netmirror': 'FF00FA9A',
-    'cineby': 'FF7B68EE',
+    'cineby': 'FFFF8C00',
     'cinefreak': 'FF00FF00',
     'usenet':         'FF00CED1',
     'usenetstreamer': 'FFFFA500',
@@ -503,18 +503,34 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
             
+            # Detectare RO DUBBED (mutat devreme ca sa fie disponibil pentru FileList/SpeedApp/SeedPool)
+            ro_indexer = info.get('indexer', '')
+            if _RO_DUB_RE.search(raw_name) or _RO_DUB_RE.search(ro_indexer):
+                ro_dub_tag = "[COLOR FFDAA520][B]RO DUB[/B][/COLOR]"
+            else:
+                ro_dub_tag = ""
+            
             # FileList / SpeedApp numele imediat dupa size
             _fl_handled = False
             _sa_handled = False
             _sp_handled = False
             if provider_id == 'p2p_filelist':
                 parts.append(f"[COLOR FF00BFFF][B]FileList[/B][/COLOR]")
+                fl_indexer = info.get('indexer', '')
+                if show_indexers and fl_indexer and not ro_dub_tag:
+                    parts.append(f"[COLOR lightskyblue][B]{fl_indexer}[/B][/COLOR]")
                 _fl_handled = True
             elif provider_id == 'p2p_speedapp':
                 parts.append("[COLOR FFFFFF00][B]SpeedApp[/B][/COLOR]")
+                sa_indexer = info.get('indexer', '')
+                if show_indexers and sa_indexer and not ro_dub_tag:
+                    parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
                 _sa_handled = True
             elif provider_id == 'p2p_seedpool':
                 parts.append("[COLOR FFFF5555][B]SeedPool[/B][/COLOR]")
+                sp_indexer = info.get('indexer', '')
+                if show_indexers and sp_indexer and not ro_dub_tag:
+                    parts.append(f"[COLOR lightskyblue][B]{sp_indexer}[/B][/COLOR]")
                 _sp_handled = True
             
             # P2P flags (FREE/2X/INT/HALF)
@@ -541,13 +557,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     parts.append("[COLOR FFFFFF00][B]2X[/B][/COLOR]")
                 if info.get('internal'):
                     parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
-            
-            # Detectare RO DUBBED
-            ro_indexer = info.get('indexer', '')
-            if _RO_DUB_RE.search(raw_name) or _RO_DUB_RE.search(ro_indexer):
-                ro_dub_tag = "[COLOR FFDAA520][B]RO DUB[/B][/COLOR]"
-            else:
-                ro_dub_tag = ""
             
             # Formatare Addon si Indexer (Pentru AIO si Stremio Addons) vs HTTP Normal
             if is_aio or is_stremio_addon:
@@ -585,20 +594,6 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 elif _sp_handled:
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
-                elif provider_id == 'p2p_filelist':
-                    if ro_dub_tag:
-                        parts.append(ro_dub_tag)
-                    parts.append(f"[COLOR {p_color}][B]FileList[/B][/COLOR]")
-                    fl_indexer = info.get('indexer', '')
-                    if show_indexers and fl_indexer and not ro_dub_tag:
-                        parts.append(f"[COLOR lightskyblue][B]{fl_indexer}[/B][/COLOR]")
-                elif provider_id == 'p2p_speedapp':
-                    if ro_dub_tag:
-                        parts.append(ro_dub_tag)
-                    parts.append(f"[COLOR {p_color}][B]SpeedApp[/B][/COLOR]")
-                    sa_indexer = info.get('indexer', '')
-                    if show_indexers and sa_indexer and not ro_dub_tag:
-                        parts.append(f"[COLOR lightskyblue][B]{sa_indexer}[/B][/COLOR]")
                 elif provider_id == 'p2p_knaben':
                     if ro_dub_tag:
                         parts.append(ro_dub_tag)
@@ -816,21 +811,34 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             if item:
                 self.selected = item.getProperty('tmdbmovies.data')
             self.close()
+        elif controlId == 3000:
+            return
 
     def onAction(self, action):
         action_id = action.getId()
-        if action_id in (9, 10, 13, 92, 110):
-            if self.filter_applied:
-                self.clear_filter()
-                return
-            self.selected = None
-            self.close()
-        elif action_id in (117, 101):
+        if action_id in (117, 101):
+            try:
+                if self.getFocusId() == 3000:
+                    return
+            except:
+                pass
             import time
             if time.time() - self.last_cm_time < 0.5:
                 return
             self.handle_context_menu()
             self.last_cm_time = time.time()
+            return
+        if action_id in (9, 10, 13, 92, 110):
+            try:
+                if self.getFocusId() == 3000:
+                    return
+            except:
+                pass
+            if self.filter_applied:
+                self.clear_filter()
+                return
+            self.selected = None
+            self.close()
 
     def handle_context_menu(self):
         try:
@@ -920,7 +928,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif ret == 6: self.apply_filter('hdr', True)
             elif ret == 7: self.apply_filter('sdr', True)
             elif ret == 8:
-                providers = sorted(list(set([r.get('info', {}).get('provider') for r in self.all_results if r.get('info', {}).get('provider')])))
+                providers = sorted(list(set([str(r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id', '') or r.get('provider_id', '')).strip() for r in self.all_results if (r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id') or r.get('provider_id'))])))
                 if not providers: return
                 p_idx = xbmcgui.Dialog().select("Select Provider", providers)
                 if p_idx >= 0:
@@ -959,7 +967,16 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         elif filter_type == 'sdr':
             self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'provider':
-            self.results = [r for r in self.all_results if r.get('info', {}).get('provider') == value]
+            v = str(value).strip().lower()
+            def _prov_match(r):
+                prov = str(r.get('info', {}).get('provider') or '').strip().lower()
+                if prov == v:
+                    return True
+                pid = str(r.get('raw_stream_data', {}).get('provider_id') or r.get('provider_id') or '').strip().lower()
+                if pid == v:
+                    return True
+                return False
+            self.results = [r for r in self.all_results if _prov_match(r)]
         elif filter_type == 'title':
             self.results = [r for r in self.all_results if value.lower() in r['name'].lower()]
         elif filter_type == 'info':
