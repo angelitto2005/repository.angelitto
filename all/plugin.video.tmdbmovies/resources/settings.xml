@@ -9,7 +9,7 @@
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
 		<setting id="skip_intro.enable" type="bool" label="[B][COLOR FFCCCCFF]Show [COLOR FFFF4444]Skip Intro[COLOR FFCCCCFF] dialog[/COLOR][/B]" default="true"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Show future episodes (over 7 days / TBA)" default="false"/>
-        <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FF00CED1]TMDb[/COLOR][/B] [B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="true"/>
+        <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="true"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
 		<setting id="skin_type" type="enum" label="Skin Compatibility (Fix Art/Thumbnails)" values="[B][COLOR FF6AFB92]Estuary (Standard)[/COLOR][/B]|[B][COLOR FF6AFB92]Arctic Fuse 3 (Modern)[/COLOR][/B]" default="0"/>
 		<setting id="show_motto_genre" type="bool" label="Show Motto + Genre above description" default="true"/>

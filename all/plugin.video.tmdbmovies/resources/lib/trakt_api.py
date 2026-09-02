@@ -709,6 +709,13 @@ def add_to_trakt_watchlist(tmdb_id, media_type, notify=True):
         
         if notify:
             xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        # Up Next neinceput (watchlist tv) la coada
+        if db_type == 'show':
+            try:
+                import threading
+                from resources.lib.trakt_sync import refresh_next_episode
+                threading.Thread(target=refresh_next_episode, args=(str(tmdb_id),), daemon=True).start()
+            except: pass
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -758,6 +765,12 @@ def remove_from_trakt_watchlist(tmdb_id, media_type, notify=True):
         
         if notify:
             xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        if db_type == 'show':
+            try:
+                import threading
+                from resources.lib.trakt_sync import refresh_next_episode
+                threading.Thread(target=refresh_next_episode, args=(str(tmdb_id),), daemon=True).start()
+            except: pass
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False

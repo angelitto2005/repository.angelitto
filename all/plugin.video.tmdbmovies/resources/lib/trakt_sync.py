@@ -47,7 +47,7 @@ def _initialize_tables_on_connection(conn):
     
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_next_episodes 
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
-                  ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT)''')
+                  ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT, watched_count INTEGER DEFAULT 0)''')
     c.execute('''CREATE TABLE IF NOT EXISTS tmdb_next_episodes 
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
                   ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT, 
@@ -87,6 +87,10 @@ def _initialize_tables_on_connection(conn):
     except: pass
     try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN first_air_date TEXT")
     except: pass
+    try: c.execute("ALTER TABLE trakt_next_episodes ADD COLUMN watched_count INTEGER DEFAULT 0")
+    except: pass
+    try: c.execute("UPDATE trakt_next_episodes SET watched_count=(SELECT COUNT(*) FROM trakt_watched_episodes WHERE trakt_watched_episodes.tmdb_id=trakt_next_episodes.tmdb_id) WHERE watched_count IS NULL OR watched_count=0")
+    except: pass
 
     conn.commit()
 
@@ -121,7 +125,7 @@ def get_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=OFF")
     conn.execute("PRAGMA mmap_size=268435456")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=15000")
     
     if not _db_initialized:
         try:
@@ -1970,7 +1974,7 @@ def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
         cursor = conn.cursor()
         should_close = True
     
-    for attempt in range(5):
+    for attempt in range(12):
         try:
             cursor.execute("INSERT OR REPLACE INTO meta_cache_seasons VALUES (?,?,?,?)", 
                            (str(tmdb_id), int(season_num), compressed_data, expires))
@@ -1979,8 +1983,8 @@ def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
                 cursor.connection.close()
             return
         except Exception as e:
-            if 'database is locked' in str(e) and attempt < 4:
-                time.sleep(0.5 * (attempt + 1))
+            if 'database is locked' in str(e) and attempt < 11:
+                time.sleep(0.5 * (attempt + 1) + 0.2)
                 if should_close:
                     try: cursor.connection.close()
                     except: pass
@@ -2485,7 +2489,8 @@ def _sync_up_next(c, token):
     sync_start = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     watched = trakt_api._get_trakt_paginated_list("/sync/watched/shows", params={'extended': 'progress'})
-    if not watched: return
+    if not watched:
+        watched = []
     
     # ══════════════════════════════════════════════════════════
     # ADAUGAT: Filtrare seriale hidden/dropped INAINTE de procesare
@@ -2517,23 +2522,131 @@ def _sync_up_next(c, token):
     with ThreadPoolExecutor(max_workers=5) as executor:
         results = list(executor.map(fetch_up_next_worker, worker_args))
 
-    c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
-              "(SELECT tmdb_id FROM trakt_watched_episodes WHERE last_watched_at >= ?)",
-              (sync_start,))
-    
     clean_rows = [r for r in results if r]
+    # Normalizam la 10 coloane (watched_count) - fetch_up_next_worker are 9
+    # Folosim conexiune separata pentru COUNT ca sa nu tinem write-lock pe c in timpul fetch-urilor
+    norm_rows = []
+    try:
+        _cnt_conn = get_connection()
+        _cnt_cur = _cnt_conn.cursor()
+        for r in clean_rows:
+            if len(r) == 9:
+                try:
+                    _cnt_cur.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=?", (str(r[0]),))
+                    wc = _cnt_cur.fetchone()[0] or 1
+                except:
+                    wc = 1
+                norm_rows.append(tuple(list(r) + [int(wc)]))
+            elif len(r) == 10:
+                norm_rows.append(r)
+        _cnt_conn.close()
+    except:
+        try: _cnt_conn.close()
+        except: pass
+        norm_rows = clean_rows
+    clean_rows = norm_rows
     
+    # === UNSTARTED WATCHLIST (trakt_lists watchlist/show cu watched_count==0) la coada Up Next ===
+    # Colectam candidatii cu conexiune separata (read-only) ca sa nu blocam write-lock-ul lui c
+    wl_rows = []
+    _wl_cands = []
+    try:
+        _wl_conn = get_connection()
+        _wl_cur = _wl_conn.cursor()
+        _wl_cur.execute("SELECT tmdb_id, title FROM trakt_lists WHERE list_type='watchlist' AND media_type='show'")
+        wl_rows = _wl_cur.fetchall() or []
+        if wl_rows:
+            try:
+                _wl_cur.execute("SELECT tmdb_id FROM trakt_hidden_shows")
+                hidden_ids = {str(row[0]) for row in _wl_cur.fetchall()}
+            except:
+                hidden_ids = set()
+            existing_ids = {str(r[0]) for r in clean_rows}
+            for row in wl_rows:
+                tid = str(row[0])
+                if not tid or tid in existing_ids or tid in hidden_ids:
+                    continue
+                try:
+                    _wl_cur.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=?", (tid,))
+                    if (_wl_cur.fetchone()[0] or 0) > 0:
+                        continue
+                except:
+                    continue
+                _wl_cands.append((tid, row[1] or 'Unknown Show'))
+        _wl_conn.close()
+        cands = list(_wl_cands)
+        if cands:
+            from resources.lib import tmdb_api as _tmdb_api
+            from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac
+            def _fetch_unstarted(entry):
+                tid, title = entry
+                try:
+                    sd = _tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=True)
+                    if not sd:
+                        return None
+                    nxt = _tmdb_first_episode(sd)
+                    if not nxt:
+                        return None
+                    ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, nxt['season'], nxt['number'])
+                    poster = get_poster_from_db(tid, 'show') or sd.get('poster_path', '')
+                    return (tid, title or sd.get('name','Unknown Show'), nxt['season'], nxt['number'], ep_title, ep_overview, '', poster, air_date, 0)
+                except:
+                    return None
+            with _TPE(max_workers=5) as ex:
+                futs = {ex.submit(_fetch_unstarted, e): e for e in cands}
+                for f in _ac(futs):
+                    res = f.result()
+                    if res:
+                        clean_rows.append(res)
+    except Exception as e:
+        log(f"[TRAKT SYNC] Up Next unstarted watchlist error: {e}", xbmc.LOGWARNING)
+    
+    # --- Scriere atomica scurta (eliberam lock-ul cat mai repede) ---
+    try:
+        c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
+                  "(SELECT tmdb_id FROM trakt_watched_episodes WHERE last_watched_at >= ?)",
+                  (sync_start,))
+    except Exception as e:
+        log(f"[TRAKT SYNC] Up Next delete error: {e}", xbmc.LOGWARNING)
+    # Curatam si intrarile neincepute vechi care nu mai sunt in watchlist (sterse de pe site)
+    try:
+        if wl_rows is not None:
+            _wl_ids = {str(r[0]) for r in (wl_rows or [])}
+            # stergem doar randurile cu watched_count==0 care nu mai sunt in watchlist
+            c.execute("SELECT tmdb_id, watched_count FROM trakt_next_episodes")
+            for row in c.fetchall():
+                try:
+                    if int(row[1] or 0) == 0 and str(row[0]) not in _wl_ids:
+                        c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(row[0]),))
+                except:
+                    pass
+    except:
+        pass
     if clean_rows:
-        # Salvare bulk
-        c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", clean_rows)
+        # Salvare bulk (10 coloane)
+        try:
+            c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)", clean_rows)
+        except:
+            # Fallback 9 coloane pentru DB-uri vechi fara migratie
+            c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", [r[:9] for r in clean_rows])
         
         # Salvare postere bulk
         for row in clean_rows:
             if row[7]:  # daca are poster
                 update_item_images(c, row[0], 'show', row[7], '')
     
+        try:
+            c.connection.commit()
+        except:
+            pass
         log(f"[TRAKT SYNC] Up Next: {len(clean_rows)} seriale actualizate "
         f"(din {len(top_shows)} verificate, {len(watched)} dupa filtrare).")
+    else:
+        try:
+            c.connection.commit()
+        except:
+            pass
+        log(f"[TRAKT SYNC] Up Next: 0 seriale (toate filtrate/dropped).")
     
     # Pre-cache season details for instant Next Episodes display
     if clean_rows:
@@ -2988,8 +3101,35 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         last_row = c.fetchone()
         conn.close()
         
-        # --- NOU: Daca nu mai avem niciun episod vizionat (ex: am dat unwatch la primul episod), serialul iese din Up Next
+        # --- Daca nu mai avem niciun episod vizionat: daca e in watchlist neinceput, apare S1E1; altfel iese
         if not watched_eps:
+            try:
+                c2 = get_connection().cursor()
+                c2.execute("SELECT 1 FROM trakt_lists WHERE list_type='watchlist' AND media_type='show' AND tmdb_id=?", (tmdb_id,))
+                in_wl = bool(c2.fetchone())
+                c2.connection.close()
+            except:
+                in_wl = False
+            if in_wl and not is_hidden:
+                next_ep = _tmdb_first_episode(show_details)
+                if next_ep:
+                    season_data = tmdb_api.get_smart_season_details(tmdb_id, next_ep['season'])
+                    ep_title = ''; ep_overview=''; air_date=''
+                    if season_data:
+                        for ep in season_data.get('episodes',[]) or []:
+                            if ep.get('episode_number')==next_ep['number']:
+                                ep_title=ep.get('name',''); ep_overview=ep.get('overview',''); air_date=str(ep.get('air_date','')).split('T')[0]; break
+                    poster = get_poster_from_db(tmdb_id,'show') or show_details.get('poster_path','')
+                    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    conn2 = get_connection(); c2 = conn2.cursor()
+                    try:
+                        c2.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",(tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date,0))
+                    except:
+                        c2.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",(tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date))
+                    conn2.commit(); conn2.close()
+                    from resources.lib.cache import clear_all_fast_cache
+                    clear_all_fast_cache(); _trigger_ui_refresh()
+                    return
             log(f"[UP NEXT] '{show_title}' no longer has watched episodes. Removing from UI.")
             conn = get_connection()
             conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
@@ -3067,11 +3207,23 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 
         conn = get_connection()
         c = conn.cursor()
-        c.execute(
-            "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
-            (tmdb_id, show_title, next_ep['season'], next_ep['number'],
-             ep_title, ep_overview, now_str, poster, air_date)
-        )
+        try:
+            c.execute("SELECT COUNT(*) FROM trakt_watched_episodes WHERE tmdb_id=?", (tmdb_id,))
+            wc = c.fetchone()[0] or 0
+        except:
+            wc = len(watched_eps)
+        try:
+            c.execute(
+                "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (tmdb_id, show_title, next_ep['season'], next_ep['number'],
+                 ep_title, ep_overview, now_str, poster, air_date, int(wc))
+            )
+        except:
+            c.execute(
+                "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
+                (tmdb_id, show_title, next_ep['season'], next_ep['number'],
+                 ep_title, ep_overview, now_str, poster, air_date)
+            )
         conn.commit()
         conn.close()
         

@@ -6811,7 +6811,7 @@ def get_next_episodes(params=None):
     use_tmdb = bool(params and params.get('use_tmdb') == 'true')
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
-    show_color = 'FF00CED1' if use_tmdb else ('lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'FF00CED1'))
+    show_color = 'FF00CED1' if use_tmdb else ('lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'pink'))
     if use_tmdb:
         raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
     elif use_mdblist:
@@ -6872,11 +6872,7 @@ def get_next_episodes(params=None):
         except Exception as e:
             log(f"[UP NEXT] Error filtering hidden shows: {e}", xbmc.LOGERROR)
     
-    # Filtrul de seriale neincepute (TMDB Up Next): setarea tmdb_upnext_show_unstarted
-    # OFF → apar doar serialele cu cel putin un episod vizionat (watched_count > 0).
-    # UNICUL gate — sync-ul salveaza mereu serialele neincepute (S1E1), afisarea
-    # decide. Serialele neincepute ramase se adauga la COADA listei (dupa categorii),
-    # fara separator — aceeasi lista, sectiunea 1 (incepute, ca la Trakt) + coada.
+    # Filtru neincepute: original TMDb exact (restaurat) + extensie Trakt/MDBList/Simkl
     unstarted_items = []
     if use_tmdb:
         try:
@@ -6888,6 +6884,23 @@ def get_next_episodes(params=None):
             raw_items = [it for it in raw_items if int(it.get('watched_count') or 0) > 0]
         else:
             raw_items = [it for it in raw_items if int(it.get('watched_count') or 0) > 0]
+    else:
+        try:
+            show_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
+        except:
+            show_unstarted = True
+        def _is_unstarted(it):
+            if 'watched_count' not in it or it.get('watched_count') is None:
+                return False
+            try:
+                return int(it.get('watched_count') or 0) == 0
+            except:
+                return False
+        if show_unstarted:
+            unstarted_items = [it for it in raw_items if _is_unstarted(it)]
+            raw_items = [it for it in raw_items if not _is_unstarted(it)]
+        else:
+            raw_items = [it for it in raw_items if not _is_unstarted(it)]
     
     today = datetime.date.today()
     max_future_date = today + datetime.timedelta(days=7)
@@ -6988,8 +7001,12 @@ def get_next_episodes(params=None):
         return
 
     # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
-    LABEL_VERSION = "6"
-    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt'))}_{show_future}_{LABEL_VERSION}"
+    LABEL_VERSION = "9"
+    try:
+        _show_unstarted_cache = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
+    except:
+        _show_unstarted_cache = True
+    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt'))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -7018,9 +7035,11 @@ def get_next_episodes(params=None):
     for it in items:
         tmdb_id = it['tmdb_id']
         
-        # Serial neinceput (TMDB Up Next): watched_count == 0 -> numele serialului
-        # in orange si SXXEYY in galben (cererea userului)
-        is_unstarted = use_tmdb and int(it.get('watched_count') or 0) == 0
+        # Serial neinceput (UP NEXT watchlist neinceput, toti providerii): watched_count==0 -> rosu
+        try:
+            is_unstarted = int(it.get('watched_count') or 0) == 0 if 'watched_count' in it else False
+        except:
+            is_unstarted = False
         
         # --- INCEPUT NOU: CALCUL EPISOADE RAMASE (AF3 / ESTUARY) ---
         show_watched_info = get_watched_status_tvshow(tmdb_id)

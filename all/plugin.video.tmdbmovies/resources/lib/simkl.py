@@ -1083,6 +1083,12 @@ def watchlist_add(tmdb_id=None, mediatype='movie', status='watching', title='', 
         if result is not None:
             from resources.lib.simkl_sync import watchlist_add_local
             watchlist_add_local(tmdb_id, mediatype, title, '', status)
+            if status == 'plantowatch' and str(mediatype).lower() in ('tv','show','anime','series','tvshow','season','episode'):
+                try:
+                    import threading
+                    from resources.lib.simkl_sync import refresh_next_episode_simkl
+                    threading.Thread(target=refresh_next_episode_simkl, args=(str(tmdb_id),), daemon=True).start()
+                except: pass
             if notify:
                 _notify('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
                         f'[B][COLOR yellow]{title or tmdb_id}[/COLOR][/B] added to [B][COLOR mediumpurple]{status}[/COLOR][/B]')
@@ -1101,6 +1107,11 @@ def watchlist_remove(tmdb_id=None, mediatype='movie', status='watching', title='
         if result is not None:
             from resources.lib.simkl_sync import watchlist_remove_local
             watchlist_remove_local(tmdb_id)
+            try:
+                import threading
+                from resources.lib.simkl_sync import refresh_next_episode_simkl
+                threading.Thread(target=refresh_next_episode_simkl, args=(str(tmdb_id),), daemon=True).start()
+            except: pass
             if notify:
                 _notify('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
                         f'[B][COLOR yellow]{title or tmdb_id}[/COLOR][/B] removed from [B][COLOR mediumpurple]{status}[/COLOR][/B]')

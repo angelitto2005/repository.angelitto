@@ -781,8 +781,21 @@ def refresh_next_episode_simkl(tmdb_id, ignore_hidden=False):
         c.execute("SELECT season, episode FROM simkl_watched_episodes WHERE tmdb_id=? ORDER BY last_watched_at DESC LIMIT 1", (tid,))
         last_row = c.fetchone()
 
-        # Fara episoade vizionate (ex: unwatch la tot) → iese din Up Next
+        # Fara episoade vizionate: daca e in plantowatch, apare S1E1 la coada; altfel iese
         if not watched_eps:
+            try:
+                c.execute("SELECT 1 FROM simkl_watchlist WHERE tmdb_id=? AND status='plantowatch' AND media_type IN ('tv','anime')", (tid,))
+                in_wl = bool(c.fetchone())
+            except:
+                in_wl = False
+            if in_wl:
+                from resources.lib.trakt_sync import _tmdb_first_episode as _first, _tmdb_ep_meta as _meta
+                nxt = _first(show_details)
+                if nxt:
+                    ep_title, _, air_date = _meta(tid, nxt['season'], nxt['number'])
+                    now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                    c.execute("INSERT OR REPLACE INTO simkl_next_episodes (tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) VALUES (?,?,?,?,?,?,?,?,?)",(tid, show_title, nxt['season'], nxt['number'], ep_title, air_date, 0, 0, now_str))
+                    conn.commit(); conn.close(); _trigger_ui_refresh(); return
             conn.execute("DELETE FROM simkl_next_episodes WHERE tmdb_id=?", (tid,))
             conn.commit()
             conn.close()
@@ -1238,20 +1251,61 @@ def _sync_up_next(api):
                 last_watched_at = item.get('last_watched_at') or item.get('last_added') or ''
                 rows.append((tmdb_id, show_title, season, episode, ep_title, air_date,
                              watched_count, 0, last_watched_at))
+        # === UNSTARTED: plan to watch tv/anime cu watched==0 la coada (doar Simkl) ===
+        try:
+            c.execute("SELECT tmdb_id, title FROM simkl_watchlist WHERE status='plantowatch' AND media_type IN ('tv','anime')")
+            wl_rows = c.fetchall()
+            if wl_rows:
+                try:
+                    c.execute("SELECT tmdb_id FROM simkl_dropped")
+                    hidden_ids = {str(row[0]) for row in c.fetchall()}
+                except:
+                    hidden_ids = set()
+                existing_ids = {str(r[0]) for r in rows}
+                cands = []
+                for row in wl_rows:
+                    tid = str(row[0])
+                    if not tid or tid in existing_ids or tid in hidden_ids:
+                        continue
+                    try:
+                        # watched>0 => deja inceput, nu e unstarted
+                        if get_watched_episodes_count(tid) > 0:
+                            continue
+                    except:
+                        continue
+                    cands.append((tid, row[1] or 'Unknown Show'))
+                if cands:
+                    from resources.lib import tmdb_api as _tmdb_api
+                    from resources.lib.trakt_sync import _tmdb_first_episode as _first, _tmdb_ep_meta as _meta, get_poster_from_db as _poster
+                    from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac
+                    def _fetch_unstarted(entry):
+                        tid, title = entry
+                        try:
+                            sd = _tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=True)
+                            if not sd:
+                                return None
+                            nxt = _first(sd)
+                            if not nxt:
+                                return None
+                            ep_title, ep_overview, air_date = _meta(tid, nxt['season'], nxt['number'])
+                            return (tid, title or sd.get('name','Unknown Show'), nxt['season'], nxt['number'], ep_title, air_date, 0, 0, '')
+                        except:
+                            return None
+                    with _TPE(max_workers=10) as ex:
+                        futs = {ex.submit(_fetch_unstarted, e): e for e in cands}
+                        for f in _ac(futs):
+                            res = f.result()
+                            if res:
+                                rows.append(res)
+        except Exception as e:
+            xbmc.log(f'[SIMKL] up next unstarted plantowatch error: {e}', xbmc.LOGWARNING)
+
         if rows:
             rows = _enrich_air_dates(rows)
+            c.execute("DELETE FROM simkl_next_episodes")
             c.executemany("INSERT OR REPLACE INTO simkl_next_episodes "
                           "(tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) "
                           "VALUES (?,?,?,?,?,?,?,?,?)", rows)
-            # Stergem serialele care nu mai sunt in 'watching'
-            server_ids = {r[0] for r in rows}
-            try:
-                c.execute("SELECT tmdb_id FROM simkl_next_episodes")
-                for r in c.fetchall():
-                    if str(r['tmdb_id']) not in server_ids:
-                        c.execute("DELETE FROM simkl_next_episodes WHERE tmdb_id=?", (str(r['tmdb_id']),))
-            except:
-                pass
         else:
             c.execute("DELETE FROM simkl_next_episodes")
         conn.commit()

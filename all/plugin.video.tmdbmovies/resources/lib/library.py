@@ -1275,7 +1275,7 @@ def _sync_to_server(movies, episodes):
 
 def _run_sync(dest):
     pbg = xbmcgui.DialogProgressBG()
-    pbg.create('', 'Preparing...')
+    pbg.create('', 'Preparing')
     try:
         _do_sync(dest, pbg)
     except Exception as e:

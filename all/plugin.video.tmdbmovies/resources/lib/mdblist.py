@@ -337,6 +337,12 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title='', notif
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 mtype = 'tv' if str(mediatype).lower() in ('show', 'tv', 'series', 'tvshow', 'season', 'episode') else 'movie'
                 watchlist_add_local(tmdb_id, mtype, title=title, year='')
+                if mtype == 'tv':
+                    try:
+                        import threading
+                        from resources.lib.mdblist_sync import refresh_next_episode_mdblist
+                        threading.Thread(target=refresh_next_episode_mdblist, args=(str(tmdb_id),), daemon=True).start()
+                    except: pass
             if notify:
                 if added > 0:
                     if title:
@@ -360,6 +366,12 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title='', no
             clear_cache_prefix('calendar')
             if tmdb_id and str(tmdb_id).lower() not in ('none', ''):
                 watchlist_remove_local(tmdb_id)
+                if str(mediatype).lower() in ('show','tv','series','tvshow','season','episode'):
+                    try:
+                        import threading
+                        from resources.lib.mdblist_sync import refresh_next_episode_mdblist
+                        threading.Thread(target=refresh_next_episode_mdblist, args=(str(tmdb_id),), daemon=True).start()
+                    except: pass
             if notify:
                 if title:
                     _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')

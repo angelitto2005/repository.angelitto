@@ -789,7 +789,7 @@ def import_watchlist(direction, media_type):
     }
     push = {
         'trakt': _push_watchlist_to_trakt,
-        'mdblist': _push_watchlist_to_mdblist,
+        'mdblist': lambda items, mt, cb: _push_watchlist_to_mdblist(api, items, mt, cb),
         'tmdb': _push_watchlist_to_tmdb,
         'simkl': lambda items, mt, cb: _push_watchlist_to_simkl(skapi, items, mt, cb),
     }
