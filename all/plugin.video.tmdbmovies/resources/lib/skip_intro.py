@@ -147,13 +147,12 @@ def execute_skip_intro(player):
         if not player.season or not player.episode:
             return
 
+        while player.isPlaying():
             try:
                 if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
                     break
             except Exception:
                 break
-            if not player.isPlaying():
-                return
             xbmc.sleep(500)
 
         if not player.isPlaying():

@@ -29,11 +29,44 @@ def _abort_requested():
     return _MONITOR.abortRequested()
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(DB_PATH, timeout=60)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=OFF")
+    conn.execute("PRAGMA busy_timeout=15000")
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _db_exec_retry(c, sql, params=None, tries=20):
+    import time as _t
+    for _a in range(tries):
+        try:
+            if params is None:
+                c.execute(sql)
+            else:
+                c.execute(sql, params)
+            return True
+        except Exception as _e:
+            if 'database is locked' in str(_e) and _a < tries - 1:
+                _t.sleep(0.4 + 0.15 * _a)
+                continue
+            raise
+    return False
+
+
+def _db_commit_retry(conn, tries=20):
+    import time as _t
+    for _a in range(tries):
+        try:
+            conn.commit()
+            return True
+        except Exception as _e:
+            if 'database is locked' in str(_e) and _a < tries - 1:
+                _t.sleep(0.4 + 0.15 * _a)
+                continue
+            xbmc.log(f'[MDBList] commit retry failed: {_e}', xbmc.LOGERROR)
+            return False
+    return False
 
 def init_database():
     conn = get_connection()
@@ -660,9 +693,13 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
         if not ignore_hidden:
             c.execute("SELECT 1 FROM mdblist_dropped WHERE tmdb_id=?", (tmdb_id,))
             if c.fetchone():
-                conn.execute("DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-                conn.commit()
-                conn.close()
+                try:
+                    _db_exec_retry(conn, "DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                    _db_commit_retry(conn)
+                except:
+                    pass
+                try: conn.close()
+                except: pass
                 _trigger_ui_refresh()
                 return
 
@@ -686,11 +723,15 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
                 if nxt:
                     ep_title, _, air_date = _meta(str(tmdb_id), nxt['season'], nxt['number'])
                     now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                    c.execute("INSERT OR REPLACE INTO mdblist_next_episodes (tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) VALUES (?,?,?,?,?,?,?,?,?)",(str(tmdb_id), show_title, nxt['season'], nxt['number'], ep_title, air_date, 0, 0, now_str))
-                    conn.commit(); conn.close(); _trigger_ui_refresh(); return
-            conn.execute("DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-            conn.commit()
-            conn.close()
+                    _db_exec_retry(c, "INSERT OR REPLACE INTO mdblist_next_episodes (tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) VALUES (?,?,?,?,?,?,?,?,?)",(str(tmdb_id), show_title, nxt['season'], nxt['number'], ep_title, air_date, 0, 0, now_str))
+                    _db_commit_retry(conn)
+                    try: conn.close()
+                    except: pass
+                    _trigger_ui_refresh(); return
+            _db_exec_retry(conn, "DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+            _db_commit_retry(conn)
+            try: conn.close()
+            except: pass
             _trigger_ui_refresh()
             return
 
@@ -727,9 +768,13 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
 
         # Serial terminat → iese din Up Next
         if not next_ep:
-            conn.execute("DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-            conn.commit()
-            conn.close()
+            try:
+                _db_exec_retry(conn, "DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                _db_commit_retry(conn)
+            except:
+                pass
+            try: conn.close()
+            except: pass
             _trigger_ui_refresh()
             return
 
@@ -749,7 +794,7 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
         # Episoadele viitoare raman in lista (paritate Trakt + hide_unreleased=False):
         # filtrarea pe upnext_show_future se face la afisare, nu la stocare.
         now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        c.execute(
+        _db_exec_retry(c,
             "INSERT OR REPLACE INTO mdblist_next_episodes "
             "(tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
@@ -757,8 +802,9 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
              ep_title, air_date, len(watched_eps),
              show_details.get('number_of_episodes', 0), now_str)
         )
-        conn.commit()
-        conn.close()
+        _db_commit_retry(conn)
+        try: conn.close()
+        except: pass
         _trigger_ui_refresh()
     except Exception as e:
         xbmc.log(f'[MDBList] refresh_next_episode_mdblist error: {e}', xbmc.LOGERROR)
@@ -1167,11 +1213,20 @@ def _sync_up_next(api):
         except Exception as e:
             xbmc.log(f'[MDBList] Up Next unstarted watchlist error: {e}', xbmc.LOGWARNING)
 
-        c.execute("DELETE FROM mdblist_next_episodes")
-        c.executemany("INSERT OR REPLACE INTO mdblist_next_episodes "
-                      "(tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) "
-                      "VALUES (?,?,?,?,?,?,?,?,?)", rows)
-        conn.commit()
+        _db_exec_retry(c, "DELETE FROM mdblist_next_episodes")
+        import time as _t2
+        for _a in range(20):
+            try:
+                c.executemany("INSERT OR REPLACE INTO mdblist_next_episodes "
+                              "(tmdb_id, show_title, season, episode, ep_title, air_date, watched_count, total_count, last_watched_at) "
+                              "VALUES (?,?,?,?,?,?,?,?,?)", rows)
+                break
+            except Exception as _e:
+                if 'database is locked' in str(_e) and _a < 19:
+                    _t2.sleep(0.4 + 0.15 * _a)
+                    continue
+                raise
+        _db_commit_retry(conn)
     except Exception as e:
         xbmc.log(f'[MDBList] _sync_up_next error: {e}', xbmc.LOGERROR)
     finally:

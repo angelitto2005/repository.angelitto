@@ -148,6 +148,85 @@ def init_database():
     conn.close()
 
 
+_TRAKT_NEXT_COLS_10 = "(tmdb_id, show_title, season, episode, ep_title, overview, last_watched_at, poster, air_date, watched_count)"
+_TRAKT_NEXT_COLS_9 = "(tmdb_id, show_title, season, episode, ep_title, overview, last_watched_at, poster, air_date)"
+_TMDB_NEXT_COLS = "(tmdb_id, show_title, season, episode, ep_title, overview, last_watched_at, poster, air_date, watched_count)"
+
+
+def _has_watched_count_col(c, table):
+    try:
+        c.execute("SELECT watched_count FROM %s LIMIT 1" % table)
+        return True
+    except:
+        return False
+
+
+def _db_commit_retry(conn, tries=20):
+    import time as _t
+    for _a in range(tries):
+        try:
+            conn.commit()
+            return True
+        except Exception as _e:
+            if 'database is locked' in str(_e) and _a < tries - 1:
+                _t.sleep(0.4 + 0.15 * _a)
+                continue
+            log(f"[DB] commit retry failed: {_e}", xbmc.LOGERROR)
+            return False
+    return False
+
+
+def _db_exec_retry(c, sql, params=None, tries=20):
+    import time as _t
+    for _a in range(tries):
+        try:
+            if params is None:
+                c.execute(sql)
+            else:
+                c.execute(sql, params)
+            return True
+        except Exception as _e:
+            if 'database is locked' in str(_e) and _a < tries - 1:
+                _t.sleep(0.4 + 0.15 * _a)
+                continue
+            raise
+    return False
+
+
+def _insert_trakt_next_batch(c, rows):
+    has_wc = _has_watched_count_col(c, 'trakt_next_episodes')
+    if has_wc:
+        fixed = []
+        for r in rows:
+            if len(r) == 9:
+                fixed.append(tuple(list(r) + [1]))
+            else:
+                fixed.append(tuple(r[:10]))
+        import time as _t
+        for _a in range(20):
+            try:
+                c.executemany("INSERT OR REPLACE INTO trakt_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?,?)" % _TRAKT_NEXT_COLS_10, fixed)
+                return
+            except Exception as _e:
+                if 'database is locked' in str(_e) and _a < 19:
+                    _t.sleep(0.4 + 0.15 * _a)
+                    continue
+                raise
+    else:
+        fixed = [tuple(r[:9]) for r in rows]
+        c.executemany("INSERT OR REPLACE INTO trakt_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?)" % _TRAKT_NEXT_COLS_9, fixed)
+
+
+def _insert_trakt_next_one(c, row):
+    has_wc = _has_watched_count_col(c, 'trakt_next_episodes')
+    if has_wc:
+        if len(row) == 9:
+            row = tuple(list(row) + [1])
+        _db_exec_retry(c, "INSERT OR REPLACE INTO trakt_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?,?)" % _TRAKT_NEXT_COLS_10, tuple(row[:10]))
+    else:
+        _db_exec_retry(c, "INSERT OR REPLACE INTO trakt_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?)" % _TRAKT_NEXT_COLS_9, tuple(row[:9]))
+
+
 def is_table_empty(c, table):
     """Verifica daca un tabel SQL este gol intr-un mod robust."""
     try:
@@ -2239,7 +2318,7 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         e_val = int(episode) if episode else 0
         
         # 1. Stergem intrarea veche
-        c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND media_type=? AND season=? AND episode=?", 
+        _db_exec_retry(c, "DELETE FROM playback_progress WHERE tmdb_id=? AND media_type=? AND season=? AND episode=?",
                   (str(tmdb_id), media_type, s_val, e_val))
         
         # ============================================================
@@ -2247,15 +2326,15 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         # ============================================================
         if progress >= 1000000:
             # E timp exact! Il salvam ca atare
-            c.execute("""INSERT INTO playback_progress 
-                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
+            _db_exec_retry(c, """INSERT INTO playback_progress
+                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster)
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
             log(f"[TRAKT SYNC] ✓ Local exact-time progress SAVED: {int(progress - 1000000)}s for {title}")
         elif progress < 90:
             # E procentaj standard (ex: descarcat direct de pe Trakt la o sincronizare)
-            c.execute("""INSERT INTO playback_progress 
-                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster) 
+            _db_exec_retry(c, """INSERT INTO playback_progress
+                         (tmdb_id, media_type, season, episode, progress, paused_at, title, year, poster)
                          VALUES (?,?,?,?,?,?,?,?,?)""",
                       (str(tmdb_id), media_type, s_val, e_val, progress, now, title, str(year), ''))
             log(f"[TRAKT SYNC] ✓ Local percentage progress SAVED: {progress:.2f}% for {title}")
@@ -2263,8 +2342,9 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
             log(f"[TRAKT SYNC] Progress {progress:.2f}% >= 90%. Removed from In Progress.")
         # ============================================================
         
-        conn.commit()
-        conn.close()
+        _db_commit_retry(conn)
+        try: conn.close()
+        except: pass
         
         # --- MODIFICARE: CURATAM RAM CACHE ---
         # Daca progresul s-a schimbat, cache-ul RAM nu mai e valabil
@@ -2543,7 +2623,7 @@ def _sync_up_next(c, token):
     except:
         try: _cnt_conn.close()
         except: pass
-        norm_rows = clean_rows
+        norm_rows = [tuple(list(r) + [1]) if len(r) == 9 else tuple(r[:10]) for r in clean_rows]
     clean_rows = norm_rows
     
     # === UNSTARTED WATCHLIST (trakt_lists watchlist/show cu watched_count==0) la coada Up Next ===
@@ -2603,7 +2683,7 @@ def _sync_up_next(c, token):
     
     # --- Scriere atomica scurta (eliberam lock-ul cat mai repede) ---
     try:
-        c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
+        _db_exec_retry(c, "DELETE FROM trakt_next_episodes WHERE tmdb_id NOT IN "
                   "(SELECT tmdb_id FROM trakt_watched_episodes WHERE last_watched_at >= ?)",
                   (sync_start,))
     except Exception as e:
@@ -2613,39 +2693,37 @@ def _sync_up_next(c, token):
         if wl_rows is not None:
             _wl_ids = {str(r[0]) for r in (wl_rows or [])}
             # stergem doar randurile cu watched_count==0 care nu mai sunt in watchlist
-            c.execute("SELECT tmdb_id, watched_count FROM trakt_next_episodes")
-            for row in c.fetchall():
+            try:
+                c.execute("SELECT tmdb_id, watched_count FROM trakt_next_episodes")
+                _old_rows = c.fetchall()
+            except:
+                # DB vechi fara watched_count
+                c.execute("SELECT tmdb_id FROM trakt_next_episodes")
+                _old_rows = [(r[0], 1) for r in c.fetchall()]
+            for row in _old_rows:
                 try:
                     if int(row[1] or 0) == 0 and str(row[0]) not in _wl_ids:
-                        c.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(row[0]),))
+                        _db_exec_retry(c, "DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (str(row[0]),))
                 except:
                     pass
     except:
         pass
     if clean_rows:
-        # Salvare bulk (10 coloane)
         try:
-            c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)", clean_rows)
-        except:
-            # Fallback 9 coloane pentru DB-uri vechi fara migratie
-            c.executemany("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)", [r[:9] for r in clean_rows])
+            _insert_trakt_next_batch(c, clean_rows)
+        except Exception as e:
+            log(f"[TRAKT SYNC] Up Next insert error: {e}", xbmc.LOGERROR)
         
         # Salvare postere bulk
         for row in clean_rows:
             if row[7]:  # daca are poster
                 update_item_images(c, row[0], 'show', row[7], '')
     
-        try:
-            c.connection.commit()
-        except:
-            pass
+        _db_commit_retry(c.connection)
         log(f"[TRAKT SYNC] Up Next: {len(clean_rows)} seriale actualizate "
         f"(din {len(top_shows)} verificate, {len(watched)} dupa filtrare).")
     else:
-        try:
-            c.connection.commit()
-        except:
-            pass
+        _db_commit_retry(c.connection)
         log(f"[TRAKT SYNC] Up Next: 0 seriale (toate filtrate/dropped).")
     
     # Pre-cache season details for instant Next Episodes display
@@ -3084,9 +3162,13 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
             if is_hidden:
                 log(f"[UP NEXT] '{show_title}' is hidden (dropped). Removing from UI.")
                 conn = get_connection()
-                conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-                conn.commit()
-                conn.close()
+                try:
+                    _db_exec_retry(conn, "DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                    _db_commit_retry(conn)
+                except:
+                    pass
+                try: conn.close()
+                except: pass
                 from resources.lib.cache import clear_all_fast_cache
                 clear_all_fast_cache()
                 _trigger_ui_refresh()
@@ -3122,19 +3204,20 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                     poster = get_poster_from_db(tmdb_id,'show') or show_details.get('poster_path','')
                     now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
                     conn2 = get_connection(); c2 = conn2.cursor()
-                    try:
-                        c2.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",(tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date,0))
-                    except:
-                        c2.execute("INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",(tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date))
-                    conn2.commit(); conn2.close()
+                    _insert_trakt_next_one(c2, (tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date,0))
+                    _db_commit_retry(conn2); conn2.close()
                     from resources.lib.cache import clear_all_fast_cache
                     clear_all_fast_cache(); _trigger_ui_refresh()
                     return
             log(f"[UP NEXT] '{show_title}' no longer has watched episodes. Removing from UI.")
             conn = get_connection()
-            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-            conn.commit()
-            conn.close()
+            try:
+                _db_exec_retry(conn, "DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                _db_commit_retry(conn)
+            except:
+                pass
+            try: conn.close()
+            except: pass
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             _trigger_ui_refresh()
@@ -3175,9 +3258,13 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         if not next_ep:
             log(f"[UP NEXT] '{show_title}' complete. Removing from UI.")
             conn = get_connection()
-            conn.execute("DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
-            conn.commit()
-            conn.close()
+            try:
+                _db_exec_retry(conn, "DELETE FROM trakt_next_episodes WHERE tmdb_id=?", (tmdb_id,))
+                _db_commit_retry(conn)
+            except:
+                pass
+            try: conn.close()
+            except: pass
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
             _trigger_ui_refresh()
@@ -3212,19 +3299,9 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
             wc = c.fetchone()[0] or 0
         except:
             wc = len(watched_eps)
-        try:
-            c.execute(
-                "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (tmdb_id, show_title, next_ep['season'], next_ep['number'],
-                 ep_title, ep_overview, now_str, poster, air_date, int(wc))
-            )
-        except:
-            c.execute(
-                "INSERT OR REPLACE INTO trakt_next_episodes VALUES (?,?,?,?,?,?,?,?,?)",
-                (tmdb_id, show_title, next_ep['season'], next_ep['number'],
-                 ep_title, ep_overview, now_str, poster, air_date)
-            )
-        conn.commit()
+        _insert_trakt_next_one(c, (tmdb_id, show_title, next_ep['season'], next_ep['number'],
+                 ep_title, ep_overview, now_str, poster, air_date, int(wc)))
+        _db_commit_retry(conn)
         conn.close()
         
         log(f"[UP NEXT] ✓ {show_title} updated INSTANT and LOCAL to -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
@@ -3450,9 +3527,19 @@ def sync_tmdb_up_next(c):
                                ep_title, ep_overview or entry['overview'], w['last_at'] or now_str,
                                entry['poster'], air_date, len(w['set'])))
 
-        c.execute("DELETE FROM tmdb_next_episodes")
+        _db_exec_retry(c, "DELETE FROM tmdb_next_episodes")
         if clean_rows:
-            c.executemany("INSERT OR REPLACE INTO tmdb_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)", clean_rows)
+            import time as _t2
+            for _a in range(20):
+                try:
+                    c.executemany("INSERT OR REPLACE INTO tmdb_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?,?)" % _TMDB_NEXT_COLS, clean_rows)
+                    break
+                except Exception as _e:
+                    if 'database is locked' in str(_e) and _a < 19:
+                        _t2.sleep(0.4 + 0.15 * _a)
+                        continue
+                    raise
+            _db_commit_retry(c.connection)
         elapsed = time.time() - t0
         log(f"[TMDB SYNC] Up Next: {len(clean_rows)} seriale (watchlist TMDb + pool {_get_provider_raw()}) in {elapsed:.1f}s (show {time.time()-t_season_start:.1f}s season phase).")
         try:
@@ -3510,9 +3597,13 @@ def refresh_next_episode_tmdb(tmdb_id):
                 in_pool = False
 
         if not in_watchlist and not in_pool:
-            conn.execute("DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
-            conn.commit()
-            conn.close()
+            try:
+                _db_exec_retry(conn, "DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
+                _db_commit_retry(conn)
+            except:
+                pass
+            try: conn.close()
+            except: pass
             return
 
         w = get_watched_episodes_set(tid)
@@ -3525,20 +3616,28 @@ def refresh_next_episode_tmdb(tmdb_id):
             next_ep = None
 
         if not next_ep:
-            conn.execute("DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
-            conn.commit()
-            conn.close()
+            try:
+                _db_exec_retry(conn, "DELETE FROM tmdb_next_episodes WHERE tmdb_id=?", (tid,))
+                _db_commit_retry(conn)
+            except:
+                pass
+            try: conn.close()
+            except: pass
             return
 
         ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
         poster = get_poster_from_db(tid, 'show') or show_details.get('poster_path', '')
         now_str = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        conn.execute(
-            "INSERT OR REPLACE INTO tmdb_next_episodes VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (tid, show_title, next_ep['season'], next_ep['number'], ep_title,
-             ep_overview, w['last_at'] or now_str, poster, air_date, len(w['set'])))
-        conn.commit()
-        conn.close()
+        try:
+            _db_exec_retry(conn,
+                "INSERT OR REPLACE INTO tmdb_next_episodes %s VALUES (?,?,?,?,?,?,?,?,?,?)" % _TMDB_NEXT_COLS,
+                (tid, show_title, next_ep['season'], next_ep['number'], ep_title,
+                 ep_overview, w['last_at'] or now_str, poster, air_date, len(w['set'])))
+            _db_commit_retry(conn)
+        except Exception as _e:
+            log(f"[TMDB SYNC] refresh insert retry failed: {_e}", xbmc.LOGERROR)
+        try: conn.close()
+        except: pass
         log(f"[TMDB SYNC] Up Next refreshed {show_title} -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
         try:
             from resources.lib.cache import clear_all_fast_cache
