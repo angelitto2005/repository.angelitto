@@ -592,6 +592,8 @@ def _sync_full_library_background():
 
 
 def simkl_revoke():
+    if not xbmcgui.Dialog().yesno("[B][COLOR mediumpurple]Disconnect Simkl[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR mediumpurple]Simkl[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+        return
     from resources.lib import simkl_sync
     api = SIMKLAPI()
     if api.is_authenticated():

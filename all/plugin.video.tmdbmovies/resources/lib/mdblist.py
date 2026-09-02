@@ -1163,7 +1163,7 @@ def _view_calendar(page=1):
             cal_date, date_color, diff = _format_cal_date(air_date)
             label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Azi', 'Maine'):
+                if cal_date in ('Astazi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
                 else:
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
@@ -1234,7 +1234,7 @@ def _view_calendar(page=1):
         if ep_name:
             label += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if cal_date:
-            if cal_date in ('Azi', 'Maine'):
+            if cal_date in ('Astazi', 'Maine'):
                 label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
             else:
                 label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'

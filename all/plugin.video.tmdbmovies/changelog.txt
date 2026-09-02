@@ -1,4 +1,5 @@
-1.1.256
+1.1.257
+- Added missing Simkl disconnect confirmation dialog
 - Fixed minor indexer display bugs
 
 1.1.255

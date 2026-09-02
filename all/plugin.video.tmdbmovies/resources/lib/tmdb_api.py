@@ -1892,7 +1892,7 @@ def tmdb_auth_v4():
 
 def tmdb_logout():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Disconnect TMDb[/COLOR][/B]", "Are you sure you want to disconnect your TMDb account?"):
+    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Disconnect TMDb[/COLOR][/B]", "Are you sure you want to disconnect your [B][COLOR FF00CED1]TMDb[/COLOR][/B] account?"):
         return
     # --- END PROTECTIE ---
 

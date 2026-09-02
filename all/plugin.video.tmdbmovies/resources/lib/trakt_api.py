@@ -388,7 +388,7 @@ def trakt_auth():
 
 def trakt_revoke():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Disconnect Trakt[/COLOR][/B]", "Are you sure you want to disconnect from Trakt?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Disconnect Trakt[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR pink]Trakt[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
 
@@ -3210,7 +3210,7 @@ def _view_trakt_my_calendar():
             display_title = f'{it["title"]} ({movie_year})' if movie_year else it['title']
             label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Azi', 'Maine'):
+                if cal_date in ('Astazi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
                 else:
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
@@ -3245,7 +3245,7 @@ def _view_trakt_my_calendar():
             if ep_title:
                 label += f' - [B][I][COLOR FFCCCCFF]{ep_title}[/I][/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Azi', 'Maine'):
+                if cal_date in ('Astazi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
                 else:
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'

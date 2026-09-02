@@ -444,7 +444,7 @@ def calendar_localized_label(diff, ds):
     except:
         is_ro = False
     if diff == 0:
-        return 'Azi' if is_ro else 'Today'
+        return 'Astazi' if is_ro else 'Today'
     if diff == 1:
         return 'Maine' if is_ro else 'Tomorrow'
     if diff == -1:

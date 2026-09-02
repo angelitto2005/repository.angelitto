@@ -698,7 +698,7 @@ def sync_full_library_background():
 
 def mdblist_revoke():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR lightskyblue]Disconnect MDBList[/COLOR][/B]", "Are you sure you want to disconnect from MDBList?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno("[B][COLOR lightskyblue]Disconnect MDBList[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR lightskyblue]MDBList[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
 
