@@ -539,6 +539,12 @@ def sync_full_library(silent=False, force=False):
             if not silent and p_dialog:
                 try: p_dialog.close()
                 except: pass
+            try:
+                conn.rollback()
+            except: pass
+            try:
+                conn.close()
+            except: pass
     
     finally:
         window.clearProperty('tmdbmovies_sync_active')
@@ -583,6 +589,12 @@ def sync_tmdb_only(silent=True, force=True):
         log("[TMDB SYNC] TMDb sync completed separately.")
     except Exception as e:
         log(f"[TMDB SYNC] Error in dedicated TMDb sync: {e}", xbmc.LOGERROR)
+        try:
+            conn.rollback()
+        except: pass
+        try:
+            conn.close()
+        except: pass
 
 
 # =============================================================================

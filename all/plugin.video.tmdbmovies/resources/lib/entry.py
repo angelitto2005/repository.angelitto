@@ -1557,6 +1557,79 @@ def _deferred_plugin_refresh(delay_ms=700):
             pass
     threading.Thread(target=_run, daemon=True).start()
 
+def _run_forced_post_update_sync():
+    """Rebuild complet datelor dupa update de addon, UNCONDITIONAL si IMEDIAT,
+    in thread-uri daemon — NU depinde de waitForAbort(60) din run(), care pe
+    Android e frecvent intrerupt de idle/background (run() iese inainte de
+    sync_worker() -> cache-urile sterse de check_addon_update raman goale,
+    Up Next gol pana la restart). Se cheama din TMDbMonitor.__init__ cand
+    check_addon_update() detecteaza update.
+
+    RUNEAZA PROVIDERII SECVENTIAL (unul dupa altul, intr-un SINGUR thread daemon),
+    nu in paralel — altfel log-urile lor se amesteca si TMDb se dubleaza:
+    sync_full_library(Trakt) include deja _sync_tmdb_data la final (trakt_sync.py:518),
+    deci un thread TMDb separat ar rula in paralel cu cel inclus -> duplicat + amestec."""
+    try:
+        from resources.lib.config import ADDON as _A
+    except Exception:
+        return
+
+    # Da-i Kodi cateva secunde sa termine remontarea addonului (fereastra in care
+    # xbmcaddon arunca "Unknown addon id"). Sync-urile ruleaza oricum in thread-uri
+    # daemon, independent de waitForAbort — deci intarzierea nu reintroduce bug-ul.
+    try:
+        xbmc.sleep(5000)
+    except Exception:
+        pass
+
+    def _run_providers():
+        # Secvential: Trakt (include TMDb la final) -> MDBList -> Simkl.
+        # Unul dupa altul, fara amestec de loguri, fara dublare TMDb.
+        try:
+            from resources.lib import trakt_sync
+            if _A.getSetting('trakt_access_token'):
+                try:
+                    trakt_sync.sync_full_library(silent=True, force=True)
+                    xbmc.log("[TMDb Movies] Trakt (incl. TMDb) post-update forced sync - Success.", xbmc.LOGINFO)
+                except Exception as e:
+                    xbmc.log(f"[TMDb Movies] Trakt post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+            else:
+                # Fara Trakt: TMDb separat (daca token TMDb exista) —
+                # altfel nu avem nimic de sync-uit la acest provider.
+                try:
+                    from resources.lib.tmdb_api import get_tmdb_v4_token
+                    if bool(get_tmdb_v4_token()):
+                        trakt_sync.sync_tmdb_only(silent=True, force=True)
+                        xbmc.log("[TMDb Movies] TMDb post-update forced sync - Success.", xbmc.LOGINFO)
+                except Exception as e:
+                    xbmc.log(f"[TMDb Movies] TMDb post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+        except Exception as e:
+            xbmc.log(f"[TMDb Movies] Trakt/TMDb post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+
+        if _A.getSetting('mdblist_access_token') or _A.getSetting('mdblist_api'):
+            try:
+                from resources.lib import mdblist_sync
+                mdblist_sync.sync_full_library(silent=True, force=True)
+                xbmc.log("[TMDb Movies] MDBList post-update forced sync - Success.", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] MDBList post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+
+        if _A.getSetting('simkl_access_token'):
+            try:
+                from resources.lib import simkl_sync
+                simkl_sync.sync_full_library(silent=True, force=True)
+                xbmc.log("[TMDb Movies] Simkl post-update forced sync - Success.", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] Simkl post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+
+        # Toate providerii au terminat -> UN singur widget refresh (Up Next-ul
+        # alimentat si de TMDb e complet abia acum).
+        _maybe_refresh_widgets_after_sync(force=True)
+
+    threading.Thread(target=_run_providers, daemon=True).start()
+
+
+
 def run_service():
     try:
         from resources.lib.config import ADDON
@@ -1605,14 +1678,34 @@ def run_service():
     class TMDbMonitor(xbmc.Monitor):
         def __init__(self):
             xbmc.Monitor.__init__(self)
+            # Atributele accesate de onSettingsChanged/onWindowActivated trebuie
+            # initializate IMEDIAT (indeajuns de devreme ca niciun callback sa nu le
+            # vada nedesetate). Kodi poate invoca onSettingsChanged in timp ce __init__
+            # inca ruleaza (ex. la update: _run_forced_post_update_sync + check_addon_update
+            # fac I/O lent) — fara defaults, callback-ul pica cu 'has no attribute'.
             self.first_run = True
-            self.update_context_menu_property()
-            
             self._version_changed = False
+            self._post_update_forced_done = False
+            self._provider_pending = False
+            self._settings_pending = False
+            self._last_provider = None
+            self._last_tmdb_unstarted = None
+            self.update_context_menu_property()
+
             try:
                 from resources.lib.utils import check_addon_update
                 if check_addon_update():
                     self._version_changed = True
+                    # Reconstruire imediata datelor (cache-urile tocmai au fost sterse
+                    # de check_addon_update) — fara dependenta de waitForAbort din
+                    # run(), care pe Android e intrerupt de idle/background.
+                    _run_forced_post_update_sync()
+                    # Forced sync-ul din __init__ deja a facut rebuild-ul complet
+                    # (force=True) pentru TOTI providerii. Primul sync din run() (first_run)
+                    # si sync-urile ulterioare trec pe SMART (force=False) ca sa nu
+                    # refaca totul dublu — _version_changed ramane True doar pentru
+                    # _delay=60s (fereastra CAddonMgr reload).
+                    self._post_update_forced_done = True
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
             try:
@@ -1620,8 +1713,6 @@ def run_service():
                 self._last_provider = _gp0()
             except:
                 self._last_provider = None
-            self._provider_pending = False
-            self._settings_pending = False
             try:
                 self._last_tmdb_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted')
             except:
@@ -1841,7 +1932,14 @@ def run_service():
                 xbmc.log(f"[TMDb Movies] RAM prefetch error: {e}", xbmc.LOGINFO)
             
             if self.first_run:
-                self.sync_worker()
+                # Dupa update de addon, _run_forced_post_update_sync() din __init__ a
+                # facut deja rebuild-ul complet (force=True) pentru TOTI providerii.
+                # Sarim sync_worker()-ul din first_run ca sa NU existe un al 2-lea sync
+                # (chiar SMART re-face Hidden shows + Up Next costisitor + timestamps).
+                # Doar cand forced sync-ul NU a rulat (update nerecunoscut? esec?) trecem
+                # la sync_worker() normal pt a nu lasa datele stale.
+                if not getattr(self, '_post_update_forced_done', False):
+                    self.sync_worker()
                 self.first_run = False
                 
             while not self.abortRequested():
@@ -1872,9 +1970,15 @@ def run_service():
             except:
                 pass
 
+        def _sync_force(self):
+            # True DOAR daca update-ul a fost detectat dar forced sync-ul din __init__
+            # NU a fost deja lansat (caz rar). Dupa un update, _post_update_forced_done
+            # e True -> sync-urile din run()/sync_worker raman SMART (force=False) ca
+            # sa nu refaca rebuild-ul complet facut deja (evita sync dublu/triplu la boot).
+            return getattr(self, '_version_changed', False) and not getattr(self, '_post_update_forced_done', False)
+
         def sync_worker(self):
             try:
-                # --- Trakt auto-sync (daemon thread — nu blocheaza shutdown-ul) ---
                 trakt_token = get_addon().getSetting('trakt_access_token')
                 if trakt_token:
                     xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
@@ -1882,9 +1986,9 @@ def run_service():
                     def _run_trakt():
                         try:
                             from resources.lib import trakt_sync
-                            trakt_sync.sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
+                            trakt_sync.sync_full_library(silent=True, force=self._sync_force())
                             xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=getattr(self, '_version_changed', False))
+                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_trakt, daemon=True).start()
@@ -1899,9 +2003,9 @@ def run_service():
                     def _run_mdblist():
                         try:
                             from resources.lib.mdblist_sync import sync_full_library
-                            sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
+                            sync_full_library(silent=True, force=self._sync_force())
                             xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Success.", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=getattr(self, '_version_changed', False))
+                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_mdblist, daemon=True).start()
@@ -1913,9 +2017,9 @@ def run_service():
                     def _run_simkl():
                         try:
                             from resources.lib.simkl_sync import sync_full_library
-                            sync_full_library(silent=True, force=getattr(self, '_version_changed', False))
+                            sync_full_library(silent=True, force=self._sync_force())
                             xbmc.log("[TMDb Movies] SimklMonitor Service Update - Success.", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=getattr(self, '_version_changed', False))
+                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] SimklMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_simkl, daemon=True).start()

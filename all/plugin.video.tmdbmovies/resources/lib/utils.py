@@ -269,33 +269,69 @@ def clear_cache():
                          'trakt_lists', 'user_lists', 'user_list_items', 'tmdb_custom_lists', 
                          'tmdb_custom_list_items', 'tmdb_account_lists', 'tmdb_recommendations']
 
-    try:
-        # Golim tabelele de cache din maincache.db
-        conn_main = database.connect()
-        c_main = conn_main.cursor()
-        for table in CACHE_TABLES_MAIN:
-            try:
-                c_main.execute(f"DELETE FROM {table}")
-                if c_main.rowcount > 0: deleted = True
-            except sqlite3.OperationalError: pass
-        conn_main.commit()
-        conn_main.execute("VACUUM")
-        conn_main.close()
-        log("[CACHE] Main cache tables cleared.")
+    def _clear_tables(conn, tables):
+        c = conn.cursor()
+        wiped = False
+        for table in tables:
+            for _a in range(20):
+                try:
+                    c.execute(f"DELETE FROM {table}")
+                    if c.rowcount > 0: wiped = True
+                    break
+                except Exception as _e:
+                    if 'database is locked' in str(_e) and _a < 19:
+                        time.sleep(0.4 + 0.15 * _a)
+                        continue
+                    break
+        return wiped
 
-        # Golim tabelele de cache din trakt_sync.db
-        conn_sync = trakt_sync.get_connection()
-        c_sync = conn_sync.cursor()
-        for table in CACHE_TABLES_SYNC:
+    try:
+        conn_main = database.connect()
+        try:
+            if _clear_tables(conn_main, CACHE_TABLES_MAIN):
+                deleted = True
+            for _a in range(20):
+                try:
+                    conn_main.commit()
+                    break
+                except Exception as _e:
+                    if 'database is locked' in str(_e) and _a < 19:
+                        time.sleep(0.4 + 0.15 * _a)
+                        continue
+                    raise
             try:
-                c_sync.execute(f"DELETE FROM {table}")
-                if c_sync.rowcount > 0: deleted = True
-            except sqlite3.OperationalError: pass
-        conn_sync.commit()
-        conn_sync.execute("VACUUM")
-        conn_sync.close()
+                conn_main.execute("VACUUM")
+            except Exception as _e:
+                log(f"[CACHE] Main VACUUM skipped: {_e}", xbmc.LOGWARNING)
+        finally:
+            try: conn_main.close()
+            except: pass
+        log("[CACHE] Main cache tables cleared.")
+    except Exception as e:
+        log(f"[CACHE] Error clearing main tables: {e}", xbmc.LOGERROR)
+
+    try:
+        conn_sync = trakt_sync.get_connection()
+        try:
+            if _clear_tables(conn_sync, CACHE_TABLES_SYNC):
+                deleted = True
+            for _a in range(20):
+                try:
+                    conn_sync.commit()
+                    break
+                except Exception as _e:
+                    if 'database is locked' in str(_e) and _a < 19:
+                        time.sleep(0.4 + 0.15 * _a)
+                        continue
+                    raise
+            try:
+                conn_sync.execute("VACUUM")
+            except Exception as _e:
+                log(f"[CACHE] Sync VACUUM skipped: {_e}", xbmc.LOGWARNING)
+        finally:
+            try: conn_sync.close()
+            except: pass
         log("[CACHE] Sync cache tables cleared.")
-        
     except Exception as e:
         log(f"[CACHE] Error clearing DB tables: {e}", xbmc.LOGERROR)
 
