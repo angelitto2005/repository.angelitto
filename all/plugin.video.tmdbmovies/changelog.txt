@@ -1,3 +1,6 @@
+1.1.261
+- Window properties cleanup on stop — player IDs are fully cleared so subtitle addons no longer pick up the previous video.
+
 1.1.260
 - Up Next: extend unstarted watchlist support (introduced for TMDb in v1.1.232) to Trakt/MDBList/Simkl
 - Fix MDBList 7-day and TBA future filtering

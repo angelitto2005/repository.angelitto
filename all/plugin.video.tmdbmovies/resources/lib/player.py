@@ -1796,7 +1796,15 @@ def start_playback_monitor(player_instance, dialog=None):
         log("[PLAYER-MONITOR] Clearing Window Properties.")
         try:
             win = xbmcgui.Window(10000)
-            props_to_clear = ['tmdb_id', 'TMDb_ID', 'imdb_id', 'IMDb_ID', 'tmdbmovies.release_name']
+            props_to_clear = [
+                'tmdb_id', 'TMDb_ID', 'tmdb', 'TMDb', 'VideoPlayer.TMDb',
+                'imdb_id', 'IMDb_ID', 'imdb', 'IMDb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+                'season', 'episode',
+                'tmdbmovies.release_name', 'tmdbmovies.title', 'tmdbmovies.poster', 'tmdbmovies.plot',
+                'tmdbmovies.fanart', 'tmdbmovies.clearlogo', 'tmdbmovies.total_results', 'tmdbmovies.icon',
+                'tmdbmovies.flag_ro', 'tmdbmovies.torrent.name', 'tmdbmovies.count_4k', 'tmdbmovies.count_1080p',
+                'tmdbmovies.count_720p', 'tmdbmovies.count_sd', 'tmdbmovies.has_ro_sub', 'tmdbmovies.sub_text_label',
+            ]
             for prop in props_to_clear: win.clearProperty(prop)
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error clearing properties: {e}")

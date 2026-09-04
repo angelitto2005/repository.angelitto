@@ -1,3 +1,9 @@
+1.0.15
+- Opțiune pentru sursa subtitrărilor (Subs.ro vs SubStudio) — alege ce furnizor este folosit pentru căutarea automată a subtitrărilor.
+- Suport pentru furnizorul SubStudio — căutare multilingvă pe OpenSubtitles, cu descărcarea și activarea automată a subtitrărilor.
+- Identificarea videoclipului pe baza numelui fișierului — titlul și anul sunt extrase din numele fișierului atunci când biblioteca Kodi nu are un IMDb asociat.
+- Subtitrări SubStudio locale — traducerile salvate în folderul „Translated Subtitles” sunt încărcate în player împreună cu cele online.
+
 1.0.14
 - onAVStarted (timing corect) + optiune accept_any_external (subtitrare deja incarcata opreste cautarea online, OFF implicit)
 
@@ -8,12 +14,12 @@
 - Antifreeze fix (thanks @AudioSistem)
 
 1.0.11
-- imbunatatiri exluderi, live TV, min 15 min, etc
+- Imbunatatiri exluderi, live TV, min 15 min, etc
 
 1.0.10
-- exclude automat rotv123
+- Exclude automat rotv123
 
 1.0.9
-- fix ecluderi
+- Fix ecluderi
 
 ...

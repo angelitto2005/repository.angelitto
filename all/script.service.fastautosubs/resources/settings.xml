@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="General">
-        <setting id="enable_autosub" type="bool" default="true" label="Activează căutarea automată a subtitrării la Play"/>
+        <setting id="enable_autosub" type="bool" default="true" label="[B]Activează căutarea automată a subtitrării la Play[/B]"/>
+        <setting id="subtitle_provider" type="enum" label="[B][COLOR cyan]Furnizor subtitrări[/COLOR][/B]" default="0" values="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B] (română)|[B][COLOR FFB048B5]Sub[/COLOR][COLOR FF00BFFF]Studio[/COLOR][/B] (toate limbile)"/>
         <setting id="check_for_specific" type="bool" default="true" label="Caută o anumită limbă"/>
         <setting id="selected_languagea" type="select" enable="eq(-1,true)" visible="eq(-1,true)" label="Limba principală" default="Romanian" values="Albanian|Arabic|Belarusian|Bosnian (Latin)|Bulgarian|Catalan|Chinese|Croatian|Czech|Danish|Dutch|English|Estonian|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Latvian|Lithuanian|Macedonian|Norwegian|Polish|Portuguese|Romanian|Russian|SerbianLatin|Slovak|Slovenian|Spanish|Swedish|Thai|Turkish|Ukrainian|Vietnamese|Farsi|Malay" />
         <setting id="check_for_specificb" type="bool" default="false" enable="eq(-2,true)" visible="eq(-2,true)" label="Caută încă o limbă"/>
@@ -10,8 +11,8 @@
         <setting id="accept_any_external" type="bool" default="false" label="Acceptă orice subtitrare externă existentă ([B][COLOR FFFF4444]ATENȚIE[/COLOR][/B]: poate împiedica căutarea online)"/>
         <setting id="ExcludeTime" type="number" label="Nu căuta pentru durate mai scurte de X minute" default="15"/>   	
         <setting id="ignore_words" type="text" default="theme,Sample" label="Ignoră cuvintele, separate cu virgulă"/>
-		<setting id="pause_on_search" type="bool" label="Pune pauză în timpul căutării automate" default="false" />
 		<setting id="notify_found" type="bool" label="Notificare: Subtitrare existentă activată" default="false" />
+		<setting id="pause_on_search" type="bool" label="Pune pauză în timpul căutării automate" default="false" />
     </category>
     <category label="Excluderi">
         <setting id="ExcludeLiveTV" type="bool" label="Exclude Live TV" default="true"/>
