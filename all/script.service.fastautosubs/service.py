@@ -45,6 +45,7 @@ ROMANIAN_LANG_CODES = ['rum', 'ro', 'ron', 'romanian']
 # CODURI PENTRU SUBTITRARI NECUNOSCUTE/EXTERNE
 # ==============================================================================
 UNKNOWN_EXTERNAL_CODES = ['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown']
+EXTERNAL_ONLY_CODES = ['', '(External)', 'External', 'external']
 
 
 def log(msg):
@@ -56,7 +57,7 @@ class AutoSubsPlayer(xbmc.Player):
         super(AutoSubsPlayer, self).__init__()
         self.wait = False
 
-    def onPlayBackStarted(self):
+    def onAVStarted(self):
         timeout = 0
         while self.isPlaying() and not self.isPlayingVideo() and timeout < 120:
             xbmc.sleep(250)
@@ -103,6 +104,12 @@ class AutoSubsPlayer(xbmc.Player):
             availableLangs = self.getAvailableSubtitleStreams()
         except:
             availableLangs = []
+
+        # Daca exista deja o subtitrare externa incarcata, o acceptam neconditionat
+        if __addon__.getSetting('accept_any_external') == 'true':
+            if any(l in EXTERNAL_ONLY_CODES for l in availableLangs):
+                log("Subtitrare externa detectata - acceptata")
+                return
         
         # Determinam tipul sursei
         is_local = self.is_local_source(movieFullPath)
