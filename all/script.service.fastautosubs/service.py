@@ -23,7 +23,7 @@ ROMANIAN_ADDONS = [
     "service.subtitles.regielive",
     "service.subtitles.titrariro",
     "service.subtitles.subtitrarinoiro",
-    "service.subtitles.subsroteam"
+    "service.subtitles.substudio"
 ]
 
 # ==============================================================================
@@ -56,7 +56,7 @@ class AutoSubsPlayer(xbmc.Player):
         super(AutoSubsPlayer, self).__init__()
         self.wait = False
 
-    def onPlayBackStarted(self):
+    def onAVStarted(self):
         timeout = 0
         while self.isPlaying() and not self.isPlayingVideo() and timeout < 120:
             xbmc.sleep(250)
@@ -103,7 +103,22 @@ class AutoSubsPlayer(xbmc.Player):
             availableLangs = self.getAvailableSubtitleStreams()
         except:
             availableLangs = []
-        
+
+        # Optiune noua: accept_any_external (override, implicit OFF)
+        # Daca exista deja vreo subtitrare incarcata (orice limba: unknown, EN, RO, DE, etc.),
+        # o acceptam si nu mai cautam online. Subtitrarea ramane exact cum a lasat-o Kodi.
+        if __addon__.getSetting('accept_any_external') == 'true' and len(availableLangs) > 0:
+            log("accept_any_external: subtitrare existenta detectata (%s) - nu mai cautam online" % availableLangs)
+            # NOTIFICARE NOUA - doar pentru optiunea accept_any_external
+            if __addon__.getSetting('notify_found') == 'true':
+                xbmcgui.Dialog().notification(
+                    "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
+                    "Activată subtitrarea externă existentă!",
+                    FAS_ICON,
+                    3000
+                )
+            return
+
         # Determinam tipul sursei
         is_local = self.is_local_source(movieFullPath)
         is_romanian_source = self.is_romanian_online_source(movieFullPath)

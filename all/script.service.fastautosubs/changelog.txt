@@ -1,3 +1,6 @@
+1.0.14
+- onAVStarted (timing corect) + optiune accept_any_external (subtitrare deja incarcata opreste cautarea online, OFF implicit)
+
 1.0.13
 - Fix pentru Vixsrc. Marit timeout'ul.
 
