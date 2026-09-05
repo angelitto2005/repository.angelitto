@@ -487,7 +487,9 @@ def sync_full_library(silent=False, force=False):
 
                     # 6. PLAYBACK, UP NEXT (doar daca Trakt e providerul de watched status)
                     if provider_trakt:
+                        if not silent and p_dialog: p_dialog.update(70, message="Sync: [B][COLOR pink]Playback Progress[/COLOR][/B]")
                         _sync_playback(c); conn.commit()
+                        if not silent and p_dialog: p_dialog.update(75, message="Sync: [B][COLOR pink]Up Next[/COLOR][/B]")
                         _sync_up_next(c, trakt_token); conn.commit()
 
                     # 7. HIDDEN SHOWS (Dropped) — intotdeauna cand Trakt e autorizat,
@@ -2958,12 +2960,28 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         
         elif season is not None and episode is not None:
             db_show_title = show_name if 'show_name' in locals() else "Unknown Show"
-            c.execute("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)", 
+            c.execute("INSERT OR REPLACE INTO trakt_watched_episodes VALUES (?,?,?,?,?)",
                       (tid, int(season), int(episode), db_show_title, now))
-            c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
-            if not c.fetchone():
-                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)", 
-                          (tid, 0, poster_val, backdrop_val, overview_val))
+            try:
+                _mt = int((show_details or {}).get('number_of_episodes') or 0)
+            except:
+                _mt = 0
+            if _mt > 0:
+                c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)",
+                          (tid, _mt, poster_val, backdrop_val, overview_val))
+            else:
+                c.execute("SELECT 1 FROM tv_meta WHERE tmdb_id=?", (tid,))
+                if not c.fetchone():
+                    c.execute("INSERT OR REPLACE INTO tv_meta (tmdb_id, total_episodes, poster, backdrop, overview) VALUES (?,?,?,?,?)",
+                              (tid, 0, poster_val, backdrop_val, overview_val))
+            try:
+                from resources.lib.tmdb_api import TV_META_CACHE as _TMC
+                if _mt > 0:
+                    _TMC[tid] = _mt
+                elif tid in _TMC:
+                    del _TMC[tid]
+            except:
+                pass
             c.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", (tid, int(season), int(episode)))
 
         elif season is not None and episode is None:
@@ -3540,6 +3558,25 @@ def sync_tmdb_up_next(c):
                                entry['poster'], air_date, len(w['set'])))
 
         _db_exec_retry(c, "DELETE FROM tmdb_next_episodes")
+        try:
+            _meta_rows = []
+            for entry in pending:
+                try:
+                    _nt = int((entry.get('show_details') or {}).get('number_of_episodes') or 0)
+                except:
+                    _nt = 0
+                if _nt > 0:
+                    _meta_rows.append((str(entry['tid']), _nt))
+            if _meta_rows:
+                c.executemany("INSERT OR IGNORE INTO tv_meta (tmdb_id, total_episodes) VALUES (?, ?)", _meta_rows)
+                c.executemany("UPDATE tv_meta SET total_episodes=? WHERE tmdb_id=?", [(nt, tid) for tid, nt in _meta_rows])
+            try:
+                for _tid, _nt in _meta_rows:
+                    tmdb_api.TV_META_CACHE[_tid] = _nt
+            except:
+                pass
+        except:
+            pass
         if clean_rows:
             import time as _t2
             for _a in range(20):

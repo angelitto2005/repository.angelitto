@@ -1674,6 +1674,8 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
 
 
 # Optimized get_watched_status_tvshow
+_TV_META_HEAL_CHECKED = set()
+
 def get_watched_status_tvshow(tmdb_id):
     from resources.lib import watched_provider, trakt_sync
     str_id = str(tmdb_id)
@@ -1694,6 +1696,25 @@ def get_watched_status_tvshow(tmdb_id):
         else:
             total_eps = 0
         TV_META_CACHE[str_id] = total_eps
+
+    if watched_count > (total_eps or 0) > 0 and str_id not in _TV_META_HEAL_CHECKED:
+        _TV_META_HEAL_CHECKED.add(str_id)
+        try:
+            import xbmcgui as _xg
+            _sync_active = _xg.Window(10000).getProperty('tmdbmovies_sync_active') == 'true'
+        except:
+            _sync_active = False
+        if not _sync_active:
+            try:
+                fresh = get_tmdb_item_details(str_id, 'tv', lightweight=True, skip_localization=True, force=True)
+                fresh_total = int((fresh or {}).get('number_of_episodes') or 0)
+                if fresh_total > (total_eps or 0):
+                    log(f"[TV META] Heal {str_id}: total {total_eps} -> {fresh_total} (watched={watched_count})")
+                    trakt_sync.set_tv_meta_to_db(str_id, fresh_total)
+                    TV_META_CACHE[str_id] = fresh_total
+                    total_eps = fresh_total
+            except:
+                pass
 
     return {'watched': watched_count, 'total': total_eps}
 # --------------------------------------------------------------------
@@ -5891,39 +5912,41 @@ def _extract_mpaa(data, content_type):
         pass
 
 
-def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localization=False):
-    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista). skip_localization=True sare al 2-lea GET RO."""
+def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localization=False, force=False):
+    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista). skip_localization=True sare al 2-lea GET RO. force=True sare citirea din cache-uri (doar API + write-through)."""
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     str_id = str(tmdb_id)
-    
+
     from resources.lib.config import get_plot_language_code
     current_lang = 'en' if skip_localization else get_plot_language_code()
-    
+
     from resources.lib.cache import ram_cache_get_tvshow, ram_cache_set_tvshow, ram_pool_get, ram_pool_set
     from resources.lib.config import ADDON, SESSION, get_headers, get_plot_img_lang, LANG_TO_TMDB
     from resources.lib import trakt_sync
-    # 1. Check global RAM pool — skip if language doesn't match
-    pool_data = ram_pool_get(str_id)
-    if pool_data and pool_data.get('_cached_lang') == current_lang:
-        if lightweight or not pool_data.get('_lightweight'):
-            return _ensure_clearlogo(pool_data)
-    
-    # 2. Check Window Properties RAM cache — skip if language doesn't match
-    ram_data = ram_cache_get_tvshow(str_id)
-    if ram_data and ram_data.get('_cached_lang') == current_lang:
-        if lightweight or not ram_data.get('_lightweight'):
-            ram_pool_set(str_id, ram_data)
-            return _ensure_clearlogo(ram_data)
-    
-    data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
-    
-    if data:
-        cached_lang = data.get('_cached_lang', 'en')
-        if cached_lang == current_lang:
-            if lightweight or not data.get('_lightweight'):
-                ram_pool_set(str_id, data)
-                ram_cache_set_tvshow(str_id, data)
-                return _ensure_clearlogo(data)
+    data = None
+    if not force:
+        # 1. Check global RAM pool — skip if language doesn't match
+        pool_data = ram_pool_get(str_id)
+        if pool_data and pool_data.get('_cached_lang') == current_lang:
+            if lightweight or not pool_data.get('_lightweight'):
+                return _ensure_clearlogo(pool_data)
+
+        # 2. Check Window Properties RAM cache — skip if language doesn't match
+        ram_data = ram_cache_get_tvshow(str_id)
+        if ram_data and ram_data.get('_cached_lang') == current_lang:
+            if lightweight or not ram_data.get('_lightweight'):
+                ram_pool_set(str_id, ram_data)
+                return _ensure_clearlogo(ram_data)
+
+        data = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
+
+        if data:
+            cached_lang = data.get('_cached_lang', 'en')
+            if cached_lang == current_lang:
+                if lightweight or not data.get('_lightweight'):
+                    ram_pool_set(str_id, data)
+                    ram_cache_set_tvshow(str_id, data)
+                    return _ensure_clearlogo(data)
     
     append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
@@ -7050,6 +7073,16 @@ def get_next_episodes(params=None):
         
         # 1. Extragem datele complete si garantat RO/EN (Aici se intampla magia Clearlogo!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
+        if not show_watched_info.get('total') and show_details and show_details.get('number_of_episodes'):
+            try:
+                _healed_total = int(show_details['number_of_episodes'])
+                if _healed_total > 0:
+                    trakt_sync.set_tv_meta_to_db(str(tmdb_id), _healed_total)
+                    TV_META_CACHE[str(tmdb_id)] = _healed_total
+                    show_watched_info = {'watched': show_watched_info.get('watched', 0), 'total': _healed_total}
+                    unwatched_count = max(0, _healed_total - show_watched_info['watched'])
+            except:
+                pass
         imdb_id = show_details.get('external_ids', {}).get('imdb_id', '') if show_details else ''
         
         # 2. Extragem absolut tot ce vrea Kodi (Clearlogo, MPAA, Studio)

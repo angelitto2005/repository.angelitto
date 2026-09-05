@@ -1,3 +1,9 @@
+1.1.262
+- Fixed false "watched" checkmark on unwatched Up Next episodes — stale episode totals are now auto-healed from TMDb.
+- Fixed missing episode counting on Up Next for shows without cached totals.
+- Fixed sync hanging on Android during Up Next computation — database writes are now batched.
+- Sync progress dialog now shows "Playback Progress" and "Up Next" phases instead of freezing on "Personal Lists".
+
 1.1.261
 - Window properties cleanup on stop — player IDs are fully cleared so subtitle addons no longer pick up the previous video.
 
