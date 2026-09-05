@@ -1,3 +1,9 @@
+1.0.16
+- "Accepta subtitrarile externe" prinde doar codurile strict externe — nu mai opreste cautarea la subtitrari interne (ex. EN).
+- Pe surse TorrServer/m3u accepta si streamurile doar-eng (RO etichetat gresit); cu alte limbi continua cautarea online.
+- Episoadele fara InfoLabels (ex. TorrServer) iau sezonul/episodul din numele fisierului la identificarea OpenSubtitles.
+- Curatat warningul SyntaxWarning din log.
+
 1.0.15
 - Opțiune pentru sursa subtitrărilor (Subs.ro vs SubStudio) — alege ce furnizor este folosit pentru căutarea automată a subtitrărilor.
 - Suport pentru furnizorul SubStudio — căutare multilingvă pe OpenSubtitles, cu descărcarea și activarea automată a subtitrărilor.

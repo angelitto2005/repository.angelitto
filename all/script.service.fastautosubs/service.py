@@ -47,6 +47,8 @@ ROMANIAN_LANG_CODES = ['rum', 'ro', 'ron', 'romanian']
 # CODURI PENTRU SUBTITRARI NECUNOSCUTE/EXTERNE
 # ==============================================================================
 UNKNOWN_EXTERNAL_CODES = ['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown']
+EXTERNAL_ONLY_CODES = ['', '(External)', 'External', 'external']
+EN_MISLABEL_CODES = ['en', 'eng', 'EN', 'ENG']
 
 # ==============================================================================
 # MOD SUBSTUDIO - OPENSUBTITLES (REST, ca TMDb Movies / SubStudio)
@@ -179,8 +181,16 @@ class AutoSubsPlayer(xbmc.Player):
         # Optiune noua: accept_any_external (override, implicit OFF)
         # Daca exista deja vreo subtitrare incarcata (orice limba: unknown, EN, RO, DE, etc.),
         # o acceptam si nu mai cautam online. Subtitrarea ramane exact cum a lasat-o Kodi.
-        if __addon__.getSetting('accept_any_external') == 'true' and len(availableLangs) > 0:
-            log("accept_any_external: subtitrare existenta detectata (%s) - nu mai cautam online" % availableLangs)
+        accept_external = __addon__.getSetting('accept_any_external') == 'true'
+        external_streams = [l for l in availableLangs if l in EXTERNAL_ONLY_CODES]
+        is_torrserver = self.is_torrserver_source(movieFullPath)
+        torrserver_en_only = (is_torrserver and len(availableLangs) > 0
+                              and all(l in EN_MISLABEL_CODES for l in availableLangs))
+        if accept_external and (external_streams or torrserver_en_only):
+            if external_streams:
+                log("accept_any_external: subtitrare externa detectata %s (toate fluxurile: %s) - nu mai cautam online" % (external_streams, availableLangs))
+            else:
+                log("accept_any_external: sursa TorrServer cu subtitrari doar eng %s (posibil RO etichetat gresit) - nu mai cautam online" % (availableLangs,))
             # NOTIFICARE NOUA - doar pentru optiunea accept_any_external
             if __addon__.getSetting('notify_found') == 'true':
                 xbmcgui.Dialog().notification(
@@ -190,6 +200,8 @@ class AutoSubsPlayer(xbmc.Player):
                     3000
                 )
             return
+        if accept_external:
+            log("accept_any_external: doar fluxuri cu limba cunoscuta %s - continui logica normala" % availableLangs)
 
         # Determinam tipul sursei
         is_local = self.is_local_source(movieFullPath)
@@ -312,7 +324,7 @@ class AutoSubsPlayer(xbmc.Player):
     def is_local_source(self, path):
         """
         Verifica daca sursa este locala (fisier pe HDD/biblioteca Kodi).
-        Returneaza True pentru: /path/to/file, C:\path\to\file, smb://, nfs://
+        Returneaza True pentru: /path/to/file, C:/path/to/file, smb://, nfs://
         Returneaza False pentru: http://, https://, plugin://, pvr://
         """
         if not path:
@@ -362,6 +374,15 @@ class AutoSubsPlayer(xbmc.Player):
                 log("Tag romanesc gasit: '%s' in '%s'" % (tag, path))
                 return True
         
+        return False
+
+    def is_torrserver_source(self, path):
+        if not path:
+            return False
+        path_lower = path.lower()
+        if ':8090/' in path_lower or 'torrserver' in path_lower or path_lower.endswith('.m3u'):
+            log("Sursa TorrServer detectata: '%s'" % path)
+            return True
         return False
 
     # ==========================================================================
@@ -681,6 +702,18 @@ class AutoSubsPlayer(xbmc.Player):
             pass
 
         is_tv = str(season) not in ('0', '', 'None')
+
+        if not is_tv:
+            try:
+                base = os.path.basename(self.getPlayingFile() or '')
+                m = re.search(r'[Ss](\d{1,2})[Ee](\d{1,3})', base)
+                if m:
+                    season = str(int(m.group(1)))
+                    episode = str(int(m.group(2)))
+                    is_tv = True
+                    log("Sezon/episod din fisier: S%sE%s" % (season, episode))
+            except:
+                pass
 
         # 4. TMDbId -> IMDb (daca avem doar TMDb)
         if not imdb_id:
