@@ -1,4 +1,4 @@
-1.0.16
+1.0.17
 - "Accepta subtitrarile externe" prinde doar codurile strict externe — nu mai opreste cautarea la subtitrari interne (ex. EN).
 - Pe surse TorrServer/m3u accepta si streamurile doar-eng (RO etichetat gresit); cu alte limbi continua cautarea online.
 - Episoadele fara InfoLabels (ex. TorrServer) iau sezonul/episodul din numele fisierului la identificarea OpenSubtitles.

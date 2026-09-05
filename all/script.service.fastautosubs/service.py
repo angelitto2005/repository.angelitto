@@ -603,12 +603,18 @@ class AutoSubsPlayer(xbmc.Player):
             self.apply_os_subtitles(all_subs)
 
             # 6. Notificare (mereu la succes, ca TMDb Movies)
-            xbmcgui.Dialog().notification(
-                "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
-                "Adăugate: [B][COLOR yellow]%d[/COLOR][/B] [B][COLOR orange]%s[/COLOR][/B] — [B][COLOR FF00BFFF]OpenSubtitles[/COLOR][/B]%s" % (len(downloaded), target_lang.upper(), " + [B][COLOR lime]%d local[/COLOR][/B]" % len(local_subs) if local_subs else ""),
-                FAS_ICON,
-                4000
-            )
+            log("Trimit notificarea de succes OpenSubtitles...")
+            try:
+                xbmcgui.Dialog().notification(
+                    "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
+                    "Adăugate: [B][COLOR yellow]%d[/COLOR][/B] [B][COLOR orange]%s[/COLOR][/B] — [B][COLOR FF00BFFF]OpenSubtitles[/COLOR][/B]%s" % (len(downloaded), target_lang.upper(), " + [B][COLOR lime]%d local[/COLOR][/B]" % len(local_subs) if local_subs else ""),
+                    FAS_ICON,
+                    4000
+                )
+            except Exception as e:
+                log("Notificare Dialog esuata (%s), fallback builtin" % str(e))
+                xbmc.executebuiltin("Notification(Fast AutoSubs,Adaugate %d %s OpenSubtitles,4000,%s)" % (len(downloaded), target_lang.upper(), FAS_ICON))
+            log("Notificare trimisa.")
         except Exception as e:
             log("Eroare in modul OpenSubtitles: %s" % str(e))
             self.open_subtitle_search(pause_enabled)
