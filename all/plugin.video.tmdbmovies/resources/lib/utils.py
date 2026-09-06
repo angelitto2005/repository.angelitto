@@ -695,7 +695,7 @@ def view_kodi_log():
     dialog = xbmcgui.Dialog()
     
     # 1. Alegerea fisierului de log
-    log_idx = dialog.select("Selectează fișierul de log", ["Active Log (kodi.log)", "Old Log (kodi.old.log)"])
+    log_idx = dialog.select("Selecteaza fisierul de log", ["[B][COLOR FF6AFB92]kodi.log[/COLOR][/B] - log activ", "[B][COLOR FFFF4444]kodi.old.log[/COLOR][/B] - log vechi"])
     if log_idx is None or log_idx < 0:
         return # Utilizatorul a anulat
 
@@ -704,21 +704,29 @@ def view_kodi_log():
     log_file = xbmcvfs.translatePath(f'special://logpath/{log_filename}')
     
     if not xbmcvfs.exists(log_file):
-        dialog.ok("Error", f"Fișierul {log_filename} nu a fost găsit.")
+        dialog.ok("Error", f"Fisierul {log_filename} nu a fost gasit.")
         return
 
     # 2. Alegerea ordinii de afisare
-    order_idx = dialog.select(f"Ordine afișare ({log_filename})", ["Ascending - oldest first", "Descending - newest first"])
+    order_idx = dialog.select(f"Ordine afisare ({log_filename})", ["[B][COLOR FF87CEEB]Ascending[/COLOR][/B] - oldest first", "[B][COLOR FFFFD700]Descending[/COLOR][/B] - newest first"])
     if order_idx is None or order_idx < 0:
         return # Utilizatorul a anulat
 
-    # 3. Citirea fisierului
+    err_idx = dialog.select("Show errors only?", ["[B][COLOR FFFF4444]Yes[/COLOR][/B] - errors only", "[B][COLOR FF6AFB92]No[/COLOR][/B] - full log"])
+    if err_idx is None or err_idx < 0:
+        return
+    errors_only = (err_idx == 0)
+    last_200 = False
+    if not errors_only:
+        scope_idx = dialog.select("Cat din log sa afisez?", ["[B][COLOR FF87CEEB]Full log[/COLOR][/B] - tot fisierul", "[B][COLOR FFFFD700]Last 200 lines[/COLOR][/B] - ultimele 200 de linii"])
+        if scope_idx is None or scope_idx < 0:
+            return
+        last_200 = (scope_idx == 1)
     try:
         f = xbmcvfs.File(log_file, 'r')
         raw = f.read()
         f.close()
     except Exception as e:
-        # Presupunem ca ai o functie de log() definita in scriptul tau, sau folosim xbmc.log
         xbmc.log(f"[UTILS] View Log Error: {e}", xbmc.LOGERROR)
         dialog.ok("Error", f"Nu s-a putut citi {log_filename}.")
         return
@@ -726,15 +734,23 @@ def view_kodi_log():
     if isinstance(raw, bytes):
         raw = raw.decode('utf-8', errors='ignore')
 
-    # 4. Procesarea liniilor si stabilirea titlului (heading)
     lines = raw.splitlines()
+    if errors_only:
+        lines = [l for l in lines if _LOG_ERROR_RE.search(l)]
+        if not lines:
+            dialog.ok(log_filename, "No errors found.")
+            return
+    elif last_200 and len(lines) > 200:
+        lines = lines[-200:]
+    file_color = 'FF6AFB92' if log_idx == 0 else 'FFFF4444'
+    heading = f"[B][COLOR {file_color}]{log_filename}[/COLOR][/B] - {'newest first' if order_idx == 1 else 'oldest first'}"
+    if errors_only:
+        heading += " - errors only"
+    elif last_200:
+        heading += " - last 200 lines"
     if order_idx == 1:
         lines.reverse()
-        heading = f"[B][COLOR FF87CEEB]{log_filename}[/COLOR][/B] - newest first"
-    else:
-        heading = f"[B][COLOR FF87CEEB]{log_filename}[/COLOR][/B] - oldest first"
 
-    # 5. Afisarea propriu-zisa - fontul nativ al skinului + culori ERROR/WARNING
     dialog.textviewer(heading, _style_kodi_log('\n'.join(lines)))
     
 

@@ -1,3 +1,6 @@
+1.1.263
+- Kodi Log viewer: colored file/order picks, Show errors only filter, and Full log vs Last 200 lines option
+
 1.1.262
 - Fixed false "watched" checkmark on unwatched Up Next episodes — stale episode totals are now auto-healed from TMDb.
 - Fixed missing episode counting on Up Next for shows without cached totals.
