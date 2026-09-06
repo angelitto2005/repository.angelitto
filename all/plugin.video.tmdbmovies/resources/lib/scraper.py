@@ -4088,11 +4088,11 @@ def _extract_release_group(filename):
     m = re.search(r'-([a-zA-Z0-9_]+)$', clean_name)
     if m:
         grp = m.group(1)
-        bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e']
-        if grp.lower() not in bad_groups and len(grp) < 15:
+        bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e', 'web', 'webdl', 'webrip', 'bluray', 'bdrip', 'brrip', 'hdtv', 'dvdrip', 'dl']
+        if grp.lower() not in bad_groups and 2 <= len(grp) <= 15:
             return grp
-    dot_bad = ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1', 'vp9', 'xvid', '1080p', '720p', '2160p', '480p', '360p', '4k', 'uhd', 'fhd', 'hd', 'hdr', 'hdr10', 'dv', 'sdr', 'hlg', 'webdl', 'webrip', 'web', 'hdtv', 'bluray', 'bdrip', 'brrip', 'remux', 'ddp', 'dd', 'ac3', 'eac3', 'aac', 'dts', 'atmos', 'truehd', 'flac', 'mp3', 'opus', 'stereo', 'multi', '10bit', '8bit', '12bit', 'esub', 'subbed', 'dubbed', 'proper', 'repack', 'rerip', 'extended', 'uncut', 'unrated', 'dual', 'sdh', 'imax', 'hybrid', 'internal', 'pal', 'ntsc']
-    b = re.search(r'-\[([A-Za-z0-9_]{2,14})[^\]]*\]$', clean_name)
+    dot_bad = ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1', 'vp9', 'xvid', '1080p', '720p', '2160p', '480p', '360p', '4k', 'uhd', 'fhd', 'hd', 'hdr', 'hdr10', 'dv', 'sdr', 'hlg', 'webdl', 'webrip', 'web', 'hdtv', 'bluray', 'bdrip', 'brrip', 'remux', 'ddp', 'dd', 'ac3', 'eac3', 'aac', 'dts', 'atmos', 'truehd', 'flac', 'mp3', 'opus', 'stereo', 'multi', '10bit', '8bit', '12bit', 'esub', 'subbed', 'dubbed', 'dublado', 'legendado', 'proper', 'repack', 'rerip', 'extended', 'uncut', 'unrated', 'dual', 'sdh', 'ma', 'esp', 'ita', 'eng', 'fre', 'ger', 'lat', 'sub', 'subs', 'imax', 'hybrid', 'internal', 'pal', 'ntsc']
+    b = re.search(r'(?:-\[|\[)([A-Za-z0-9_]{2,14})[^\]]*\]$', clean_name)
     if b:
         br_grp = b.group(1)
         if re.search(r'[A-Za-z]', br_grp) and br_grp.lower() not in dot_bad:
@@ -4168,6 +4168,8 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             is_cached = f'[{initial}+]' in name_upper
             break
     if debrid_service and not is_cached and provider_id == 'torz' and '⚡️' in raw_name:
+        is_cached = True
+    if debrid_service and not is_cached and provider_id == 'meteor' and '📫' in raw_name:
         is_cached = True
     if not debrid_service:
         # MediaFusion pattern: 🧲 CODE ⚡️ (e.g. 🧲 TRB ⚡️ for TorBox)
@@ -4303,7 +4305,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         pass
 
     # 4. Marime si Seederi
-    size_match = re.search(r'([\d.,]+\s*(?:GB|MB|TB))', raw_title_unquoted, re.IGNORECASE)
+    size_match = re.search(r'([\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB))', raw_title_unquoted, re.IGNORECASE)
     size = size_match.group(1).upper() if size_match else ""
     
     seeders = 0
@@ -4336,12 +4338,14 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
         if link_match:
             indexer = link_match.group(1).strip()
-    if not indexer and provider_id != 'torz':
+            if provider_id == 'meteor':
+                indexer = indexer.split(',')[0].strip()
+    if not indexer and provider_id not in ('torz', 'meteor'):
         gear_match = re.search(r'⚙️\s*([^\n💾]+)', raw_title_unquoted)
         if gear_match:
             indexer = gear_match.group(1).strip()
-    if not indexer and provider_id != 'torz' and info_line:
-        clean = re.sub(r'[\d.,]+\s*(?:GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
+    if not indexer and provider_id not in ('torz', 'meteor') and info_line:
+        clean = re.sub(r'[\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
         if clean and not is_valid_filename(clean): indexer = clean
@@ -4358,6 +4362,18 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     if not quality or quality == 'SD':
         quality = _extract_quality_from_string(filename) or 'SD'
         
+    release_group = _extract_release_group(filename)
+    if provider_id == 'meteor':
+        try:
+            _bg_parts = str(s.get('behaviorHints', {}).get('bingeGroup', '')).split('|')
+            if len(_bg_parts) >= 2 and _bg_parts[1] == 'library':
+                is_cached = True
+            elif not release_group and len(_bg_parts) >= 4:
+                _bg_cand = _bg_parts[3].strip()
+                if re.match(r'^[A-Za-z0-9_]{2,15}$', _bg_cand) and re.search(r'[A-Za-z]', _bg_cand) and _bg_cand.lower() not in ('web', 'webdl', 'webrip', 'bluray', 'hdtv', 'remux', 'e', '2160p', '1080p', '720p', '480p', '4k'):
+                    release_group = _bg_cand
+        except:
+            pass
     stream_obj = {
         'name': filename, 
         'url': url if url.startswith('magnet:') else (url if '|' in url else f"{url}|{_AIO_UA_HEADERS}"),
@@ -4374,7 +4390,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             'provider': addon_name,
             'indexer': indexer,
             'seeders': seeders,
-            'releaseGroup': _extract_release_group(filename),
+            'releaseGroup': release_group,
             'quality': quality,
         }
     }
@@ -4743,7 +4759,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                         'addon': 'Torrentio',
                         'indexer': indexer,
                         'seeders': seeders,
-                        'releaseGroup': _extract_release_group(filename),
+            'releaseGroup': release_group,
                         'quality': quality,
                     }
                 }

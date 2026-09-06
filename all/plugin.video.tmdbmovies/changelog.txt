@@ -1,5 +1,6 @@
-1.1.265
+1.1.266
 - Added StremThru Torz Stremio provider with 3 instances (Midnight / Elfhosted / XYZ)
+- Fixed Meteor
 
 1.1.264
 - Kodi Log viewer: colored file/order picks, Show errors only filter, and Full log vs Last 200 lines option
