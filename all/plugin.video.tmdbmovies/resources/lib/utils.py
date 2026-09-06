@@ -695,7 +695,7 @@ def view_kodi_log():
     dialog = xbmcgui.Dialog()
     
     # 1. Alegerea fisierului de log
-    log_idx = dialog.select("Selecteaza fisierul de log", ["[B][COLOR FF6AFB92]kodi.log[/COLOR][/B] - log activ", "[B][COLOR FFFF4444]kodi.old.log[/COLOR][/B] - log vechi"])
+    log_idx = dialog.select("Select log file", ["[B][COLOR FF6AFB92]kodi.log[/COLOR][/B] - active log", "[B][COLOR FFFF4444]kodi.old.log[/COLOR][/B] - old log"])
     if log_idx is None or log_idx < 0:
         return # Utilizatorul a anulat
 
@@ -704,11 +704,11 @@ def view_kodi_log():
     log_file = xbmcvfs.translatePath(f'special://logpath/{log_filename}')
     
     if not xbmcvfs.exists(log_file):
-        dialog.ok("Error", f"Fisierul {log_filename} nu a fost gasit.")
+        dialog.ok("Error", f"File {log_filename} not found.")
         return
 
     # 2. Alegerea ordinii de afisare
-    order_idx = dialog.select(f"Ordine afisare ({log_filename})", ["[B][COLOR FF87CEEB]Ascending[/COLOR][/B] - oldest first", "[B][COLOR FFFFD700]Descending[/COLOR][/B] - newest first"])
+    order_idx = dialog.select(f"Display order ({log_filename})", ["[B][COLOR FF87CEEB]Ascending[/COLOR][/B] - oldest first", "[B][COLOR FFFFD700]Descending[/COLOR][/B] - newest first"])
     if order_idx is None or order_idx < 0:
         return # Utilizatorul a anulat
 
@@ -718,7 +718,7 @@ def view_kodi_log():
     errors_only = (err_idx == 0)
     last_200 = False
     if not errors_only:
-        scope_idx = dialog.select("Cat din log sa afisez?", ["[B][COLOR FF87CEEB]Full log[/COLOR][/B] - tot fisierul", "[B][COLOR FFFFD700]Last 200 lines[/COLOR][/B] - ultimele 200 de linii"])
+        scope_idx = dialog.select("How much of the log to show?", ["[B][COLOR FF87CEEB]Full log[/COLOR][/B] - entire file", "[B][COLOR FFFFD700]Last 200 lines[/COLOR][/B] - newest entries"])
         if scope_idx is None or scope_idx < 0:
             return
         last_200 = (scope_idx == 1)
@@ -728,7 +728,7 @@ def view_kodi_log():
         f.close()
     except Exception as e:
         xbmc.log(f"[UTILS] View Log Error: {e}", xbmc.LOGERROR)
-        dialog.ok("Error", f"Nu s-a putut citi {log_filename}.")
+        dialog.ok("Error", f"Could not read {log_filename}.")
         return
 
     if isinstance(raw, bytes):
