@@ -4088,10 +4088,32 @@ def _extract_release_group(filename):
     m = re.search(r'-([a-zA-Z0-9_]+)$', clean_name)
     if m:
         grp = m.group(1)
-        # Excludem codecuri/rezolutii care ar putea aparea din greseala dupa ultimul '-'
         bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e']
         if grp.lower() not in bad_groups and len(grp) < 15:
             return grp
+    dot_bad = ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1', 'vp9', 'xvid', '1080p', '720p', '2160p', '480p', '360p', '4k', 'uhd', 'fhd', 'hd', 'hdr', 'hdr10', 'dv', 'sdr', 'hlg', 'webdl', 'webrip', 'web', 'hdtv', 'bluray', 'bdrip', 'brrip', 'remux', 'ddp', 'dd', 'ac3', 'eac3', 'aac', 'dts', 'atmos', 'truehd', 'flac', 'mp3', 'opus', 'stereo', 'multi', '10bit', '8bit', '12bit', 'esub', 'subbed', 'dubbed', 'proper', 'repack', 'rerip', 'extended', 'uncut', 'unrated', 'dual', 'sdh', 'imax', 'hybrid', 'internal', 'pal', 'ntsc']
+    b = re.search(r'-\[([A-Za-z0-9_]{2,14})[^\]]*\]$', clean_name)
+    if b:
+        br_grp = b.group(1)
+        if re.search(r'[A-Za-z]', br_grp) and br_grp.lower() not in dot_bad:
+            return br_grp
+    clean_name = re.sub(r'[\s\)\]]+$', '', clean_name)
+    d = re.search(r'\.([A-Za-z0-9_]{2,14})$', clean_name)
+    if d:
+        dot_grp = d.group(1)
+        if not re.search(r'[A-Za-z]', dot_grp):
+            return ""
+        if re.match(r'(?i)^v\d+$', dot_grp):
+            return ""
+        if dot_grp.lower() not in dot_bad:
+            return dot_grp
+    s = re.search(r'\s([A-Za-z0-9_]{2,14})$', clean_name)
+    if s:
+        sp_grp = s.group(1)
+        if re.search(r'(19|20)\d{2}|1080p|720p|2160p|480p|\b4k\b', clean_name, re.I):
+            if re.search(r'[A-Z]', sp_grp) or (re.search(r'[A-Za-z]', sp_grp) and re.search(r'\d', sp_grp)):
+                if sp_grp.lower() not in dot_bad:
+                    return sp_grp
     return ""
 
 import urllib.parse
@@ -4145,6 +4167,8 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             debrid_service = service
             is_cached = f'[{initial}+]' in name_upper
             break
+    if debrid_service and not is_cached and provider_id == 'torz' and '⚡️' in raw_name:
+        is_cached = True
     if not debrid_service:
         # MediaFusion pattern: 🧲 CODE ⚡️ (e.g. 🧲 TRB ⚡️ for TorBox)
         mf_match = re.search(r'🧲\s*(\w+)\s*⚡', raw_name)
@@ -4305,14 +4329,18 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         if idx_match:
             indexer = idx_match.group(1).strip()
     if not indexer:
+        spy_match = re.search(r'🔍\s*([^\n]+)', raw_title_unquoted)
+        if spy_match:
+            indexer = spy_match.group(1).strip()
+    if not indexer:
         link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
         if link_match:
             indexer = link_match.group(1).strip()
-    if not indexer:
+    if not indexer and provider_id != 'torz':
         gear_match = re.search(r'⚙️\s*([^\n💾]+)', raw_title_unquoted)
         if gear_match:
             indexer = gear_match.group(1).strip()
-    if not indexer and info_line:
+    if not indexer and provider_id != 'torz' and info_line:
         clean = re.sub(r'[\d.,]+\s*(?:GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
@@ -7253,6 +7281,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'mediafusion': ('Mediafusion', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'mediafusion', 'Mediafusion')),
         'comet': ('Comet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'comet', 'Comet')),
         'meteor': ('Meteor', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'meteor', 'Meteor')),
+        'torz': ('Torz', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'torz', 'Torz')),
         'custom1': ('Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom1', ADDON.getSetting('custom1_name') or 'Custom 1')),
         'custom2': ('Custom 2', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom2', ADDON.getSetting('custom2_name') or 'Custom 2')),
         'custom3': ('Custom 3', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom3', ADDON.getSetting('custom3_name') or 'Custom 3')),
@@ -7281,7 +7310,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:

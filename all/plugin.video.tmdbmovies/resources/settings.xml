@@ -230,6 +230,17 @@
         <setting id="meteor_instance" type="enum" label="  Instance" values="Midnight's Meteor" default="0" subsetting="true" visible="eq(-1,true)"/>
         <setting id="meteor_info_url.0" type="text" label="    Configure URL (Midnight)" default="https://meteorfortheweebs.midnightignite.me/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
         <setting id="meteor_manifest.0" type="text" label="    URL manifest.json (Midnight)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+
+        <!-- StremThru Torz -->
+        <setting type="lsep" label="StremThru Torz"/>
+        <setting id="use_torz" type="bool" label="Enable [B][COLOR cyan]Torz[/COLOR][/B]" default="false"/>
+        <setting id="torz_instance" type="enum" label="  Instance" values="Midnight's Torz|Elfhosted's Torz|XYZ's Torz" default="0" subsetting="true" visible="eq(-1,true)"/>
+        <setting id="torz_info_url.0" type="text" label="    Configure URL (Midnight)" default="https://stremthrufortheweebs.midnightignite.me/stremio/torz/configure" enable="false" subsetting="true" visible="eq(-2,true) + eq(-1,0)"/>
+        <setting id="torz_manifest.0" type="text" label="    URL manifest.json (Midnight)" default="" subsetting="true" visible="eq(-3,true) + eq(-2,0)"/>
+        <setting id="torz_info_url.1" type="text" label="    Configure URL (Elfhosted)" default="https://stremthru.elfhosted.com/stremio/torz/configure" enable="false" subsetting="true" visible="eq(-4,true) + eq(-3,1)"/>
+        <setting id="torz_manifest.1" type="text" label="    URL manifest.json (Elfhosted)" default="" subsetting="true" visible="eq(-5,true) + eq(-4,1)"/>
+        <setting id="torz_info_url.2" type="text" label="    Configure URL (XYZ)" default="https://stremthru.13377001.xyz/stremio/torz/configure" enable="false" subsetting="true" visible="eq(-6,true) + eq(-5,2)"/>
+        <setting id="torz_manifest.2" type="text" label="    URL manifest.json (XYZ)" default="" subsetting="true" visible="eq(-7,true) + eq(-6,2)"/>
         
         <!-- Usenet (EasyNews) -->
         <setting type="lsep" label="Usenet (EasyNews)"/>
