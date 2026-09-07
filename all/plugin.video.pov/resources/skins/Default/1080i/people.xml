@@ -180,6 +180,7 @@
 			</control>
 			<!-- Biography -->
 			<control type="group">
+				<visible>!String.IsEmpty(Window.Property(tikiskins.person.biography))</visible>
 				<height>430</height>
 				<control type="group">
 					<control type="label">

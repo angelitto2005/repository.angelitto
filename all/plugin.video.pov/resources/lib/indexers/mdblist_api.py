@@ -9,8 +9,8 @@ from modules import kodi_utils, settings
 from modules.cache import check_databases
 from modules.utils import sort_for_article, jsondate_to_datetime, paginate_list, get_datetime
 
-EXPIRES_1_HOURS, EXPIRES_2_DAYS, MAX_LIST_ITEMS = 1, 48, 250_000
 get_setting, set_setting, logger = kodi_utils.get_setting, kodi_utils.set_setting, kodi_utils.logger
+EXPIRES_1_HOURS, EXPIRES_2_DAYS, MAX_LIST_ITEMS = 1, 48, 250_000
 base_url = 'https://api.mdblist.com/%s'
 timeout = 10.05
 session = requests.Session()
@@ -95,8 +95,8 @@ def mdbl_ratings_info(mediatype, imdb_id):
 
 def mdbl_ratings_info_handler(url):
 	html = client.request(url, timeout=6.05)
-	labels = client.parseDOM(html, 'span', {'class': ['mdblist-label', 'movie-rating-name']})
-	scores = client.parseDOM(html, 'span', {'class': ['mdblist-rating', 'movie-rating-score']})
+	labels = client.parseDOM(html, 'span', attrs={'class': ['mdblist-label', 'movie-rating-name']})
+	scores = client.parseDOM(html, 'span', attrs={'class': ['mdblist-rating', 'movie-rating-score']})
 	sources = ('imdb', 'metacritic', 'mdblist', 'tomatoes', 'trakt', 'tmdb')
 	data = []
 	for k, v in zip(labels, scores):
@@ -128,8 +128,8 @@ def mdblist_droplist(mediatype, page_no):
 			show_ids = item['show']['ids']
 			tmdb_id = show_ids.get('tmdb')
 			if tmdb_id: results.append({
-				'id': tmdb_id,
-				'title': item['show']['title']
+				'title': item['show']['title'],
+				'id': tmdb_id
 			})
 		return results
 	string = 'mdbl_hidden_items_dropped'
@@ -149,8 +149,8 @@ def mdbl_calendar_data(url):
 			season, episode = i['season_number'], i['episode_number']
 			sort_title = '%s s%02d e%02d' % (i['title'], season, episode)
 			if sort_title not in seen and not seen.add(sort_title): result.append({
-				'sort_title': sort_title, 'first_aired': i['start'],
-				'media_ids': {'tmdb': tmdb_id}, 'season': season, 'episode': episode
+				'first_aired': i['start'], 'season': season, 'episode': episode,
+				'sort_title': sort_title, 'media_ids': {'tmdb': tmdb_id}
 			})
 		except: pass
 	return result
@@ -162,25 +162,23 @@ def mdbl_get_my_calendar(recently_aired, current_date):
 	return mdbl_cache.cache_mdbl_object(lambda u: mdbl_calendar_data(u), string, url)
 
 def mdblist_collection(mediatype, page_no):
-	string = 'mdbl_collection'
-	url = 'sync/collection'
-	original_list = mdbl_collection_watchlist_items(string, url)
-	if mediatype == 'all':
-		original_list = original_list['movies'] + original_list['shows']
-		for i in original_list: i.update({'id': i['movie' if 'movie' in i else 'show']['ids']['tmdb']})
-		return original_list
 	def _year(item):
 		if isinstance(item.get('year'), int): return str(item['year'])
 		return item.get('year')
+	string = 'mdbl_collection'
+	url = 'sync/collection'
+	original_list = mdbl_collection_watchlist_items(string, url)
+	original_list = original_list['movies' if mediatype in ('movie', 'movies') else 'shows']
 	key = 'movie' if mediatype in ('movie', 'movies') else 'show'
 	original_list = [
 		{'collected_at': i['collected_at'],
-		 'id': i[key]['ids']['tmdb'],
-		 'imdb_id': i[key]['ids']['imdb'],
+		 'year': _year(i[key]),
 		 'title': i[key]['title'],
-		 'year': _year(i[key])}
-		for i in original_list[mediatype]
+		 'id': i[key]['ids']['tmdb'],
+		 'imdb_id': i[key]['ids']['imdb']}
+		for i in original_list
 	] # only endpoint with nested media. no response to feature req to flatten.
+	if page_no == 'all': return original_list
 	sort_key = settings.lists_sort_order('collection')
 	if   sort_key == 2: original_list.sort(key=lambda k: k.get('year') or '', reverse=True)
 	elif sort_key == 1: original_list.sort(key=lambda k: k['collected_at'], reverse=True)
@@ -195,10 +193,8 @@ def mdblist_watchlist(mediatype, page_no):
 	string = 'mdbl_watchlist'
 	url = 'watchlist/items'
 	original_list = mdbl_collection_watchlist_items(string, url)
-	if mediatype == 'all':
-		original_list = original_list['movies'] + original_list['shows']
-		return original_list
-	original_list = original_list[mediatype]
+	original_list = original_list['movies' if mediatype in ('movie', 'movies') else 'shows']
+	if page_no == 'all': return original_list
 	if not settings.show_unaired_watchlist():
 		current_date = get_datetime()
 		original_list = [i for i in original_list if first_aired(i)]
@@ -226,15 +222,15 @@ def mdbl_get_lists(list_type):
 
 def add_to_collection(data):
 	result = call_mdblist('sync/collection', json=data, method='post')
-	if result['updated']['movies'] + result['updated']['shows'] == 0: return kodi_utils.notification(32574)
-	kodi_utils.notification(32576)
+	if result['updated']['movies'] + result['updated']['shows'] == 0: return kodi_utils.notify_failed()
+	kodi_utils.notify_success()
 	mdbl_sync_activities()
 	return result
 
 def remove_from_collection(data):
 	result = call_mdblist('sync/collection/remove', json=data, method='post')
-	if result['removed']['movies'] + result['removed']['shows'] == 0: return kodi_utils.notification(32574)
-	kodi_utils.notification(32576)
+	if result['removed']['movies'] + result['removed']['shows'] == 0: return kodi_utils.notify_failed()
+	kodi_utils.notify_success()
 	mdbl_sync_activities()
 	kodi_utils.container_refresh()
 	return result
@@ -242,16 +238,16 @@ def remove_from_collection(data):
 def add_to_list(list_id, data):
 	url = 'watchlist/items/add' if list_id == 'watchlist' else 'lists/%s/items/add' % list_id
 	result = call_mdblist(url, json=data, method='post')
-	if result['added']['movies'] + result['added']['shows'] == 0: return kodi_utils.notification(32574)
-	kodi_utils.notification(32576)
+	if result['added']['movies'] + result['added']['shows'] == 0: return kodi_utils.notify_failed()
+	kodi_utils.notify_success()
 	mdbl_sync_activities()
 	return result
 
 def remove_from_list(list_id, data):
 	url = 'watchlist/items/remove' if list_id == 'watchlist' else 'lists/%s/items/remove' % list_id
 	result = call_mdblist(url, json=data, method='post')
-	if result['removed']['movies'] + result['removed']['shows'] == 0: return kodi_utils.notification(32574)
-	kodi_utils.notification(32576)
+	if result['removed']['movies'] + result['removed']['shows'] == 0: return kodi_utils.notify_failed()
+	kodi_utils.notify_success()
 	mdbl_sync_activities()
 	kodi_utils.container_refresh()
 	return result
@@ -263,9 +259,9 @@ def make_new_mdbl_list(params):
 	list_name = unquote(list_title)
 	data = {'name': list_name, 'private': False}
 	result = call_mdblist('lists/user/add', json=data, method='post')
-	if result is None: return kodi_utils.notification(32574)
+	if result is None: return kodi_utils.notify_failed()
 	mdbl_cache.clear_mdbl_list_data('my_lists')
-	kodi_utils.notification(32576)
+	kodi_utils.notify_success()
 	kodi_utils.container_refresh()
 
 def delete_mdbl_list(params):
@@ -273,9 +269,9 @@ def delete_mdbl_list(params):
 	list_id = params['list_id']
 	url = 'lists/%s' % list_id
 	result = call_mdblist(url, method='delete')
-	if result is None: return kodi_utils.notification(32574)
+	if result is None: return kodi_utils.notify_failed()
 	mdbl_cache.clear_mdbl_list_data('my_lists')
-	kodi_utils.notification(32576)
+	kodi_utils.notify_success()
 	kodi_utils.container_refresh()
 
 def mdbl_watched_unwatched(action, media, media_id, tvdb_id=0, season=None, episode=None, key='tmdb'):
@@ -318,7 +314,7 @@ def hide_unhide_mdbl_items(action, mediatype, media_id, list_type):
 		try:
 			hidden_data = mdbl_get_hidden_items('dropped')
 			action = 'unhide' if int(action) in hidden_data else 'hide'
-		except: return kodi_utils.notification(32574)
+		except: return kodi_utils.notify_error()
 	mediatype = 'movies' if mediatype in ('movie', 'movies') else 'shows'
 	key = 'tmdb' if mediatype == 'movies' else 'imdb'
 	url = 'sync/dropped' if action == 'hide' else 'sync/dropped/remove'
@@ -457,7 +453,7 @@ def mdbl_sync_activities(force_update=False, init_callback=None, monitor=None):
 		mdbl_cache.clear_all_mdbl_cache_data(refresh=False)
 	mdbl_cache.clear_mdbl_calendar()
 	latest = mdbl_get_activity()
-	if not isinstance(latest, dict):
+	if not (isinstance(latest, dict) and 'journal_at' in latest):
 		logger('mdblist error', str(latest))
 		mdbl_cache.clear_all_mdbl_cache_data(refresh=False)
 		return 'failed'
@@ -465,9 +461,9 @@ def mdbl_sync_activities(force_update=False, init_callback=None, monitor=None):
 	success = 'not needed'
 	# format: (timestamp_key, callback_args, callback_func)
 	for key, args, func in (
-		('collected_at',   ('collection',),           mdbl_cache.clear_mdbl_collection_watchlist_data),
-		('watchlisted_at', ('watchlist',),            mdbl_cache.clear_mdbl_collection_watchlist_data),
-		('dropped_at',     ('hidden_items_dropped',), mdbl_cache.clear_mdbl_list_data)
+		('collected_at',   ('collection',), mdbl_cache.clear_mdbl_collection_watchlist_data),
+		('watchlisted_at', ('watchlist',),  mdbl_cache.clear_mdbl_collection_watchlist_data),
+		('dropped_at',     ('dropped',),    mdbl_cache.clear_mdbl_hidden_data)
 	):
 		if _compare(latest[key], cached[key]):
 			success = 'success'

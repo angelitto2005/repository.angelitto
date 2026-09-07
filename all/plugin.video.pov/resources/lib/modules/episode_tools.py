@@ -9,11 +9,11 @@ from modules.sources import Sources
 # from modules.kodi_utils import logger
 
 ls, build_url = kodi_utils.local_string, kodi_utils.build_url
-nextep_str, nores_str = ls(32801), ls(32760)
+nores_str = '[B]%s[/B] %s' % (ls(32484), ls(32573))
 
 def SmartPlay(params):
 	tmdb_id = params.get('tmdb_id')
-	if not tmdb_id: return kodi_utils.notification(32574)
+	if not tmdb_id: return kodi_utils.notify_error()
 	from caches.watched_cache import get_next_episodes
 	meta_user_info, current_date = settings.metadata_user_info(), get_datetime()
 	watched_info = get_next_episodes(settings.watched_indicators())
@@ -23,8 +23,8 @@ def SmartPlay(params):
 	meta = tvshow_meta('tmdb_id', tmdb_id, meta_user_info, current_date)
 	meta.update({'season': season, 'episode': episode})
 	nextep_meta, nextep_params = nextep_playback_info(meta)
-	if nextep_params == 'error': return kodi_utils.notification(32574)
-	if nextep_params == 'no_next_episode': return kodi_utils.notification('%s %s' % (nextep_str, nores_str))
+	if nextep_params == 'error': return kodi_utils.notify_error()
+	if nextep_params == 'no_next_episode': return kodi_utils.notification(nores_str)
 	Sources.factory(nextep_params)
 
 def get_random_episode(tmdb_id, continual=False):
@@ -112,9 +112,9 @@ def execute_skip_intro(player, meta):
 
 def execute_scrape_nextep(player, meta):
 	nextep_meta, nextep_params = nextep_playback_info(meta)
-	if nextep_params == 'error': return kodi_utils.notification(32574)
+	if nextep_params == 'error': return kodi_utils.notify_error()
 	if nextep_params == 'no_next_episode': return
-	if not Sources.background_prep(nextep_params): return kodi_utils.notification('%s %s' % (nextep_str, nores_str))
+	if not Sources.background_prep(nextep_params): return kodi_utils.notification(nores_str)
 	Sources.nextep_callback(nextep_params)
 	action = _continue_action(True, nextep_meta)
 	if action == 'cancel':
@@ -125,9 +125,9 @@ def execute_scrape_nextep(player, meta):
 def execute_nextep(player, meta, nextep_settings):
 	if 'random_continual' in meta: nextep_meta, nextep_params = get_random_episode(meta['tmdb_id'], True)
 	else: nextep_meta, nextep_params = nextep_playback_info(meta)
-	if nextep_params == 'error': return kodi_utils.notification(32574)
+	if nextep_params == 'error': return kodi_utils.notify_error()
 	if nextep_params == 'no_next_episode': return
-	if not Sources.background_prep(nextep_params): return kodi_utils.notification('%s %s' % (nextep_str, nores_str))
+	if not Sources.background_prep(nextep_params): return kodi_utils.notification(nores_str)
 	Sources.nextep_callback(nextep_params)
 	action = _control_playback(player, nextep_settings, nextep_meta)
 	if action == 'cancel':
@@ -136,7 +136,7 @@ def execute_nextep(player, meta, nextep_settings):
 		return kodi_utils.notification(32736)
 	if action == 'close':
 		if nextep_settings['run_popup']: return
-		text = '%s %s S%02dE%02d' % (ls(32801), nextep_meta['title'], nextep_meta['season'], nextep_meta['episode'])
+		text = '[B]%s[/B] %s S%02dE%02d' % (ls(32484), nextep_meta['title'], nextep_meta['season'], nextep_meta['episode'])
 		kodi_utils.notification(text, 6500, nextep_meta['poster'])
 	if action == 'play': player.stop()
 

@@ -5,18 +5,19 @@ from indexers import metadata, tmdb_api
 from menus.images import Images
 from modules import dialogs
 from modules.utils import calculate_age, get_datetime
-from modules.kodi_utils import media_path, notification, local_string as ls
+from modules.kodi_utils import media_path, no_results
 from modules.settings import extras_enable_scrollbars, extras_exclude_non_acting, get_resolution, metadata_user_info
 # from modules.kodi_utils import logger
 
 fanart = BaseDialog.fanart
 backup_thumbnail = media_path('box_office.png')
 backup_cast_thumbnail = media_path('people.png')
-roles_exclude = ('himself', 'herself', 'self', 'narrator', 'voice (voice)')
-button_ids = (10, 11, 50)
-genres_exclude = (10763, 10764, 10767)
-gender_dict = {0: '', 1: ls(32844), 2: ls(32843), 3: ls(32466)}
-more_from_movies_id, more_from_tvshows_id, imdb_videos_id, more_from_director_id = 2050, 2051, 2052, 2053
+roles_exclude = 'himself', 'herself', 'self', 'narrator', 'voice (voice)'
+button_ids = 10, 11, 50
+genres_exclude = 10763, 10764, 10767
+more_from_movies_id, more_from_tvshows_id = 2050, 2051
+imdb_videos_id, more_from_director_id = 2052, 2053
+gender_dict = tmdb_api.tmdb_gender_dict()
 
 class People(BaseDialog):
 	def __init__(self, *args, **kwargs):
@@ -72,7 +73,7 @@ class People(BaseDialog):
 	def make_person_data(self):
 		if self.kwargs['query']:
 			try: self.person_id = tmdb_api.tmdb_people_info(self.kwargs['query'])[0]['id']
-			except: notification(32760)
+			except: no_results()
 		else: self.person_id = self.kwargs['actor_id']
 		person_info = tmdb_api.tmdb_people_full_info(self.person_id)
 		if person_info.get('biography') in ('', None):
@@ -88,7 +89,7 @@ class People(BaseDialog):
 		else: self.person_place_of_birth = ''
 		biography = person_info.get('biography')
 		if biography: self.person_biography = biography
-		else: self.person_biography = ls(32760)
+		else: self.person_biography = ''
 		birthday = person_info.get('birthday')
 		if birthday: self.person_birthday = birthday
 		else: self.person_birthday = ''
@@ -154,7 +155,7 @@ class People(BaseDialog):
 
 	def make_tmdb_listitems(self, data, mediatype):
 		used_ids = []
-		append = used_ids.append
+		used_ids_append = used_ids.append
 		name_key = 'title' if mediatype == 'movie' else 'name'
 		release_key = 'release_date' if mediatype == 'movie' else 'first_air_date'
 		for item in sorted(data, key=lambda x: x.get(release_key) or '', reverse=True):
@@ -175,7 +176,7 @@ class People(BaseDialog):
 				listitem.setProperty('tikiskins.person.vote_average', '%.1f' % item['vote_average'])
 				listitem.setProperty('tikiskins.person.thumbnail', thumbnail)
 				listitem.setProperty('tikiskins.person.tmdb_id', str(tmdb_id))
-				append(tmdb_id)
+				used_ids_append(tmdb_id)
 				yield listitem
 			except: pass
 

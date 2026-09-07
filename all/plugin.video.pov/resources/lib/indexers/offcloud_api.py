@@ -1,12 +1,11 @@
-import re, requests
-from caches.main_cache import cache_object
+import re
+import requests
 from modules import kodi_utils
 # logger = kodi_utils.logger
 
-ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 base_url = 'https://offcloud.com/api/'
+custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session = requests.Session()
-session.custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session.mount('https://offcloud.com', requests.adapters.HTTPAdapter(max_retries=1))
 
 class OffcloudAPI:
@@ -14,14 +13,14 @@ class OffcloudAPI:
 	defaults_to_cloud = False
 
 	def __init__(self):
-		self.timeout = int(get_setting('scrapers.timeout.1') or 10)
-		self.token = get_setting('oc.token')
+		self.timeout = int(kodi_utils.get_setting('scrapers_timeout') or 10)
+		self.token = kodi_utils.get_setting('oc.token')
 		session.headers.update(self.headers())
 
 	def _request(self, method, path, params=None, data=None):
 		url = base_url + path
 		try: response = session.request(method, url, params=params, json=data, timeout=self.timeout)
-		except session.custom_errors: return kodi_utils.notification('%s timeout' % __name__)
+		except custom_errors: return kodi_utils.notification('%s timeout' % __name__)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
 		return response.json() if 'json' in response.headers.get('Content-Type', '') else response
 
@@ -34,10 +33,27 @@ class OffcloudAPI:
 	def headers(self):
 		return {'Authorization': 'Bearer %s' % self.token}
 
+	def days_remaining(self):
+		from datetime import date
+		try:
+			account_info = self.account_info()
+			expires = date.fromisoformat(account_info['expiration_date'])
+			days = (expires - date.today()).days
+		except: days = None
+		return days
+
 	def account_info(self):
 		url = 'account/info'
 		result = self._get(url)
 		return result
+
+	def user_cloud(self):
+		url = 'cloud/history'
+		return self._get(url)
+
+	def user_folder(self, folder_id):
+		url = folder_id
+		return self.torrent_info(url)
 
 	def torrent_info(self, request_id):
 		params = {'format': 'detailed'}
@@ -91,21 +107,6 @@ class OffcloudAPI:
 			]
 		except: pass
 
-	def user_cloud(self, cached=True):
-		string = 'pov_oc_user_cloud'
-		url = 'cloud/history'
-		if cached: result = cache_object(self._get, string, url, 0.5)
-		else: result = self._get(url)
-		result = [i for i in result if i['status'] == 'downloaded']
-		return result
-
-	def user_folder(self, folder_id):
-		string = 'pov_oc_user_cloud_%s' % folder_id
-		url = folder_id
-		result = cache_object(self.torrent_info, string, url, 0.5)
-		result = result['files']
-		return result
-
 	def clear_cache(*args):
 		from modules.kodi_utils import clear_property, path_exists, database_connect, maincache_db
 		try:
@@ -118,15 +119,15 @@ class OffcloudAPI:
 				dbcur.execute("""SELECT id FROM maincache WHERE id LIKE ?""", ('pov_oc_user_cloud%',))
 				user_cloud_cache = [str(i[0]) for i in dbcur.fetchall()]
 				if user_cloud_cache:
-					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_oc_user_cloud%',))
 					for i in user_cloud_cache: clear_property(i)
+					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_oc_user_cloud%',))
 					dbcon.commit()
 				user_cloud_success = True
 			except: user_cloud_success = False
 			dbcon.close()
 			# HASH CACHED STATUS
 			try:
-				DebridCache().clear_debrid_results('oc')
+				DebridCache().delete_cache_single('oc')
 				hash_cache_status_success = True
 			except: hash_cache_status_success = False
 		except: return False

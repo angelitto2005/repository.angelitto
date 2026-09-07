@@ -1,13 +1,10 @@
 import requests
-from caches.main_cache import cache_object
 from modules import kodi_utils
 # logger = kodi_utils.logger
 
-ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 base_url = 'https://api.alldebrid.com/'
-timeout = 10.0
+custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session = requests.Session()
-session.custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session.mount('https://api.alldebrid.com', requests.adapters.HTTPAdapter(max_retries=1))
 
 class AllDebridAPI:
@@ -27,13 +24,14 @@ class AllDebridAPI:
 		return files
 
 	def __init__(self):
-		self.token = get_setting('ad.token')
+		self.timeout = int(kodi_utils.get_setting('scrapers_timeout') or 10)
+		self.token = kodi_utils.get_setting('ad.token')
 		session.headers.update(self.headers())
 
 	def _request(self, method, path, params=None, data=None):
 		url = base_url + path
-		try: response = session.request(method, url, params=params, data=data, timeout=timeout)
-		except session.custom_errors: return kodi_utils.notification('%s timeout' % __name__)
+		try: response = session.request(method, url, params=params, data=data, timeout=self.timeout)
+		except custom_errors: return kodi_utils.notification('%s timeout' % __name__)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
 		response = response.json() if 'json' in response.headers.get('Content-Type', '') else response
 		if 'data' in response and response.get('status') == 'success': response = response['data']
@@ -49,11 +47,11 @@ class AllDebridAPI:
 		return {'Authorization': 'Bearer %s' % self.token}
 
 	def days_remaining(self):
-		from datetime import datetime
+		from datetime import datetime, timezone
 		try:
 			account_info = self.account_info()['user']
-			expires = datetime.fromtimestamp(account_info['premiumUntil'])
-			days = (expires - datetime.today()).days
+			expires = datetime.fromtimestamp(account_info['premiumUntil'], tz=timezone.utc)
+			days = (expires - datetime.now(timezone.utc)).days
 		except: days = None
 		return days
 
@@ -61,6 +59,18 @@ class AllDebridAPI:
 		url = 'v4/user'
 		result = self._get(url)
 		return result
+
+	def downloads(self):
+		url = 'v4/user/history'
+		return self._get(url)
+
+	def user_cloud(self):
+		url = 'v4.1/magnet/status'
+		return self._get(url)
+
+	def user_folder(self, folder_id):
+		url = folder_id
+		return self.torrent_info(url)
 
 	def torrent_info(self, transfer_id):
 		url = 'v4.1/magnet/status'
@@ -117,19 +127,7 @@ class AllDebridAPI:
 			if torrent_id: self.delete_torrent(torrent_id)
 			if errors: raise
 
-	def downloads(self):
-		url = 'v4/user/history'
-		string = 'pov_ad_downloads'
-		return cache_object(self._get, string, url, 0.5)
-
-	def user_cloud(self, completed=True):
-		url = 'v4.1/magnet/status'
-		string = 'pov_ad_user_cloud'
-		result = cache_object(self._get, string, url, 0.5)
-		if completed: result['magnets'] = [i for i in result['magnets'] if i['statusCode'] == 4]
-		return result
-
-	def clear_cache(self):
+	def clear_cache(*args):
 		from modules.kodi_utils import clear_property, path_exists, database_connect, maincache_db
 		try:
 			if not path_exists(maincache_db): return True
@@ -138,32 +136,70 @@ class AllDebridAPI:
 			dbcur = dbcon.cursor()
 			# USER CLOUD
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_ad_user_cloud',))
-				clear_property('pov_ad_user_cloud')
-				dbcon.commit()
+				dbcur.execute("""SELECT id FROM maincache WHERE id LIKE ?""", ('pov_ad_user_cloud%',))
+				user_cloud_cache = [str(i[0]) for i in dbcur.fetchall()]
+				if user_cloud_cache:
+					for i in user_cloud_cache: clear_property(i)
+					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_ad_user_cloud%',))
+					dbcon.commit()
 				user_cloud_success = True
 			except: user_cloud_success = False
 			# DOWNLOAD LINKS
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_ad_downloads',))
 				clear_property('pov_ad_downloads')
+				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_ad_downloads',))
 				dbcon.commit()
 				download_links_success = True
 			except: download_links_success = False
 			# HOSTERS
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_ad_valid_hosts',))
 				clear_property('pov_ad_valid_hosts')
+				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_ad_valid_hosts',))
 				dbcon.commit()
 				hoster_links_success = True
 			except: hoster_links_success = False
 			dbcon.close()
 			# HASH CACHED STATUS
 			try:
-				DebridCache().clear_debrid_results('ad')
+				DebridCache().delete_cache_single('ad')
 				hash_cache_status_success = True
 			except: hash_cache_status_success = False
 		except: return False
 		if False in (user_cloud_success, download_links_success, hoster_links_success, hash_cache_status_success): return False
 		return True
+
+def aio_check_cache(imdb, season, episode):
+	if str(season).isdigit(): params = {'type': 'series', 'id': '%s:%s:%s' % (imdb, season, episode)}
+	else: params = {'type': 'movie', 'id': '%s' % imdb}
+	headers, url = {'x-aiostreams-user-data': (
+		'ewogICJzZXJ2aWNlcyI6IFsKICAgIHsKICAgICAgImlkIjogImFsbGRlYnJpZCIsCiAgICAgICJlbmFi'
+		'bGVkIjogdHJ1ZSwKICAgICAgImNyZWRlbnRpYWxzIjogeyJhcGlLZXkiOiAic3RhdGljRGVtb0FwaWtl'
+		'eVByZW0ifQogICAgfQogIF0sCiAgInByZXNldHMiOiBbCiAgICB7CiAgICAgICJ0eXBlIjogIm1lZGlh'
+		'ZnVzaW9uIiwKICAgICAgImluc3RhbmNlSWQiOiAiNWI4IiwKICAgICAgImVuYWJsZWQiOiB0cnVlLAog'
+		'ICAgICAib3B0aW9ucyI6IHsKICAgICAgICAibmFtZSI6ICJNZWRpYUZ1c2lvbiIsCiAgICAgICAgInRp'
+		'bWVvdXQiOiA2NTAwLAogICAgICAgICJyZXNvdXJjZXMiOiBbInN0cmVhbSJdLAogICAgICAgICJ1c2VD'
+		'YWNoZWRSZXN1bHRzT25seSI6IHRydWUsCiAgICAgICAgImVuYWJsZVdhdGNobGlzdENhdGFsb2dzIjog'
+		'ZmFsc2UsCiAgICAgICAgImRvd25sb2FkVmlhQnJvd3NlciI6IGZhbHNlLAogICAgICAgICJjb250cmli'
+		'dXRvclN0cmVhbXMiOiBmYWxzZSwKICAgICAgICAiY2VydGlmaWNhdGlvbkxldmVsc0ZpbHRlciI6IFtd'
+		'LAogICAgICAgICJudWRpdHlGaWx0ZXIiOiBbXSwKICAgICAgICAibWVkaWFUeXBlcyI6IFtdCiAgICAg'
+		'IH0KICAgIH0sCiAgICB7CiAgICAgICJ0eXBlIjogInN0cmVtdGhydVRvcnoiLAogICAgICAiaW5zdGFu'
+		'Y2VJZCI6ICI1NDgiLAogICAgICAiZW5hYmxlZCI6IHRydWUsCiAgICAgICJvcHRpb25zIjogewogICAg'
+		'ICAgICJuYW1lIjogIlN0cmVtVGhydSBUb3J6IiwKICAgICAgICAidGltZW91dCI6IDY1MDAsCiAgICAg'
+		'ICAgInJlc291cmNlcyI6IFsic3RyZWFtIl0sCiAgICAgICAgIm1lZGlhVHlwZXMiOiBbXSwKICAgICAg'
+		'ICAiaW5jbHVkZVAyUCI6IGZhbHNlLAogICAgICAgICJ1c2VNdWx0aXBsZUluc3RhbmNlcyI6IGZhbHNl'
+		'CiAgICAgIH0KICAgIH0KICBdLAogICJmb3JtYXR0ZXIiOiB7CiAgICAiaWQiOiAidG9ycmVudGlvIiwK'
+		'ICAgICJkZWZpbml0aW9uIjogewogICAgICAibmFtZSI6ICIiLAogICAgICAiZGVzY3JpcHRpb24iOiAi'
+		'IgogICAgfQogIH0sCiAgInNvcnRDcml0ZXJpYSI6IHsKICAgICJnbG9iYWwiOiBbXQogIH0sCiAgImRl'
+		'ZHVwbGljYXRvciI6IHsKICAgICJlbmFibGVkIjogZmFsc2UsCiAgICAia2V5cyI6IFsiaW5mb0hhc2gi'
+		'XSwKICAgICJtdWx0aUdyb3VwQmVoYXZpb3VyIjogImFnZ3Jlc3NpdmUiLAogICAgImNhY2hlZCI6ICJz'
+		'aW5nbGVfcmVzdWx0IiwKICAgICJ1bmNhY2hlZCI6ICJwZXJfc2VydmljZSIsCiAgICAicDJwIjogInNp'
+		'bmdsZV9yZXN1bHQiLAogICAgImV4Y2x1ZGVBZGRvbnMiOiBbXQogIH0sCiAgImV4Y2x1ZGVVbmNhY2hl'
+		'ZCI6IHRydWUKfQ=='
+	)}, 'https://aiostreams.fortheweak.cloud/api/v1/search'
+	try:
+		results = requests.get(url, params=params, headers=headers, timeout=7.05)
+		if not results.ok: results.raise_for_status()
+		files = results.json()['data']['results']
+		return [file['infoHash'] for file in files if file['cached'] and file.get('infoHash')]
+	except Exception as e: kodi_utils.logger('aio error', str(e))
 

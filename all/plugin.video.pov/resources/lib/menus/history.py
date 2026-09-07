@@ -9,7 +9,7 @@ ls, build_url, make_listitem = kodi_utils.local_string, kodi_utils.build_url, ko
 search_icon = kodi_utils.media_path('search_history.png')
 default_icon = kodi_utils.media_path('search.png')
 remove_str, search_str, hist_str, clear_str = ls(32698), ls(32450), ls(32486), ls(32699)
-new_search_str = '[B]%s %s...[/B]' % (ls(32857).upper(), search_str.upper())
+new_search_str = '[B]%s %s...[/B]' % ('New'.upper(), search_str.upper())
 mode_dict, query_dict = {
 	'movie': ('movie_queries', {'mode': 'get_search_term', 'mediatype': 'movie'}),
 	'tvshow': ('tvshow_queries', {'mode': 'get_search_term', 'mediatype': 'tv_show'}),
@@ -86,14 +86,14 @@ def remove_from_search_history(params):
 		result = maincache.get(params['setting_id'])
 		result.remove(params.get('query'))
 		maincache.set(params['setting_id'], result, expiration=timedelta(days=365))
-		kodi_utils.notification(32576)
+		kodi_utils.notify_success()
 		kodi_utils.container_refresh()
 	except: pass
 
 def clear_search_history(params):
 	try:
 		MainCache().delete(params['setting_id'])
-		kodi_utils.notification(32576)
+		kodi_utils.notify_success()
 		kodi_utils.container_refresh()
 	except: pass
 

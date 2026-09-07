@@ -10,8 +10,8 @@ KODI_VERSION, ls = kodi_utils.get_kodi_version(), kodi_utils.local_string
 build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path('trakt.png')
-add2menu_str, add2folder_str, copy2str = ls(32730), ls(32731), '[B]Export to TMDB[/B]'
-newlist_str, deletelist_str, nextpage_str = ls(32780), ls(32781), ls(32799)
+add2menu_str, add2folder_str, copy2str = ls(32730), ls(32731), '[B]Export to TMDb[/B]'
+newlist_str, deletelist_str, nextpage_str = ls(32780) % 'Trakt', ls(32781), ls(32799)
 likelist_str, unlikelist_str = ls(32776), ls(32783)
 watchl_str, fav_str, coll_str = ls(32500), ls(32453), ls(32499)
 
@@ -27,28 +27,9 @@ def get_trakt_trending_popular_lists(params):
 def build_trakt_list(params):
 	return TraktListBuilder(params).build()
 
-def integrity_check():
-	try:
-		trakt_db = kodi_utils.translate_path(kodi_utils.trakt_db)
-		with kodi_utils.database.connect(trakt_db) as dbcon:
-			cur = dbcon.cursor()
-			cur.execute("""PRAGMA integrity_check""")
-			result = cur.fetchone()
-		if 'ok' in result: status = 'passed'
-		else: raise kodi_utils.database.Error(result)
-		return status
-	except kodi_utils.database.Error as e: status = str(e)
-	try:
-		with open(trakt_db, 'w') as _: pass
-		from modules.cache import check_databases, clear_cache
-		check_databases()
-		clear_cache('trakt', silent=True)
-		status = 'repaired'
-	except Exception as e: kodi_utils.logger('trakt integrity error', '\n%s\n%s' % (status, e))
-	return status
-
 def trakt_account_info():
 	from datetime import timedelta
+	from caches.trakt_cache import integrity_check
 	from modules.utils import jsondate_to_datetime
 	try:
 		kodi_utils.show_busy_dialog()
@@ -90,7 +71,7 @@ def trakt_account_info():
 		append('[B]Movies:[/B] [B]%s[/B] Collected, [B]%s[/B] Watched for [B]%s[/B]' % (movies_collected, movies_watched, movies_watched_minutes))
 		append('[B]Cache Integrity:[/B] %s' % db_status.upper())
 		kodi_utils.hide_busy_dialog()
-		return kodi_utils.show_text(ls(32037).upper(), '[CR]'.join(body), font_size='large')
+		return kodi_utils.show_text('Trakt'.upper(), '[CR]'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
 
 class BaseTraktList(list_helper.BaseList):
@@ -241,7 +222,7 @@ class TraktManager(list_helper.BaseListManager):
 		if 'new' in choice_id:
 			kodi_utils.show_busy_dialog()
 			try: self.api.make_new_trakt_list(None)
-			except: return kodi_utils.notification(32574)
+			except: return kodi_utils.notify_error()
 			finally: kodi_utils.hide_busy_dialog()
 			return self.manage()
 		if 'dropped' in choice_id:

@@ -11,7 +11,7 @@ import xbmcvfs
 import xml.etree.ElementTree as ET
 
 addon = xbmcaddon.Addon
-addonObject = addon('plugin.video.pov') # addonObject = addon('script.module.fenomscrapers')
+addonObject = addon() # addonObject = addon('script.module.fenomscrapers')
 addonInfo = addonObject.getAddonInfo
 getLangString = addonObject.getLocalizedString
 condVisibility = xbmc.getCondVisibility
@@ -169,11 +169,11 @@ def clean_settings():
 		nfo_file.write(new_content)
 		nfo_file.close()
 		sleep(200)
-		notification(title=addon_name, message=lang(32042).format(str(len(removed_settings))))
+		notification(title=addon_name, message="{} Obsolete Settings Entries Removed".format(str(len(removed_settings))))
 	except:
 		from magneto.modules import log_utils
 		log_utils.error()
-		notification(title=addon_name, message=32043)
+		notification(title=addon_name, message="Error Cleaning Settings.xml. Old settings.xml files Restored.")
 
 def addonId():
 	return addonInfo('id')

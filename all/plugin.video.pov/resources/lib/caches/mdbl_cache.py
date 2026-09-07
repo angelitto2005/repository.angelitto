@@ -1,9 +1,8 @@
 import json
-from modules.kodi_utils import mdbl_db, database_connect
+from modules import kodi_utils
 from modules.utils import chunks
 # from modules.kodi_utils import logger
 
-timeout = 20
 SELECT = 'SELECT id FROM mdbl_data'
 DELETE = 'DELETE FROM mdbl_data WHERE id = ?'
 DELETE_LIKE = 'DELETE FROM mdbl_data WHERE id LIKE ?'
@@ -19,7 +18,7 @@ MC_BASE_DELETE = 'DELETE FROM mdbl_data WHERE id = ?'
 class MDBLCache:
 	batch_size = 1000
 	def __init__(self):
-		self._connect_database()
+		self._database_connect()
 		self._set_PRAGMAS()
 
 	def set_bulk_movie_watched(self, insert_list):
@@ -45,16 +44,38 @@ class MDBLCache:
 
 	def _delete(self, command, args):
 		self.dbcur.execute(command, args)
-		self.dbcur.execute("""VACUUM""")
+#		self.dbcur.execute("""VACUUM""")
 
-	def _connect_database(self):
-		self.dbcon = database_connect(mdbl_db, timeout=timeout, isolation_level=None)
+	def _database_connect(self):
+		self.dbcon = kodi_utils.database_connect(kodi_utils.mdbl_db, isolation_level=None)
 
 	def _set_PRAGMAS(self):
 		self.dbcur = self.dbcon.cursor()
 		self.dbcur.execute("""PRAGMA synchronous = OFF""")
 		self.dbcur.execute("""PRAGMA journal_mode = OFF""")
 		self.dbcur.execute("""PRAGMA mmap_size = 268435456""")
+
+def integrity_check():
+	try:
+		db_file = kodi_utils.translate_path(kodi_utils.mdbl_db)
+		with kodi_utils.database.connect(db_file) as dbcon:
+			dbcur = dbcon.cursor()
+			dbcur.execute("""PRAGMA integrity_check""")
+			result = dbcur.fetchone()
+			if 'ok' in result: status = 'passed'
+			else: raise kodi_utils.database.Error(result)
+			dbcur.execute("""VACUUM""")
+		return status
+	except kodi_utils.database.Error as e: status = str(e)
+	try:
+		with open(db_file, 'w') as _: pass
+		from modules.cache import check_databases, clear_cache
+		check_databases()
+		clear_cache('mdblist', silent=True)
+		status = 'repaired'
+	except Exception as e:
+		kodi_utils.logger('database integrity error', '%s\n%s\n%s' % (status, db_file, e))
+	return status
 
 def cache_mdbl_object(function, string, url):
 	dbcur = MDBLCache().dbcur
@@ -79,6 +100,13 @@ def reset_activity(latest_activities):
 		dbcur.execute(MC_BASE_SET, (string, json.dumps(latest_activities)))
 	except: pass
 	return cached_data
+
+def clear_mdbl_hidden_data(list_type):
+	string = 'mdbl_hidden_items_%s' % list_type
+	try:
+		dbcur = MDBLCache().dbcur
+		dbcur.execute(DELETE, (string,))
+	except: pass
 
 def clear_mdbl_collection_watchlist_data(list_type):
 	string = 'mdbl_%s' % list_type

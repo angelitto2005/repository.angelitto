@@ -5,10 +5,13 @@ from modules.cache import clear_cache
 from modules.utils import get_datetime, safe_string
 # logger = kodi_utils.logger
 
-ls, build_url, media_path, select_dialog = kodi_utils.local_string, kodi_utils.build_url, kodi_utils.media_path, kodi_utils.select_dialog
-show_busy_dialog, hide_busy_dialog, notification, ok_dialog = kodi_utils.show_busy_dialog, kodi_utils.hide_busy_dialog, kodi_utils.notification, kodi_utils.ok_dialog
-get_property, set_property, clear_property, container_refresh = kodi_utils.get_property, kodi_utils.set_property, kodi_utils.clear_property, kodi_utils.container_refresh
-execute_builtin, confirm_dialog, container_content, sleep = kodi_utils.execute_builtin, kodi_utils.confirm_dialog, kodi_utils.container_content, kodi_utils.sleep
+ls, build_url, media_path = kodi_utils.local_string, kodi_utils.build_url, kodi_utils.media_path
+show_busy_dialog, hide_busy_dialog = kodi_utils.show_busy_dialog, kodi_utils.hide_busy_dialog
+select_dialog, confirm_dialog = kodi_utils.select_dialog, kodi_utils.confirm_dialog
+execute_builtin, no_results = kodi_utils.execute_builtin, kodi_utils.no_results
+container_content, container_refresh = kodi_utils.container_content, kodi_utils.container_refresh
+clear_property, sleep = kodi_utils.clear_property, kodi_utils.sleep
+get_property, set_property = kodi_utils.get_property, kodi_utils.set_property
 get_setting, set_setting = kodi_utils.get_setting, kodi_utils.set_setting
 
 def imdb_videos_choice(videos, poster):
@@ -47,7 +50,7 @@ def genres_choice(mediatype, genres, poster, return_genres=False):
 	else: genre_action, meta_type, action = tvshow_genres, 'tvshow', 'tmdb_tv_genres'
 	genre_list = [{'genre': k, 'value': v} for k, v in genre_action.items() if k in genres]
 	if return_genres: return genre_list
-	if len(genre_list) == 0: return notification(32760, 1500)
+	if len(genre_list) == 0: return no_results()
 	mode = 'build_%s_list' % meta_type
 	choices = [{'mode': mode, 'action': action, 'genre_id': i['value'][0]} for i in genre_list]
 	list_items = [{'line1': i['genre'], 'icon': poster} for i in genre_list]
@@ -68,13 +71,13 @@ def random_choice(choice, meta):
 	from modules.sources import Sources
 	continual = True if choice == 'play_random_continual' else False
 	meta, play_params = get_random_episode(tmdb_id, continual)
-	if not play_params: return notification(32760)
+	if not play_params: return no_results()
 	Sources.factory(play_params)
 
 def playback_choice(content, poster, meta):
 	items = [
-		('clear_and_rescrape', ls(32014)),          ('rescrape_with_disabled', ls(32006)),
-		('scrape_with_filters_ignored', ls(32807)), ('scrape_with_custom_values', ls(32135))
+		('clear_and_rescrape', ls(32132)),          ('rescrape_with_disabled', ls(32133)),
+		('scrape_with_filters_ignored', ls(32134)), ('scrape_with_custom_values', ls(32135))
 	]
 	list_items = [{'line1': i[1], 'icon': poster} for i in items]
 	kwargs = {'items': json.dumps(list_items), 'heading': ls(32174)}
@@ -95,7 +98,7 @@ def set_quality_choice(quality_setting):
 	choice = select_dialog(fl, multi_line='false', **kwargs)
 	if choice is None: return
 	if choice: return set_setting(quality_setting, ', '.join(choice))
-	ok_dialog(text=32574)
+	kodi_utils.notify_error()
 	return set_quality_choice(quality_setting)
 
 def extras_lists_choice():
@@ -146,24 +149,6 @@ def results_highlights_choice():
 	choice = select_dialog([i[1] for i in choices], multi_line='false', **kwargs)
 	if choice: set_setting('highlight.type', choice)
 
-def results_layout_choice():
-	xml_choices = [
-		'List Default',     'List Contrast Default',
-		'InfoList Default', 'InfoList Contrast Default',
-		'WideList Default', 'WideList Contrast Default'
-	]
-	list_items = [{'line1': item} for item in xml_choices]
-	kwargs = {'items': json.dumps(list_items), 'heading': 'POV'}
-	choice = select_dialog(xml_choices, multi_line='false', **kwargs)
-	if choice in xml_choices: set_setting('results.xml_style', choice)
-
-def set_subtitle_choice():
-	choices = [(ls(32192), '0'), (ls(32193), '1'), (ls(32027), '2')]
-	list_items = [{'line1': item[0]} for item in choices]
-	kwargs = {'items': json.dumps(list_items), 'heading': 'POV'}
-	choice = select_dialog([i[1] for i in choices], multi_line='false', **kwargs)
-	if choice: set_setting('subtitles.subs_action', choice)
-
 def scraper_dialog_color_choice(setting):
 	setting = 'int_dialog_highlight' if setting == 'internal' else 'ext_dialog_highlight'
 	chosen_color = color_choice()
@@ -175,11 +160,15 @@ def scraper_quality_color_choice(setting):
 
 def scraper_color_choice(setting):
 	choices = [
-		('easynews', 'provider.easynews_colour'), ('debrid_cloud', 'provider.debrid_cloud_colour'),
-		('hoster', 'hoster.identify'),            ('torrent', 'torrent.identify'),
-		('rd', 'provider.rd_colour'),             ('pm', 'provider.pm_colour'),
-		('ad', 'provider.ad_colour'),             ('tb', 'provider.tb_colour'),
-		('oc', 'provider.oc_colour'),             ('free', 'provider.free_colour')
+		('hoster', 'hoster.identify'),
+		('torrent', 'torrent.identify'),
+		('pm', 'provider.pm_colour'),
+		('oc', 'provider.oc_colour'),
+		('tb', 'provider.tb_colour'),
+		('rd', 'provider.rd_colour'),
+		('ad', 'provider.ad_colour'),
+		('easynews', 'provider.easynews_colour'),
+		('debrid_cloud', 'provider.debrid_cloud_colour')
 	]
 	setting = [i[1] for i in choices if i[0] == setting][0]
 	chosen_color = color_choice()
@@ -202,7 +191,7 @@ def meta_language_choice():
 	from modules.meta_lists import meta_languages
 	langs = [{'iso': v['iso'], 'name': k} for k, v in meta_languages.items()]
 	list_items = [{'line1': i['name'], 'line2': i['iso']} for i in langs]
-	kwargs = {'items': json.dumps(list_items), 'heading': ls(32145)}
+	kwargs = {'items': json.dumps(list_items), 'heading': ls(32658)}
 	choice = select_dialog(langs, multi_line='false', **kwargs)
 	if choice is None: return None
 	chosen_language, chosen_language_display = choice['iso'], choice['name']
@@ -221,7 +210,7 @@ def favorites_choice(params):
 		action, refresh = add_to_sync, False
 		text = '%s[CR][CR]%s POV %s?' % (title, ls(32602), ls(32453))
 	if not confirm_dialog(text=text): return
-	notification(32576) if action('favorites', mediatype, tmdb_id, title) else notification(32574)
+	kodi_utils.notify_success() if action('favorites', mediatype, tmdb_id, title) else kodi_utils.notify_error()
 	if refresh: container_refresh()
 
 def dropped_choice(params):
@@ -235,7 +224,7 @@ def dropped_choice(params):
 		action = add_to_sync
 		text = '%s[CR][CR]%s POV %s?' % (title, ls(32602), 'Dropped')
 	if not confirm_dialog(text=text): return
-	notification(32576) if action('dropped', mediatype, tmdb_id, title) else notification(32574)
+	kodi_utils.notify_success() if action('dropped', mediatype, tmdb_id, title) else kodi_utils.notify_error()
 	container_refresh()
 
 def options_menu(params, meta=None):
@@ -245,45 +234,36 @@ def options_menu(params, meta=None):
 	if not meta:
 		func = metadata.movie_meta if content == 'movie' else metadata.tvshow_meta
 		meta = func('tmdb_id', params['tmdb_id'], settings.metadata_user_info(), get_datetime())
-	scrapable = content in ('movie', 'episode')
-	poster = meta.get('poster', '')
-	title = meta.get('title', '')
-	on_str, off_str, currently_str, open_str, settings_str = ls(32090), ls(32027), ls(32598), ls(32641), ls(32247)
-	scraper_options_str = '%s %s' % (ls(32533), ls(32841))
+	scraper_options_str, open_str, settings_str = '%s %s' % (ls(32842), ls(32841)), ls(32641), ls(32247)
 	browse_str = ls(32652).replace('[B]', '').replace('[/B]', '')
+	poster, title = meta.get('poster', ''), meta.get('title', '')
+	scrapable = content in ('movie', 'episode')
 	watched_indicators = settings.watched_indicators()
 	smart_play = settings.smart_play_enabled()
-	uncached_status, uncached_toggle = (on_str, 'false') if settings.display_uncached_torrents() else (off_str, 'true')
-	results_xml_status = settings.results_xml_style()
 	listing = []
-	append = listing.append
+	listing_append = listing.append
 	if content == 'episode':
-		append(('scrape_from_episode_group', 'Scrape From Episode Group', scraper_options_str, poster))
+		listing_append(('scrape_from_episode_group', 'Scrape From Episode Group', scraper_options_str, poster))
 	if scrapable:
-		append(('clear_and_rescrape', ls(32014), scraper_options_str, poster))
-		append(('rescrape_with_disabled', ls(32006), scraper_options_str, poster))
-		append(('scrape_with_filters_ignored', ls(32807), scraper_options_str, poster))
-		append(('scrape_with_custom_values', ls(32135), scraper_options_str, poster))
+		listing_append(('clear_and_rescrape', ls(32132), scraper_options_str, poster))
+		listing_append(('rescrape_with_disabled', ls(32133), scraper_options_str, poster))
+		listing_append(('scrape_with_filters_ignored', ls(32134), scraper_options_str, poster))
+		listing_append(('scrape_with_custom_values', ls(32135), scraper_options_str, poster))
 	if content == 'tvshow' and meta:
 		if smart_play == 2 or (smart_play == 1 and is_widget):
-			append(('browse_choice', browse_str, title, poster))
-		append(('play_random', ls(32541), title, poster))
-		append(('play_random_continual', ls(32542), title, poster))
-	append(('clear_scrapers_cache', ls(32637), ''))
-	append(('open_external_scrapers_choice', '%s %s' % (ls(32118), ls(32513)), ''))
-	if scrapable:
-		append(('toggle_torrents_display_uncached', ls(32160), '%s: [B]%s[/B]' % (currently_str, uncached_status)))
-		append(('set_results_xml_display', '%s %s' % (ls(32139), ls(32140)), '%s: [B]%s[/B]' % (currently_str, results_xml_status)))
-	if watched_indicators == 0 and content == 'tvshow':
-		append(('dropped_choice', 'Toggle Dropped', title, poster))
-	elif watched_indicators == 1:
-		append(('clear_trakt_cache', ls(32497) % ls(32037), ''))
-	elif watched_indicators == 2:
-		append(('clear_mdbl_cache', ls(32497) % 'MDBList', ''))
+			listing_append(('browse_choice', browse_str, title, poster))
+		listing_append(('play_random', ls(32541), title, poster))
+		listing_append(('play_random_continual', ls(32542), title, poster))
+	listing_append(('clear_scrapers_cache', ls(32131), ''))
+	listing_append(('open_external_scrapers_choice', '%s %s' % (ls(32118), ls(32513)), ''))
+	if watched_indicators == 1:
+		listing_append(('clear_trakt_cache', ls(32497) % 'Trakt', ''))
+	if watched_indicators == 2:
+		listing_append(('clear_mdbl_cache', ls(32497) % 'MDBList', ''))
 	if content in ('movie', 'tvshow') and meta:
-		append(('clear_media_cache', ls(32604) % (ls(32028) if content == 'movie' else ls(32029)), title, poster))
-	listing.append(('open_pov_settings', '%s %s %s' % (open_str, ls(32000), settings_str), ''))
-	if is_widget: listing.append(('reload_widgets', 'POV: Refresh Widgets', ''))
+		listing_append(('clear_media_cache', ls(32604) % (ls(32028) if content == 'movie' else ls(32029)), title, poster))
+	listing_append(('open_pov_settings', '%s %s %s' % (open_str, kodi_utils.get_addoninfo('name'), settings_str), ''))
+	if is_widget: listing_append(('reload_widgets', 'POV: Refresh Widgets', ''))
 	list_items = [
 		{'line1': item[1], 'line2': item[2] or item[1], **({'icon': item[3]} if len(item) == 4 else {})}
 		for item in listing
@@ -302,13 +282,11 @@ def options_menu(params, meta=None):
 	if choice == 'open_external_scrapers_choice': return enable_disable('all')
 	if choice == 'dropped_choice': return dropped_choice(meta)
 	if choice == 'clear_media_cache': return refresh_cached_meta(meta)
-	if choice == 'open_pov_settings': return kodi_utils.open_settings('')
+	if choice == 'open_pov_settings': return kodi_utils.open_settings(None)
 	if choice in ('clear_trakt_cache', 'clear_mdbl_cache'):
 		clear_cache({'clear_trakt_cache': 'trakt', 'clear_mdbl_cache': 'mdblist'}[choice])
 		return container_refresh()
-	if choice == 'toggle_torrents_display_uncached': set_setting('torrent.display.uncached', uncached_toggle)
-	elif choice == 'set_results_xml_display': results_layout_choice()
-	elif choice == 'reload_widgets': return kodi_utils.widget_refresh()
+	if choice == 'reload_widgets': return kodi_utils.widget_refresh()
 	options_menu(params, meta=meta)
 
 def refresh_cached_meta(meta):
@@ -316,11 +294,11 @@ def refresh_cached_meta(meta):
 	try:
 		metacache = MetaCache()
 		mediatype, tmdb_id = meta['mediatype'], meta['tmdb_id']
-		if mediatype == 'tvshow': metacache.delete_all_seasons_memory_cache(tmdb_id, meta.get('total_seasons'))
+		if mediatype == 'tvshow': metacache.delete_all_seasons_memory_cache(tmdb_id, meta)
 		metacache.delete(mediatype, 'tmdb_id', tmdb_id, meta)
-		notification(32576, 1500)
+		kodi_utils.notify_success()
 		container_refresh()
-	except: notification(32574)
+	except: kodi_utils.notify_error()
 
 def build_navigate_to_page(params):
 	use_alphabet = settings.nav_jump_use_alphabet() == 2
@@ -361,21 +339,20 @@ def _get_base_play_params(mediatype, meta, season=None, episode=None):
 def scrape_from_episode_group(meta, season, episode):
 	from indexers.tmdb_api import episode_groups, episode_group_details
 	from modules.sources import Sources
+	line1 = '%s (%s): [B]%s[/B] Groups, [B]%s[/B] Episodes'
 	tmdb_id, heading, poster = meta['tmdb_id'], meta['tvshowtitle'], meta['poster']
 	groups = episode_groups(tmdb_id)
 	choices = [
-		(item['id'],
-		 '%s (%s)' % (item['name'], item['type']),
-		 '%s Groups, %s Episodes' % (item['group_count'], item['episode_count']))
+		(item['id'], line1 % (item['name'], item['type'], item['group_count'], item['episode_count']), '')
 		for item in groups
 	]
-	if not choices: return notification(32760)
+	if not choices: return no_results()
 	list_items = [{'line1': item[1], 'line2': item[2], 'icon': poster} for item in choices]
-	kwargs = {'items': json.dumps(list_items), 'heading': heading, 'enumerate': 'true'}
+	kwargs = {'items': json.dumps(list_items), 'heading': heading}
 	choice = select_dialog([i[0] for i in choices], multi_line='false', **kwargs)
 	if choice is None: return
 	episodes = episode_group_details(choice)
-	if not episodes: return notification(32760)
+	if not episodes: return no_results()
 	episodes = [
 		{**episode, 'custom_episode': episode['order'] + 1, 'custom_season': group['order'],
 		'custom_name': f"S{group['order']}xE{episode['order'] + 1:02d} - {episode['name']}",
@@ -406,7 +383,7 @@ def clear_and_rescrape(mediatype, meta, season=None, episode=None):
 	show_busy_dialog()
 	deleted = ExternalProvidersCache().delete_cache_single(mediatype, str(meta['tmdb_id']))
 	hide_busy_dialog()
-	if not deleted: return notification(32574)
+	if not deleted: return kodi_utils.notify_error()
 	play_params = _get_base_play_params(mediatype, meta, season, episode)
 	Sources().source_select(play_params)
 
@@ -435,13 +412,13 @@ def scrape_with_custom_values(mediatype, meta, season=None, episode=None):
 		if custom_year: play_params.update({'custom_year': custom_year})
 	else:
 		custom_season = kodi_utils.dialog.numeric(0, '%s (%s)' % (ls(32537).title(), ls(32669)), defaultt=str(season))
-		custom_episode = kodi_utils.dialog.numeric(0, '%s (%s)' % (ls(32203).title(), ls(32669)), defaultt=str(episode))
+		custom_episode = kodi_utils.dialog.numeric(0, '%s (%s)' % (ls(32538).title(), ls(32669)), defaultt=str(episode))
 		if custom_season and custom_episode: play_params.update({'custom_season': custom_season, 'custom_episode': custom_episode})
 	kwargs = {'meta': meta, 'enable_buttons': True, 'true_button': ls(32824), 'false_button': ls(32828), 'focus_button': 11}
-	choice = open_window(('windows.progress', 'ProgressMedia'), 'progress_media.xml', text='%s?' % ls(32006), **kwargs)
+	choice = open_window(('windows.progress', 'ProgressMedia'), 'progress_media.xml', text='%s?' % ls(32133), **kwargs)
 	if choice is None: return
 	if choice: play_params['disabled_ignored'] = 'true'
-	choice = open_window(('windows.progress', 'ProgressMedia'), 'progress_media.xml', text=ls(32808), **kwargs)
+	choice = open_window(('windows.progress', 'ProgressMedia'), 'progress_media.xml', text=ls(32136), **kwargs)
 	if choice is None: return
 	if choice:
 		play_params['ignore_scrape_filters'] = 'true'
@@ -450,21 +427,21 @@ def scrape_with_custom_values(mediatype, meta, season=None, episode=None):
 
 def clear_scrapers_cache(silent=False):
 	for item in ('internal_scrapers', 'external_scrapers'): clear_cache(item, silent=True)
-	if not silent: notification(32576)
+	if not silent: kodi_utils.notify_success()
 
 def scraper_names(folder):
 	provider_list = []
-	append = provider_list.append
-	source_folder_location = 'special://home/addons/plugin.video.pov/resources/lib/magneto/%s'
+	provider_list_append = provider_list.append
+	location = kodi_utils.external_path
 	source_subfolders = {'hosters': '', 'torrents': ''}
 	if folder == 'all': source_subfolders = ['']
 	else: source_subfolders = [v for k, v in source_subfolders.items() if k == folder]
 	for item in source_subfolders:
-		files = kodi_utils.list_dirs(source_folder_location % item)[1]
-		for item in files:
-			module_name = item.split('.')[0]
+		files = kodi_utils.list_dirs(location + item)[1]
+		for file in files:
+			module_name = file.split('.')[0]
 			if module_name == '__init__': continue
-			append(module_name)
+			provider_list_append(module_name)
 	return provider_list
 
 def scrapers_status(folder='all'):
@@ -475,7 +452,7 @@ def scrapers_status(folder='all'):
 
 def enable_disable(folder):
 	try:
-		icon = 'special://home/addons/plugin.video.pov/fenom_icon.png'
+		icon = kodi_utils.get_addoninfo('icon')
 		enabled, disabled = scrapers_status(folder)
 		all_sources = sorted(enabled + disabled)
 		preselect = [all_sources.index(i) for i in enabled]
@@ -486,6 +463,6 @@ def enable_disable(folder):
 		for i in all_sources:
 			if i in chosen: set_setting('provider.' + i, 'true')
 			else: set_setting('provider.' + i, 'false')
-		return kodi_utils.notification(32576, 1500)
-	except: return kodi_utils.notification(32574, 1500)
+		return kodi_utils.notify_success()
+	except: return kodi_utils.notify_error()
 

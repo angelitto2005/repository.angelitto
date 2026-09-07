@@ -10,8 +10,8 @@ KODI_VERSION, ls = kodi_utils.get_kodi_version(), kodi_utils.local_string
 build_url, make_listitem = kodi_utils.build_url, kodi_utils.make_listitem
 fanart = kodi_utils.get_addoninfo('fanart')
 default_icon = kodi_utils.media_path('mdblist.png')
-add2menu_str, add2folder_str, copy2str = ls(32730), ls(32731), '[B]Export to TMDB[/B]'
-newlist_str, deletelist_str, nextpage_str = '[B]Make a new MDBList list[/B]', ls(32781), ls(32799)
+add2menu_str, add2folder_str, copy2str = ls(32730), ls(32731), '[B]Export to TMDb[/B]'
+newlist_str, deletelist_str, nextpage_str = ls(32780) % 'MDBList', ls(32781), ls(32799)
 watchl_str, fav_str, coll_str = ls(32500), ls(32453), ls(32499)
 
 def search_mdbl_lists(params):
@@ -27,13 +27,30 @@ def build_mdbl_list(params):
 	return MdblistBuilder(params).build()
 
 def mdbl_account_info():
+	from datetime import timedelta
+	from caches.mdbl_cache import integrity_check
 	from modules.utils import jsondate_to_datetime
 	try:
 		kodi_utils.show_busy_dialog()
+		db_status = integrity_check()
 		account_info = mdblist_api.call_mdblist('user')
+		stats = mdblist_api.call_mdblist('user/stats')['stats']
 		joined = jsondate_to_datetime(account_info['date_joined']).astimezone()
 		api_requests = account_info['api_requests']
 		remaining = api_requests - account_info['api_requests_count']
+		total_given_ratings = sum(stats[i]['rated'] for i in ('movies', 'shows', 'episodes'))
+		movies_watched, movies_watched_hours = [stats['movies'][i] for i in ('all_time', 'runtime_hours')]
+		shows_watched = stats['shows']['watched']
+		episodes_watched, episodes_watched_hours = [stats['episodes'][i] for i in ('all_time', 'runtime_hours')]
+		movie_minutes, episode_minutes = [int(i) * 60 for i in (movies_watched_hours, episodes_watched_hours)]
+		if movie_minutes == 0: movies_watched_minutes = ['0 days', '0:00:00']
+		elif movie_minutes < 1440: movies_watched_minutes = ['0 days', '{:0>8}'.format(str(timedelta(minutes=movie_minutes)))]
+		else: movies_watched_minutes = ('{:0>8}'.format(str(timedelta(minutes=movie_minutes)))).split(', ')
+		movies_watched_minutes = ('%s %s hours %s minutes' % (movies_watched_minutes[0], movies_watched_minutes[1].split(':')[0], movies_watched_minutes[1].split(':')[1]))
+		if episode_minutes == 0: episodes_watched_minutes = ['0 days', '0:00:00']
+		elif episode_minutes < 1440: episodes_watched_minutes = ['0 days', '{:0>8}'.format(str(timedelta(minutes=episode_minutes)))]
+		else: episodes_watched_minutes = ('{:0>8}'.format(str(timedelta(minutes=episode_minutes)))).split(', ')
+		episodes_watched_minutes = ('%s %s hours %s minutes' % (episodes_watched_minutes[0], episodes_watched_minutes[1].split(':')[0], episodes_watched_minutes[1].split(':')[1]))
 		body = []
 		append = body.append
 		append('[B]Username:[/B] %s' % account_info['username'])
@@ -41,6 +58,11 @@ def mdbl_account_info():
 		append('[B]Supporter:[/B] %s' % account_info['is_supporter'])
 		append('[B]API Request Limit:[/B] %s' % api_requests)
 		append('[B]API Request Remaining:[/B] %s' % remaining)
+		append('[B]Ratings Given:[/B] %s' % str(total_given_ratings))
+		append('[B]Shows:[/B] [B]%s[/B] Watched' % shows_watched)
+		append('[B]Episodes:[/B] [B]%s[/B] Watched for [B]%s[/B]' % (episodes_watched, episodes_watched_minutes))
+		append('[B]Movies:[/B] [B]%s[/B] Watched for [B]%s[/B]' % (movies_watched, movies_watched_minutes))
+		append('[B]Cache Integrity:[/B] %s' % db_status.upper())
 		kodi_utils.hide_busy_dialog()
 		return kodi_utils.show_text('MDBList'.upper(), '[CR]'.join(body), font_size='large')
 	except: kodi_utils.hide_busy_dialog()
@@ -175,7 +197,7 @@ class MdbListManager(list_helper.BaseListManager):
 		if 'new' in choice_id:
 			kodi_utils.show_busy_dialog()
 			try: self.api.make_new_mdbl_list(None)
-			except: return kodi_utils.notification(32574)
+			except: return kodi_utils.notify_error()
 			finally: kodi_utils.hide_busy_dialog()
 			return self.manage()
 		if 'dropped' in choice_id:
@@ -184,8 +206,8 @@ class MdbListManager(list_helper.BaseListManager):
 		return False
 
 	def check_item_exists(self, choice_id):
-		if 'collection' in choice_id: list_items = self.api.mdblist_collection('all', None)
-		elif 'watchlist' in choice_id: list_items = self.api.mdblist_watchlist('all', None)
+		if 'collection' in choice_id: list_items = self.api.mdblist_collection(self.mediatype, 'all')
+		elif 'watchlist' in choice_id: list_items = self.api.mdblist_watchlist(self.mediatype, 'all')
 		else: list_items = self.api.get_mdbl_list_contents('my_lists', choice_id)
 		return self.tmdb_id in {i['id'] for i in list_items}
 

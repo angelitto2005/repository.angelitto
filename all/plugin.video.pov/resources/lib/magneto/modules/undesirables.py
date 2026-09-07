@@ -79,7 +79,7 @@ def undesirablesSelect():
 	chosen = undesirables_cache.get_enabled()
 	try: preselect = [UNDESIRABLES.index(i) for i in chosen]
 	except: preselect = [UNDESIRABLES.index(i) for i in UNDESIRABLES]
-	choices = multiselectDialog(UNDESIRABLES, preselect=preselect, heading=lang(32085))
+	choices = multiselectDialog(UNDESIRABLES, preselect=preselect, heading="Select to Enable/Disable")
 	if not choices: return
 	enabled = [UNDESIRABLES[i] for i in choices]
 	disabled = [i for i in UNDESIRABLES if not i in enabled]
@@ -90,8 +90,8 @@ def undesirablesUserRemove():
 	from magneto.modules.control import multiselectDialog, notification
 	undesirables_cache = Undesirables()
 	user_undesirables = undesirables_cache.get_user_defined()
-	if not user_undesirables: return notification(message=32084)
-	choices = multiselectDialog(user_undesirables, heading=lang(32086))
+	if not user_undesirables: return notification(message="No User Undesirables Set")
+	choices = multiselectDialog(user_undesirables, heading="Select to Remove From List")
 	if not choices: return
 	removals = [(user_undesirables[i],) for i in choices]
 	undesirables_cache.remove_many(removals)
@@ -100,11 +100,11 @@ def undesirablesUserRemoveAll():
 	from magneto.modules.control import yesnoDialog, notification
 	undesirables_cache = Undesirables()
 	user_undesirables = undesirables_cache.get_user_defined()
-	if not user_undesirables: return notification(message=32084)
-	if not yesnoDialog(lang(32060)): return
+	if not user_undesirables: return notification(message="No User Undesirables Set")
+	if not yesnoDialog("Are you sure?"): return
 	removals = [(i,) for i in user_undesirables]
 	undesirables_cache.remove_many(removals)
-	notification(message=32087)
+	notification(message="Success")
 
 def undesirablesInput():
 	from magneto.modules.control import dialog
@@ -112,7 +112,7 @@ def undesirablesInput():
 	user_defined = undesirables_cache.get_user_defined()
 	if user_defined: current_user_string = ','.join(user_defined)
 	else: current_user_string = ''
-	undesirables_string = dialog.input(heading=lang(32048), defaultt=current_user_string)
+	undesirables_string = dialog.input(heading="Define Extra Undesirables (Comma Separated)", defaultt=current_user_string)
 	if not undesirables_string: return
 	new_undesirables = undesirables_string.replace(' ', '').split(',')
 	new_settings = [(i, True, True) for i in new_undesirables]

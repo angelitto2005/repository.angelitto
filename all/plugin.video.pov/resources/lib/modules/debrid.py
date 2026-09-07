@@ -1,24 +1,24 @@
 import json
 from threading import Thread
-from debrids import alldebrid_api, premiumize_api, real_debrid_api, torbox_api, offcloud_api
 from caches.debrid_cache import DebridCache
+from indexers import alldebrid_api, offcloud_api, premiumize_api, realdebrid_api, torbox_api
 from indexers import metadata
 from modules import kodi_utils, settings
 # from modules.kodi_utils import logger
 
-ls, get_setting, notification = kodi_utils.local_string, kodi_utils.get_setting, kodi_utils.notification
+ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 show_busy_dialog, hide_busy_dialog = kodi_utils.show_busy_dialog, kodi_utils.hide_busy_dialog
-ok_dialog, confirm_dialog, select_dialog = kodi_utils.ok_dialog, kodi_utils.confirm_dialog, kodi_utils.select_dialog
-default_internal_scrapers, enabled_debrids_check = settings.default_internal_scrapers, settings.enabled_debrids_check
-default_external_scrapers = ('external',)
-plswait_str, checking_debrid_str, remaining_debrid_str = ls(32577), ls(32578), ls(32579)
+confirm_dialog, select_dialog = kodi_utils.confirm_dialog, kodi_utils.select_dialog
+default_internal_scrapers = settings.default_internal_scrapers()
+default_external_scrapers = settings.default_external_scrapers()
+plswait_str, checking_debrid_str, remaining_debrid_str, size_str = ls(32577), ls(32578), ls(32579), ls(32584)
 
 debrid_list = (
-	('realdebrid', 'rd', real_debrid_api.RealDebridAPI),
 	('premiumize', 'pm', premiumize_api.PremiumizeAPI),
-	('alldebrid', 'ad', alldebrid_api.AllDebridAPI),
-	('torbox', 'tb', torbox_api.TorBoxAPI),
 	('offcloud', 'oc', offcloud_api.OffcloudAPI),
+	('torbox', 'tb', torbox_api.TorBoxAPI),
+	('realdebrid', 'rd', realdebrid_api.RealDebridAPI),
+	('alldebrid', 'ad', alldebrid_api.AllDebridAPI)
 )
 
 def import_debrid(debrid_provider):
@@ -26,7 +26,7 @@ def import_debrid(debrid_provider):
 	return cls() if cls else cls
 
 def debrid_enabled():
-	return [i[0] for i in debrid_list if enabled_debrids_check(i[1])]
+	return [i[0] for i in debrid_list if settings.enabled_debrids_check(i[1])]
 
 def debrid_type_enabled(debrid_type, enabled_debrids):
 	return [i[0] for i in debrid_list if i[0] in enabled_debrids and get_setting('%s.%s.enabled' % (i[1], debrid_type)) == 'true']
@@ -93,7 +93,7 @@ class Source:
 				elif any(x in filename for x in extras_filtering_list): continue
 				selected_files_append(i)
 			if not selected_files: raise Exception('selected_files failed')
-			if not season: selected_files.sort(key=lambda k: k['size'], reverse=True)
+			selected_files.sort(key=lambda k: k['size'], reverse=True)
 			file_key = next((i['link'] for i in selected_files), None)
 			file_url = api.unrestrict_link(file_key)
 			if not api.defaults_to_cloud:
@@ -110,20 +110,20 @@ class Source:
 
 	def resolve_internal_sources(self, direct_debrid_link=False):
 		try:
-			if self.scrape_provider == 'rd_cloud':
+			if self.scrape_provider == 'tb_cloud':
+				url = torbox_api.TorBoxAPI().unrestrict_link(self.id)
+			elif self.scrape_provider == 'rd_cloud':
 				if direct_debrid_link: url = self.url_dl
-				else: url = real_debrid_api.RealDebridAPI().unrestrict_link(self.id)
+				else: url = realdebrid_api.RealDebridAPI().unrestrict_link(self.id)
 			elif self.scrape_provider == 'ad_cloud':
 				if direct_debrid_link: url = self.url_dl
 				else: url = alldebrid_api.AllDebridAPI().unrestrict_link(self.id)
-			elif self.scrape_provider == 'tb_cloud':
-				url = torbox_api.TorBoxAPI().unrestrict_link(self.id)
 			elif self.scrape_provider == 'easynews':
-				from debrids.easynews_api import EasyNewsAPI
+				from indexers.easynews_api import EasyNewsAPI
 				url = EasyNewsAPI().unrestrict_link(self.url_dl)
 				if not direct_debrid_link: url += '|seekable=0'
 			elif self.scrape_provider == 'aiostreams':
-				from scrapers.aiostreams import unrestrict_link
+				from debrids.aiostreams import unrestrict_link
 				url = unrestrict_link(self.url_dl)
 			else: url = self.url_dl
 			return url
@@ -136,12 +136,12 @@ class Source:
 		api = import_debrid(self.debrid)
 		pack_choices = api.parse_magnet_pack(self.url, self.hash)
 		hide_busy_dialog()
-		if not pack_choices: return None if download else notification(32574)
+		if not pack_choices: return None if download else kodi_utils.no_results()
 		pack_choices.sort(key=lambda k: k['filename'].lower())
 		for item in pack_choices: item.update({
 			'icon': self.meta.get('poster') or api.icon,
 			'line1': clean_file_name(item['filename']),
-			'line2': '%s: %.2f GB' % (ls(32584), float(item['size'])/1073741824)
+			'line2': '%s: %.2f GB' % (size_str, float(item['size'])/1073741824)
 		})
 		if download: return pack_choices
 		kwargs = {'items': json.dumps(pack_choices), 'heading': self.name, 'highlight': highlight}
@@ -151,49 +151,50 @@ class Source:
 		return api.unrestrict_link(url_dl)
 
 	def manual_add_magnet_to_cloud(self):
-		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
+		if not confirm_dialog(text=ls(32687) % self.debrid.upper()): return
 		show_busy_dialog()
 		api = import_debrid(self.debrid)
 		api.clear_cache()
 		result = api.create_transfer(self.url)
 		hide_busy_dialog()
-		if result: notification(32576)
-		else: notification(32575)
+		if result: kodi_utils.notify_success()
+		else: kodi_utils.notify_failed()
+
+	def manual_airlock_to_cloud(self):
+		if not confirm_dialog(text=ls(32687) % self.debrid.upper()): return
+		show_busy_dialog()
+		api = import_debrid(self.debrid)
+		api.clear_cache()
+		request_id = api.create_transfer(self.url)
+		if not request_id: return kodi_utils.notify_error()
+		mediatype = 'torrents' if self.url.startswith('magnet') else 'usenet'
+		result = api.toggle_airlock(mediatype, request_id, True)
+		hide_busy_dialog()
+		if result: kodi_utils.notify_success()
+		else: kodi_utils.notify_failed()
+
+	def aio_add_to_cloud(self):
+		if not confirm_dialog(text=ls(32687) % self.debrid.upper()): return
+		if not getattr(self, 'url_dl', False): return kodi_utils.notify_error()
+		url, *headers = self.url_dl.rsplit('|', 1)
+		try: headers = dict(kodi_utils.parse_qsl(*headers))
+		except: headers = dict()
+		import requests
+		response = requests.get(url, headers=headers, stream=True, timeout=10)
+		if not response.ok: return kodi_utils.notify_error()
+		chunk = next(response.iter_content(chunk_size=1048576), b'')
+		if len(chunk): kodi_utils.notify_success()
+		else: kodi_utils.notify_failed()
 
 	def unchecked_magnet_status(self):
 		show_busy_dialog()
 		api = import_debrid(self.debrid)
 		result = api.parse_magnet_pack(self.url, self.hash)
 		hide_busy_dialog()
-		if not result: return ok_dialog(text='Not Cached at [B]%s[/B]' % self.debrid.upper())
+		if not result: return kodi_utils.ok_dialog(text='Not Cached at [B]%s[/B]' % self.debrid.upper())
 		torrent_id = next((i['torrent_id'] for i in result if 'torrent_id' in i), None)
 		if torrent_id: Thread(target=api.delete_torrent, args=(torrent_id,)).start()
-		ok_dialog(text='Cached at [B]%s[/B]' % self.debrid.upper())
-
-	def manual_airlock_to_cloud(self):
-		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
-		show_busy_dialog()
-		api = import_debrid(self.debrid)
-		api.clear_cache()
-		request_id = api.create_transfer(self.url)
-		if not request_id: return notification(32575)
-		mediatype = 'torrents' if self.url.startswith('magnet') else 'usenet'
-		result = api.toggle_airlock(mediatype, request_id, True)
-		hide_busy_dialog()
-		if result: notification(32576)
-		else: notification(32575)
-
-	def aio_add_to_cloud(self):
-		if not confirm_dialog(text=ls(32831) % self.debrid.upper()): return
-		if not getattr(self, 'url_dl', False): return notification(32576)
-		url, *headers = self.url_dl.rsplit('|', 1)
-		try: headers = dict(kodi_utils.parse_qsl(*headers))
-		except: headers = dict()
-		response = requests.get(url, headers=headers, stream=True, timeout=10)
-		if not response.ok: return notification(32576)
-		chunk = next(response.iter_content(chunk_size=1048576), b'')
-		if len(chunk): notification(32576)
-		else: notification(32575)
+		kodi_utils.ok_dialog(text='Cached at [B]%s[/B]' % self.debrid.upper())
 
 class DebridCheck:
 	_debrid_dict = {i[0]: i for i in debrid_list}
@@ -218,7 +219,11 @@ class DebridCheck:
 			unchecked_filter = {h[0] for h in self.cached_hashes if h[1] == self.debrid}
 			unchecked_hashes = [i for i in self.hash_list if i not in unchecked_filter]
 			if not unchecked_hashes: return self.cached_list
-			if self.debrid in ('rd', 'ad'): checked_hashes = self.external_check_cache(unchecked_hashes)
+			if self.debrid in ('rd', 'realdebrid'):
+				# removed dmm_check_cache, 403 Forbidden
+				checked_hashes = realdebrid_api.tio_check_cache(self.imdb, self.season, self.episode)
+			elif self.debrid in ('ad', 'alldebrid'):
+				checked_hashes = alldebrid_api.aio_check_cache(self.imdb, self.season, self.episode)
 			else: checked_hashes = self.function().check_cache(unchecked_hashes)
 			if not checked_hashes: return self.cached_list
 			checked_hashes = set(checked_hashes)
@@ -233,84 +238,4 @@ class DebridCheck:
 			if hashes_to_cache: Thread(target=self.cache_write, args=(hashes_to_cache,)).start()
 		except: pass
 		return self.cached_list
-
-	def external_check_cache(self, unchecked_hashes):
-		checked_hashes = []
-		if self.debrid == 'ad': threads = (
-			Thread(target=aio_check_cache, args=(self.imdb, self.season, self.episode, checked_hashes)),
-		)
-		else: threads = (
-			Thread(target=tio_check_cache, args=(self.imdb, self.season, self.episode, checked_hashes)),
-			Thread(target=dmm_check_cache, args=(unchecked_hashes, self.imdb, checked_hashes))
-		)
-		for i in threads: i.start()
-		for i in threads: i.join()
-		return checked_hashes
-
-import re, random, requests
-from magneto.modules.client import randomagent
-
-session = requests.session()
-session.headers.update({'User-Agent': randomagent(), 'Accept': 'application/json'})
-
-def aio_check_cache(imdb, season, episode, collector):
-	if str(season).isdigit(): params = {'type': 'series', 'id': '%s:%s:%s' % (imdb, season, episode)}
-	else: params = {'type': 'movie', 'id': '%s' % imdb}
-	headers, url = {'x-aiostreams-user-data': (
-		'ewogICJzZXJ2aWNlcyI6IFsKICAgIHsKICAgICAgImlkIjogImFsbGRlYnJpZCIsCiAgICAgICJlbmFi'
-		'bGVkIjogdHJ1ZSwKICAgICAgImNyZWRlbnRpYWxzIjogeyJhcGlLZXkiOiAic3RhdGljRGVtb0FwaWtl'
-		'eVByZW0ifQogICAgfQogIF0sCiAgInByZXNldHMiOiBbCiAgICB7CiAgICAgICJ0eXBlIjogIm1lZGlh'
-		'ZnVzaW9uIiwKICAgICAgImluc3RhbmNlSWQiOiAiNWI4IiwKICAgICAgImVuYWJsZWQiOiB0cnVlLAog'
-		'ICAgICAib3B0aW9ucyI6IHsKICAgICAgICAibmFtZSI6ICJNZWRpYUZ1c2lvbiIsCiAgICAgICAgInRp'
-		'bWVvdXQiOiA2NTAwLAogICAgICAgICJyZXNvdXJjZXMiOiBbInN0cmVhbSJdLAogICAgICAgICJ1c2VD'
-		'YWNoZWRSZXN1bHRzT25seSI6IHRydWUsCiAgICAgICAgImVuYWJsZVdhdGNobGlzdENhdGFsb2dzIjog'
-		'ZmFsc2UsCiAgICAgICAgImRvd25sb2FkVmlhQnJvd3NlciI6IGZhbHNlLAogICAgICAgICJjb250cmli'
-		'dXRvclN0cmVhbXMiOiBmYWxzZSwKICAgICAgICAiY2VydGlmaWNhdGlvbkxldmVsc0ZpbHRlciI6IFtd'
-		'LAogICAgICAgICJudWRpdHlGaWx0ZXIiOiBbXSwKICAgICAgICAibWVkaWFUeXBlcyI6IFtdCiAgICAg'
-		'IH0KICAgIH0sCiAgICB7CiAgICAgICJ0eXBlIjogInN0cmVtdGhydVRvcnoiLAogICAgICAiaW5zdGFu'
-		'Y2VJZCI6ICI1NDgiLAogICAgICAiZW5hYmxlZCI6IHRydWUsCiAgICAgICJvcHRpb25zIjogewogICAg'
-		'ICAgICJuYW1lIjogIlN0cmVtVGhydSBUb3J6IiwKICAgICAgICAidGltZW91dCI6IDY1MDAsCiAgICAg'
-		'ICAgInJlc291cmNlcyI6IFsic3RyZWFtIl0sCiAgICAgICAgIm1lZGlhVHlwZXMiOiBbXSwKICAgICAg'
-		'ICAiaW5jbHVkZVAyUCI6IGZhbHNlLAogICAgICAgICJ1c2VNdWx0aXBsZUluc3RhbmNlcyI6IGZhbHNl'
-		'CiAgICAgIH0KICAgIH0KICBdLAogICJmb3JtYXR0ZXIiOiB7CiAgICAiaWQiOiAidG9ycmVudGlvIiwK'
-		'ICAgICJkZWZpbml0aW9uIjogewogICAgICAibmFtZSI6ICIiLAogICAgICAiZGVzY3JpcHRpb24iOiAi'
-		'IgogICAgfQogIH0sCiAgInNvcnRDcml0ZXJpYSI6IHsKICAgICJnbG9iYWwiOiBbXQogIH0sCiAgImRl'
-		'ZHVwbGljYXRvciI6IHsKICAgICJlbmFibGVkIjogZmFsc2UsCiAgICAia2V5cyI6IFsiaW5mb0hhc2gi'
-		'XSwKICAgICJtdWx0aUdyb3VwQmVoYXZpb3VyIjogImFnZ3Jlc3NpdmUiLAogICAgImNhY2hlZCI6ICJz'
-		'aW5nbGVfcmVzdWx0IiwKICAgICJ1bmNhY2hlZCI6ICJwZXJfc2VydmljZSIsCiAgICAicDJwIjogInNp'
-		'bmdsZV9yZXN1bHQiLAogICAgImV4Y2x1ZGVBZGRvbnMiOiBbXQogIH0sCiAgImV4Y2x1ZGVVbmNhY2hl'
-		'ZCI6IHRydWUKfQ=='
-	)}, 'https://aiostreams.fortheweak.cloud/api/v1/search'
-	try:
-		results = requests.get(url, params=params, headers=headers, timeout=7.05)
-		files = results.json()['data']['results']
-		collector.extend(file['infoHash'] for file in files if file['cached'] and file.get('infoHash'))
-	except Exception as e: kodi_utils.logger('aio error', str(e))
-
-def tio_check_cache(imdb, season, episode, collector):
-	if str(season).isdigit(): url = 'series/%s:%s:%s.json' % (imdb, season, episode)
-	else: url = 'movie/%s.json' % (imdb)
-	params = 'realdebrid=T2iZoymNCCD1T5c2sX5u8tIZVcgcFWlCsCJ72rCmrU2mDdmvgieM'
-	url = 'https://torrentio.strem.fun/debridoptions=nodownloadlinks,nocatalog|%s/stream/%s' % (params, url)
-	pattern = re.compile(r'\b\w{40}\b')
-	try:
-		results = session.get(url, timeout=7.05)
-		files = results.json()['streams']
-		collector.extend(pattern.findall(file['url'])[-1] for file in files if '+' in file['name'] and 'url' in file)
-	except Exception as e: kodi_utils.logger('tio error', str(e))
-
-def dmm_check_cache(unchecked_hashes_chunk, imdb, collector): # DMM API Allows max 100 hashes per request.
-	""" do not thread multiple calls, abusing the api will get it turned off
-		100 sample size should be enough """
-	from magneto.dmm import get_secret
-	unchecked_hashes_chunk = [i for i in unchecked_hashes_chunk if len(i) == 40]
-	if len(unchecked_hashes_chunk) > 100: unchecked_hashes_chunk = random.sample(unchecked_hashes_chunk, 100)
-	url = 'https://debridmediamanager.com/api/availability/check'
-	dmmProblemKey, solution = get_secret()
-	data = {'dmmProblemKey': dmmProblemKey, 'solution': solution, 'imdbId': imdb, 'hashes': unchecked_hashes_chunk}
-	try:
-		results = session.post(url, json=data, timeout=7.05)
-		files = results.json()['available']
-		collector.extend(file['hash'] for file in files if 'hash' in file)
-	except Exception as e: kodi_utils.logger('dmm error', str(e))
 

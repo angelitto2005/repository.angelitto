@@ -8,7 +8,7 @@ from modules.settings import paginate, page_limit, nav_jump_use_alphabet
 
 ls, get_setting, media_path = kodi_utils.local_string, kodi_utils.get_setting, kodi_utils.media_path
 item_jump = kodi_utils.media_path('item_jump.png')
-nextpage_str, jump2_str = ls(32799), ls(32964)
+nextpage_str, jump2_str = ls(32799), ls(32800)
 
 class BaseList:
 	def __init__(self, params):
@@ -136,7 +136,7 @@ class BaseListManager:
 		raise NotImplementedError
 
 	def manage(self):
-		if not self.check_auth(): return kodi_utils.notification(32760)
+		if not self.check_auth(): return kodi_utils.no_results()
 		heading = ls(self.heading_id).replace('[B]', '').replace('[/B]', '')
 		list1, list2 = self.get_custom_lists()
 		choices = list1 + self.get_default_choices() + list2

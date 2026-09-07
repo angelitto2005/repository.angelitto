@@ -202,7 +202,7 @@ class Downloader:
 
 	def start_download(self, url, dest):
 		if self.action in ('image', 'meta.pack'):
-			if self.action == 'meta.pack': kodi_utils.notification(32134, 3000, self.image)
+			if self.action == 'meta.pack': kodi_utils.notification(32690, 3000, self.image)
 			show_notifications, notification_frequency = False, 0
 		else: show_notifications, notification_frequency = True, 25
 		errors, resume, sleep_time = 0, 0, 0,

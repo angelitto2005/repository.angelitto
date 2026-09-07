@@ -1,7 +1,7 @@
 import sys
 from urllib.parse import unquote
 from windows import open_window
-from indexers.tmdb_api import tmdb_people_info, tmdb_image_base
+from indexers.tmdb_api import tmdb_people_info, tmdb_image_base, tmdb_gender_dict
 from menus.images import Images
 from modules import kodi_utils, settings
 # from modules.kodi_utils import logger
@@ -10,7 +10,7 @@ KODI_VERSION = kodi_utils.get_kodi_version()
 ls, build_url, make_listitem = kodi_utils.local_string, kodi_utils.build_url, kodi_utils.make_listitem
 fanart_empty = kodi_utils.get_addoninfo('fanart')
 poster_empty = kodi_utils.media_path('people.png')
-gender_dict = {0: '', 1: ls(32844), 2: ls(32843), 3: ls(32466)}
+gender_dict = tmdb_gender_dict()
 
 def popular_people():
 	Images().run({'mode': 'popular_people_image_results', 'page_no': 1})

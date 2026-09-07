@@ -3,10 +3,9 @@ from caches.main_cache import cache_object
 from modules import kodi_utils
 # logger = kodi_utils.logger
 
-ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 base_url = 'https://www.premiumize.me/api/'
+custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session = requests.Session()
-session.custom_errors = requests.exceptions.ConnectionError, requests.exceptions.Timeout
 session.mount('https://www.premiumize.me', requests.adapters.HTTPAdapter(max_retries=1))
 
 class PremiumizeAPI:
@@ -14,14 +13,14 @@ class PremiumizeAPI:
 	defaults_to_cloud = False
 
 	def __init__(self):
-		self.timeout = int(get_setting('scrapers.timeout.1') or 10)
-		self.token = get_setting('pm.token')
+		self.timeout = int(kodi_utils.get_setting('scrapers_timeout') or 10)
+		self.token = kodi_utils.get_setting('pm.token')
 		session.headers.update(self.headers())
 
 	def _request(self, method, path, data=None):
 		url = base_url + path
 		try: response = session.request(method, url, data=data, timeout=self.timeout)
-		except session.custom_errors: return kodi_utils.notification('%s timeout' % __name__)
+		except custom_errors: return kodi_utils.notification('%s timeout' % __name__)
 		if not response.ok: kodi_utils.logger(__name__, f"{response.reason}\n{response.url}")
 		return response.json() if 'json' in response.headers.get('Content-Type', '') else response
 
@@ -35,11 +34,11 @@ class PremiumizeAPI:
 		return {'Authorization': 'Bearer %s' % self.token}
 
 	def days_remaining(self):
-		from datetime import datetime
+		from datetime import datetime, timezone
 		try:
 			account_info = self.account_info()
-			expires = datetime.fromtimestamp(account_info['premium_until'])
-			days = (expires - datetime.today()).days
+			expires = datetime.fromtimestamp(account_info['premium_until'], tz=timezone.utc)
+			days = (expires - datetime.now(timezone.utc)).days
 		except: days = None
 		return days
 
@@ -47,6 +46,18 @@ class PremiumizeAPI:
 		url = 'account/info'
 		result = self._get(url)
 		return result
+
+	def downloads(self):
+		url = 'transfer/list'
+		return self._get(url)
+
+	def user_cloud(self):
+		url = 'folder/list'
+		return self._get(url)
+
+	def user_folder(self, folder_id):
+		url = 'folder/list?id=%s' % folder_id
+		return self._get(url)
 
 	def item_listall(self):
 		url = 'item/listall'
@@ -112,29 +123,6 @@ class PremiumizeAPI:
 		args = [url, data]
 		return cache_object(self._post, string, args, 24)
 
-	def downloads(self, cached=True):
-		string = 'pov_pm_downloads'
-		url = 'transfer/list'
-		if cached: result = cache_object(self._get, string, url, 0.5)
-		else: result = self._get(url)
-		result = result['transfers']
-		return result
-
-	def user_cloud(self, cached=True):
-		string = 'pov_pm_user_cloud'
-		url = 'folder/list'
-		if cached: result = cache_object(self._get, string, url, 0.5)
-		else: result = self._get(url)
-		result = result['content']
-		return result
-
-	def user_folder(self, folder_id):
-		string = 'pov_pm_user_cloud_%s' % folder_id
-		url = 'folder/list?id=%s' % folder_id
-		result = cache_object(self._get, string, url, 0.5)
-		result = result['content']
-		return result
-
 	def clear_cache(*args):
 		from modules.kodi_utils import clear_property, path_exists, database_connect, maincache_db
 		try:
@@ -147,29 +135,29 @@ class PremiumizeAPI:
 				dbcur.execute("""SELECT id FROM maincache WHERE id LIKE ?""", ('pov_pm_user_cloud%',))
 				user_cloud_cache = [str(i[0]) for i in dbcur.fetchall()]
 				if user_cloud_cache:
-					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_pm_user_cloud%',))
 					for i in user_cloud_cache: clear_property(i)
+					dbcur.execute("""DELETE FROM maincache WHERE id LIKE ?""", ('pov_pm_user_cloud%',))
 					dbcon.commit()
 				user_cloud_success = True
 			except: user_cloud_success = False
 			# DOWNLOAD LINKS
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_pm_downloads',))
 				clear_property('pov_pm_downloads')
+				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_pm_downloads',))
 				dbcon.commit()
 				download_links_success = True
 			except: download_links_success = False
 			# HOSTERS
 			try:
-				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_pm_valid_hosts',))
 				clear_property('pov_pm_valid_hosts')
+				dbcur.execute("""DELETE FROM maincache WHERE id = ?""", ('pov_pm_valid_hosts',))
 				dbcon.commit()
 				hoster_links_success = True
 			except: hoster_links_success = False
 			dbcon.close()
 			# HASH CACHED STATUS
 			try:
-				DebridCache().clear_debrid_results('pm')
+				DebridCache().delete_cache_single('pm')
 				hash_cache_status_success = True
 			except: hash_cache_status_success = False
 		except: return False

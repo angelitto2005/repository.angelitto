@@ -2,7 +2,6 @@ from threading import Thread
 from indexers.metadata import movie_meta, art_infodict, movie_show_infodict, tmdb_image_base
 from caches.watched_cache import get_watched_info_movie, get_watched_status_movie, get_bookmarks, get_resumetime, set_resumetime
 from modules import kodi_utils, settings
-#from modules.utils import manual_function_import, get_datetime, make_thread_list_enumerate, chunks
 from modules.utils import manual_function_import, get_datetime, TaskPool
 # logger = kodi_utils.logger
 
@@ -13,10 +12,10 @@ fanart_empty = kodi_utils.get_addoninfo('fanart')
 poster_empty = kodi_utils.media_path('box_office.png')
 item_jump = kodi_utils.media_path('item_jump.png')
 item_next = kodi_utils.media_path('item_next.png')
-watched_str, unwatched_str, traktmanager_str, tmdbmanager_str, mdblmanager_str = ls(32642), ls(32643), ls(32198), '[B]TMDB Lists Manager[/B]', ls(32200)
-favmanager_str, extras_str, options_str, recomm_str = ls(32197), ls(32645), ls(32646), '[B]%s...[/B]' % ls(32503)
-hide_str, exit_str, clearprog_str, play_str = ls(32648), ls(32649), ls(32651), '[B]%s...[/B]' % ls(32174)
-nextpage_str, switchjump_str, jumpto_str = ls(32799), ls(32784), ls(32964)
+watched_str, unwatched_str, favmanager_str, play_str = ls(32642), ls(32643), ls(32197), '[B]%s...[/B]' % ls(32174)
+extras_str, options_str, exit_str, clearprog_str = ls(32645), ls(32646), ls(32649), ls(32651)
+traktmanager_str, mdblmanager_str, tmdbmanager_str = ls(32198), ls(32200), ls(32199)
+nextpage_str, jumpto_str = ls(32799), ls(32800)
 
 class Movies:
 	def __init__(self, params):
@@ -128,28 +127,28 @@ class Movies:
 				listitem.setCast(meta_get('cast', []))
 				listitem.setProperty('resumetime', resumetime)
 			else:
-				videoinfo = listitem.getVideoInfoTag(offscreen=True)
-				videoinfo.setTitle(display)
-				videoinfo.setUniqueIDs({'imdb': imdb_id, 'tmdb': string(tmdb_id)})
-				videoinfo.setCast(make_cast_list(meta_get('cast', [])))
-				videoinfo.setCountries(meta_get('country'))
-				videoinfo.setDirectors(meta_get('director').split(', '))
-				videoinfo.setDuration(int(meta_get('duration') or default_duration))
-				videoinfo.setGenres(meta_get('genre').split(', '))
-				videoinfo.setIMDBNumber(imdb_id)
-				videoinfo.setMediaType('movie')
-				videoinfo.setMpaa(meta_get('mpaa'))
-				videoinfo.setPlaycount(playcount)
-				videoinfo.setPlot(meta_get('plot'))
-				videoinfo.setPremiered(meta_get('premiered'))
-				videoinfo.setRating(meta_get('rating'))
-				videoinfo.setResumePoint(*set_resumetime(resumetime, progress, videoinfo.getDuration()))
-				videoinfo.setStudios((meta_get('studio'),))
-				videoinfo.setTagLine(meta_get('tagline'))
-				videoinfo.setTags(tags)
-				videoinfo.setTrailer(meta_get('trailer'))
-				videoinfo.setVotes(meta_get('votes'))
-				videoinfo.setWriters(meta_get('writer').split(', '))
+				infotag = listitem.getVideoInfoTag(offscreen=True)
+				infotag.setTitle(display)
+				infotag.setUniqueIDs({'imdb': imdb_id, 'tmdb': string(tmdb_id)})
+				infotag.setCast(make_cast_list(meta_get('cast', [])))
+				infotag.setCountries(meta_get('country'))
+				infotag.setDirectors(meta_get('director').split(', '))
+				infotag.setDuration(int(meta_get('duration') or default_duration))
+				set_resumetime(resumetime, progress, infotag)
+				infotag.setGenres(meta_get('genre').split(', '))
+				infotag.setIMDBNumber(imdb_id)
+				infotag.setMediaType('movie')
+				infotag.setMpaa(meta_get('mpaa'))
+				infotag.setPlaycount(playcount)
+				infotag.setPlot(meta_get('plot'))
+				infotag.setPremiered(meta_get('premiered'))
+				infotag.setRating(meta_get('rating'))
+				infotag.setStudios((meta_get('studio'),))
+				infotag.setTagLine(meta_get('tagline'))
+				infotag.setTags(tags)
+				infotag.setTrailer(meta_get('trailer'))
+				infotag.setVotes(meta_get('votes'))
+				infotag.setWriters(meta_get('writer').split(', '))
 			self.append((url_params, listitem, False))
 		except: pass
 
@@ -164,7 +163,6 @@ class Menu(Movies):
 	similar = ('tmdb_movies_similar', 'tmdb_movies_recommendations')
 
 	def build_movies_results(self):
-#		threads = list(make_thread_list_enumerate(self.build_movie_content, self.list, Thread))
 		for i in TaskPool().tasks_enumerate(self.build_movie_content, self.list, Thread): i.join()
 		self.items.sort(key=lambda k: int(k[1].getProperty('pov_sort_order')))
 		return self.items

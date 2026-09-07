@@ -3,7 +3,7 @@ from datetime import datetime
 from modules import kodi_utils, settings
 
 logger, path_exists, translate_path = kodi_utils.logger, kodi_utils.path_exists, kodi_utils.translate_path
-monitor, is_playing, get_visibility = kodi_utils.monitor, kodi_utils.player.isPlaying, kodi_utils.get_visibility
+monitor, player_isplaying, get_visibility = kodi_utils.monitor, kodi_utils.player.isPlaying, kodi_utils.get_visibility
 get_property, set_property, clear_property = kodi_utils.get_property, kodi_utils.set_property, kodi_utils.clear_property
 get_setting, set_setting, make_settings_dict = kodi_utils.get_setting, kodi_utils.set_setting, kodi_utils.make_settings_dict
 
@@ -18,10 +18,10 @@ POV_ROUTES = {
 	'scraper_quality_color_choice': lambda p: _import('modules.dialogs', 'scraper_quality_color_choice')(p['setting']),
 	'set_quality_choice': lambda p: _import('modules.dialogs', 'set_quality_choice')(p['quality_setting']),
 	'results_sorting_choice': lambda p: _import('modules.dialogs', 'results_sorting_choice')(),
-	'results_layout_choice': lambda p: _import('modules.dialogs', 'results_layout_choice')(),
 	'options_menu_choice': lambda p: _import('modules.dialogs', 'options_menu')(p),
 	'meta_language_choice': lambda p: _import('modules.dialogs', 'meta_language_choice')(),
 	'favorites_choice': lambda p: _import('modules.dialogs', 'favorites_choice')(p),
+	'dropped_choice': lambda p: _import('modules.dialogs', 'dropped_choice')(p),
 	'set_language_filter_choice': lambda p: _import('modules.dialogs', 'set_language_filter_choice')(p['filter_setting']),
 	'extras_lists_choice': lambda p: _import('modules.dialogs', 'extras_lists_choice')(),
 	'random_choice': lambda p: _import('modules.dialogs', 'random_choice')(p['mode'], p),
@@ -81,10 +81,11 @@ POV_ROUTES = {
 	'upload_logfile': lambda p: _import('modules.kodi_utils', 'upload_logfile')(),
 	'myservices': lambda p: _import('modules.myservices', 'authorize')(),
 	'refer_link': lambda p: _import('modules.myservices', 'refer_link')(p['query']),
-	'undesirablesInput': lambda p: _import('caches.undesirables_cache', 'undesirablesInput')(),
-	'undesirablesUserRemove': lambda p: _import('caches.undesirables_cache', 'undesirablesUserRemove')(),
+	'undesirablesSelect': lambda p: _import('magneto.modules.undesirables', 'undesirablesSelect')(),
+	'undesirablesInput': lambda p: _import('magneto.modules.undesirables', 'undesirablesInput')(),
+	'undesirablesUserRemove': lambda p: _import('magneto.modules.undesirables', 'undesirablesUserRemove')(),
 	'speedTest': lambda p: _import('magneto.modules.speedtest', 'magneto')(),
-	'aioHelp': lambda p: _import('scrapers.aiostreams', 'aio_help')(),
+	'aioHelp': lambda p: _import('debrids.aiostreams', 'aio_help')(),
 }
 
 def _import(module_path, attr_name):
@@ -141,12 +142,12 @@ def routing(sys_obj):
 		if mode.startswith('build_mdbl_'): return _run_dynamic_func('menus.mdblist', mode, params)
 		if mode.startswith('build_tmdb_'): return _run_dynamic_func('menus.tmdb', mode, params)
 
-	if mode.startswith('alldebrid.'): return _run_debrid_method('menus.alldebrid', 'Menu', params, 'run')
-	if mode.startswith('premiumize.'): return _run_debrid_method('menus.premiumize', 'Menu', params, 'run')
-	if mode.startswith('real_debrid.'): return _run_debrid_method('menus.real_debrid', 'Menu', params, 'run')
-	if mode.startswith('torbox.'): return _run_debrid_method('menus.torbox', 'Menu', params, 'run')
-	if mode.startswith('offcloud.'): return _run_debrid_method('menus.offcloud', 'Menu', params, 'run')
-	if mode.startswith('easynews.'): return _run_dynamic_func('menus.easynews', mode, params)
+	if mode.startswith('premiumize.'): return _run_debrid_method('debrids.pm_cloud', 'Menu', params, 'run')
+	if mode.startswith('offcloud.'): return _run_debrid_method('debrids.oc_cloud', 'Menu', params, 'run')
+	if mode.startswith('torbox.'): return _run_debrid_method('debrids.tb_cloud', 'Menu', params, 'run')
+	if mode.startswith('real_debrid.'): return _run_debrid_method('debrids.rd_cloud', 'Menu', params, 'run')
+	if mode.startswith('alldebrid.'): return _run_debrid_method('debrids.ad_cloud', 'Menu', params, 'run')
+	if mode.startswith('easynews.'): return _run_dynamic_func('debrids.easynews', mode, params)
 
 class Router:
 	def __enter__(self):
@@ -171,6 +172,8 @@ class POVMonitor(kodi_utils.xbmc_monitor):
 		for i in getattr(self, 'threads', ()): i.join()
 
 	def run(self):
+		logger('POV', 'Main Monitor Service Starting (%s)' % self.ver())
+		logger('POV', 'Settings Monitor Service Starting')
 		with self:
 			try: databaseMaintenance()
 			except: pass
@@ -186,6 +189,8 @@ class POVMonitor(kodi_utils.xbmc_monitor):
 			try: checkUndesirablesDatabase()
 			except: pass
 			self.waitForAbort()
+		logger('POV', 'Settings Monitor Service Finished')
+		logger('POV', 'Main Monitor Service Finished')
 
 	def ver(*args):
 		return f"{kodi_utils.get_addoninfo('id')}-{kodi_utils.get_addoninfo('version')}"
@@ -249,7 +254,7 @@ def viewsSetWindowProperties():
 def reuseLanguageInvokerCheck():
 	import xml.etree.ElementTree as ET
 	logger('POV', 'ReuseLanguageInvokerCheck Service Starting')
-	addon_xml = translate_path('special://home/addons/plugin.video.pov/addon.xml')
+	addon_xml = translate_path('special://home/addons/%s/addon.xml' % kodi_utils.get_addoninfo('id'))
 	tree = ET.parse(addon_xml)
 	root = tree.getroot()
 	current_addon_setting = get_setting('reuse_language_invoker', 'true')
@@ -266,7 +271,7 @@ def reuseLanguageInvokerCheck():
 
 def autoRun():
 	logger('POV', 'AutoRun Service Starting')
-	if settings.auto_start_pov(): kodi_utils.execute_builtin('RunAddon(plugin.video.pov)')
+	if settings.auto_start_pov(): kodi_utils.execute_builtin('RunAddon(%s)' % kodi_utils.get_addoninfo('id'))
 	return logger('POV', 'AutoRun Service Finished')
 
 def clearSubs():
@@ -281,16 +286,12 @@ def clearSubs():
 def premAccntNotification():
 	logger('POV', 'Debrid Account Expiry Notification Service Starting')
 	from importlib import import_module
-	for user, expires, module, cls in (
-		('ad.account_id', 'ad.expires', 'alldebrid_api', 'AllDebridAPI'),
-		('pm.account_id', 'pm.expires', 'premiumize_api', 'PremiumizeAPI'),
-		('rd.username', 'rd.expires', 'real_debrid_api', 'RealDebridAPI'),
-		('tb.account_id', 'tb.expires', 'torbox_api', 'TorBoxAPI')
-	):
+	debrid_expiry_checks = settings.debrid_expiry_checks()
+	for user, expires, module, cls in debrid_expiry_checks:
 		try:
 			if not get_setting(user): continue
 			if (limit := int(get_setting(expires, '7'))) < 1: continue
-			module = import_module('debrids.%s' % module)
+			module = import_module('indexers.%s' % module)
 			days_remaining = getattr(module, cls)().days_remaining()
 			if days_remaining is None or days_remaining > limit: continue
 			kodi_utils.notification('%s expires in %s days' % (cls, days_remaining))
@@ -309,11 +310,9 @@ def checkUndesirablesDatabase():
 class SyncMonitorService(kodi_utils.xbmc_monitor):
 	def __init__(self):
 		kodi_utils.xbmc_monitor.__init__(self)
-		from caches.trakt_cache import clear_trakt_list_contents_data
 		from indexers.trakt_api import trakt_sync_activities
 		from indexers.mdblist_api import mdbl_sync_activities
 		from indexers.tmdb_api import tmdb_clean_watchlist, clear_tmdbl_cache
-		self.clear_trakt_list_contents_data = clear_trakt_list_contents_data
 		self.trakt_sync_activities = trakt_sync_activities
 		self.mdbl_sync_activities = mdbl_sync_activities
 		self.tmdb_clean_watchlist = tmdb_clean_watchlist
@@ -337,13 +336,15 @@ class SyncMonitorService(kodi_utils.xbmc_monitor):
 
 	def handle_first_run_cache(self):
 		if get_property('pov_traktmonitor_first_run') != 'true':
-			for i in ('user_lists', 'liked_lists', 'my_lists'): self.clear_trakt_list_contents_data(i)
 			self.clear_tmdbl_cache()
 			set_property('pov_traktmonitor_first_run', 'true')
 
 	def wait_if_busy(self):
-		while is_playing() or get_visibility('Container().isUpdating') or get_property('pov_pause_services') == 'true':
-			self.waitForAbort(10)
+		while (
+			player_isplaying()
+			or get_visibility('Container.isUpdating')
+			or get_property('pov_pause_services') == 'true'
+		): self.waitForAbort(10)
 
 	def refresh_widgets(self, monitor_name):
 		if settings.trakt_sync_refresh_widgets():
@@ -382,6 +383,6 @@ class SyncMonitorService(kodi_utils.xbmc_monitor):
 		try:
 			if get_setting('tmdb.token') and get_setting('tmdblist.watchlist_sync') == 'true':
 				status = self.tmdb_clean_watchlist(silent=True)
-				if status: logger('POV', 'TMDB Lists Service Update - Success. %s' % status)
+				if status: logger('POV', 'TMDb Lists Service Update - Success. %s' % status)
 		except: pass
 

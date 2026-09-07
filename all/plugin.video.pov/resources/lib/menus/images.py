@@ -3,7 +3,7 @@ import json
 from windows import open_window
 from indexers.tmdb_api import tmdb_people_full_info, tmdb_popular_people, tmdb_image_base
 from indexers.imdb_api import people_get_imdb_id, imdb_tagged_images
-from modules.kodi_utils import media_path, notification, set_property, make_listitem, list_dirs, delete_file
+from modules.kodi_utils import media_path, no_results, set_property, make_listitem, list_dirs, delete_file
 # from modules.kodi_utils import logger
 
 class Images:
@@ -16,8 +16,7 @@ class Images:
 		elif self.mode == 'browser_image': self.browser_image(params['folder_path'])
 		elif self.mode == 'slideshow_image': return self.slideshow_image()
 		elif self.mode == 'delete_image': return self.delete_image()
-		if len(self.list_items) == 0 and self.params.get('in_progress') != 'true':
-			return notification(32760)
+		if not self.list_items and self.params.get('in_progress') != 'true': return no_results()
 		if 'in_progress' not in params: self.open_window_xml()
 		else: return self.list_items, self.next_page_params
 

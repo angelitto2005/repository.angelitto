@@ -1,5 +1,7 @@
 
   [COLOR dodgerblue][B]Version 6.08[/B][/COLOR]
+- Removed "Contrast" results displays.
++ Added MDBList stats to Account Info.
 * Changed Easynews scraper to use seas_ep_filter like other cloud scrapers.
 * Changed AIOStreams behavior, allowing internal debrid cloud scrapers to run
   only when "Check Before Full Search" is enabled.

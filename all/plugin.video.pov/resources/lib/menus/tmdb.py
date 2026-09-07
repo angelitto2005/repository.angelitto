@@ -80,16 +80,16 @@ def edit_tmdb_list(params):
 			}
 			data = {k: v for k, v in data.items() if v not in ('None', None)}
 			success = tmdb_api.list_update(params['list_id'], data).get('success')
-			if not success: notification(32574)
+			if not success: kodi_utils.notify_failed()
 			tmdb_api.clear_tmdbl_cache()
 			container_refresh()
-			return notification(32576)
+			return kodi_utils.notify_success()
 
 def trakt_list_to_tmdb(params, api):
 	from threading import Thread
 	from indexers.trakt_api import get_trakt_list_contents
 	from modules.utils import chunks
-	send_str = 'Sending list to TMDB...'
+	send_str = 'Sending list to TMDb...'
 	progressBG = kodi_utils.progressDialogBG
 	progressBG.create(send_str, api.tmdblist_heading)
 	try:
@@ -105,15 +105,15 @@ def trakt_list_to_tmdb(params, api):
 		items = {'items': [i['export'] for i in items if i['export']]}
 		Thread(target=api.list_add_items, args=(params['list_id'], items)).start()
 		api.clear_tmdbl_cache()
-	except: notification(32574)
-	else: notification('List sent to TMDB')
+	except: kodi_utils.notify_error()
+	else: notification('List sent to TMDb')
 	finally: progressBG.close()
 
 def mdbl_list_to_tmdb(params, api):
 	from threading import Thread
 	from indexers.mdblist_api import get_mdbl_list_contents
 	from modules.utils import chunks
-	send_str = 'Sending list to TMDB...'
+	send_str = 'Sending list to TMDb...'
 	progressBG = kodi_utils.progressDialogBG
 	progressBG.create(send_str, api.tmdblist_heading)
 	try:
@@ -128,8 +128,8 @@ def mdbl_list_to_tmdb(params, api):
 		items = {'items': [i['export'] for i in items if i['export']]}
 		Thread(target=api.list_add_items, args=(params['list_id'], items)).start()
 		api.clear_tmdbl_cache()
-	except: notification(32574)
-	else: notification('List sent to TMDB')
+	except: kodi_utils.notify_error()
+	else: notification('List sent to TMDb')
 	finally: progressBG.close()
 
 class BaseTmdbList(list_helper.BaseList):
@@ -219,7 +219,7 @@ class TmdbManager(list_helper.BaseListManager):
 				list_name = self.params.get('trakt_list_name') or self.params.get('mdbl_list_name') or ''
 				result = self.api.list_create(list_name)
 				if result and result.get('success'): self.api.clear_tmdbl_cache()
-			except: return notification(32574)
+			except: return kodi_utils.notify_error()
 			finally: hide_busy_dialog()
 			return self.manage()
 		if 'trakt_list_id' in self.params or 'mdbl_list_id' in self.params:
@@ -246,6 +246,6 @@ class TmdbManager(list_helper.BaseListManager):
 		if success:
 			self.api.clear_tmdbl_cache()
 			if not action_add: container_refresh()
-			return notification(32576)
-		return notification(32574)
+			return kodi_utils.notify_success()
+		return kodi_utils.notify_failed()
 

@@ -13,12 +13,27 @@ ls, get_setting = kodi_utils.local_string, kodi_utils.get_setting
 get_art_provider, meta_user_info = settings.get_art_provider, settings.metadata_user_info
 fanart_empty = kodi_utils.get_addoninfo('fanart')
 poster_empty = kodi_utils.media_path('box_office.png')
+resumept_str, resume_str, start_str = ls(32831), ls(32832), ls(32833)
 
-class POVPlayer(kodi_utils.xbmc_player):
+class MediaPlayer(kodi_utils.xbmc_player):
 	def __init__(self):
 		kodi_utils.xbmc_player.__init__(self)
-		self.set_resume, self.set_watched = 5, 90
-		self.playback_event, self.progress_media = None, None
+		self.playback_event = None
+
+	def onAVStarted(self):
+		self.playback_event = True
+
+	def onPlayBackStarted(self):
+		try: kodi_utils.hide_busy_dialog()
+		except: pass
+
+	def onPlayBackStopped(self):
+		self.playback_event = None
+
+class POVPlayer(MediaPlayer):
+	def __init__(self):
+		MediaPlayer.__init__(self)
+		self.set_resume, self.set_watched = 5, 80
 		self.media_marked, self.nextep_info_gathered = False, False
 		self.subs_searched, self.stingers_checked = False, False
 		self.nextep_started, self.play_random_continual = False, False
@@ -31,16 +46,6 @@ class POVPlayer(kodi_utils.xbmc_player):
 		self.stinger_check = int(get_setting('stingers.threshold', '30'))
 		self.skip_intro_enabled = get_setting('skip_intro.enable') == 'true'
 		self.volume_check = get_setting('volumecheck.enabled', 'false') == 'true'
-
-	def onAVStarted(self):
-		self.playback_event = True
-
-	def onPlayBackStarted(self):
-		try: kodi_utils.hide_busy_dialog()
-		except: pass
-
-	def onPlayBackStopped(self):
-		self.playback_event = None
 
 	def run(self, url=None, meta=None, progress_media=None):
 		if not url: return
@@ -189,6 +194,16 @@ class POVPlayer(kodi_utils.xbmc_player):
 			)
 		except: pass
 
+	def stinger_notification(self, tmdb_id, poster):
+		if not tmdb_id: return
+		from indexers import tmdb_api
+		stingers = {'duringcreditsstinger': 'During Credit Scene', 'aftercreditsstinger': 'After Credit Scene'}
+		keywords = tmdb_api.movie_keywords(tmdb_id) or []
+		keywords = {str(i['name']) for i in keywords}
+		if all((i in keywords for i in stingers.keys())): stinger = 'Dual Credit Scenes'
+		else: stinger = next((v for k, v in stingers.items() if k in keywords), None)
+		if stinger: kodi_utils.notification(stinger, time=6000, icon=poster)
+
 	def bookmarkPOV(self):
 		bookmark = 0
 		watched_indicators = settings.watched_indicators()
@@ -211,24 +226,14 @@ class POVPlayer(kodi_utils.xbmc_player):
 			('windows.progress', 'ProgressMedia'),
 			'progress_media.xml',
 			meta=self.meta,
-			text=ls(32790) % resume_point,
+			text=resumept_str % resume_point,
 			enable_buttons=True,
-			true_button=ls(32832),
-			false_button=ls(32833),
+			true_button=resume_str,
+			false_button=start_str,
 			focus_button=10,
 			percent=percent
 		)
 		return percent if choice is True else bookmark if choice is False else 'cancel'
-
-	def getStingers(self, tmdb_id, poster):
-		if not tmdb_id: return
-		from indexers import tmdb_api
-		stingers = {'duringcreditsstinger': 'During Credit Scene', 'aftercreditsstinger': 'After Credit Scene'}
-		keywords = tmdb_api.movie_keywords(tmdb_id) or []
-		keywords = [str(i['name']) for i in keywords]
-		if all((i in keywords for i in stingers.keys())): stinger = 'Dual Credit Scenes'
-		else: stinger = next((v for k, v in stingers.items() if k in keywords), None)
-		return kodi_utils.notification(stinger, time=6000, icon=poster) if stinger else ''
 
 	def exec_task(self, task_name, *args):
 		try:
@@ -255,15 +260,13 @@ class POVPlayer(kodi_utils.xbmc_player):
 			elif task_name == 'subtitles':
 				self.subs_searched = True
 				poster = self.meta.get('poster') or poster_empty
-				season = self.season if self.mediatype == 'episode' else None
-				episode = self.episode if self.mediatype == 'episode' else None
-				from indexers.subtitles import Subtitles
-				Thread(target=Subtitles().run, args=(self.title, self.imdb_id, season, episode, poster)).start()
+				from indexers.subtitles import SubtitleScraper
+				Thread(target=SubtitleScraper(self, poster).run).start()
 			elif task_name == 'stingers':
 				self.stingers_checked = True
 				poster = self.meta.get('poster') or poster_empty
 				tmdb_id = self.tmdb_id if self.mediatype == 'movie' and self.stinger_enabled else None
-				Thread(target=self.getStingers, args=(tmdb_id, poster)).start()
+				Thread(target=self.stinger_notification, args=(tmdb_id, poster)).start()
 			elif task_name == 'trakt_ids':
 				trakt_ids = {'tmdb': self.tmdb_id, 'imdb': self.imdb_id, 'slug': make_title_slug(self.title)}
 				if self.mediatype == 'episode': trakt_ids['tvdb'] = self.tvdb_id

@@ -16,8 +16,9 @@ class source:
 			sources_append = sources.append
 			if not all(self.auth): return internal_results(self.scrape_provider, sources)
 			title, season, episode = info.get('title'), info.get('season'), info.get('episode')
-			if 'timeout' in info: self.timeout = info['timeout'] - 1
-			scrape_results = self.search(info['imdb_id'], season, episode)
+			if 'timeout' in info: self.timeout = int(info['timeout'])
+			media_id = info['imdb_id'] or ('tmdb:%s' % info['tmdb_id'])
+			scrape_results = self.search(media_id, season, episode)
 			from modules.kodi_utils import logger
 			if self.errors: logger(self.scrape_provider, f"{self.errors}")
 			logger(self.scrape_provider, f"{title} : {self.elapsed}s, {len(scrape_results)}")
@@ -69,10 +70,10 @@ class source:
 		internal_results(self.scrape_provider, sources)
 		return sources
 
-	def search(self, imdb, season, episode):
+	def search(self, media_id, season, episode):
 		scrape_results = []
-		if episode: params = {'type': 'series', 'id': '%s:%s:%s' % (imdb, season, episode)}
-		else: params = {'type': 'movie', 'id': '%s' % imdb}
+		if episode: params = {'type': 'series', 'id': '%s:%s:%s' % (media_id, season, episode)}
+		else: params = {'type': 'movie', 'id': '%s' % media_id}
 		try:
 			base_url = self.resolve_aio_instance()
 			search_link = '%s/api/v1/search' % base_url.strip().rstrip('/')

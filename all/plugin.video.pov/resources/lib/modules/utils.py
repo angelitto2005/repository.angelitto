@@ -9,7 +9,6 @@ from queue import SimpleQueue
 from importlib import import_module
 from datetime import datetime, timedelta, date
 from modules.kodi_utils import local_string as ls, get_setting, logger
-# from modules.kodi_utils import logger
 
 class TaskPool:
 	@staticmethod

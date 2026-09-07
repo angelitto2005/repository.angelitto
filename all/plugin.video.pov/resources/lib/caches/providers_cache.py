@@ -52,16 +52,16 @@ class ExternalProvidersCache(BaseCache):
 		try: self.dbcur.execute(DELETE_RESULTS, (source, mediatype, tmdb_id, title, season, episode))
 		except: pass
 
-	def delete_cache(self):
-		try:
-			self.dbcur.execute(FULL_DELETE)
-			self.dbcur.execute("""VACUUM""")
-			return 'success'
-		except: return 'failure'
-
 	def delete_cache_single(self, mediatype, tmdb_id):
 		try:
 			self.dbcur.execute(SINGLE_DELETE, (mediatype, tmdb_id))
+#			self.dbcur.execute("""VACUUM""")
+			return True
+		except: return False
+
+	def clear_cache(self):
+		try:
+			self.dbcur.execute(FULL_DELETE)
 			self.dbcur.execute("""VACUUM""")
 			return True
 		except: return False

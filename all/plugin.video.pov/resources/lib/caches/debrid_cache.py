@@ -5,8 +5,8 @@ from caches import BaseCache, debridcache_db
 GET_MANY = 'SELECT * FROM debrid_data WHERE hash in (%s)'
 SET_MANY = 'INSERT INTO debrid_data VALUES (?, ?, ?, ?)'
 REMOVE_MANY = 'DELETE FROM debrid_data WHERE hash = ?'
-CLEAR = 'DELETE FROM debrid_data'
-CLEAR_DEBRID = 'DELETE FROM debrid_data WHERE debrid = ?'
+SINGLE_DELETE = 'DELETE FROM debrid_data WHERE debrid = ?'
+FULL_DELETE = 'DELETE FROM debrid_data'
 
 class DebridCache(BaseCache):
 	db_file = debridcache_db
@@ -17,9 +17,8 @@ class DebridCache(BaseCache):
 			current_time = self._get_timestamp(datetime.now())
 			self.dbcur.execute(GET_MANY % (', '.join('?' for _ in hash_list)), hash_list)
 			cache_data = self.dbcur.fetchall()
-			if cache_data:
-				if cache_data[0][3] > current_time: result = cache_data
-				else: self.remove_many(cache_data)
+			if cache_data and cache_data[0][3] > current_time: result = cache_data
+			elif cached_data: self.remove_many(cache_data)
 		except: pass
 		return result
 
@@ -30,22 +29,22 @@ class DebridCache(BaseCache):
 			self.dbcur.executemany(SET_MANY, insert_list)
 		except: pass
 
-	def remove_many(self, old_cached_data):
+	def remove_many(self, cached_data):
 		try:
-			old_cached_data = [(str(i[0]),) for i in old_cached_data]
-			self.dbcur.executemany(REMOVE_MANY, old_cached_data)
+			cached_data = [(str(i[0]),) for i in cached_data]
+			self.dbcur.executemany(REMOVE_MANY, cached_data)
 		except: pass
 
-	def clear_database(self):
+	def delete_cache_single(self, debrid):
 		try:
-			self.dbcur.execute(CLEAR)
-			self.dbcur.execute("""VACUUM""")
-			return 'success'
-		except: return 'failure'
+			self.dbcur.execute(SINGLE_DELETE, (debrid,))
+#			self.dbcur.execute("""VACUUM""")
+			return True
+		except: return False
 
-	def clear_debrid_results(self, debrid):
+	def clear_cache(self):
 		try:
-			self.dbcur.execute(CLEAR_DEBRID, (debrid,))
+			self.dbcur.execute(FULL_DELETE)
 			self.dbcur.execute("""VACUUM""")
 			return True
 		except: return False

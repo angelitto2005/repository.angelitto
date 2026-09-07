@@ -1,9 +1,8 @@
 import json
-from modules.kodi_utils import trakt_db, database_connect
+from modules import kodi_utils
 from modules.utils import chunks
 # from modules.kodi_utils import logger
 
-timeout = 20
 SELECT = 'SELECT id FROM trakt_data'
 DELETE = 'DELETE FROM trakt_data WHERE id = ?'
 DELETE_LIKE = 'DELETE FROM trakt_data WHERE id LIKE ?'
@@ -19,7 +18,7 @@ TC_BASE_DELETE = 'DELETE FROM trakt_data WHERE id = ?'
 class TraktCache:
 	batch_size = 1000
 	def __init__(self):
-		self._connect_database()
+		self._database_connect()
 		self._set_PRAGMAS()
 
 	def set_bulk_movie_watched(self, insert_list):
@@ -45,16 +44,38 @@ class TraktCache:
 
 	def _delete(self, command, args):
 		self.dbcur.execute(command, args)
-		self.dbcur.execute("""VACUUM""")
+#		self.dbcur.execute("""VACUUM""")
 
-	def _connect_database(self):
-		self.dbcon = database_connect(trakt_db, timeout=timeout, isolation_level=None)
+	def _database_connect(self):
+		self.dbcon = kodi_utils.database_connect(kodi_utils.trakt_db, isolation_level=None)
 
 	def _set_PRAGMAS(self):
 		self.dbcur = self.dbcon.cursor()
 		self.dbcur.execute("""PRAGMA synchronous = OFF""")
 		self.dbcur.execute("""PRAGMA journal_mode = OFF""")
 		self.dbcur.execute("""PRAGMA mmap_size = 268435456""")
+
+def integrity_check():
+	try:
+		db_file = kodi_utils.translate_path(kodi_utils.trakt_db)
+		with kodi_utils.database.connect(db_file) as dbcon:
+			dbcur = dbcon.cursor()
+			dbcur.execute("""PRAGMA integrity_check""")
+			result = dbcur.fetchone()
+			if 'ok' in result: status = 'passed'
+			else: raise kodi_utils.database.Error(result)
+			dbcur.execute("""VACUUM""")
+		return status
+	except kodi_utils.database.Error as e: status = str(e)
+	try:
+		with open(db_file, 'w') as _: pass
+		from modules.cache import check_databases, clear_cache
+		check_databases()
+		clear_cache('trakt', silent=True)
+		status = 'repaired'
+	except Exception as e:
+		kodi_utils.logger('database integrity error', '%s\n%s\n%s' % (status, db_file, e))
+	return status
 
 def cache_trakt_object(function, string, url):
 	dbcur = TraktCache().dbcur

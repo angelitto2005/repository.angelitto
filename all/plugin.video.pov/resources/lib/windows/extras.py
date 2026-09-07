@@ -8,7 +8,7 @@ from menus import images, people, trakt, mdblist, tmdb
 from modules import settings, dialogs, downloader
 from modules.meta_lists import networks as meta_networks
 from modules.utils import get_datetime
-from modules.kodi_utils import media_path, notification, close_all_dialog, hide_busy_dialog, ok_dialog, fetch_kodi_imagecache, local_string as ls
+from modules.kodi_utils import media_path, notify_error, close_all_dialog, hide_busy_dialog, ok_dialog, fetch_kodi_imagecache, local_string as ls
 # from modules.kodi_utils import logger
 
 fanart_empty = BaseDialog.fanart
@@ -16,10 +16,11 @@ poster_empty = media_path('box_office.png')
 backup_thumbnail = media_path('box_office.png')
 backup_cast_thumbnail = media_path('people.png')
 tmdb_image_base = tmdb_api.tmdb_image_base
-button_ids = 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
-playbrowse_id, trailer_id, keywords_id, images_id, extrainfo_id, genre_id, director_id, trakt_id, mdbl_id, tmdbl_id = button_ids
-actions_id, cast_id, recommended_id, reviews_id, trivia_id, blunders_id, parentsguide_id = 2049, 2050, 2051, 2052, 2053, 2054, 2055
-videos_id, posters_id, backdrops_id, year_id, genres_id, networks_id, collection_id = 2056, 2057, 2058, 2059, 2060, 2061, 2062
+playbrowse_id, trailer_id, keywords_id, images_id, extrainfo_id = 10, 11, 12, 13, 14
+genre_id, director_id, trakt_id, mdbl_id, tmdbl_id = button_ids = 15, 16, 17, 18, 19
+actions_id, cast_id, recommended_id, reviews_id, trivia_id = 2049, 2050, 2051, 2052, 2053
+blunders_id, parentsguide_id, videos_id, posters_id, backdrops_id = 2054, 2055, 2056, 2057, 2058
+year_id, genres_id, networks_id, collection_id = 2059, 2060, 2061, 2062
 tmdb_list_ids = (recommended_id, year_id, genres_id, networks_id, collection_id)
 imdb_list_ids = (reviews_id, trivia_id, blunders_id, parentsguide_id)
 art_ids = (posters_id, backdrops_id)
@@ -63,11 +64,11 @@ class Extras(BaseDialog):
 			if self.is_movie: futures.append(tpe.submit(self.make_collection))
 			else: self.setProperty('tikiskins.extras.make.collection', 'false')
 			self.make_options()
+			self.setFocusId(self.focus_id)
 			self.make_cast()
 			self.set_poster()
 			concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
 		finally: tpe.shutdown(False)
-		self.setFocusId(self.focus_id)
 
 	def run(self):
 		self.doModal()
@@ -412,7 +413,7 @@ class Extras(BaseDialog):
 			remaining_time = ((100 - int(self.percent_watched))/100) * self.duration_data
 			finish_time = datetime.now() + timedelta(minutes=remaining_time)
 			finished = finish_time.strftime(_format)
-		return '%s: %s' % (ls(32791), finished)
+		return '%s: %s' % (ls(32789), finished)
 
 	def get_duration(self):
 		return ls(32788) % self.duration_data
@@ -457,7 +458,7 @@ class Extras(BaseDialog):
 		except: return ''
 		if info['episode_count'] >= episode:
 			next_episode = 'S%.2dE%.2d' % (season, episode)
-			return '%s: %s' % (ls(32999), next_episode)
+			return '%s %s' % (ls(32484), next_episode)
 		else: return ''
 
 	def get_stingers(self):
@@ -526,9 +527,8 @@ class Extras(BaseDialog):
 		if not self.current_poster: return self.setProperty('tikiskins.extras.active_poster', 'false')
 		self.getControl(200).setImage(self.current_poster)
 		self.getControl(201).setImage(self.poster)
-		total_time = 0
-		while not self.check_poster_cached(self.poster) and total_time < 200:
-			total_time += 1
+		for _ in range(200):
+			if self.check_poster_cached(self.poster): break
 			self.sleep(50)
 		self.getControl(200).setImage(self.poster)
 
@@ -739,6 +739,6 @@ def media_extra_info(mediatype, meta):
 			append('[B]%s:[/B] %s' % (seasons_str, meta['total_seasons']))
 			append('[B]%s:[/B] %s' % (episodes_str, meta['total_aired_eps']))
 			if 'homepage' in extra_info: append('[B]%s:[/B] %s' % (homepage_str, extra_info['homepage']))
-	except: return notification(32574)
+	except: return notify_error()
 	return '\n\n'.join(body)
 

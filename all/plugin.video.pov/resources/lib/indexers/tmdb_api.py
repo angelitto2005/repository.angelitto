@@ -4,15 +4,15 @@ from concurrent.futures import ThreadPoolExecutor
 from caches.main_cache import cache_object
 from caches.meta_cache import cache_function
 from modules import kodi_utils, settings
-from modules.utils import paginate_list, sort_for_article, jsondate_to_datetime, get_datetime, chunks, TaskPool
+from modules.utils import paginate_list, sort_for_article, jsondate_to_datetime, get_datetime, TaskPool
 
-ls, logger = kodi_utils.local_string, kodi_utils.logger
-get_setting, set_setting = kodi_utils.get_setting, kodi_utils.set_setting
+get_setting, set_setting, logger = kodi_utils.get_setting, kodi_utils.set_setting, kodi_utils.logger
 EXPIRES_4_HOURS, EXPIRES_2_DAYS, EXPIRES_1_WEEK, EXPIRES_1_MONTH = 4, 48, 168, 672
 READ_TOKEN = kodi_utils.addon().getSetting('tmdb_read_token')
 movies_append = 'external_ids,videos,credits,release_dates,alternative_titles,translations,images'
 tvshows_append = 'external_ids,videos,credits,content_ratings,alternative_titles,translations,images'
-tmdb_image_base, tmdblist_heading = 'https://image.tmdb.org/t/p/%s%s', 'TMDB Lists'
+people_append = 'external_ids,combined_credits,images,tagged_images'
+tmdb_image_base, tmdblist_heading = 'https://image.tmdb.org/t/p/%s%s', 'TMDb Lists'
 base_url = 'https://api.themoviedb.org'
 timeout = 3.05
 session = requests.Session()
@@ -27,6 +27,9 @@ def get_tmdb(url):
 		return result
 	except requests.RequestException as e:
 		logger('tmdb error', str(e))
+
+def tmdb_gender_dict():
+	return {0: '', 1: 'Female', 2: 'Male', 3: 'Non-binary'}
 
 def tmdb_keyword_id(query):
 	string = 'tmdb_keyword_id_%s' % query
@@ -53,7 +56,7 @@ def tmdb_media_videos(mediatype, tmdb_id):
 
 def tmdb_media_discover(query, page_no):
 	string = query % page_no
-	if base_url in query: url = query % page_no # for menu exports <= 6.08.06
+	if base_url in query: url = query % page_no
 	else: url = '%s/3/%s' % (base_url, query % page_no)
 	return cache_object(get_tmdb, string, url)
 
@@ -63,16 +66,16 @@ def tmdb_movies_collection(collection_id):
 	return cache_object(get_tmdb, string, url, expiration=EXPIRES_1_WEEK)
 
 def tmdb_movies_title_year(title, year=None):
+	string = 'tmdb_movies_title_year_%s' % title
+	url = '%s/3/search/movie?language=en-US&query=%s' % (base_url, title)
 	if year:
-		string = 'tmdb_movies_title_year_%s_%s' % (title, year)
-		url = '%s/3/search/movie?language=en-US&query=%s&year=%s' % (base_url, title, year)
-	else:
-		string = 'tmdb_movies_title_year_%s' % title
-		url = '%s/3/search/movie?language=en-US&query=%s' % (base_url, title)
+		string += '_%s' % year
+		url += '&year=%s' % year
 	return cache_object(get_tmdb, string, url, expiration=EXPIRES_1_MONTH)
 
 def tmdb_oscar_winners(page_no):
 	from modules.meta_lists import oscar_winners
+	from modules.utils import chunks
 	results = [[{'id': x} for x in i] for i in chunks(oscar_winners, 20)]
 	return {'page': page_no, 'total_pages': len(results), 'results': results[page_no - 1]}
 
@@ -151,12 +154,11 @@ def tmdb_movies_search_collections(query, page_no):
 	return cache_object(get_tmdb, string, url, expiration=EXPIRES_1_WEEK)
 
 def tmdb_tv_title_year(title, year=None):
+	string = 'tmdb_tv_title_year_%s' % title
+	url = '%s/3/search/tv?query=%s&language=en-US' % (base_url, title)
 	if year:
-		string = 'tmdb_tv_title_year_%s_%s' % (title, year)
-		url = '%s/3/search/tv?query=%s&first_air_date_year=%s&language=en-US' % (base_url, title, year)
-	else:
-		string = 'tmdb_tv_title_year_%s' % title
-		url = '%s/3/search/tv?query=%s&language=en-US' % (base_url, title)
+		string += '_%s' % year
+		url += '&first_air_date_year=%s' % year
 	return cache_object(get_tmdb, string, url, expiration=EXPIRES_1_MONTH)
 
 def tmdb_tv_trending(page_no):
@@ -272,8 +274,7 @@ def tmdb_popular_people(page_no):
 def tmdb_people_full_info(actor_id, language=None):
 	if not language: language = settings.get_language()
 	string = 'tmdb_people_full_info_%s_%s' % (actor_id, language)
-	url = '%s/3/person/%s?language=%s' % (base_url, actor_id, language)
-	url += '&append_to_response=external_ids,combined_credits,images,tagged_images'
+	url = '%s/3/person/%s?language=%s&append_to_response=%s' % (base_url, actor_id, language, people_append)
 	return cache_object(get_tmdb, string, url, expiration=EXPIRES_1_WEEK)
 
 def tmdb_people_info(query):
@@ -539,7 +540,7 @@ def tmdb_clean_watchlist(silent=False):
 		if not items: return '0 items to remove.'
 		for i in TaskPool(40).tasks(add_to_watchlist_favorites, items, Thread): i.join()
 		clear_tmdbl_cache()
-		if not silent: kodi_utils.notification(32576)
+		if not silent: kodi_utils.notify_success()
 		return '%d items removed.' % len(items)
 	except: pass
 

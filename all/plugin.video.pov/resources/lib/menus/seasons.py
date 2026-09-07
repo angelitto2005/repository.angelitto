@@ -125,10 +125,10 @@ class Seasons(BaseSeason):
 					listitem.setInfo('video', season_infodict(show.meta, **item))
 					listitem.setCast(show.cast)
 				else:
-					videoinfo = info_tagger(listitem, season_infodict(show.meta, **item))
-					videoinfo.setTitle(display)
-					videoinfo.setUniqueIDs({'imdb': show.imdb_id, 'tmdb': string(show.tmdb_id), 'tvdb': string(show.tvdb_id)})
-					videoinfo.setCast(make_cast_list(show.cast))
+					infotag = info_tagger(listitem, season_infodict(show.meta, **item))
+					infotag.setTitle(display)
+					infotag.setUniqueIDs({'imdb': show.imdb_id, 'tmdb': string(show.tmdb_id), 'tvdb': string(show.tvdb_id)})
+					infotag.setCast(make_cast_list(show.cast))
 				self.append((url_params, listitem, True))
 			except: pass
 		self.params['show_title'] = show.title
@@ -213,11 +213,11 @@ class Episodes(BaseSeason):
 					listitem.setCast(cast)
 					listitem.setProperty('resumetime', resumetime)
 				else:
-					videoinfo = info_tagger(listitem, episode_infodict(show.meta, **item))
-					videoinfo.setTitle(display)
-					videoinfo.setUniqueIDs({'imdb': show.imdb_id, 'tmdb': string(show.tmdb_id), 'tvdb': string(show.tvdb_id)})
-					videoinfo.setCast(make_cast_list(cast))
-					videoinfo.setResumePoint(*set_resumetime(resumetime, progress, videoinfo.getDuration()))
+					infotag = info_tagger(listitem, episode_infodict(show.meta, **item))
+					infotag.setTitle(display)
+					infotag.setUniqueIDs({'imdb': show.imdb_id, 'tmdb': string(show.tmdb_id), 'tvdb': string(show.tvdb_id)})
+					infotag.setCast(make_cast_list(cast))
+					set_resumetime(resumetime, progress, infotag)
 				self.append((url_params, listitem, False))
 			except: pass
 		self.params['show_title'] = show.title

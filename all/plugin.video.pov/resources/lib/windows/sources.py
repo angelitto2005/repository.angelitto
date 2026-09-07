@@ -8,33 +8,35 @@ from modules.settings import get_art_provider, info_icons, provider_sort_ranks
 fanart_empty = BaseDialog.fanart
 poster_empty = media_path('box_office.png')
 info_icons_dict = {k: media_path(v) for k, v in info_icons()}
-extra_info_choices = (
-	('PACK', '[B]PACK[/B]'), ('DOLBY VISION', '[B]D/VISION[/B]'), ('HIGH DYNAMIC RANGE (HDR)', '[B]HDR[/B]'), ('HYBRID', '[B]HYBRID[/B]'), ('AV1', '[B]AV1[/B]'),
-	('HEVC (X265)', '[B]HEVC[/B]'), ('REMUX', 'REMUX'), ('BLURAY', 'BLURAY'), ('SDR', 'SDR'), ('3D', '3D'), ('DOLBY ATMOS', 'ATMOS'), ('DOLBY TRUEHD', 'TRUEHD'),
-	('DOLBY DIGITAL EX', 'DD-EX'), ('DOLBY DIGITAL PLUS', 'DD+'), ('DOLBY DIGITAL', 'DD'), ('DTS-HD MASTER AUDIO', 'DTS-HD MA'), ('DTS-X', 'DTS-X'),
-	('DTS-HD', 'DTS-HD'), ('DTS', 'DTS'), ('ADVANCED AUDIO CODING (AAC)', 'AAC'), ('MP3', 'MP3'), ('8 CHANNEL AUDIO', '8CH'), ('7 CHANNEL AUDIO', '7CH'),
-	('6 CHANNEL AUDIO', '6CH'), ('2 CHANNEL AUDIO', '2CH'), ('DVD SOURCE', 'DVD'), ('WEB SOURCE', 'WEB'), ('MULTIPLE LANGUAGES', 'MULTI-LANG'), ('SUBTITLES', 'SUBS')
-)
-quality_choices, pack_check = ('4K', '1080P', '720P', 'SD', 'TELE', 'CAM', 'SCR'), ('true', 'show', 'season')
-extra_info_str, down_file_str, browse_pack_str, down_pack_str, cloud_str = ls(32605), ls(32747), ls(32746), ls(32007), ls(32016)
+extra_info_choices, quality_choices, pack_check = (
+	('PACK', '[B]PACK[/B]'), ('SUBTITLES', 'SUBS'), ('MULTIPLE LANGUAGES', 'MULTI-LANG'), ('ADVANCED AUDIO CODING (AAC)', 'AAC'),
+	('DOLBY ATMOS', 'ATMOS'), ('DOLBY DIGITAL', 'DD'), ('DOLBY DIGITAL EX', 'DD-EX'), ('DOLBY DIGITAL PLUS', 'DD+'),
+	('DOLBY TRUEHD', 'TRUEHD'), ('DOLBY VISION', '[B]D/VISION[/B]'), ('DTS', 'DTS'), ('DTS-HD', 'DTS-HD'),
+	('DTS-HD MASTER AUDIO', 'DTS-HD MA'), ('DTS-X', 'DTS-X'), ('AV1', '[B]AV1[/B]'), ('HEVC (X265)', '[B]HEVC[/B]'),
+	('HIGH DYNAMIC RANGE (HDR)', '[B]HDR[/B]'), ('HYBRID', '[B]HYBRID[/B]'), ('3D', '3D'), ('MP3', 'MP3'),
+	('REMUX', 'REMUX'), ('SDR', 'SDR'), ('BLURAY', 'BLURAY'), ('DVD SOURCE', 'DVD'), ('WEB SOURCE', 'WEB'),
+	('2 CHANNEL AUDIO', '2CH'), ('6 CHANNEL AUDIO', '6CH'), ('7 CHANNEL AUDIO', '7CH'), ('8 CHANNEL AUDIO', '8CH')
+), ('4K', '1080P', '720P', 'SD', 'TELE', 'CAM', 'SCR'), ('true', 'show', 'season')
+extra_info_str, down_file_str, browse_pack_str, down_pack_str, cloud_str = ls(32151), ls(32747), ls(32746), ls(32745), ls(32744)
 filter_str, clr_filter_str, filters_ignored, start_full_scrape = ls(32152), ls(32153), ls(32686), ls(32529)
-filter_quality, filter_provider, filter_title, filter_extraInfo = ls(32154), ls(32157), ls(32679), ls(32169)
+filter_quality, filter_provider, filter_title, filter_extraInfo = ls(32154), ls(32157), ls(32170), ls(32169)
 run_plugin_str, ignored_str = 'RunPlugin(%s)', '[B][COLOR dodgerblue](%s)[/COLOR][/B]'
 en_seek_str, check_str = '[B]EN: PLAY (SEEK ENABLED)[/B]', '[B]CHECK CACHE STATUS[/B]'
-cache_str, airlock_str = ('CACHED', 'CACHED [B]%s[/B]'), ls(32016).replace('Add', 'Airlock')
+cache_str, airlock_str = ('CACHED', 'CACHED [B]%s[/B]'), cloud_str.replace('Add', 'Airlock')
 string, upper, lower = str, str.upper, str.lower
 
 class SourceResults(BaseDialog):
 	def __init__(self, *args, **kwargs):
 		BaseDialog.__init__(self, args)
-		self.window_style = kwargs.get('window_style', 'list contrast details')
+		self._results = {}
+		self.window_style = kwargs.get('window_style', 'list default')
 		self.window_id = kwargs.get('window_id')
 		self.results = kwargs.get('results')
-		self._results = {}
 		self.meta = kwargs.get('meta')
 		self.info_highlights_dict = kwargs.get('scraper_settings')
 		self.prescrape = kwargs.get('prescrape')
-		if kwargs.get('filters_ignored'): self.filters_ignored = ignored_str % filters_ignored
+		if kwargs.get('filters_ignored'):
+			self.filters_ignored = ignored_str % filters_ignored
 		else: self.filters_ignored = ''
 		self.make_items()
 		self.set_properties()
@@ -109,106 +111,104 @@ class SourceResults(BaseDialog):
 		return quality, quality_path
 
 	def make_items(self):
-		def builder():
-			for count, item in enumerate(self.results, 1):
-				self._results[str(count)] = item
-				try:
-					get = item.get
-					listitem = self.make_listitem()
-					set_property = listitem.setProperty
-					scrape_provider = item['scrape_provider']
-					source = get('source')
-					quality = get('quality', 'SD')
-					basic_quality, quality_icon = self.get_quality_and_path(lower(quality))
-					name = get('display_name') or 'N/A'
-					name = upper(name)
-					pack = get('package', 'false') in pack_check
-#					if pack: extra_info = '[B]PACK[/B] | %s' % get('extraInfo', '')
-#					else: extra_info = get('extraInfo', 'N/A')
-#					if not extra_info: extra_info = 'N/A'
-					extra_info = get('extraInfo', '') or 'N/A'
-					extra_info = extra_info.rstrip('| ')
-					if scrape_provider == 'external':
-						source_site = get('provider')
-						source_site = upper(source_site)
-						provider = upper(get('debrid', source_site))
-						provider_lower = lower(provider)
-						provider_icon = self.get_provider_and_path(provider_lower)[1]
-						if 'cache_provider' in item and 'Uncached' in item['cache_provider']:
-							key = 'uncached'
-							try: seeders = 'uncached (%d seeders)' % get('seeders')
-							except: seeders = 'uncached'
-							set_property('tikiskins.source_type', upper(seeders))
-							set_property('tikiskins.highlight', self.info_highlights_dict[key])
-						elif 'cache_provider' in item:
-							if highlight_type == 0: key = 'torrent_highlight'
-							elif highlight_type == 1: key = provider_lower
-							else: key = basic_quality
-							status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
-							if 'Unchecked' in item['cache_provider']:
-								status = status.replace('CACHED', 'UNCHECKED')
-							set_property('tikiskins.source_type', status)
-							set_property('tikiskins.highlight', self.info_highlights_dict[key])
-						else:
-							if highlight_type == 0: key = 'hoster_highlight'
-							elif highlight_type == 1: key = provider_lower
-							else: key = basic_quality
-							set_property('tikiskins.source_type', source)
-							set_property('tikiskins.highlight', self.info_highlights_dict[key])
-					elif scrape_provider == 'aiostreams':
-						if 'usenet' in source: source_site = get('tracker')
-						else: source_site = get('provider') or source
-						source_site = upper(source_site)
-						provider = upper(get('debrid', source_site))
-						provider_lower = lower(provider)
-						provider_icon = self.get_provider_and_path(provider_lower)[1]
-						status = upper(source)
-						if get('cached'): status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
-						if get('library'): status = '[B]LIBRARY[/B]'
-						if highlight_type == 0:
-							if 'debrid' in get('source'): key = 'torrent_highlight'
-							else: key = 'hoster_highlight'
-						elif highlight_type == 1:
-							if provider_lower in self.info_highlights_dict: key = provider_lower
-							else: key = 'hoster_highlight'
+		self.item_list = []
+		append = self.item_list.append
+		highlight_type = self.info_highlights_dict['highlight_type']
+		for count, item in enumerate(self.results, 1):
+			self._results[str(count)] = item
+			try:
+				get = item.get
+				listitem = self.make_listitem()
+				set_property = listitem.setProperty
+				scrape_provider = item['scrape_provider']
+				source = get('source')
+				quality = get('quality', 'SD')
+				basic_quality, quality_icon = self.get_quality_and_path(lower(quality))
+				name = get('display_name') or 'N/A'
+				name = upper(name)
+				pack = get('package', 'false') in pack_check
+#				if pack: extra_info = '[B]PACK[/B] | %s' % get('extraInfo', '')
+#				else: extra_info = get('extraInfo', 'N/A')
+#				if not extra_info: extra_info = 'N/A'
+				extra_info = get('extraInfo', '') or 'N/A'
+				extra_info = extra_info.rstrip('| ')
+				if scrape_provider == 'external':
+					source_site = get('provider')
+					source_site = upper(source_site)
+					provider = upper(get('debrid', source_site))
+					provider_lower = lower(provider)
+					provider_icon = self.get_provider_and_path(provider_lower)[1]
+					if 'cache_provider' in item and 'Uncached' in item['cache_provider']:
+						key = 'uncached'
+						try: seeders = 'uncached (%d seeders)' % get('seeders')
+						except: seeders = 'uncached'
+						set_property('tikiskins.source_type', upper(seeders))
+						set_property('tikiskins.highlight', self.info_highlights_dict[key])
+					elif 'cache_provider' in item:
+						if highlight_type == 0: key = 'torrent_highlight'
+						elif highlight_type == 1: key = provider_lower
 						else: key = basic_quality
+						status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
+						if 'Unchecked' in item['cache_provider']:
+							status = status.replace('CACHED', 'UNCHECKED')
 						set_property('tikiskins.source_type', status)
 						set_property('tikiskins.highlight', self.info_highlights_dict[key])
 					else:
-						source_site = upper(source)
-						provider, provider_icon = self.get_provider_and_path(lower(source))
-						provider = upper(provider)
-						if highlight_type in (0, 1): key = lower(provider)
+						if highlight_type == 0: key = 'hoster_highlight'
+						elif highlight_type == 1: key = provider_lower
 						else: key = basic_quality
-						set_property('tikiskins.source_type', 'DIRECT')
+						set_property('tikiskins.source_type', source)
 						set_property('tikiskins.highlight', self.info_highlights_dict[key])
-					set_property('tikiskins.name', name)
-					set_property('tikiskins.provider', provider)
-					set_property('tikiskins.source_site', source_site)
-					set_property('tikiskins.provider_icon', provider_icon)
-					set_property('tikiskins.quality_icon', quality_icon)
-					set_property('tikiskins.size_label', get('size_label', 'N/A'))
-					set_property('tikiskins.extra_info', extra_info)
-					set_property('tikiskins.quality', upper(quality))
-					set_property('tikiskins.count', '%02d.' % count)
-					set_property('tikiskins.hash', get('hash', 'N/A'))
-#					set_property('source', json.dumps(item))
-					set_property('source', str(count))
-					yield listitem
-				except: pass
-		try:
-			highlight_type = self.info_highlights_dict['highlight_type']
-			self.item_list = list(builder())
-			self.total_results = string(len(self.item_list))
-			if not self.prescrape: return
-			count = len(self.item_list)
-			self._results[str(count + 1)] = {}
-			prescrape_listitem = self.make_listitem()
-			prescrape_listitem.setProperty('source', str(count + 1))
-			prescrape_listitem.setProperty('tikiskins.perform_full_search', 'true')
-			prescrape_listitem.setProperty('tikiskins.start_full_scrape', '[B]***%s***[/B]' % upper(start_full_scrape))
-			self.item_list.append(prescrape_listitem)
-		except: pass
+				elif scrape_provider == 'aiostreams':
+					if 'usenet' in source: source_site = get('tracker')
+					else: source_site = get('provider') or source
+					source_site = upper(source_site)
+					provider = upper(get('debrid', source_site))
+					provider_lower = lower(provider)
+					provider_icon = self.get_provider_and_path(provider_lower)[1]
+					status = upper(source)
+					if get('cached'): status = cache_str[1] % upper(get('package')) if pack else cache_str[0]
+					if get('library'): status = '[B]LIBRARY[/B]'
+					if highlight_type == 0:
+						if 'debrid' in get('source'): key = 'torrent_highlight'
+						else: key = 'hoster_highlight'
+					elif highlight_type == 1:
+						if provider_lower in self.info_highlights_dict: key = provider_lower
+						else: key = 'hoster_highlight'
+					else: key = basic_quality
+					set_property('tikiskins.source_type', status)
+					set_property('tikiskins.highlight', self.info_highlights_dict[key])
+				else:
+					source_site = upper(source)
+					provider, provider_icon = self.get_provider_and_path(lower(source))
+					provider = upper(provider)
+					if highlight_type in (0, 1): key = lower(provider)
+					else: key = basic_quality
+					set_property('tikiskins.source_type', 'DIRECT')
+					set_property('tikiskins.highlight', self.info_highlights_dict[key])
+				set_property('tikiskins.name', name)
+				set_property('tikiskins.provider', provider)
+				set_property('tikiskins.source_site', source_site)
+				set_property('tikiskins.provider_icon', provider_icon)
+				set_property('tikiskins.quality_icon', quality_icon)
+				set_property('tikiskins.size_label', get('size_label', 'N/A'))
+				set_property('tikiskins.extra_info', extra_info)
+				set_property('tikiskins.quality', upper(quality))
+				set_property('tikiskins.count', '%02d.' % count)
+				set_property('tikiskins.hash', get('hash', 'N/A'))
+#				set_property('source', json.dumps(item))
+				set_property('source', str(count))
+				append(listitem)
+			except: pass
+		self.total_results = string(len(self.item_list))
+		if not self.prescrape: return
+		count = len(self.item_list)
+		self._results[str(count + 1)] = {}
+		prescrape_listitem = self.make_listitem()
+		prescrape_listitem.setProperty('source', str(count + 1))
+		prescrape_listitem.setProperty('tikiskins.perform_full_search', 'true')
+		prescrape_listitem.setProperty('tikiskins.start_full_scrape', '[B]***%s***[/B]' % upper(start_full_scrape))
+		self.item_list.append(prescrape_listitem)
 
 	def set_properties(self):
 		poster_main, poster_backup, fanart_main, fanart_backup = get_art_provider()
@@ -263,7 +263,7 @@ class SourceResults(BaseDialog):
 			choice = select_dialog(provider_choices, **kwargs)
 			if choice is None: return
 			filtered_list = [i for i in self.item_list if any(x in i.getProperty(filter_property) for x in choice)]
-		if not filtered_list: return ok_dialog(text=32760)
+		if not filtered_list: return ok_dialog(text=32573)
 		self.filter_applied = True
 		self.win.reset()
 		self.win.addItems(filtered_list)

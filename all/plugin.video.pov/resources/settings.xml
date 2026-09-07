@@ -3,13 +3,14 @@
 	<!-- Sources -->
 	<category label="Sources">
 		<setting label="Timeout" type="lsep" />
-		<setting id="scrapers.timeout.1" label="Scraper/Debrid Timeout (secs)" type="number" default="20" />
-		<setting label="External Scrapers" type="lsep" />
+		<setting id="scrapers_timeout" label="Scraper/Debrid Timeout (secs)" type="slider" default="10" range="5,5,30" option="int" />
+		<setting label="External Sources Options" type="lsep" />
 		<setting id="provider.external" label="Enable" type="bool" default="true" />
 		<setting id="filter.foreign.single.audio" label="Remove identified Foreign single audio sources" type="bool" default="true" />
 		<setting id="filter.undesirables" label="Remove Undesirables" type="bool" default="false" />
-			<setting label="Define User Undesirables" type="action" subsetting="true" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=undesirablesInput)" />
-			<setting label="Remove User Undesirables" type="action" subsetting="true" visible="eq(-2,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=undesirablesUserRemove)" />
+			<setting label="Manage Default Undesirables" type="action" subsetting="true" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=undesirablesSelect)" />
+			<setting label="Define User Undesirables" type="action" subsetting="true" visible="eq(-2,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=undesirablesInput)" />
+			<setting label="Remove User Undesirables" type="action" subsetting="true" visible="eq(-3,true)" action="RunPlugin(plugin://plugin.video.pov/?mode=undesirablesUserRemove)" />
 		<setting id="debug.enabled" label="Enable Debug" type="bool" default="false" />
 		<setting id="debug.location" label="Logging Location" type="enum" default="0" values="Kodi Log|Addon Log" enable="eq(-1,true)" visible="eq(-1,true)" />
 		<setting label="Test All Source Providers (Magneto)" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=speedTest)" />
@@ -28,7 +29,6 @@
 			<setting id="torz.url" label="torz instance" type="enum" default="0" values="Munif|Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
 		<setting id="provider.zilean" label="zilean" type="bool" default="false" />
 			<setting id="zilean.url" label="zilean instance" type="enum" default="0" values="Kuu-lection|Midnightignite" subsetting="true" visible="eq(-1,true)" />
-		<setting id="provider.dmm" label="dmm" type="bool" default="false" />
 		<setting label="AIOStreams" type="lsep" />
 		<setting id="provider.aiostreams" label="Enable" type="bool" default="false" />
 		<setting id="aio.instance" type="enum" label="Provider" default="0" values="Kuu|Custom|Viren|Yeb|Midnight" enable="true" />
@@ -37,7 +37,7 @@
 		<setting id="aio.viren_url" type="text" label="Url" default="https://aiostreams.viren070.me" enable="false" visible="eq(-3,2)" />
 		<setting id="aio.yeb_url" type="text" label="Url" default="https://aiostreams.fortheweak.cloud" enable="false" visible="eq(-4,3)" />
 		<setting id="aio.midnight_url" type="text" label="Url" default="https://aiostreamsfortheweebsstable.midnightignite.me" enable="false" visible="eq(-5,4)" />
-		<setting id="aio.username" type="text" label="Username" default="" />
+		<setting id="aio.username" type="text" label="UUID" default="" />
 		<setting id="aio.password" type="text" label="Password" default="" />
 		<setting label="-- Help --" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=aioHelp)" />
 	</category>
@@ -57,19 +57,6 @@
 			<setting id="results.sort_pmcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-8,true)+!eq(-9,)" />
 		<setting id="pm.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" range="1,1,10" option="int" visible="eq(-9,true)+!eq(-10,)" />
 		<setting id="pm.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-10,true)+!eq(-11,)" />
-		<!-- TorBox-->
-		<setting label="TorBox" type="lsep" />
-		<setting id="tb.token" label="tb token" type="text" default="" visible="false" />
-		<setting id="tb.enabled" label="Enable" type="bool" default="true" visible="!eq(-1,)" />
-		<setting id="tb.account_id" label="Customer ID" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
-		<setting id="tb.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
-		<setting id="store_torrent.torbox" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-3,true)+!eq(-4,)" />
-		<setting id="provider.tb_cloud" label="Search TB Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
-			<setting id="tb_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
-			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
-			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
-		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
-		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-9,true)+!eq(-10,)" />
 		<!-- Offcloud -->
 		<setting label="Offcloud" type="lsep" />
 		<setting id="oc.token" label="oc token" type="text" default="" visible="false" />
@@ -81,7 +68,21 @@
 			<setting id="oc_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
 			<setting id="check.oc_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
 			<setting id="results.sort_occloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
-		<setting id="oc.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="9" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
+		<setting id="oc.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
+		<setting id="oc.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-9,true)+!eq(-10,)" />
+		<!-- TorBox-->
+		<setting label="TorBox" type="lsep" />
+		<setting id="tb.token" label="tb token" type="text" default="" visible="false" />
+		<setting id="tb.enabled" label="Enable" type="bool" default="true" visible="!eq(-1,)" />
+		<setting id="tb.account_id" label="Customer ID" type="text" default="" enable="false" visible="eq(-1,true)+!eq(-2,)" />
+		<setting id="tb.torrent.enabled" label="Use Torrent Services" type="bool" default="true" enable="true" visible="eq(-2,true)+!eq(-3,)" />
+		<setting id="store_torrent.torbox" label="Add Resolved Torrents to Cloud" type="bool" default="false" visible="eq(-3,true)+!eq(-4,)" />
+		<setting id="provider.tb_cloud" label="Search TB Cloud" type="bool" default="false" visible="eq(-4,true)+!eq(-5,)" />
+			<setting id="tb_cloud.title_filter" label="Filter Results with Aliases" type="bool" default="false" subsetting="true" visible="eq(-1,true)+eq(-5,true)+!eq(-6,)" />
+			<setting id="check.tb_cloud" label="Check Before Full Search" type="bool" default="false" subsetting="true" visible="eq(-2,true)+eq(-6,true)+!eq(-7,)" />
+			<setting id="results.sort_tbcloud_first" label="Show Results at Top" type="bool" default="true" subsetting="true" visible="eq(-3,true)+eq(-7,true)+!eq(-8,)" />
+		<setting id="tb.priority" label="Priority (Lower Number Equals Higher Priority)" type="slider" default="8" range="1,1,10" option="int" visible="eq(-8,true)+!eq(-9,)" />
+		<setting id="tb.expires" label="Premium Expires Notification (days)" type="slider" default="0" range="0,1,7" option="int" visible="eq(-9,true)+!eq(-10,)" />
 	</category>
 	<category label="My Services">
 		<!-- Real Debrid -->
@@ -154,8 +155,8 @@
 		<setting id="mdblist.expires" type="text" default="" visible="false" />
 		<setting id="mdblist.token" type="text" default="" visible="false" />
 		<setting id="mdblist_user" label="Username" type="text" default="" enable="false" />
-		<!-- TMDB -->
-		<setting label="TMDB Lists" type="lsep" />
+		<!-- TMDb -->
+		<setting label="TMDb Lists" type="lsep" />
 		<setting id="tmdb.session_id" type="text" default="" visible="false" />
 		<setting id="tmdb.session_account_id" type="text" default="" visible="false" />
 		<setting id="tmdb.token" type="text" default="" visible="false" />
@@ -205,7 +206,7 @@
 		<setting id="nextep.sort_airing_today_to_top" label="Sort Episodes Airing Today to Top" type="bool" default="false" />
 		<setting id="nextep.include_airdate" label="Include Airdate in Title" type="bool" default="true" />
 		<setting id="nextep.include_unaired" label="Include Unaired Episodes" type="bool" default="true" />
-		<!--setting id="nextep.include_unwatched" label="Include Trakt Watchlist" type="bool" default="false" /-->
+		<setting id="nextep.include_unwatched" label="Include Trakt/MDBList Watchlist" type="bool" default="false" />
 		<!-- Extras -->
 		<setting label="Extras" type="lsep" />
 		<setting id="extras.enabled_menus" type="text" default="2050,2051,2052,2053,2054,2055,2056,2057,2058,2059,2060,2061,2062" visible="false" />
@@ -272,7 +273,7 @@
 		<!-- Subtitles -->
 		<setting label="Subtitles (SubMaker - https://submaker.elfhosted.com)" type="lsep" />
 		<setting id="subtitles.subs_action" label="Download Subtitles Action" type="enum" default="0" values="Off|Auto" />
-			<setting id="subtitles.manifest" label="Manifest Location" type="text" default="" subsetting="true" visible="!eq(-1,0)" />
+			<setting id="subtitles.manifest" label="Manifest Url" type="text" default="" subsetting="true" visible="!eq(-1,0)" />
 			<setting id="subtitles.language" label="Priority Subtitle Language" type="select" default="English" values="English|Arabic|Bengali|Bulgarian|Chinese|Croatian|Czech|Danish|Dutch|Finnish|French|German|Greek|Hebrew|Hindi|Hungarian|Icelandic|Indonesian|Italian|Japanese|Korean|Malay|Norwegian|Persian|Polish|Portuguese|Portuguese (Brazil)|Punjabi|Romanian|Russian|Serbian|Slovenian|Spanish|Swedish|Tagalog|Tamil|Telugu|Thai|Turkish|Ukrainian|Urdu|Vietnamese" subsetting="true" visible="!eq(-2,0)" />
 			<setting id="subtitles.auto_enable" label="Force Enable Local Subs" type="bool" default="true" subsetting="true" visible="!eq(-3,0)" />
 	</category>
@@ -281,7 +282,7 @@
 		<!-- Display -->
 		<setting label="Display" type="lsep" />
 		<setting id="results.sort_order" type="text" default="0" visible="false" />
-		<setting id="results.xml_style" label="Results Display" type="action" default="List Default" action="RunPlugin(plugin://plugin.video.pov/?mode=results_layout_choice)" />
+		<setting id="results.xml_style" label="Results Display" type="enum" default="0" values="List Default|WideList Default|InfoList Default" />
 		<setting id="torrent.display.uncached" label="Display Uncached Torrents" type="bool" default="false" />
 		<setting id="search.enable.yearcheck" label="Check Year Before Search" type="bool" default="false" />
 		<setting id="ignore_results_filter" label="Ignore All Filters When No Results Available" type="bool" default="true" />
@@ -312,11 +313,11 @@
 			<setting id="scraper_SD_highlight" label="SD Results Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-4,2)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_quality_color_choice&amp;setting=scraper_SD_highlight)" />
 			<setting id="provider.debrid_cloud_colour" label="Debrid Cloud Color" type="action" default="darkviolet" subsetting="true" visible="eq(-5,1)|eq(-5,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=debrid_cloud)" />
 			<setting id="provider.easynews_colour" label="Easynews Color" type="action" default="darkturquoise" subsetting="true" visible="eq(-6,1)|eq(-6,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=easynews)" />
-			<setting id="provider.rd_colour" label="Real Debrid Color" type="action" default="seagreen" subsetting="true" visible="eq(-7,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=rd)" />
-			<setting id="provider.pm_colour" label="Premiumize Color" type="action" default="orangered" subsetting="true" visible="eq(-8,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=pm)" />
-			<setting id="provider.ad_colour" label="All Debrid Color" type="action" default="goldenrod" subsetting="true" visible="eq(-9,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=ad)" />
-			<setting id="provider.tb_colour" label="TorBox Color" type="action" default="darkseagreen" subsetting="true" visible="eq(-10,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=tb)" />
-			<setting id="provider.oc_colour" label="Offcloud Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-11,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=oc)" />
+			<setting id="provider.pm_colour" label="Premiumize Color" type="action" default="orangered" subsetting="true" visible="eq(-7,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=pm)" />
+			<setting id="provider.oc_colour" label="Offcloud Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-8,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=oc)" />
+			<setting id="provider.tb_colour" label="TorBox Color" type="action" default="darkseagreen" subsetting="true" visible="eq(-9,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=tb)" />
+			<setting id="provider.rd_colour" label="Real Debrid Color" type="action" default="seagreen" subsetting="true" visible="eq(-10,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=rd)" />
+			<setting id="provider.ad_colour" label="All Debrid Color" type="action" default="goldenrod" subsetting="true" visible="eq(-11,1)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=ad)" />
 			<setting id="hoster.identify" label="Hosters Color" type="action" default="dodgerblue" subsetting="true" visible="eq(-12,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=hoster)" />
 			<setting id="torrent.identify" label="Torrents Color" type="action" default="magenta" subsetting="true" visible="eq(-13,0)" action="RunPlugin(plugin://plugin.video.pov/?mode=scraper_color_choice&amp;setting=torrent)" />
 		<!-- Progress Color Highlights -->
@@ -347,6 +348,11 @@
 		<setting id="trakt.client_secret" type="text" default="99478842b17d44d7accafef45c6c1bbba235792753c195069ae149595cd3a919" visible="false" />
 		<!-- MDBList -->
 		<setting id="mdblist.client_id" type="text" default="TlibB0hxTOxCFONKaR1W8J35eHc0ls7SP9ZhqHCl" visible="false" />
+		<!-- Kodi -->
+		<setting label="Kodi Databases" type="lsep" />
+		<setting id="myvideos_db" label="MyVideos*.db" type="file" default="special://profile/Database/MyVideos131.db" />
+		<setting id="textures_db" label="Textures*.db" type="file" default="special://profile/Database/Textures13.db" />
+		<setting id="viewmodes_db" label="ViewModes*.db" type="file" default="special://profile/Database/ViewModes6.db" />
 	</category>
 	<!-- Context Menu -->
 	<category label="Context Menu">
@@ -356,8 +362,8 @@
 		<setting id="context.extras" label="Extras.../Playback.../Browse..." type="slider" default="2" range="0,1,7" option="int" />
 		<setting id="context.trakt" label="Trakt Lists Manager" type="slider" default="3" range="0,1,7" option="int" />
 		<setting id="context.mdblist" label="MDBList Manager" type="slider" default="4" range="0,1,7" option="int" />
-		<setting id="context.tmdblist" label="TMDB Lists Manager" type="slider" default="4" range="0,1,7" option="int" />
-		<setting id="context.favorites" label="Favorites Manager" type="slider" default="5" range="0,1,7" option="int" />
+		<setting id="context.tmdblist" label="TMDb Lists Manager" type="slider" default="4" range="0,1,7" option="int" />
+		<setting id="context.favorites" label="Favorites/Dropped Manager" type="slider" default="5" range="0,1,7" option="int" />
 		<setting id="context.mark" label="Mark Watched/Unwatched" type="slider" default="6" range="0,1,7" option="int" />
 		<setting id="context.exit" label="Exit List" type="slider" default="7" range="0,1,7" option="int" />
 	</category>

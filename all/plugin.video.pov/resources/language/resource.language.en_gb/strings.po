@@ -6,34 +6,6 @@
 msgid ""
 msgstr ""
 
-msgctxt "#32000"
-msgid "POV"
-msgstr ""
-
-msgctxt "#32003"
-msgid "Databases"
-msgstr ""
-
-msgctxt "#32006"
-msgid "Scrape with ALL External Scrapers"
-msgstr ""
-
-msgctxt "#32007"
-msgid "[B]Download Pack[/B]"
-msgstr ""
-
-msgctxt "#32014"
-msgid "Rescrape & Select Source"
-msgstr ""
-
-msgctxt "#32016"
-msgid "[B]Add to Cloud[/B]"
-msgstr ""
-
-msgctxt "#32027"
-msgid "Off"
-msgstr ""
-
 msgctxt "#32028"
 msgid "Movies"
 msgstr ""
@@ -42,92 +14,52 @@ msgctxt "#32029"
 msgid "TV Shows"
 msgstr ""
 
-msgctxt "#32037"
-msgid "Trakt"
-msgstr ""
-
 msgctxt "#32043"
 msgid "Most Watched This Week"
-msgstr ""
-
-msgctxt "#32054"
-msgid "Real Debrid"
-msgstr ""
-
-msgctxt "#32061"
-msgid "Premiumize"
-msgstr ""
-
-msgctxt "#32063"
-msgid "All Debrid"
-msgstr ""
-
-msgctxt "#32064"
-msgid "IMDb"
-msgstr ""
-
-msgctxt "#32065"
-msgid "User"
-msgstr ""
-
-msgctxt "#32067"
-msgid "Sort Order"
-msgstr ""
-
-msgctxt "#32068"
-msgid "TMDb"
-msgstr ""
-
-msgctxt "#32070"
-msgid "Easynews"
-msgstr ""
-
-msgctxt "#32081"
-msgid "Trakt Calendar"
-msgstr ""
-
-msgctxt "#32089"
-msgid "Show"
-msgstr ""
-
-msgctxt "#32090"
-msgid "On"
-msgstr ""
-
-msgctxt "#32096"
-msgid "Internal Scrapers"
 msgstr ""
 
 msgctxt "#32107"
 msgid "Downloads"
 msgstr ""
 
+msgctxt "#32117"
+msgid "Internal Scrapers"
+msgstr ""
+
 msgctxt "#32118"
 msgid "External Scrapers"
 msgstr ""
 
-msgctxt "#32129"
-msgid "All"
+msgctxt "#32130"
+msgid "No External Scrapers Enabled"
+msgstr ""
+
+msgctxt "#32131"
+msgid "Clear Scrapers Cache"
+msgstr ""
+
+msgctxt "#32132"
+msgid "Rescrape & Select Source"
+msgstr ""
+
+msgctxt "#32133"
+msgid "Scrape with ALL External Scrapers"
 msgstr ""
 
 msgctxt "#32134"
-msgid "Multi File Pack Download Started..."
+msgid "Scrape with All Filters Ignored"
 msgstr ""
 
 msgctxt "#32135"
 msgid "Scrape with Custom Values"
 msgstr ""
 
-msgctxt "#32139"
-msgid "Results"
+msgctxt "#32136"
+msgid "Disable All Filters for Search?"
 msgstr ""
 
-msgctxt "#32140"
-msgid "Display"
-msgstr ""
-
-msgctxt "#32145"
-msgid "Set Language"
+msgctxt "#32151"
+msgid "[B]Extra Info[/B]"
 msgstr ""
 
 msgctxt "#32152"
@@ -146,12 +78,12 @@ msgctxt "#32157"
 msgid "Filter by Provider"
 msgstr ""
 
-msgctxt "#32160"
-msgid "Display Uncached Torrents"
-msgstr ""
-
 msgctxt "#32169"
 msgid "Filter Extra Info"
+msgstr ""
+
+msgctxt "#32170"
+msgid "Filter Title"
 msgstr ""
 
 msgctxt "#32174"
@@ -166,12 +98,12 @@ msgctxt "#32189"
 msgid "Exclude"
 msgstr ""
 
-msgctxt "#32192"
-msgid "Auto"
-msgstr ""
-
 msgctxt "#32193"
 msgid "Select"
+msgstr ""
+
+msgctxt "#32196"
+msgid "[B]Dropped Manager[/B]"
 msgstr ""
 
 msgctxt "#32197"
@@ -182,20 +114,16 @@ msgctxt "#32198"
 msgid "[B]Trakt Lists Manager[/B]"
 msgstr ""
 
+msgctxt "#32199"
+msgid "[B]TMDb Lists Manager[/B]"
+msgstr ""
+
 msgctxt "#32200"
 msgid "[B]MDBList Manager[/B]"
 msgstr ""
 
-msgctxt "#32203"
-msgid "EPISODE"
-msgstr ""
-
-msgctxt "#32218"
-msgid "Popularity"
-msgstr ""
-
-msgctxt "#32221"
-msgid "Release Date"
+msgctxt "#32223"
+msgid "Sort Order"
 msgstr ""
 
 msgctxt "#32224"
@@ -204,6 +132,14 @@ msgstr ""
 
 msgctxt "#32225"
 msgid "Descending"
+msgstr ""
+
+msgctxt "#32226"
+msgid "Popularity"
+msgstr ""
+
+msgctxt "#32227"
+msgid "Release Date"
 msgstr ""
 
 msgctxt "#32228"
@@ -278,10 +214,6 @@ msgctxt "#32463"
 msgid "Blockbusters"
 msgstr ""
 
-msgctxt "#32466"
-msgid "Non-binary"
-msgstr ""
-
 msgctxt "#32468"
 msgid "Oscar Winners"
 msgstr ""
@@ -335,7 +267,7 @@ msgid "Next Episodes"
 msgstr ""
 
 msgctxt "#32484"
-msgid "[B]%s: [/B]%s"
+msgid "Next Up:"
 msgstr ""
 
 msgctxt "#32485"
@@ -348,6 +280,10 @@ msgstr ""
 
 msgctxt "#32487"
 msgid "Help"
+msgstr ""
+
+msgctxt "#32493"
+msgid "User"
 msgstr ""
 
 msgctxt "#32494"
@@ -411,11 +347,11 @@ msgid "Log Viewer"
 msgstr ""
 
 msgctxt "#32510"
-msgid "Set Views"
+msgid "Log Utils"
 msgstr ""
 
 msgctxt "#32512"
-msgid "Clean Settings Files and Clear Caches"
+msgid "Settings Files and Caches"
 msgstr ""
 
 msgctxt "#32513"
@@ -424,6 +360,18 @@ msgstr ""
 
 msgctxt "#32514"
 msgid "Shortcut Folders"
+msgstr ""
+
+msgctxt "#32515"
+msgid "Set Views"
+msgstr ""
+
+msgctxt "#32516"
+msgid "Set view and then click here"
+msgstr ""
+
+msgctxt "#32523"
+msgid "Databases"
 msgstr ""
 
 msgctxt "#32524"
@@ -450,8 +398,8 @@ msgctxt "#32531"
 msgid "Videos"
 msgstr ""
 
-msgctxt "#32533"
-msgid "Scrapers"
+msgctxt "#32536"
+msgid "Show"
 msgstr ""
 
 msgctxt "#32537"
@@ -459,6 +407,10 @@ msgid "Season"
 msgstr ""
 
 msgctxt "#32538"
+msgid "Episode"
+msgstr ""
+
+msgctxt "#32540"
 msgid "Kodi"
 msgstr ""
 
@@ -474,12 +426,8 @@ msgctxt "#32543"
 msgid "Year"
 msgstr ""
 
-msgctxt "#32544"
-msgid "[B]Browse Season...[/B]"
-msgstr ""
-
-msgctxt "#32547"
-msgid "Set view and then click here"
+msgctxt "#32573"
+msgid "No Results"
 msgstr ""
 
 msgctxt "#32574"
@@ -507,7 +455,7 @@ msgid "[B]Remaining Debrid Checks:[/B] %s"
 msgstr ""
 
 msgctxt "#32580"
-msgid "Are you sure?"
+msgid "[B]Remaining providers:[/B] %s"
 msgstr ""
 
 msgctxt "#32583"
@@ -526,10 +474,6 @@ msgctxt "#32593"
 msgid "Recommended"
 msgstr ""
 
-msgctxt "#32598"
-msgid "Currently"
-msgstr ""
-
 msgctxt "#32602"
 msgid "Add To"
 msgstr ""
@@ -542,20 +486,12 @@ msgctxt "#32604"
 msgid "RE-CACHE %s INFO"
 msgstr ""
 
-msgctxt "#32605"
-msgid "[B]Extra Info[/B]"
-msgstr ""
-
 msgctxt "#32606"
 msgid "Trailer"
 msgstr ""
 
 msgctxt "#32607"
 msgid "Reviews"
-msgstr ""
-
-msgctxt "#32611"
-msgid "[B]Play Random[/B]"
 msgstr ""
 
 msgctxt "#32612"
@@ -646,10 +582,6 @@ msgctxt "#32636"
 msgid "Seasons"
 msgstr ""
 
-msgctxt "#32637"
-msgid "Clear Scrapers Cache"
-msgstr ""
-
 msgctxt "#32641"
 msgid "Open"
 msgstr ""
@@ -670,10 +602,6 @@ msgctxt "#32646"
 msgid "[B]Options...[/B]"
 msgstr ""
 
-msgctxt "#32648"
-msgid "[B]Hide from Recommendations[/B]"
-msgstr ""
-
 msgctxt "#32649"
 msgid "[B]Exit Movie List[/B]"
 msgstr ""
@@ -688,6 +616,10 @@ msgstr ""
 
 msgctxt "#32652"
 msgid "[B]Browse...[/B]"
+msgstr ""
+
+msgctxt "#32653"
+msgid "[B]Browse Season...[/B]"
 msgstr ""
 
 msgctxt "#32654"
@@ -763,15 +695,15 @@ msgid "Recommended based on"
 msgstr ""
 
 msgctxt "#32676"
-msgid "[B]Remaining providers:[/B] %s"
-msgstr ""
-
-msgctxt "#32679"
-msgid "Filter Title"
+msgid "Are you sure?"
 msgstr ""
 
 msgctxt "#32686"
 msgid "Filters Ignored"
+msgstr ""
+
+msgctxt "#32687"
+msgid "Download this Torrent to your [B]%s[/B] Cloud?"
 msgstr ""
 
 msgctxt "#32688"
@@ -780,6 +712,10 @@ msgstr ""
 
 msgctxt "#32689"
 msgid "Continue with download?"
+msgstr ""
+
+msgctxt "#32690"
+msgid "Multi File Pack Download Started..."
 msgstr ""
 
 msgctxt "#32691"
@@ -839,39 +775,43 @@ msgid "Remove"
 msgstr ""
 
 msgctxt "#32716"
-msgid "Move [B]'%s'[/B] to a different position in the list"
+msgid "Move [B]%s[/B] to a different position in the list"
 msgstr ""
 
 msgctxt "#32717"
-msgid "Remove [B]'%s'[/B] from the list"
+msgid "Remove [B]%s[/B] from the list"
 msgstr ""
 
 msgctxt "#32718"
-msgid "Add [B]'%s'[/B] to a different Menu list"
+msgid "Add [B]%s[/B] to a different Menu list"
 msgstr ""
 
 msgctxt "#32719"
-msgid "Add [B]'%s'[/B] to a [B]Shortcut Folder[/B]"
+msgid "Add [B]%s[/B] to a [B]Shortcut Folder[/B]"
 msgstr ""
 
 msgctxt "#32721"
-msgid "Re-add a removed item from [B]'%s'[/B] Menu"
+msgid "Re-add a removed item from [B]%s[/B] Menu"
 msgstr ""
 
 msgctxt "#32722"
-msgid "Restore [B]'%s'[/B] Menu to default"
+msgid "Restore [B]%s[/B] Menu to default"
 msgstr ""
 
 msgctxt "#32723"
-msgid "Check if [B]'%s'[/B] Menu has New Menu items"
+msgid "Check if [B]%s[/B] Menu has New Menu items"
 msgstr ""
 
 msgctxt "#32724"
-msgid "Reload [B]'%s'[/B]"
+msgid "Reload [B]%s[/B]"
 msgstr ""
 
 msgctxt "#32725"
-msgid "Add a [B]Shortcut Folder[/B] to [B]'%s'[/B] Menu"
+msgid "Add a [B]Shortcut Folder[/B] to [B]%s[/B] Menu"
+msgstr ""
+
+msgctxt "#32726"
+msgid "No New Items"
 msgstr ""
 
 msgctxt "#32727"
@@ -894,16 +834,20 @@ msgctxt "#32736"
 msgid "Cancelled"
 msgstr ""
 
-msgctxt "#32740"
-msgid "Subtitles Rate Limited. Retrying in 10 secs..."
-msgstr ""
-
 msgctxt "#32742"
 msgid "folder"
 msgstr ""
 
 msgctxt "#32743"
 msgid "file"
+msgstr ""
+
+msgctxt "#32744"
+msgid "[B]Add to Cloud[/B]"
+msgstr ""
+
+msgctxt "#32745"
+msgid "[B]Download Pack[/B]"
 msgstr ""
 
 msgctxt "#32746"
@@ -919,7 +863,7 @@ msgid "[B]Rename %s[/B]"
 msgstr ""
 
 msgctxt "#32749"
-msgid "[B]Customer ID:[/B] %s"
+msgid "[B]Download Archive[/B]"
 msgstr ""
 
 msgctxt "#32750"
@@ -930,24 +874,12 @@ msgctxt "#32751"
 msgid "[B]Days Remaining:[/B] %s"
 msgstr ""
 
-msgctxt "#32752"
-msgid "[B]Points Used:[/B] %.f"
-msgstr ""
-
-msgctxt "#32753"
-msgid "[B]Space Used:[/B] %.2f"
-msgstr ""
-
 msgctxt "#32754"
-msgid "[B]Fair Use (Percentage Used):[/B] %s"
+msgid "[B]Customer ID:[/B] %s"
 msgstr ""
 
 msgctxt "#32755"
 msgid "[B]Username:[/B] %s"
-msgstr ""
-
-msgctxt "#32756"
-msgid "[B]Email:[/B] %s"
 msgstr ""
 
 msgctxt "#32757"
@@ -960,10 +892,6 @@ msgstr ""
 
 msgctxt "#32759"
 msgid "[B]Fidelity Points:[/B] %s"
-msgstr ""
-
-msgctxt "#32760"
-msgid "No Results"
 msgstr ""
 
 msgctxt "#32761"
@@ -982,12 +910,8 @@ msgctxt "#32776"
 msgid "[B]Like List[/B]"
 msgstr ""
 
-msgctxt "#32777"
-msgid "Log Utils"
-msgstr ""
-
 msgctxt "#32780"
-msgid "[B]Make a new Trakt list[/B]"
+msgid "[B]Make a new %s list[/B]"
 msgstr ""
 
 msgctxt "#32781"
@@ -996,10 +920,6 @@ msgstr ""
 
 msgctxt "#32783"
 msgid "[B]Unlike List[/B]"
-msgstr ""
-
-msgctxt "#32784"
-msgid "[B]Switch Jump To Action[/B]"
 msgstr ""
 
 msgctxt "#32785"
@@ -1011,22 +931,22 @@ msgid "%smins"
 msgstr ""
 
 msgctxt "#32789"
-msgid "[B]Multiselect...[/B]"
-msgstr ""
-
-msgctxt "#32790"
-msgid "Resume Point: [B]%s[/B]"
-msgstr ""
-
-msgctxt "#32791"
 msgid "Finish Watching"
 msgstr ""
 
+msgctxt "#32791"
+msgid "Subtitles Rate Limited. Retrying in 10 secs..."
+msgstr ""
+
 msgctxt "#32792"
-msgid "Downloaded Subtitles Found"
+msgid "Local Subtitles Found"
 msgstr ""
 
 msgctxt "#32793"
+msgid "Downloaded Subtitles Found"
+msgstr ""
+
+msgctxt "#32794"
 msgid "No Subtitles Found"
 msgstr ""
 
@@ -1038,16 +958,8 @@ msgctxt "#32799"
 msgid "Next Page"
 msgstr ""
 
-msgctxt "#32801"
-msgid "[B]Next Up:[/B]"
-msgstr ""
-
-msgctxt "#32807"
-msgid "Scrape with All Filters Ignored"
-msgstr ""
-
-msgctxt "#32808"
-msgid "Disable All Filters for Search?"
+msgctxt "#32800"
+msgid "Jump To..."
 msgstr ""
 
 msgctxt "#32813"
@@ -1063,7 +975,7 @@ msgid "Clearing"
 msgstr ""
 
 msgctxt "#32821"
-msgid "Jump to %s Starting with '%s'"
+msgid "Jump to %s Starting with %s"
 msgstr ""
 
 msgctxt "#32822"
@@ -1087,7 +999,7 @@ msgid "Sources"
 msgstr ""
 
 msgctxt "#32831"
-msgid "Download this Torrent to your [B]%s[/B] Cloud?"
+msgid "Resume Point: [B]%s[/B]"
 msgstr ""
 
 msgctxt "#32832"
@@ -1110,12 +1022,12 @@ msgctxt "#32841"
 msgid "Options"
 msgstr ""
 
-msgctxt "#32843"
-msgid "Male"
+msgctxt "#32842"
+msgid "Scrapers"
 msgstr ""
 
-msgctxt "#32844"
-msgid "Female"
+msgctxt "#32846"
+msgid "Multiselect..."
 msgstr ""
 
 msgctxt "#32847"
@@ -1134,36 +1046,12 @@ msgctxt "#32850"
 msgid "Tomorrow"
 msgstr ""
 
-msgctxt "#32852"
-msgid "Local Subtitles Found"
-msgstr ""
-
 msgctxt "#32853"
 msgid "Upload Kodi Log to Pastebin"
 msgstr ""
 
-msgctxt "#32854"
-msgid "No External Scrapers Enabled"
-msgstr ""
-
 msgctxt "#32855"
 msgid "Show Log Errors Only?"
-msgstr ""
-
-msgctxt "#32857"
-msgid "New"
-msgstr ""
-
-msgctxt "#32859"
-msgid "True"
-msgstr ""
-
-msgctxt "#32860"
-msgid "False"
-msgstr ""
-
-msgctxt "#32964"
-msgid "Jump To..."
 msgstr ""
 
 msgctxt "#32978"
@@ -1180,14 +1068,6 @@ msgstr ""
 
 msgctxt "#32981"
 msgid "Refreshing addon.xml by profile reload."
-msgstr ""
-
-msgctxt "#32982"
-msgid "[B]Download Archive[/B]"
-msgstr ""
-
-msgctxt "#32983"
-msgid "No New Items"
 msgstr ""
 
 msgctxt "#32984"
@@ -1236,9 +1116,5 @@ msgstr ""
 
 msgctxt "#32998"
 msgid "Severe"
-msgstr ""
-
-msgctxt "#32999"
-msgid "Next Episode"
 msgstr ""
 

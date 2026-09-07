@@ -4,7 +4,7 @@
 
 from datetime import datetime
 import inspect
-from magneto.modules.control import transPath, setting as getSetting, lang, joinPath, existsPath
+from magneto.modules.control import transPath, setting as getSetting, lang, joinPath, existsPath, addonId
 
 LOGDEBUG = 0
 LOGINFO = 1
@@ -71,7 +71,7 @@ def error(message=None, exception=True):
 		if exception:
 			type, value, traceback = sys.exc_info()
 #			addon = 'script.module.fenomscrapers'
-			addon = 'plugin.video.pov'
+			addon = addonId()
 			filename = (traceback.tb_frame.f_code.co_filename)
 			filename = filename.split(addon)[1]
 			name = traceback.tb_frame.f_code.co_name
@@ -83,9 +83,9 @@ def error(message=None, exception=True):
 			else: message = ''
 			message += str(errortype) + ' -> ' + str(errormessage)
 			caller = [filename, name, linenumber]
+			del (type, value, traceback) # So we don't leave our local labels/objects dangling
 		else:
 			caller = None
-		del(type, value, traceback) # So we don't leave our local labels/objects dangling
 		log(msg=message, caller=caller, level=LOGERROR)
 	except Exception as e:
 		import xbmc
@@ -95,7 +95,7 @@ def clear_logFile():
 	cleared = False
 	try:
 		from magneto.modules.control import yesnoDialog
-		if not yesnoDialog(lang(32060), '', ''): return 'canceled'
+		if not yesnoDialog("Are you sure?", '', ''): return 'canceled'
 		log_file = joinPath(LOGPATH, 'fenomscrapers.log')
 		if not existsPath(log_file):
 			f = open(log_file, 'w')
@@ -151,7 +151,7 @@ def upload_LogFile():
 			highlight_color = 'gold'
 			list = [('[COLOR %s]url:[/COLOR]  %s' % (highlight_color, str(result)), str(result))]
 			if supported_platform: list += [('[COLOR %s]  -- Copy url To Clipboard[/COLOR]' % highlight_color, ' ')]
-			select = selectDialog([i[0] for i in list], lang(32059))
+			select = selectDialog([i[0] for i in list], "FenomScrapers log file uploaded to:")
 			if 'Copy url To Clipboard' in list[select][0]:
 				from magneto.modules.source_utils import copy2clip
 				copy2clip(list[select - 1][1])

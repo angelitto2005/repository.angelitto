@@ -1,5 +1,4 @@
-import sqlite3
-from modules.kodi_utils import favorites_db, translate_path
+from modules.kodi_utils import database, favorites_db, translate_path
 from modules.settings import ignore_articles
 from modules.utils import sort_for_article
 # from modules.kodi_utils import logger
@@ -9,8 +8,8 @@ def call_local(path, values=None, executemany=False, db_path=None):
 	if db_path is None: db_path = favorites_db
 	if db_path.startswith('special://'):
 		db_path = translate_path(db_path)
-	with sqlite3.connect(db_path) as dbcon:
-		dbcon.row_factory = sqlite3.Row
+	with database.connect(db_path) as dbcon:
+		dbcon.row_factory = database.Row
 		dbcur = dbcon.cursor()
 		try:
 			dbcur.execute("""PRAGMA synchronous = OFF""")

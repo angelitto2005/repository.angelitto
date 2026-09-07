@@ -2,7 +2,6 @@ from threading import Thread
 from indexers.metadata import tvshow_meta, art_infodict, movie_show_infodict
 from caches.watched_cache import get_watched_info_tv, get_watched_status_tvshow
 from modules import kodi_utils, settings
-#from modules.utils import manual_function_import, get_datetime, make_thread_list_enumerate
 from modules.utils import manual_function_import, get_datetime, TaskPool
 # logger = kodi_utils.logger
 
@@ -13,10 +12,10 @@ fanart_empty = kodi_utils.get_addoninfo('fanart')
 poster_empty = kodi_utils.media_path('box_office.png')
 item_jump = kodi_utils.media_path('item_jump.png')
 item_next = kodi_utils.media_path('item_next.png')
-watched_str, unwatched_str, traktmanager_str, tmdbmanager_str, mdblmanager_str = ls(32642), ls(32643), ls(32198), '[B]TMDB Lists Manager[/B]', ls(32200)
-favmanager_str, extras_str, options_str, recomm_str = ls(32197), ls(32645), ls(32646), '[B]%s...[/B]' % ls(32503)
-random_str, exit_str, browse_str = ls(32611), ls(32650), ls(32652)
-nextpage_str, switchjump_str, jumpto_str = ls(32799), ls(32784), ls(32964)
+watched_str, unwatched_str, favmanager_str, dropmanager_str = ls(32642), ls(32643), ls(32197), ls(32196)
+extras_str, options_str, exit_str, browse_str = ls(32645), ls(32646), ls(32650), ls(32652)
+traktmanager_str, mdblmanager_str, tmdbmanager_str = ls(32198), ls(32200), ls(32199)
+nextpage_str, jumpto_str = ls(32799), ls(32800)
 
 class TVShows:
 	def __init__(self, params):
@@ -98,6 +97,10 @@ class TVShows:
 				'mode': 'favorites_choice', 'mediatype': 'tvshow',
 				'tmdb_id': tmdb_id, 'title': title
 			})
+			drop_manager_params = build_url({
+				'mode': 'dropped_choice', 'mediatype': 'tvshow',
+				'tmdb_id': tmdb_id, 'title': title
+			})
 			cm_append((self.cm_sort['options'], options_str, run_plugin % options_params))
 			if self.open_extras:
 				url_params = extras_params
@@ -108,6 +111,7 @@ class TVShows:
 			cm_append((self.cm_sort['mdblist'], mdblmanager_str, run_plugin % mdbl_manager_params))
 			cm_append((self.cm_sort['tmdblist'], tmdbmanager_str, run_plugin % tmdb_manager_params))
 			cm_append((self.cm_sort['favorites'], favmanager_str, run_plugin % fav_manager_params))
+			cm_append((self.cm_sort['favorites'], dropmanager_str, run_plugin % drop_manager_params))
 			if not playcount: cm_append((
 				self.cm_sort['mark'], watched_str % self.watched_title, run_plugin % build_url({
 					'mode': 'mark_as_watched_unwatched_tvshow', 'action': 'mark_as_watched', 'year': year,
@@ -136,29 +140,29 @@ class TVShows:
 				listitem.setInfo('video', movie_show_infodict(meta))
 				listitem.setCast(meta_get('cast', []))
 			else:
-				videoinfo = listitem.getVideoInfoTag(offscreen=True)
-				videoinfo.setTitle(display)
-				videoinfo.setUniqueIDs({'imdb': imdb_id, 'tmdb': string(tmdb_id), 'tvdb': string(tvdb_id)})
-				videoinfo.setCast(make_cast_list(meta_get('cast', [])))
-				videoinfo.setCountries(meta_get('country'))
-				videoinfo.setDirectors(meta_get('director').split(', '))
-				videoinfo.setDuration(meta_get('duration'))
-				videoinfo.setGenres(meta_get('genre').split(', '))
-				videoinfo.setIMDBNumber(imdb_id)
-				videoinfo.setMediaType('tvshow')
-				videoinfo.setMpaa(meta_get('mpaa'))
-				videoinfo.setPlaycount(playcount)
-				videoinfo.setPlot(meta_get('plot'))
-				videoinfo.setPremiered(meta_get('premiered'))
-				videoinfo.setRating(meta_get('rating'))
-				videoinfo.setStudios((meta_get('studio'),))
-				videoinfo.setTagLine(meta_get('tagline'))
-				videoinfo.setTags(tags)
-				videoinfo.setTrailer(meta_get('trailer'))
-				videoinfo.setTvShowStatus(meta_get('status'))
-				videoinfo.setTvShowTitle(title)
-				videoinfo.setVotes(meta_get('votes'))
-				videoinfo.setWriters(meta_get('writer').split(', '))
+				infotag = listitem.getVideoInfoTag(offscreen=True)
+				infotag.setTitle(display)
+				infotag.setUniqueIDs({'imdb': imdb_id, 'tmdb': string(tmdb_id), 'tvdb': string(tvdb_id)})
+				infotag.setCast(make_cast_list(meta_get('cast', [])))
+				infotag.setCountries(meta_get('country'))
+				infotag.setDirectors(meta_get('director').split(', '))
+				infotag.setDuration(meta_get('duration'))
+				infotag.setGenres(meta_get('genre').split(', '))
+				infotag.setIMDBNumber(imdb_id)
+				infotag.setMediaType('tvshow')
+				infotag.setMpaa(meta_get('mpaa'))
+				infotag.setPlaycount(playcount)
+				infotag.setPlot(meta_get('plot'))
+				infotag.setPremiered(meta_get('premiered'))
+				infotag.setRating(meta_get('rating'))
+				infotag.setStudios((meta_get('studio'),))
+				infotag.setTagLine(meta_get('tagline'))
+				infotag.setTags(tags)
+				infotag.setTrailer(meta_get('trailer'))
+				infotag.setTvShowStatus(meta_get('status'))
+				infotag.setTvShowTitle(title)
+				infotag.setVotes(meta_get('votes'))
+				infotag.setWriters(meta_get('writer').split(', '))
 			self.append((url_params, listitem, self.is_folder))
 		except: pass
 
@@ -173,7 +177,6 @@ class Menu(TVShows):
 	similar = ('tmdb_tv_similar', 'tmdb_tv_recommendations')
 
 	def worker(self):
-#		threads = list(make_thread_list_enumerate(self.build_tvshow_content, self.list, Thread))
 		for i in TaskPool().tasks_enumerate(self.build_tvshow_content, self.list, Thread): i.join()
 		self.items.sort(key=lambda k: int(k[1].getProperty('pov_sort_order')))
 		return self.items

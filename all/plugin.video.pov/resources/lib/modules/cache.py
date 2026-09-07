@@ -93,7 +93,7 @@ def clean_databases(current_time=None, database_check=True, silent=False):
 	limit_metacache_database()
 	remove_old_databases()
 	remove_old_packages()
-	if not silent: kodi_utils.notification(32576, 1500)
+	if not silent: kodi_utils.notify_success()
 
 def purge_database(db, table, expiry):
 	dbcon = database_connect(db)
@@ -103,6 +103,7 @@ def purge_database(db, table, expiry):
 	dbcur.execute("""DELETE FROM %s WHERE expires <= ?""" % table, (expiry,))
 	dbcon.commit()
 	dbcur.execute("""VACUUM""")
+	dbcon.close()
 
 def limit_metacache_database(max_size=50):
 	with kodi_utils.open_file(metacache_db) as f: fsize = f.size()
@@ -117,77 +118,67 @@ def limit_metacache_database(max_size=50):
 	dbcur.execute("""DELETE FROM season_metadata WHERE ROWID IN (SELECT ROWID FROM season_metadata ORDER BY ROWID DESC LIMIT -1 OFFSET 100)""")
 	dbcon.commit()
 	dbcur.execute("""VACUUM""")
+	dbcon.close()
 
 def clear_cache(cache_type, silent=False):
 	def _confirm():
 		return silent or kodi_utils.confirm_dialog()
+	if not _confirm(): return
 	success = True
-	if cache_type == 'meta':
-		if not _confirm(): return
-		from caches.meta_cache import MetaCache
-		MetaCache().delete_all()
-	elif cache_type == 'internal_scrapers':
-		if not _confirm(): return
-		from debrids.easynews_api import clear_media_results_database
-		clear_media_results_database()
-		items = 'ad_cloud', 'pm_cloud', 'rd_cloud', 'tb_cloud', 'oc_cloud'
+	if cache_type == 'internal_scrapers':
+		items = 'pm_cloud', 'oc_cloud', 'tb_cloud', 'rd_cloud', 'ad_cloud', 'easynews'
 		for item in items: clear_cache(item, silent=True)
 	elif cache_type == 'external_scrapers':
-		if not _confirm(): return
 		from caches.providers_cache import ExternalProvidersCache
 		from caches.debrid_cache import DebridCache
-		data = ExternalProvidersCache().delete_cache()
-		debrid_cache = DebridCache().clear_database()
-		success = (data, debrid_cache) == ('success', 'success')
+		providers_cache = ExternalProvidersCache().clear_cache()
+		debrid_cache = DebridCache().clear_cache()
+		success = all((providers_cache, debrid_cache))
 	elif cache_type == 'trakt':
-		if not _confirm(): return
 		from caches.trakt_cache import clear_all_trakt_cache_data
 		success = clear_all_trakt_cache_data()
 	elif cache_type == 'mdblist':
-		if not _confirm(): return
 		from caches.mdbl_cache import clear_all_mdbl_cache_data
 		success = clear_all_mdbl_cache_data()
 	elif cache_type == 'tmdblist':
-		if not _confirm(): return
 		from indexers.tmdb_api import clear_tmdbl_cache
 		success = clear_tmdbl_cache()
 	elif cache_type == 'imdb':
-		if not _confirm(): return
 		from indexers.imdb_api import clear_imdb_cache
 		success = clear_imdb_cache()
-	elif cache_type == 'ad_cloud':
-		if not _confirm(): return
-		from debrids.alldebrid_api import AllDebridAPI
-		success = AllDebridAPI().clear_cache()
 	elif cache_type == 'pm_cloud':
-		if not _confirm(): return
-		from debrids.premiumize_api import PremiumizeAPI
-		success = PremiumizeAPI().clear_cache()
-	elif cache_type == 'rd_cloud':
-		if not _confirm(): return
-		from debrids.real_debrid_api import RealDebridAPI
-		success = RealDebridAPI().clear_cache()
-	elif cache_type == 'tb_cloud':
-		if not _confirm(): return
-		from debrids.torbox_api import TorBoxAPI
-		success = TorBoxAPI().clear_cache()
+		from indexers.premiumize_api import PremiumizeAPI
+		success = PremiumizeAPI.clear_cache()
 	elif cache_type == 'oc_cloud':
-		if not _confirm(): return
-		from debrids.offcloud_api import OffcloudAPI
-		success = OffcloudAPI().clear_cache()
+		from indexers.offcloud_api import OffcloudAPI
+		success = OffcloudAPI.clear_cache()
+	elif cache_type == 'tb_cloud':
+		from indexers.torbox_api import TorBoxAPI
+		success = TorBoxAPI.clear_cache()
+	elif cache_type == 'rd_cloud':
+		from indexers.realdebrid_api import RealDebridAPI
+		success = RealDebridAPI.clear_cache()
+	elif cache_type == 'ad_cloud':
+		from indexers.alldebrid_api import AllDebridAPI
+		success = AllDebridAPI.clear_cache()
+	elif cache_type == 'easynews':
+		from indexers.easynews_api import EasyNewsAPI
+		success = EasyNewsAPI.clear_cache()
+	elif cache_type == 'meta':
+		from caches.meta_cache import MetaCache
+		MetaCache().delete_all()
 	else: # 'list'
-		if not _confirm(): return
 		from caches.main_cache import MainCache
 		MainCache().delete_all_lists()
-	if not silent and success: kodi_utils.notification(32576, 1500)
+	if not silent and success: kodi_utils.notify_success()
 
 def clear_all_cache():
 	if not kodi_utils.confirm_dialog(): return
 	line = '[CR]%s: [B]%s %s[/B]'
 	caches = (
-		('external_scrapers', ls(32118)), ('internal_scrapers', ls(32096)),
-		('trakt', ls(32037)), ('mdblist', 'MDBList'), ('tmdblist', 'TMDBList'),
-		('imdb', ls(32064)), ('list', ls(32815)), ('meta', ls(32527))
+		('internal_scrapers', ls(32117)), ('external_scrapers', ls(32118)),
+		('trakt', 'Trakt'), ('mdblist', 'MDBList'), ('tmdblist', 'TMDbList'),
+		('imdb', 'IMDb'), ('list', ls(32815)), ('meta', ls(32527))
 	)
 	len_caches = len(caches)
 	kodi_utils.progressDialog.create('POV', '')
@@ -198,6 +189,6 @@ def clear_all_cache():
 			kodi_utils.progressDialog.update(*args)
 			clear_cache(cache_type, silent=True)
 			kodi_utils.sleep(200)
-		except: kodi_utils.notification(32574, 1500)
+		except: kodi_utils.notify_error()
 	kodi_utils.progressDialog.close()
 

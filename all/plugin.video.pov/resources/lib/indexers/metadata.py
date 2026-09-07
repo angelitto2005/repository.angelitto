@@ -309,7 +309,7 @@ def season_episodes_meta(season, meta, user_info):
 	try: season_posters = dict(_make_poster(i) for i in meta.get('season_data') if 'poster_path' in i)
 	except: season_posters = dict()
 	episodes_data = []
-	append = episodes_data.append
+	episodes_data_append = episodes_data.append
 	try:
 		show_ended, total_seasons = meta['status'] in finished_show_check, meta['total_seasons']
 		expiration = EXPIRES_182_DAYS if show_ended or total_seasons > int(season) else EXPIRES_4_DAYS
@@ -340,7 +340,7 @@ def season_episodes_meta(season, meta, user_info):
 				except: pass
 				try: director = [i['name'] for i in crew if i['job'] == 'Director'][0]
 				except: pass
-			append({
+			episodes_data_append({
 				'season_poster': poster, 'thumb': thumb, 'guest_stars': guest_stars, 'director': director,
 				'writer': writer, 'plot': plot, 'title': title, 'premiered': premiered,
 				'rating': rating, 'votes': votes, 'duration': duration, 'episode_type': ep_type,

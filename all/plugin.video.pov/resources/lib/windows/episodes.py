@@ -4,8 +4,8 @@ from modules.settings import get_art_provider
 # from modules.kodi_utils import logger
 
 poster_empty = media_path('box_office.png')
-click_actions = {10: 'close', 11: 'play', 12: 'cancel'}
-confirm_actions = {10: False, 11: True}
+click_actions, confirm_actions = {10: 'close', 11: 'play', 12: 'cancel'}, {10: False, 11: True}
+skip_intro_str, watching_str, upnext_str = 'Skip Intro?', 'Still watching?', 'Up Next in'
 
 class NextEpisode(BaseDialog):
 	def __init__(self, *args, **kwargs):
@@ -40,9 +40,9 @@ class NextEpisode(BaseDialog):
 			self.close()
 
 	def set_properties(self):
-		if self.function == 'confirm': prompt = 'Still watching?'
-		elif self.function == 'skip_intro': prompt = 'Skip Intro?'
-		else: prompt = 'Up Next in'
+		if self.function == 'confirm': prompt = watching_str
+		elif self.function == 'skip_intro': prompt = skip_intro_str
+		else: prompt = upnext_str
 		episode = 'S%dE%d' % (self.meta['season'], self.meta['episode'])
 		title = '%s [B]|[/B] %s [B]|[/B] %s' % (self.meta['title'], episode, self.meta['ep_name'])
 		poster_main, poster_backup, fanart_main, fanart_backup = get_art_provider()

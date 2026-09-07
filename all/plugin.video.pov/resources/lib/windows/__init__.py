@@ -32,13 +32,11 @@ def create_window(import_info, skin_xml, **kwargs):
 		return xml_window
 	except Exception as e:
 		kodi_utils.logger('error in open_window', str(e))
-		return kodi_utils.notification(32574)
+		return kodi_utils.notify_error()
 
 def videoplayer(url, close_action=None, callback=None):
-	def onAVStarted(self):
-		self.playback_event = True
-	Player = type('Player', (kodi_utils.xbmc_player,), {'onAVStarted': onAVStarted})
-	player = Player()
+	from modules.player import MediaPlayer
+	player = MediaPlayer()
 	player.playback_event = False
 	player.play(url)
 	for i in range(50):
@@ -46,7 +44,7 @@ def videoplayer(url, close_action=None, callback=None):
 		if player.playback_event: break
 	if callable(close_action): close_action()
 	while player.isPlayingVideo(): kodi_utils.sleep(200)
-	if player.playback_event and callable(callback): callback()
+	if player.playback_event is not False and callable(callback): callback()
 
 class BaseDialog(xbmcgui.WindowXMLDialog):
 	fanart = kodi_utils.get_addoninfo('fanart')
