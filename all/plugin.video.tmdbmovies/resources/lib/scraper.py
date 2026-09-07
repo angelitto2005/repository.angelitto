@@ -4075,29 +4075,78 @@ def _scrape_json_provider(base_url, pattern, label, imdb_id, content_type, seaso
     
 
 
+_GROUP_JUNK = frozenset(['x264', 'x265', 'h264', 'h265', 'hevc', 'av1', 'vp9', 'xvid', '1080p', '720p', '2160p', '480p', '360p', '4k', 'uhd', 'fhd', 'hd', 'hdr', 'hdr10', 'hdr10p', 'hdr10plus', 'dolbyvision', 'dovi', 'dv', 'sdr', 'hlg', 'webdl', 'webrip', 'web', 'hdtv', 'bluray', 'bdrip', 'brrip', 'remux', 'ddp', 'dd', 'ac3', 'eac3', 'aac', 'dts', 'atmos', 'truehd', 'flac', 'mp3', 'opus', 'stereo', 'audio', 'multi', '10bit', '8bit', '12bit', 'esub', 'subbed', 'dubbed', 'dublado', 'legendado', 'proper', 'repack', 'rerip', 'extended', 'cut', 'uncut', 'unrated', 'dual', 'sdh', 'ma', 'esp', 'ita', 'eng', 'fre', 'ger', 'lat', 'sub', 'subs', 'imax', 'hybrid', 'internal', 'pal', 'ntsc', 'e', 'dl', 'dvdrip', 'com', 'net', 'org', 'to', 'io', 'me', 'co', 'info', 'biz', 'xyz', 'site', 'online', 'gg', 'bz', 'mx', 'tc', 'vc', 'hot', 'vip', 'app', 'lol', 'icu', 'cyou', 'sbs', 'click', 'link', 'tube', 'kim', 'mom', 'pics', 'bet', 'ink', 'cfd', 'en', 'fr', 'de', 'es', 'pt', 'nl', 'ro', 'ru', 'uk', 'ua', 'ar', 'hi', 'ja', 'zh', 'ko', 'tr', 'pl', 'cs', 'sk', 'hu', 'bg', 'el', 'he', 'th', 'vi', 'id', 'ms', 'da', 'fi', 'sv', 'por', 'rus', 'ukr', 'ara', 'hin', 'jpn', 'kor', 'english', 'french', 'german', 'spanish', 'italian', 'dutch', 'arabic', 'hindi', 'japanese', 'korean', 'chinese', 'turkish', 'polish', 'russian', 'ukrainian', 'portuguese', 'swedish', 'danish', 'finnish', 'norwegian', 'czech', 'slovak', 'hungarian', 'bulgarian', 'greek', 'hebrew', 'thai', 'vietnamese', 'indonesian', 'malay'])
+
+def _is_group_junk(g):
+    gl = g.lower()
+    return gl in _GROUP_JUNK or gl.replace('o', '0') in _GROUP_JUNK
+
+_SP_JUNK_WORDS = frozenset(['dual', 'audio', 'extended', 'unrated', 'directors', 'cut', 'subbed', 'dubbed', 'remux', 'bluray', 'dvd', 'sdh', 'subs', 'sub', 'multi'])
+
+def _spaced_initials(text):
+    _t = text.strip()
+    if ' ' not in _t or not re.search(r'[A-Za-z]', _t) or len(_t) > 24:
+        return ''
+    _words = re.findall(r'[A-Za-z]+', _t.lower())
+    if not _words or any(w in _SP_JUNK_WORDS for w in _words):
+        return ''
+    _ini = ''.join(w[0].upper() for w in _t.split() if w[0].isalnum())
+    return _ini if len(_ini) >= 2 else ''
+
 def _extract_release_group(filename):
     """Extrage Release Group din coada numelui (ex: ...-BYNDR.mkv -> BYNDR) ca fallback."""
     if not filename: return ""
     import re
     clean_name = filename.strip()
+    _segs = re.split(r'\s{2,}', clean_name)
+    if len(_segs) > 1:
+        _tail_meta = True
+        for _seg in _segs[1:]:
+            _ss = _seg.strip()
+            if not _ss or re.match(r'^[\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB)\b', _ss, re.I) or re.match(r'^[A-Za-z0-9_]{1,25}$', _ss):
+                continue
+            _tail_meta = False
+            break
+        if _tail_meta:
+            clean_name = _segs[0]
+    for _ in range(3):
+        _stripped = re.sub(r'(?i)\s+(2160p|1080p|720p|480p|360p|4k|uhd|fhd|hd|sd|x264|x265|h264|h265|hevc|avc|av1)$', '', clean_name)
+        if _stripped == clean_name:
+            break
+        clean_name = _stripped
     
     # Eliminam extensia video daca exista
     clean_name = re.sub(r'(?i)\.(mkv|mp4|avi|ts|webm|m4v)$', '', clean_name)
+    if not clean_name.endswith(']'):
+        clean_name = re.sub(r'(?i)\.(com|net|org|to|io|me|co|info|biz|xyz|site|online|gg|bz|mx|tc|vc|hot|vip|app|lol|icu|cyou|sbs|click|link|tube|kim|mom|pics|bet|ink|cfd)$', '', clean_name)
     
     # Cautam ultimul '-' urmat de litere/cifre (dar nu prea lung, max 15 caractere)
-    m = re.search(r'-([a-zA-Z0-9_]+)$', clean_name)
+    m = re.search(r'-([a-zA-Z0-9_@]+)$', clean_name)
     if m:
         grp = m.group(1)
-        bad_groups = ['x264', 'x265', 'h264', 'h265', 'hevc', '1080p', '720p', '2160p', '4k', 'hdr', 'sdr', 'remux', 'ESub', 'DV', 'Dual', 'e', 'web', 'webdl', 'webrip', 'bluray', 'bdrip', 'brrip', 'hdtv', 'dvdrip', 'dl']
-        if grp.lower() not in bad_groups and 2 <= len(grp) <= 15:
+        _mn = re.match(r'^\d+_([A-Za-z][A-Za-z0-9_@]*)$', grp)
+        if _mn:
+            grp = _mn.group(1)
+        if not _is_group_junk(grp) and 2 <= len(grp) <= 15:
             return grp
-    dot_bad = ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1', 'vp9', 'xvid', '1080p', '720p', '2160p', '480p', '360p', '4k', 'uhd', 'fhd', 'hd', 'hdr', 'hdr10', 'dv', 'sdr', 'hlg', 'webdl', 'webrip', 'web', 'hdtv', 'bluray', 'bdrip', 'brrip', 'remux', 'ddp', 'dd', 'ac3', 'eac3', 'aac', 'dts', 'atmos', 'truehd', 'flac', 'mp3', 'opus', 'stereo', 'multi', '10bit', '8bit', '12bit', 'esub', 'subbed', 'dubbed', 'dublado', 'legendado', 'proper', 'repack', 'rerip', 'extended', 'uncut', 'unrated', 'dual', 'sdh', 'ma', 'esp', 'ita', 'eng', 'fre', 'ger', 'lat', 'sub', 'subs', 'imax', 'hybrid', 'internal', 'pal', 'ntsc']
-    b = re.search(r'(?:-\[|\[)([A-Za-z0-9_]{2,14})[^\]]*\]$', clean_name)
+    ds = re.search(r'-([A-Za-z][A-Za-z ]{1,22}[A-Za-z])$', clean_name)
+    if ds:
+        if re.search(r'(19|20)\d{2}|1080p|720p|2160p|480p|\b4k\b', clean_name, re.I):
+            _ds_ini = _spaced_initials(ds.group(1))
+            if _ds_ini:
+                return _ds_ini
+    b = re.search(r'(?:-\[|\[)([A-Za-z0-9_]{2,14})(?=[.\-\]])[^\]]*\]$', clean_name)
     if b:
         br_grp = b.group(1)
-        if re.search(r'[A-Za-z]', br_grp) and br_grp.lower() not in dot_bad:
+        if re.search(r'[A-Za-z]', br_grp) and not _is_group_junk(br_grp):
             return br_grp
+    bs = re.search(r'\[([^\[\]]+)\]$', clean_name)
+    if bs:
+        _bs_ini = _spaced_initials(bs.group(1))
+        if _bs_ini:
+            return _bs_ini
     clean_name = re.sub(r'[\s\)\]]+$', '', clean_name)
+    clean_name = re.sub(r'\[[^\[\]]*\s[^\[\]]*$', '', clean_name)
     d = re.search(r'\.([A-Za-z0-9_]{2,14})$', clean_name)
     if d:
         dot_grp = d.group(1)
@@ -4105,14 +4154,17 @@ def _extract_release_group(filename):
             return ""
         if re.match(r'(?i)^v\d+$', dot_grp):
             return ""
-        if dot_grp.lower() not in dot_bad:
+        _dm = re.match(r'^\d+_([A-Za-z][A-Za-z0-9_]*)$', dot_grp)
+        if _dm:
+            dot_grp = _dm.group(1)
+        if not _is_group_junk(dot_grp):
             return dot_grp
     s = re.search(r'\s([A-Za-z0-9_]{2,14})$', clean_name)
     if s:
         sp_grp = s.group(1)
         if re.search(r'(19|20)\d{2}|1080p|720p|2160p|480p|\b4k\b', clean_name, re.I):
             if re.search(r'[A-Z]', sp_grp) or (re.search(r'[A-Za-z]', sp_grp) and re.search(r'\d', sp_grp)):
-                if sp_grp.lower() not in dot_bad:
+                if not _is_group_junk(sp_grp):
                     return sp_grp
     return ""
 
@@ -4235,7 +4287,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     # are valid fallback filenames when the real name is unavailable
     if not filename:
         for line in lines:
-            if not any(e in line for e in ('👤', '👥', '💾', '⚙️', '🇵🇱')) and 'GB' not in line.upper() and 'MB' not in line.upper() and 'TB' not in line.upper() and ' peers ' not in line.lower() and 'multi audio' not in line.lower():
+            if not any(e in line for e in ('👤', '👥', '💾', '⚙️', '🇵🇱', '🌐')) and not re.search(r'[\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB)\b', line, re.I) and ' peers ' not in line.lower() and 'multi audio' not in line.lower():
                 filename = line
                 break
     
@@ -4335,6 +4387,10 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         if spy_match:
             indexer = spy_match.group(1).strip()
     if not indexer:
+        globe_match = re.search(r'🌐\s*([^\n]+)', raw_title_unquoted)
+        if globe_match:
+            indexer = globe_match.group(1).strip()
+    if not indexer:
         link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
         if link_match:
             indexer = link_match.group(1).strip()
@@ -4348,6 +4404,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         clean = re.sub(r'[\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
+        clean = re.split(r'\s{2,}', clean)[-1].strip()
         if clean and not is_valid_filename(clean): indexer = clean
     # Emoji/flag cleanup from indexer (EX: 'EXT 🇬🇧 / 🇷🇺 / 🇺🇦' -> 'EXT')
     if indexer:
@@ -4370,7 +4427,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
                 is_cached = True
             elif not release_group and len(_bg_parts) >= 4:
                 _bg_cand = _bg_parts[3].strip()
-                if re.match(r'^[A-Za-z0-9_]{2,15}$', _bg_cand) and re.search(r'[A-Za-z]', _bg_cand) and _bg_cand.lower() not in ('web', 'webdl', 'webrip', 'bluray', 'hdtv', 'remux', 'e', '2160p', '1080p', '720p', '480p', '4k'):
+                if re.match(r'^[A-Za-z0-9_]{2,15}$', _bg_cand) and re.search(r'[A-Za-z]', _bg_cand) and not _is_group_junk(_bg_cand):
                     release_group = _bg_cand
         except:
             pass
@@ -4633,7 +4690,8 @@ def scrape_aiostreams(imdb_id, content_type, season=None, episode=None):
             
             # --- Extragere Release Group ---
             release_group = str(item.get('releaseGroup') or parsed.get('releaseGroup') or '').strip()
-            # Fallback inteligent din nume daca serverul nu ne da grupul
+            if release_group and _is_group_junk(release_group):
+                release_group = ''
             if not release_group:
                 release_group = _extract_release_group(title)
             

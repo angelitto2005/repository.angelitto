@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import json
 from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
-from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display
+from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group
 from resources.lib.tmdb_api import set_metadata
 from resources.lib.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble
 from resources.lib import subtitle as subtitles
@@ -992,7 +992,7 @@ def extract_stream_info(stream):
         tags.append("5.1")
     
     # HDR / DV (Fix: Ignora HDRip)
-    if 'dolby vision' in full_info or '.dv.' in full_info or ' dv ' in full_info: 
+    if 'dolby vision' in full_info or '.dv.' in full_info or ' dv ' in full_info or re.search(r'\bdovi\b', full_info) or re.search(r'\bdv\b', full_info):
         tags.append("DV")
     
     # Verificare HDR curata (fara HDRip)
@@ -2105,6 +2105,11 @@ def format_for_results_window(streams, poster_url, meta=None):
         stream_info['indexer'] = stream_info.get('indexer', '')
         stream_info['seeders'] = stream_info.get('seeders', 0)
         stream_info['releaseGroup'] = stream_info.get('releaseGroup', '')
+        if not stream_info['releaseGroup']:
+            try:
+                stream_info['releaseGroup'] = _extract_release_group(raw_name) or ''
+            except:
+                stream_info['releaseGroup'] = ''
         
         window_results.append({
             'name': raw_name,
@@ -2574,7 +2579,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         info_extr = extract_stream_info(current_stream)
         player.prev_quality = info_extr.get('quality', '')
         player.prev_group = info_extr.get('group', '').lower() or current_stream.get('info', {}).get('releaseGroup', '').lower()
-        player.prev_is_sdr = not any(t in info_extr.get('tags', []) for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
+        player.prev_is_sdr = not any(t in info_extr.get('tags', []) for t in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'HLG'])
         
         raw_stream_name = current_stream.get('title', '') + current_stream.get('name', '')
         
@@ -2912,7 +2917,7 @@ def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_
         s_codec = 'HEVC' if 'hevc' in raw_name.lower() or '265' in raw_name.lower() else ('x264' if '264' in raw_name.lower() or 'avc' in raw_name.lower() else '')
         s_source = 'BluRay' if 'bluray' in raw_name.lower() or 'bdrip' in raw_name.lower() else ('WEB' if 'web' in raw_name.lower() else '')
         
-        s_has_hdr = any(t in s_tags for t in ['HDR', 'HDR10', 'HDR10+', 'DV'])
+        s_has_hdr = any(t in s_tags for t in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'HLG'])
         s_is_sdr = not s_has_hdr
         
         s_is_cached = s.get('info', {}).get('is_cached', False)

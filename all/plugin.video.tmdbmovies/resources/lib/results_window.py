@@ -964,9 +964,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         if filter_type == 'quality':
             self.results = [r for r in self.all_results if r.get('info', {}).get('quality') == value]
         elif filter_type == 'hdr':
-            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
+            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'Dolby Vision', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'sdr':
-            self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
+            self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'Dolby Vision', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'provider':
             v = str(value).strip().lower()
             def _prov_match(r):

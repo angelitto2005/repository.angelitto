@@ -1,3 +1,6 @@
+1.1.267
+- Improved release group detection
+
 1.1.266
 - Added StremThru Torz Stremio provider with 3 instances (Midnight / Elfhosted / XYZ)
 - Fixed Meteor
