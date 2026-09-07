@@ -192,19 +192,39 @@ class RealDebridAPI:
 		if False in (user_cloud_success, download_links_success, hoster_links_success, hash_cache_status_success): return False
 		return True
 
-def tio_check_cache(imdb, season, episode):
+from magneto.modules.client import randomagent
+
+cache_api = requests.Session()
+cache_api.headers.update({'User-Agent': randomagent(), 'Accept': 'application/json'})
+
+def tio_check_cache(unchecked_hashes_chunk, imdb, season, episode, collector):
 	import re, secrets
-	from magneto.modules.client import randomagent
 	if str(season).isdigit(): url = 'series/%s:%s:%s.json' % (imdb, season, episode)
 	else: url = 'movie/%s.json' % (imdb)
 	params = 'realdebrid=%s' % str.upper(secrets.token_urlsafe(39)[:52])
 	url = 'https://torrentio.strem.fun/debridoptions=nodownloadlinks,nocatalog|%s/stream/%s' % (params, url)
-	headers = {'User-Agent': randomagent(), 'Accept': 'application/json'}
 	pattern = re.compile(r'\b\w{40}\b')
 	try:
-		results = requests.get(url, headers=headers, timeout=7.05)
-		if not results.ok: results.raise_for_status()
-		files = results.json()['streams']
-		return [pattern.findall(file['url'])[-1] for file in files if '+' in file['name'] and 'url' in file]
+		response = cache_api.get(url, timeout=7.05)
+		if not response.ok: response.raise_for_status()
+		files = response.json()['streams']
+		collector.extend(pattern.findall(file['url'])[-1] for file in files if '+' in file['name'] and 'url' in file)
 	except Exception as e: kodi_utils.logger('tio error', str(e))
+
+def dmm_check_cache(unchecked_hashes_chunk, imdb, season, episode, collector):
+	""" DMM API allows max 100 hashes per request, do not thread multiple calls, 100 sample size should be enough """
+	unchecked_hashes_chunk = [i for i in unchecked_hashes_chunk if len(i) == 40]
+	if len(unchecked_hashes_chunk) > 100:
+		unchecked_hashes_chunk = __import__('random').sample(unchecked_hashes_chunk, 100)
+	data = {'hashes': unchecked_hashes_chunk, 'imdbId': imdb}
+	url = 'https://debridmediamanager.com/api/challenge', 'https://debridmediamanager.com/api/availability/check'
+	headers = {'Referer': '%s/%s/%s' % ('https://debridmediamanager.com', 'show' if season else 'movie', imdb)}
+	try:
+		get_secret = cache_api.get(url[0], headers=headers, timeout=3.05).json()
+		data['dmmProblemKey'], data['solution'] = get_secret['token'], get_secret['hash']
+		response = cache_api.post(url[1], json=data, headers=headers, timeout=7.05)
+		if not response.ok: response.raise_for_status()
+		files = response.json()['available']
+		collector.extend(file['hash'] for file in files if 'hash' in file)
+	except Exception as e: kodi_utils.logger('dmm error', str(e))
 

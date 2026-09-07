@@ -16,6 +16,7 @@
 		<setting label="Test All Source Providers (Magneto)" type="action" action="RunPlugin(plugin://plugin.video.pov/?mode=speedTest)" />
 		<setting label="External Sources" type="lsep" />
 		<setting id="provider.bitsearch" label="bitsearch" type="bool" default="false" />
+		<setting id="provider.dmm" label="dmm" type="bool" default="false" />
 		<setting id="provider.nyaa" label="nyaa" type="bool" default="false" />
 		<setting id="provider.piratebay" label="piratebay" type="bool" default="true" />
 		<setting id="provider.torrentdownload" label="torrentdownload" type="bool" default="false" />

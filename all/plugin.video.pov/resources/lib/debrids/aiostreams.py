@@ -127,8 +127,7 @@ def unrestrict_link(url):
 		from modules.kodi_utils import logger
 		logger('unrestrict_link error', f"{type(e)}: {e}")
 
-def aio_help():
-	return show_text('AIOStreams', text=(
+def aio_help(): return show_text('AIOStreams', text=(
 """
 AIOStreams consolidates multiple sources and debrid services into a single,
 highly customizable provider.  When enabled AIOStreams supersedes

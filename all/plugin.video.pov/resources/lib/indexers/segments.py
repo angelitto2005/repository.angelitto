@@ -10,9 +10,9 @@ class SegmentScraper:
 		result = {'intro': None, 'credits': None}
 		try:
 			response = requests.get('https://api.introdb.app/segments', params=self.params, timeout=timeout)
-			rjson = response.json()
-			intro = rjson.get('intro') or {}
-			outro = rjson.get('outro') or {}
+			results = response.json()
+			intro = results.get('intro') or {}
+			outro = results.get('outro') or {}
 			intro_start, intro_end = intro.get('start_sec'), intro.get('end_sec')
 			outro_start = outro.get('start_sec')
 			if intro_start is not None and intro_end is not None:
@@ -26,9 +26,9 @@ class SegmentScraper:
 		result = {'intro': None, 'credits': None}
 		try:
 			response = requests.get('https://api.theintrodb.org/v3/media', params=self.params, timeout=timeout)
-			rjson = response.json()
-			intro_list = rjson.get('intro') or []
-			outro_list = rjson.get('credits') or []
+			results = response.json()
+			intro_list = results.get('intro') or []
+			outro_list = results.get('credits') or []
 			if intro_list:
 				intro = next(iter(intro_list))
 				intro_start, intro_end = intro.get('start_ms'), intro.get('end_ms')

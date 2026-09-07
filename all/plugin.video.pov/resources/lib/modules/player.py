@@ -1,7 +1,6 @@
 import json
 from threading import Thread
 from caches import watched_cache as ws
-from windows import open_window
 from indexers.segments import SegmentScraper
 from indexers.metadata import art_infodict, movie_show_infodict, episode_infodict, info_tagger
 from modules import kodi_utils, settings
@@ -57,8 +56,8 @@ class POVPlayer(MediaPlayer):
 			self.mediatype, self.tvdb_id = self.meta_get('mediatype'), self.meta_get('tvdb_id')
 			self.season, self.episode = self.meta_get('season', ''), self.meta_get('episode', '')
 			if any(i in self.meta for i in ('random', 'random_continual')): bookmark = 0
-			else: bookmark = self.bookmarkPOV()
-			if bookmark == 'cancel': return
+			else: bookmark = self.check_bookmarks()
+			if bookmark == 'cancel': return progress_media() if callable(progress_media) else None
 			self.meta.update({'url': url, 'bookmark': bookmark})
 			listitem = self.make_listitem()
 			listitem.setContentLookup(False)
@@ -69,7 +68,7 @@ class POVPlayer(MediaPlayer):
 
 			self.playback_event = False
 			self.play(url, listitem)
-			while not self.playback_event: kodi_utils.sleep(100)
+			while self.playback_event is False: kodi_utils.sleep(100)
 			if callable(progress_media): progress_media()
 			kodi_utils.close_all_dialog()
 			self.exec_task('trakt_ids')
@@ -132,6 +131,45 @@ class POVPlayer(MediaPlayer):
 		except: pass
 		return listitem
 
+	def check_bookmarks(self):
+		watched_indicators = settings.watched_indicators()
+		bookmarks = ws.get_bookmarks(watched_indicators, self.mediatype)
+		try: resume_point, curr_time, resume_id = ws.detect_bookmark(bookmarks, self.tmdb_id, self.season, self.episode)
+		except: resume_point, curr_time = 0, 0
+		resume_check = float(resume_point)
+		if not resume_check: return 0
+		percent = str(resume_point)
+		raw_time = float(curr_time)
+		if watched_indicators in (1, 2): resume_point = '%s%%' % str(percent)
+		else: resume_point = sec2time(raw_time, n_msec=0)
+		if not settings.auto_resume(self.mediatype):
+			from windows import open_window
+			choice = open_window(
+				('windows.progress', 'ProgressMedia'),
+				'progress_media.xml',
+				meta=self.meta,
+				text=resumept_str % resume_point,
+				enable_buttons=True,
+				true_button=resume_str,
+				false_button=start_str,
+				focus_button=10,
+				percent=percent
+			)
+			bookmark = percent if choice is True else 0 if choice is False else 'cancel'
+		else: bookmark = percent
+		if bookmark == 0: ws.erase_bookmark(self.mediatype, self.tmdb_id, self.season, self.episode)
+		return bookmark
+
+	def stinger_notification(self, tmdb_id, poster):
+		if not tmdb_id: return
+		from indexers import tmdb_api
+		stingers = {'duringcreditsstinger': 'During Credit Scene', 'aftercreditsstinger': 'After Credit Scene'}
+		keywords = tmdb_api.movie_keywords(tmdb_id) or []
+		keywords = {str(i['name']) for i in keywords}
+		if all((i in keywords for i in stingers.keys())): stinger = 'Dual Credit Scenes'
+		else: stinger = next((v for k, v in stingers.items() if k in keywords), None)
+		if stinger: kodi_utils.notification(stinger, time=6000, icon=poster)
+
 	def episode_handler(self):
 		for _ in range(150):
 			total_time = False
@@ -193,47 +231,6 @@ class POVPlayer(MediaPlayer):
 				self.title, self.season, self.episode
 			)
 		except: pass
-
-	def stinger_notification(self, tmdb_id, poster):
-		if not tmdb_id: return
-		from indexers import tmdb_api
-		stingers = {'duringcreditsstinger': 'During Credit Scene', 'aftercreditsstinger': 'After Credit Scene'}
-		keywords = tmdb_api.movie_keywords(tmdb_id) or []
-		keywords = {str(i['name']) for i in keywords}
-		if all((i in keywords for i in stingers.keys())): stinger = 'Dual Credit Scenes'
-		else: stinger = next((v for k, v in stingers.items() if k in keywords), None)
-		if stinger: kodi_utils.notification(stinger, time=6000, icon=poster)
-
-	def bookmarkPOV(self):
-		bookmark = 0
-		watched_indicators = settings.watched_indicators()
-		bookmarks = ws.get_bookmarks(watched_indicators, self.mediatype)
-		try: resume_point, curr_time, resume_id = ws.detect_bookmark(bookmarks, self.tmdb_id, self.season, self.episode)
-		except: resume_point, curr_time = 0, 0
-		resume_check = float(resume_point)
-		if resume_check > 0:
-			percent = str(resume_point)
-			raw_time = float(curr_time)
-			if watched_indicators in (1, 2): resume_point = '%s%%' % str(percent)
-			else: resume_point = sec2time(raw_time, n_msec=0)
-			bookmark = self.getResumeStatus(resume_point, percent, bookmark)
-			if bookmark == 0: ws.erase_bookmark(self.mediatype, self.tmdb_id, self.season, self.episode)
-		return bookmark
-
-	def getResumeStatus(self, resume_point, percent, bookmark):
-		if settings.auto_resume(self.mediatype): return percent
-		choice = open_window(
-			('windows.progress', 'ProgressMedia'),
-			'progress_media.xml',
-			meta=self.meta,
-			text=resumept_str % resume_point,
-			enable_buttons=True,
-			true_button=resume_str,
-			false_button=start_str,
-			focus_button=10,
-			percent=percent
-		)
-		return percent if choice is True else bookmark if choice is False else 'cancel'
 
 	def exec_task(self, task_name, *args):
 		try:

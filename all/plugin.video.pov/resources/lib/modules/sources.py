@@ -1,6 +1,7 @@
 import re
 import json
 import time
+import importlib, pkgutil
 from concurrent.futures import ThreadPoolExecutor as TPE, as_completed
 from threading import Thread
 from magneto import sources as magneto_sources
@@ -143,9 +144,9 @@ class Sources:
 		if self.progress_dialog.full_screen: self.progress_dialog.make(self.meta)
 		else: progressDialogBG.create('POV', 'POV loading...')
 		while not monitor.abortRequested() and time.monotonic() <= end_time:
+			alive_threads = [x.name for x in threads_list if x.is_alive()]
+			if not alive_threads: break
 			try:
-				alive_threads = [x.name for x in threads_list if x.is_alive()]
-				if not alive_threads: break
 				self.results_processor.process_internal_results()
 				int_totals = [_total_format % v for v in self.internal_resolutions.values()]
 				current_progress = time.monotonic() - start_time
@@ -418,12 +419,13 @@ class ScraperProcessor:
 		self.prepare_internal(prescrape)
 		append = self.source.prescrape_scrapers.append if prescrape else self.source.providers.append
 		source_path = kodi_utils.translate_path(kodi_utils.internal_path)
-		for loader, module_name, is_pkg in __import__('pkgutil').iter_modules([source_path]):
+		for loader, module_name, is_pkg in pkgutil.iter_modules([source_path]):
 			if is_pkg: continue
 			if module_name not in self.source.active_internal_scrapers: continue
 			if prescrape and not check_prescrape_sources(module_name, self.source.mediatype): continue
-			try: append(('internal', loader.find_spec(module_name).loader.load_module(module_name).source, module_name))
+			try: module_source = importlib.import_module('.' + module_name, package='debrids').source
 			except Exception as e: kodi_utils.logger('POV', 'Error: Loading module: "%s": %s' % (module_name, e))
+			else: append(('internal', module_source, module_name))
 
 	def activate_external(self):
 		self.source.external_providers = []

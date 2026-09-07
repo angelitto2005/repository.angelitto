@@ -220,8 +220,12 @@ class DebridCheck:
 			unchecked_hashes = [i for i in self.hash_list if i not in unchecked_filter]
 			if not unchecked_hashes: return self.cached_list
 			if self.debrid in ('rd', 'realdebrid'):
-				# removed dmm_check_cache, 403 Forbidden
-				checked_hashes = realdebrid_api.tio_check_cache(self.imdb, self.season, self.episode)
+				checked_hashes = []
+				args = unchecked_hashes, self.imdb, self.season, self.episode, checked_hashes
+				thread = Thread(target=realdebrid_api.dmm_check_cache, args=args)
+				thread.start()
+				realdebrid_api.tio_check_cache(*args)
+				thread.join()
 			elif self.debrid in ('ad', 'alldebrid'):
 				checked_hashes = alldebrid_api.aio_check_cache(self.imdb, self.season, self.episode)
 			else: checked_hashes = self.function().check_cache(unchecked_hashes)
