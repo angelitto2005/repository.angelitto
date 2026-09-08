@@ -47,7 +47,7 @@ ROMANIAN_LANG_CODES = ['rum', 'ro', 'ron', 'romanian']
 # CODURI PENTRU SUBTITRARI NECUNOSCUTE/EXTERNE
 # ==============================================================================
 UNKNOWN_EXTERNAL_CODES = ['und', 'unk', '', 'None', '(External)', 'External', 'external', 'Unknown', 'unknown']
-EXTERNAL_ONLY_CODES = ['', '(External)', 'External', 'external']
+EXTERNAL_ONLY_CODES = ['', '(External)', '(extern)', 'External', 'external', 'extern']
 
 # ==============================================================================
 # MOD SUBSTUDIO - OPENSUBTITLES (REST, ca TMDb Movies / SubStudio)
@@ -181,7 +181,8 @@ class AutoSubsPlayer(xbmc.Player):
         # Daca exista deja vreo subtitrare incarcata (orice limba: unknown, EN, RO, DE, etc.),
         # o acceptam si nu mai cautam online. Subtitrarea ramane exact cum a lasat-o Kodi.
         accept_external = __addon__.getSetting('accept_any_external') == 'true'
-        external_streams = [l for l in availableLangs if l in EXTERNAL_ONLY_CODES]
+        _external_lower = set(str(c).lower() for c in EXTERNAL_ONLY_CODES)
+        external_streams = [l for l in availableLangs if str(l).lower() in _external_lower]
         if accept_external and external_streams:
             log("accept_any_external: subtitrare externa detectata %s (toate fluxurile: %s) - nu mai cautam online" % (external_streams, availableLangs))
             # NOTIFICARE NOUA - doar pentru optiunea accept_any_external
