@@ -266,7 +266,7 @@ class SIMKLAPI:
         else:
             # Simkl NU suporta rating de episod/sezon (RatingItem are doar
             # rating/rated_at/ids; nested seasons -> not_found, flat episodes ->
-            # ignorat silențios — verificat live + schema OpenAPI). Ratingul pe
+            # ignorat silentios — verificat live + schema OpenAPI). Ratingul pe
             # episod/sezon se aplica SHOW-ului parinte.
             # type='tv' obligatoriu la tmdb pt TV (docs: "tmdb — for TV, specify
             # type") — fara el, id-urile cu coliziune movie/show (ex. 97546 =
@@ -390,7 +390,7 @@ class SIMKLAPI:
         Formatul real (verificat live 2026-08-19): DELETE /sync/playback/{id}
         cu id-ul luat din GET /sync/playback — endpoint-ul vechi
         POST /sync/playback/remove nu mai exista (404 url_failed pe orice
-        payload). Se potrivește sesiunea dupa show/movie ids.tmdb +
+        payload). Se potriveste sesiunea dupa show/movie ids.tmdb +
         season/episode din raspuns."""
         try:
             playbacks = self._get('sync/playback')
@@ -437,7 +437,7 @@ class SIMKLAPI:
             # FORMATUL REAL al API-ului (verificat live 2026-08-19): episodul
             # se trimite ca seasons[].episodes[] (ca la sync/history), NU ca
             # show.season nested — show.season -> 404 id_err, top-level season
-            # -> 201 dar rezolva greșit (S1E4 pentru Reacher S4E4).
+            # -> 201 dar rezolva gresit (S1E4 pentru Reacher S4E4).
             body['show'] = {'ids': {'tmdb': int(tmdb_id)}}
             if season is not None and episode is not None:
                 body['show']['seasons'] = [{'number': int(season),
@@ -598,7 +598,7 @@ def simkl_revoke():
     api = SIMKLAPI()
     if api.is_authenticated():
         api.revoke_token()
-    ADDON.setSetting('simkl_status', '')
+    ADDON.setSetting('simkl_status', 'Disconnected')
     try:
         simkl_sync.clear_all_local_data()
     except:

@@ -3570,6 +3570,15 @@ def trakt_calendar(params):
     set_fast_cache(cache_key, final_cache)
 
 
+def _fmt_dhm(total_minutes):
+    try:
+        total_minutes = int(total_minutes or 0)
+    except:
+        total_minutes = 0
+    days, rem = divmod(total_minutes, 1440)
+    hours, minutes = divmod(rem, 60)
+    return f"{days} days {hours} hours {minutes} minutes"
+
 def trakt_account_info():
     """Afiseaza informatii despre contul Trakt intr-un dialog text."""
     try:
@@ -3632,6 +3641,7 @@ def trakt_account_info():
         wl_now = wl_movies = wl_shows = 0
         fav_now = fav_movies = fav_shows = 0
         lst_items_total = lst_movies = lst_shows = 0
+        hist_m = hist_s = 0
         try:
             from resources.lib import trakt_sync
             conn = trakt_sync.get_connection()
@@ -3657,6 +3667,10 @@ def trakt_account_info():
             fav_movies = c.fetchone()[0] or 0
             c.execute("SELECT COUNT(*) FROM trakt_favorites WHERE media_type='show'")
             fav_shows = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(*) FROM trakt_watched_movies")
+            hist_m = c.fetchone()[0] or 0
+            c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM trakt_watched_episodes")
+            hist_s = c.fetchone()[0] or 0
             conn.close()
         except: pass
 
@@ -3692,8 +3706,9 @@ def trakt_account_info():
             body.append(f'  Recommendations: {val(rec_lim)}')
         if dropped_cnt:
             body.append(f'  Dropped Shows: {val(dropped_cnt)}')
+        body.append(f'  History: {val(hist_m)} movies, {val(hist_s)} shows')
 
-        if stats:
+        if isinstance(stats, dict):
             movies = stats.get('movies', {})
             shows = stats.get('shows', {})
             episodes = stats.get('episodes', {})
@@ -3701,13 +3716,13 @@ def trakt_account_info():
 
             body.append('')
             body.append(section('--- Movies ---'))
-            body.append(f'  Collected: {val(movies.get("collected", 0))}  |  Watched: {val(movies.get("watched", 0))}  |  Hours: {val(movies.get("minutes", 0) // 60)}')
+            body.append(f'  Collected: {val(movies.get("collected", 0))}  |  Watched: {val(movies.get("watched", 0))} for {val(_fmt_dhm(movies.get("minutes", 0)))}')
             
             body.append(section('--- Shows ---'))
             body.append(f'  Collected: {val(shows.get("collected", 0))}  |  Watched: {val(shows.get("watched", 0))}')
             
             body.append(section('--- Episodes ---'))
-            body.append(f'  Watched: {val(episodes.get("watched", 0))}  |  Hours: {val(episodes.get("minutes", 0) // 60)}')
+            body.append(f'  Watched: {val(episodes.get("watched", 0))} for {val(_fmt_dhm(episodes.get("minutes", 0)))}')
             
             body.append(section('--- Ratings Given ---'))
             body.append(f'  Total: {val(ratings.get("total", 0))}')

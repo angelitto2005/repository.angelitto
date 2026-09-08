@@ -16,6 +16,19 @@ _addon = None
 _handle = None
 _profile = None
 _art_path = None
+_simkl_status_migrated = False
+
+def _migrate_simkl_status():
+    global _simkl_status_migrated
+    if _simkl_status_migrated:
+        return
+    _simkl_status_migrated = True
+    try:
+        _a = get_addon()
+        if _a.getSetting('simkl_status') == '' and not _a.getSetting('simkl_access_token'):
+            _a.setSetting('simkl_status', 'Disconnected')
+    except:
+        pass
 
 def get_addon():
     global _addon
@@ -100,7 +113,7 @@ def build_fast_menu(items, content_type='', no_cache=False):
         if mode == 'next_episodes':
             try:
                 from resources.lib.watched_provider import get_color as _get_prov_color
-                li.setLabel('[B][COLOR {}]Next Episodes[/COLOR][/B]'.format(_get_prov_color()))
+                li.setLabel('[B][COLOR {}]UP NEXT[/COLOR][/B]'.format(_get_prov_color()))
             except Exception:
                 pass
         if mode in ('in_progress_movies', 'in_progress_tvshows', 'in_progress_episodes'):
@@ -291,6 +304,7 @@ def run_plugin():
     params = get_params()
     mode = params.get('mode')
     handle = get_handle()
+    _migrate_simkl_status()
 
     # Sync HANDLE across modules if already imported (stale copies with reuselanguageinvoker)
     if 'resources.lib.config' in sys.modules:

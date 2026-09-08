@@ -7,7 +7,7 @@ pastrand datele originale de vizionare (watched_at) si fara rewatched
 (itemele deja vizionate in destinatie sunt sarite).
 
 Flow:
-  1. Fetch istoric SURSĂ din API (nu din baza locala a addonului).
+  1. Fetch istoric SURSA din API (nu din baza locala a addonului).
   2. Fetch istoric DESTINATIE din API (skip-sets: filme pe tmdb_id,
      episoade pe (tmdb_id, season, episode)).
   3. Push in chunk-uri de max 150 itemi (limita MDBList = 200/request).
@@ -47,7 +47,7 @@ def _now_iso():
 
 
 # =============================================================================
-# FETCH SURSĂ/DESTINATIE (direct din API)
+# FETCH SURSA/DESTINATIE (direct din API)
 # =============================================================================
 
 def _fetch_trakt_history():

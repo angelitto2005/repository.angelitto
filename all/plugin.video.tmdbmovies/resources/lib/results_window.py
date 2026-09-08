@@ -71,7 +71,7 @@ AUDIO_PATTERNS = [
 
 _SEEDERS_RE = _cached_re(r'(?:👤|👥|S:)\s*(\d+)')
 _COLOR_STRIP_RE = _cached_re(r'\[/?COLOR.*?\]')
-_RO_DUB_RE = _cached_re(r'(?i)(?:\bRO[\s._-]?DUB(?:BED)?\b|\bROMANIAN\b|\bLIMBA.?ROM[ÂA]NA?\b|\(RO\)|\[RO\]|\bRO\b.*?\bDUB(?:BED)?\b)')
+_RO_DUB_RE = _cached_re(r'(?i)(?:\bRO[\s._-]?DUB(?:BED)?\b|\bROMANIAN\b|\bLIMBA.?ROM[\u00c2A]NA?\b|\(RO\)|\[RO\]|\bRO\b.*?\bDUB(?:BED)?\b)')
 
 # === AIO STREAMS DICTS ===
 AIO_ADDON_COLORS = {

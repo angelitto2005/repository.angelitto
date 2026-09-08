@@ -113,7 +113,7 @@ tvshow_list = [
     {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'tv'},
     {'name': 'In Progress TV Shows', 'iconImage': 'in_progress_tvshow.png', 'mode': 'in_progress_tvshows', 'action': 'noop'},
     {'name': 'In Progress Episodes', 'iconImage': 'player.png', 'mode': 'in_progress_episodes', 'action': 'noop'},
-    {'name': 'Next Episodes', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'},
+    {'name': 'UP NEXT', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes', 'action': 'noop'},
     {'name': '[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_up_next', 'action': 'noop'}
 ]
 
@@ -245,7 +245,7 @@ hindi_movies_list = [
 
 # Meniul Trakt Principal (NOU)
 trakt_main_list = [
-    {'name': '[B][COLOR FFFF69B4]Next Episodes[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
+    {'name': '[B][COLOR FFFF69B4]UP NEXT[/COLOR][/B]', 'iconImage': 'next_episodes.png', 'mode': 'next_episodes'},
     {'name': '[B][COLOR FFCCCCFF]Public Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_public_lists_menu'},
     {'name': '[B][COLOR FFCCCCFF]Personal Lists[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_my_lists'},
     {'name': '[B][COLOR FFCCCCFF]Calendar[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_calendar_menu'}

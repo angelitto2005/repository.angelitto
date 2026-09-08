@@ -4217,7 +4217,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     for initial, service in DEBRID_INITIALS.items():
         if f'[{initial}' in name_upper:
             debrid_service = service
-            is_cached = f'[{initial}+]' in name_upper
+            is_cached = re.search(r'\[%s(?:\+|\u26a1\ufe0f?|\U0001f329\ufe0f?)\]' % initial, name_upper) is not None
             break
     if debrid_service and not is_cached and provider_id == 'torz' and '⚡️' in raw_name:
         is_cached = True
@@ -6951,7 +6951,7 @@ def _speedapp_get_channel_ids(session, auth_headers):
     with _speedapp_channel_lock:
         if _speedapp_channel_ids is not None:
             return _speedapp_channel_ids
-        channels = {1, 2, 3, 6, 8, 11, 14, 15, 16, 49, 52}  # cauta ”getrss?channels” in sursa paginii pentru id canal
+        channels = {1, 2, 3, 6, 8, 11, 14, 15, 16, 49, 52}  # cauta "getrss?channels" in sursa paginii pentru id canal
         try:
             pub = session.get('https://speedapp.io/api/channel', headers=auth_headers, timeout=10)
             if pub.status_code == 200:

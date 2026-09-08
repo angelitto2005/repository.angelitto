@@ -1,3 +1,7 @@
+1.1.268
+- Fixed Comet cached detection and cleaned up corrupted unicode characters in progress messages and stream parsing patterns
+- Fix some minor visual enhancements
+
 1.1.267
 - Improved release group detection
 

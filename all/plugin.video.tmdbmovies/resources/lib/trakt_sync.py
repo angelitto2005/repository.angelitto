@@ -3472,8 +3472,7 @@ def sync_tmdb_up_next(c):
         show_map = {}
         def _fetch_show(tid):
             try:
-                skip = tid in wl_ids
-                return tid, tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=skip)
+                return tid, tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True)
             except:
                 return tid, None
 
@@ -3484,7 +3483,7 @@ def sync_tmdb_up_next(c):
                 tid, data = f.result()
                 if data:
                     show_map[tid] = data
-        log(f"[TMDB SYNC] Up Next show_details: {len(show_map)}/{len(all_tids)} in {time.time() - t_show_start:.1f}s (10 workers, lightweight, wl EN-only, pool localized)")
+        log(f"[TMDB SYNC] Up Next show_details: {len(show_map)}/{len(all_tids)} in {time.time() - t_show_start:.1f}s (10 workers, lightweight, localized)")
 
         pending = []
         for row in wl_rows:

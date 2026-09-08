@@ -1770,10 +1770,10 @@ def tmdb_auth():
         except:
             url_display = url_full
         
-        # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+        # ----------------------------------------------------------------------------------------------------
         # QR CODE AUTH (stil Umbrella) — dialog custom cu QR + cod
         # doModal() pe MAIN THREAD (input garantat); polling in background
-        # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+        # ----------------------------------------------------------------------------------------------------
         import threading
         from resources.lib.utils import make_qr
         from resources.lib.auth_dialog import QRProgressDialog, run_modal_main_thread
@@ -1861,13 +1861,13 @@ def tmdb_auth():
             ADDON.setSetting('tmdb_status', f"Connected: {username}")
             dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
             
-            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+            # ----------------------------------------------------------------------------------------------------
             # ADAUGAT: Actualizare automata a listelor (inclusiv seriale v4)
-            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+            # ----------------------------------------------------------------------------------------------------
             t = threading.Thread(target=trakt_sync.sync_full_library, kwargs={'silent': False, 'force': True})
             t.daemon = True
             t.start()
-            # a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•a•
+            # ----------------------------------------------------------------------------------------------------
         elif pdialog.expired:
             dialog.notification("TMDb", "Request expired. Try again.", xbmcgui.NOTIFICATION_ERROR)
         elif not pdialog.iscanceled():
@@ -6012,7 +6012,9 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
         try:
             existing = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
             should_store = True
-            if existing and existing.get('_cached_lang') == data.get('_cached_lang'):
+            if existing and existing.get('_cached_lang') not in ('en', None) and data.get('_cached_lang') == 'en' and skip_localization:
+                should_store = False
+            elif existing and existing.get('_cached_lang') == data.get('_cached_lang'):
                 if not lightweight and existing.get('_lightweight'):
                     should_store = True
                 elif lightweight and not existing.get('_lightweight'):
@@ -7038,19 +7040,33 @@ def get_next_episodes(params=None):
     # Prefetch-ul ramane pentru viteza (Trage detaliile serialelor in paralel)
     prefetch_metadata_parallel(items, 'tv')
 
-    # =========================================================================
-    # Season prefetch (foloseste get_smart_season_details pentru EN fallback)
-    # =========================================================================
-    from concurrent.futures import ThreadPoolExecutor
-    def _prefetch_season_worker(it):
-        if not xbmc.Monitor().abortRequested():
+    # Incalzire cache-uri show+season in paralel, cu deadline: prima intrare
+    # cu cache gol facea zeci de HTTP secventiale in bucla de mai jos (~15s).
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def _warm_up_next_worker(it):
+        try:
+            if xbmc.Monitor().abortRequested():
+                return
+            get_tmdb_item_details(str(it['tmdb_id']), 'tv', lightweight=True)
+        except:
+            pass
+        try:
+            if xbmc.Monitor().abortRequested():
+                return
             get_smart_season_details(str(it['tmdb_id']), it['season'])
-    executor = ThreadPoolExecutor(max_workers=5)
-    for it in items:
-        if not xbmc.Monitor().abortRequested():
-            executor.submit(_prefetch_season_worker, it)
-    executor.shutdown(wait=False)
-    # =========================================================================
+        except:
+            pass
+    _warm_ex = ThreadPoolExecutor(max_workers=10)
+    try:
+        _warm_futs = [_warm_ex.submit(_warm_up_next_worker, it) for it in items]
+        for _f in as_completed(_warm_futs, timeout=10):
+            pass
+    except:
+        pass
+    try:
+        _warm_ex.shutdown(wait=False)
+    except:
+        pass
 
     items_to_add = []
     cache_list = []

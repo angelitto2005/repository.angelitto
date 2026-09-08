@@ -496,7 +496,7 @@ def _tmdb_next_unwatched(tid, fallback_season=0):
 
 def get_watched_episodes_count(tmdb_id):
     """Numara doar episoadele individual marcate (fara fallback).
-    Exclude rândurile marker (season=0, episode=0) — ramasite din vechiul
+    Exclude randurile marker (season=0, episode=0) — ramasite din vechiul
     format care falsificau count-ul (Lioness 17/24 in loc de 16/24)."""
     _ensure_db()
     if not os.path.exists(DB_PATH):
@@ -1011,7 +1011,7 @@ def sync_full_library(silent=False, force=False):
                 _sync_all_items_delta(api, last_date)
             else:
                 # ---- Phase 1 (initial sau force=True: full sync cu DELETE mirror) ----
-                # force trebuie sa faca full: delta nu sterge rândurile locale
+                # force trebuie sa faca full: delta nu sterge randurile locale
                 # care nu mai sunt pe server (ex. filme un-watched pe site).
                 _sync_watched_phase1(api)
             set_sync_meta('last_sync_date', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'))
@@ -1061,9 +1061,9 @@ def _sync_watched_phase1(api):
 
     /sync/shows + /sync/movies + /sync/anime sunt RETRASE de Simkl (200 null
     indiferent de parametri, verificat live) — totul vine din all-items acum.
-    DELETE mirror la inceput (paritate cu trakt_sync/mdblist_sync): rândurile
+    DELETE mirror la inceput (paritate cu trakt_sync/mdblist_sync): randurile
     locale care nu mai sunt pe server se sterg — altfel raman watched la infinit
-    (bug-ul Lioness 17/24: rândul marker (0,0) vechi ramanea dupa ce serverul
+    (bug-ul Lioness 17/24: randul marker (0,0) vechi ramanea dupa ce serverul
     a inceput sa trimita seasons)."""
     xbmc.log('[SIMKL] Phase 1: full sync (all-items, no date_from)', xbmc.LOGINFO)
     data = api.get_all_items(None)
@@ -1098,7 +1098,7 @@ def _store_watched_shows(data):
     Reguli (verificate live pe all-items, cont real):
     - seriale cu seasons enumerate -> episoadele watched marcate individual.
     - seriale FARA seasons + w >= aired (complet vizionate) -> marker in
-      simkl_fully_watched_shows (NU rând (0,0) in watched_episodes — rândul
+      simkl_fully_watched_shows (NU rand (0,0) in watched_episodes — randul
       (0,0) falsifica get_watched_episodes_count, ex. Lioness 17/24 in loc de
       16/24).
     - seriale FARA seasons + w < aired (ex. Vikings 9/89, Quantico 22/57 —
@@ -1106,7 +1106,7 @@ def _store_watched_shows(data):
       episoade individuale -> skip (fara falsuri).
     - seriale FARA seasons + w=0 (doar in watchlist plantowatch/watching —
       98 cazuri live) -> NU sunt watched -> skip complet (inainte primeau
-      rând (0,0) cu last_watched_at=now -> fals pozitiv)."""
+      rand (0,0) cu last_watched_at=now -> fals pozitiv)."""
     conn = get_connection()
     c = conn.cursor()
     try:
@@ -1383,19 +1383,16 @@ def _precache_up_next():
         items = get_next_episodes_from_db()
         if not items:
             return
-        from concurrent.futures import ThreadPoolExecutor
-        def _worker(it):
-            try:
-                from resources.lib.tmdb_api import get_smart_season_details
-                get_smart_season_details(str(it['tmdb_id']), it['season'])
-            except:
+        from resources.lib.tmdb_api import get_smart_season_details, prefetch_metadata_parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        prefetch_metadata_parallel([{'id': str(i['tmdb_id']), 'media_type': 'tv'} for i in items], 'tv')
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(get_smart_season_details, str(i['tmdb_id']), i['season']): i for i in items}
+            for f in as_completed(futures):
                 pass
-        executor = ThreadPoolExecutor(max_workers=3)
-        for it in items[:10]:
-            executor.submit(_worker, it)
-        executor.shutdown(wait=False)
-    except:
-        pass
+        xbmc.log(f'[SIMKL] Pre-cached {len(items)} show+season details for Up Next', xbmc.LOGINFO)
+    except Exception as e:
+        xbmc.log(f'[SIMKL] Up Next pre-cache error: {e}', xbmc.LOGERROR)
 
 def get_next_episodes_from_db():
     """Toate serialele Up Next din DB local (paritate cu mdblist)."""
@@ -1499,7 +1496,7 @@ def _sync_ratings(api):
                         rows.append((tmdb_id, 'episode', int(season.get('number') or 0),
                                      int(ep.get('number') or 0), ep_rating, ep_rated_at))
         if rows:
-            # Upsert din GET — NU stergem rândurile care lipsesc din raspuns:
+            # Upsert din GET — NU stergem randurile care lipsesc din raspuns:
             # filmele/serialele inexistente in baza Simkl (POST 201 dar lipsesc
             # din GET — verificat live) raman ca marcaje de import in tabela
             # locala; altfel re-importul le retrimite la fiecare rulare.
