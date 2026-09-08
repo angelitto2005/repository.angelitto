@@ -1409,25 +1409,20 @@ def _extract_quality_from_string(text):
 
 def _is_web_source(text):
     """
-    Filtreaza daca textul contine: 
-    - webrip, bdrip, hdrip, dvdrip
-    - web-dl, web dl, web.dl (including with rip at the end)
-    - bluray.x264, hdtv.x264, hdtv.xvid, web.x264, web.h264
-    
-    Completely ignores single words (e.g. just 'bluray', just 'x264', just 'web').
+    Mirror Real-Debrid server-side filename filter (DMM-tested on thousands of releases):
+    Type 1: substrings web-dl|webrip|bdrip|hdrip|dvdrip (case-insensitive, anywhere).
+    Type 2: dot-adjacent source.codec: BluRay.x264, HDTV.x264|XviD, WEB.x264|h264.
+    Anything else (WEBDL, .WEB.h265, WEB.RIP, HDTV.h264, BluRay.x265...) passes on RD.
     """
     if not text:
         return False
-    
-    # Am adaugat noile combinatii folosind \. pentru a reprezenta exact punctul.
-    pattern = (
-        r'webrip|bdrip|hdrip|dvdrip|web[- .]dl(rip)?|'
-        r'bluray\.x264|hdtv\.x264|hdtv\.xvid|web\.x264|web\.h264'
-    )
-    
-    if re.search(pattern, text, re.IGNORECASE):
+    t = text.lower()
+    if 'web-dl' in t or 'webrip' in t or 'bdrip' in t or 'hdrip' in t or 'dvdrip' in t:
         return True
-        
+    pattern = r'bluray\.x264|hdtv\.(?:x264|xvid)|web\.(?:x264|h264)'
+    if re.search(pattern, text.lower()):
+        return True
+
     return False
 
 

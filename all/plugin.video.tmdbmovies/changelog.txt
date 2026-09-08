@@ -1,3 +1,6 @@
+1.1.269
+- Mirrored Real-Debrid's exact filename filters for the WEB RD-only option
+
 1.1.268
 - Fixed Comet cached detection and cleaned up corrupted unicode characters in progress messages and stream parsing patterns
 - Fix some minor visual enhancements
