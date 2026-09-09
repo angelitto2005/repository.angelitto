@@ -1,3 +1,7 @@
+1.1.270
+- Fixed Trakt watchlist sync cut off at 100 items: list endpoints are now fully paginated
+- Fixed Trakt discovery lists repeating the same items across periods; added Most Played and Most Favorited menus
+
 1.1.269
 - Mirrored Real-Debrid's exact filename filters for the WEB RD-only option
 

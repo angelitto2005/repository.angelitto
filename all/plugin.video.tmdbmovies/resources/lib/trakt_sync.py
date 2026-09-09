@@ -664,7 +664,7 @@ def _sync_list_content(c, ltype):
     from resources.lib import trakt_api
     
     for m in ['movies', 'shows']:
-        data = trakt_api.trakt_api_request(f"/sync/{ltype}/{m}", params={'extended': 'full,images'})
+        data = trakt_api._get_trakt_paginated_list(f"/sync/{ltype}/{m}", params={'extended': 'full,images'})
         if not data or not isinstance(data, list): continue
         db_type = 'movie' if m == 'movies' else 'show'
         c.execute("DELETE FROM trakt_lists WHERE list_type=? AND media_type=?", (ltype, db_type))
@@ -712,7 +712,7 @@ def _sync_user_lists(c, force=False):
         try: c.execute("ALTER TABLE user_lists ADD COLUMN poster_tmdb_id TEXT")
         except: pass
 
-    remote_lists = trakt_api.trakt_api_request(f"/users/{user}/lists")
+    remote_lists = trakt_api._get_trakt_paginated_list(f"/users/{user}/lists")
     if not remote_lists or not isinstance(remote_lists, list): return
     
     try:
@@ -738,7 +738,7 @@ def _sync_user_lists(c, force=False):
         items_data = None
         if should_sync:
             log(f"[TRAKT SYNC] Parallel Fetch Trakt List: {name}")
-            items_data = trakt_api.trakt_api_request(f"/users/{user}/lists/{slug}/items", params={'extended': 'full,images'})
+            items_data = trakt_api._get_trakt_paginated_list(f"/users/{user}/lists/{slug}/items", params={'extended': 'full,images'})
             
         return {
             'header': (trakt_id, name, slug, remote_item_count, lst.get('sort_by'), lst.get('sort_how'), lst.get('description', '') or '', remote_updated_at),
@@ -813,7 +813,7 @@ def _sync_playback(c):
     import datetime
     
     # 1. Cerem datele de la Trakt
-    data = trakt_api.trakt_api_request("/sync/playback", params={'limit': 100, 'extended': 'full'})
+    data = trakt_api._get_trakt_paginated_list("/sync/playback", params={'extended': 'full'})
     if not data or not isinstance(data, list): 
         return
     
@@ -2761,7 +2761,7 @@ def _sync_trakt_favorites(c):
     """Sincronizeaza Favoritele Trakt (inimioara)."""
     from resources.lib import trakt_api
     
-    data = trakt_api.trakt_api_request("/users/me/favorites", params={'extended': 'full,images'})
+    data = trakt_api._get_trakt_paginated_list("/users/me/favorites", params={'extended': 'full,images'})
     if not data or not isinstance(data, list): return
 
     c.execute("DELETE FROM trakt_favorites")

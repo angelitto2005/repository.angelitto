@@ -265,6 +265,8 @@ trakt_movies_list = [
     {'name': 'Popular Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'movies'},
     {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'movies'},
     {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'movies'},
+    {'name': 'Most Played', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'played', 'media_type': 'movies'},
+    {'name': 'Most Favorited', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'favorited', 'media_type': 'movies'},
     {'name': 'Anticipated Movies', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'movies'},
     {'name': 'Top 10 Box Office', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'boxoffice', 'media_type': 'movies'}
 ]
@@ -275,6 +277,8 @@ trakt_tv_list = [
     {'name': 'Popular TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'popular', 'media_type': 'shows'},
     {'name': 'Most Collected', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'collected', 'media_type': 'shows'},
     {'name': 'Most Watched', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'watched', 'media_type': 'shows'},
+    {'name': 'Most Played', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'played', 'media_type': 'shows'},
+    {'name': 'Most Favorited', 'iconImage': 'trakt.png', 'mode': 'trakt_period_dialog', 'list_type': 'favorited', 'media_type': 'shows'},
     {'name': 'Anticipated TV Shows', 'iconImage': 'trakt.png', 'mode': 'trakt_discovery_list', 'list_type': 'anticipated', 'media_type': 'shows'}
 ]
 

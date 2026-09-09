@@ -664,7 +664,7 @@ def _item_title(tmdb_id, media_type):
 
 def get_trakt_watchlist(media_type='movies'):
 
-    return trakt_api_request(f"/sync/watchlist/{media_type}", params={'extended': 'full'})
+    return _get_trakt_paginated_list(f"/sync/watchlist/{media_type}", params={'extended': 'full'})
 
 def add_to_trakt_watchlist(tmdb_id, media_type, notify=True):
     from resources.lib import trakt_sync
@@ -882,7 +882,7 @@ def get_trakt_user_lists():
     username = get_trakt_username()
     if not username:
         return []
-    return trakt_api_request(f"/users/{username}/lists") or []
+    return _get_trakt_paginated_list(f"/users/{username}/lists") or []
 
 def get_trakt_list_items(list_slug, username=None):
 
@@ -890,7 +890,7 @@ def get_trakt_list_items(list_slug, username=None):
         username = get_trakt_username()
     if not username:
         return []
-    return trakt_api_request(f"/users/{username}/lists/{list_slug}/items", params={'extended': 'full'}) or []
+    return _get_trakt_paginated_list(f"/users/{username}/lists/{list_slug}/items", params={'extended': 'full'}) or []
 
 def add_to_trakt_list(list_slug, tmdb_id, media_type):
     username = get_trakt_username()
@@ -1013,7 +1013,7 @@ def get_trakt_history(media_type='movies', limit=50, page=1):
 
 def get_trakt_playback_progress():
 
-    return trakt_api_request("/sync/playback", params={'extended': 'full'})
+    return _get_trakt_paginated_list("/sync/playback", params={'extended': 'full'})
 
 
 # ===================== TRAKT DISCOVER =====================
@@ -1091,9 +1091,9 @@ def get_trakt_hidden_calendar_shows():
         'slug': set()
     }
     try:
-        result = trakt_api_request(
+        result = _get_trakt_paginated_list(
             '/users/hidden/calendar',
-            params={'type': 'show', 'limit': 500}
+            params={'type': 'show'}
         )
         if result and isinstance(result, list):
             for item in result:
@@ -1474,7 +1474,7 @@ def remove_from_progress(tmdb_id, content_type, season=None, episode=None):
     res_std = False
     try:
         log(f"[REMOVE] Looking for playback session on Trakt to delete...")
-        playback_data = trakt_api_request("/sync/playback")
+        playback_data = _get_trakt_paginated_list("/sync/playback", params={'extended': 'full'})
         playback_id = None
         
         if playback_data and isinstance(playback_data, list):
@@ -1989,9 +1989,10 @@ def trakt_discovery_list(params):
     list_type = params.get('list_type')
     media_type = params.get('media_type', 'movies')
     page = int(params.get('page', '1'))
-    
+    period = params.get('period', 'all')
+
     # --- 1. FAST CACHE CHECK (RAM) ---
-    cache_key = f"list_{media_type}_{list_type}_{page}"
+    cache_key = f"list_{media_type}_{list_type}_{period}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -2017,14 +2018,13 @@ def trakt_discovery_list(params):
         elif list_type == 'boxoffice': 
             api_data = get_trakt_box_office()
         elif list_type == 'collected':
-            period = params.get('period', 'all')
             api_data = get_trakt_most_collected(media_type, period, 500)
         elif list_type == 'watched':
-            period = params.get('period', 'all')
             api_data = get_trakt_most_watched(media_type, period, 500)
         elif list_type == 'played':
-            period = params.get('period', 'all')
             api_data = get_trakt_most_played(media_type, period, 500)
+        elif list_type == 'favorited':
+            api_data = get_trakt_most_favorited(media_type, period, 500)
         
         if api_data:
             data = []
@@ -2087,7 +2087,7 @@ def trakt_discovery_list(params):
 
     if page < total_pages:
         next_label = f"[B]Next Page ({page+1}) >>[/B]"
-        next_params = {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'page': str(page + 1)}
+        next_params = {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'period': period, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
         items_to_add.append((next_url, next_li, True))
