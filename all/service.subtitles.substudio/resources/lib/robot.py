@@ -43,16 +43,16 @@ def _init_debug(addon):
 
 def _log_debug(msg):
     if _debug_enabled:
-        xbmc.log(f"ROBOT DEBUG: {msg}", xbmc.LOGINFO)
+        xbmc.log(f"ROBOT DEBUG: {msg}".replace("\x00", ""), xbmc.LOGINFO)
 
 def _log_info(msg):
-    xbmc.log(f"ROBOT: {msg}", xbmc.LOGINFO)
+    xbmc.log(f"ROBOT: {msg}".replace("\x00", ""), xbmc.LOGINFO)
 
 def _log_warn(msg):
-    xbmc.log(f"ROBOT: {msg}", xbmc.LOGWARNING)
+    xbmc.log(f"ROBOT: {msg}".replace("\x00", ""), xbmc.LOGWARNING)
 
 def _log_error(msg):
-    xbmc.log(f"ROBOT ERROR: {msg}", xbmc.LOGERROR)
+    xbmc.log(f"ROBOT ERROR: {msg}".replace("\x00", ""), xbmc.LOGERROR)
 
 # ═══════════════════════════════════════════════════════════════════
 #  NOTIFICATION HELPER
@@ -111,7 +111,7 @@ def parse_srt(content):
     if isinstance(content, bytes):
         content = content.decode('utf-8', errors='replace')
 
-    content = content.replace('\r\n', '\n').replace('\r', '\n')
+    content = content.replace('\r\n', '\n').replace('\r', '\n').replace('\x00', '')
     if content.startswith('\ufeff'):
         content = content[1:]
     content = content.strip() + '\n\n'
@@ -1281,9 +1281,25 @@ def format_time(td):
     s = total_seconds % 60
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
+def enforce_min_subtitle_gap(parsed_blocks):
+    min_gap = timedelta(milliseconds=50)
+    adjusted = 0
+    skipped = 0
+    for i in range(len(parsed_blocks) - 1):
+        curr = parsed_blocks[i]
+        nxt = parsed_blocks[i + 1]
+        if nxt['start'] - curr['end'] < min_gap:
+            new_end = nxt['start'] - min_gap
+            if new_end <= curr['start']:
+                skipped += 1
+                continue
+            curr['end'] = new_end
+            adjusted += 1
+    return adjusted, skipped
+
 def adjust_srt_durations(srt_content):
     # Normalize newlines
-    srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n').strip()
+    srt_content = srt_content.replace('\r\n', '\n').replace('\r', '\n').replace('\x00', '').strip()
     if not srt_content:
          return ""
          
@@ -1327,7 +1343,9 @@ def adjust_srt_durations(srt_content):
             if i < len(parsed_blocks) - 1 and parsed_blocks[i + 1]['start'] > sub['start'] and new_end >= parsed_blocks[i + 1]['start']:
                 new_end = parsed_blocks[i + 1]['start'] - timedelta(milliseconds=41)
             sub['end'] = min(new_end, sub['start'] + timedelta(milliseconds=MAX_DUR_MS))
-            
+
+    enforce_min_subtitle_gap(parsed_blocks)
+
     rebuilt_srt = ""
     for sub in parsed_blocks:
         start_str = format_time(sub['start'])
