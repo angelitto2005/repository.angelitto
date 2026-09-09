@@ -6322,7 +6322,7 @@ def in_progress_tvshows(params):
 
     # === 1. FAST CACHE CHECK (RAM) ===
     # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
-    LABEL_VERSION = "3"
+    LABEL_VERSION = "4"
     cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{show_future}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
@@ -6363,6 +6363,13 @@ def in_progress_tvshows(params):
     valid_shows = []
     for item in raw_items:
         tmdb_id = str(item['tmdb_id'])
+
+        if 'watched_count' in item and item.get('watched_count') is not None:
+            try:
+                if int(item.get('watched_count') or 0) == 0:
+                    continue
+            except:
+                pass
 
         # Aplicam regula 7 zile / TBA
         if not show_future:
