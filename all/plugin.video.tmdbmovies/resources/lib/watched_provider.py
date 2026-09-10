@@ -5,6 +5,7 @@ Dispatching intre Trakt si MDBList in functie de setarea watched_status_provider
 """
 
 import os
+import threading
 import xbmc
 import xbmcvfs
 
@@ -50,6 +51,160 @@ def refresh_ui():
     except:
         pass
 
+_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl')
+
+_WATCHED_MARK_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}
+
+_WATCHED_MARK_LABELS = {
+    'trakt': '[B][COLOR pink]Trakt[/COLOR][/B]',
+    'mdblist': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+    'simkl': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+}
+
+_WATCHED_MARK_TOGGLES = {
+    'trakt': 'watched_mark_trakt',
+    'mdblist': 'watched_mark_mdblist',
+    'simkl': 'watched_mark_simkl',
+}
+
+
+def _connected_mark_providers():
+    connected = []
+    try:
+        from resources.lib import trakt_api
+        if trakt_api.get_trakt_token():
+            connected.append('trakt')
+    except Exception:
+        pass
+    try:
+        from resources.lib import mdblist
+        if mdblist.is_authenticated():
+            connected.append('mdblist')
+    except Exception:
+        pass
+    try:
+        from resources.lib import simkl
+        if simkl.is_authenticated():
+            connected.append('simkl')
+    except Exception:
+        pass
+    return connected
+
+
+def _mark_targets():
+    try:
+        mode = ADDON.getSetting('watched_mark_mode') or '0'
+    except Exception:
+        mode = '0'
+    if mode not in ('1', '2'):
+        return None
+    connected = _connected_mark_providers()
+    if mode == '1':
+        targets = list(connected)
+    else:
+        targets = []
+        for prov in connected:
+            try:
+                if ADDON.getSetting(_WATCHED_MARK_TOGGLES[prov]) == 'true':
+                    targets.append(prov)
+            except Exception:
+                pass
+    prov = _get_provider_raw()
+    if prov in connected and prov not in targets:
+        targets.append(prov)
+    return [p for p in _WATCHED_MARK_PROVIDERS if p in targets]
+
+
+def _split_colored(word, provs):
+    n = len(provs)
+    base, extra = divmod(len(word), n)
+    out = ''
+    pos = 0
+    for i, p in enumerate(provs):
+        ln = base + (1 if i < extra else 0)
+        out += '[COLOR %s]%s[/COLOR]' % (_WATCHED_MARK_COLORS[p], word[pos:pos + ln])
+        pos += ln
+    return out
+
+
+def mark_menu_label(is_watched):
+    targets = _mark_targets()
+    if targets is None:
+        return None
+    ordered = [p for p in _WATCHED_MARK_PROVIDERS if p in targets]
+    if not ordered:
+        return None
+    if is_watched:
+        return '[B][COLOR FFE41B17]Mark [/COLOR]%s[/B]' % _split_colored('Unwatched', ordered)
+    return '[B][COLOR FF6AFB92]Mark [/COLOR]%s[/B]' % _split_colored('Watched', ordered)
+
+
+def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh):
+    targets = [p for p in _WATCHED_MARK_PROVIDERS if p in (providers or [])]
+    if not targets:
+        return []
+    done = []
+    lock = threading.Lock()
+
+    def _one(prov):
+        try:
+            if watched:
+                if prov == 'trakt':
+                    from resources.lib.trakt_sync import mark_as_watched_internal
+                    mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_trakt=sync_provider, refresh_ui=False)
+                elif prov == 'mdblist':
+                    from resources.lib.mdblist_sync import mark_as_watched_internal
+                    mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=sync_provider, refresh_ui=False)
+                else:
+                    from resources.lib.simkl_sync import mark_as_watched_internal
+                    mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_simkl=sync_provider, refresh_ui=False)
+            else:
+                if prov == 'trakt':
+                    from resources.lib.trakt_sync import mark_as_unwatched_internal
+                    mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_trakt=sync_provider, refresh_ui=False)
+                elif prov == 'mdblist':
+                    from resources.lib.mdblist_sync import mark_as_unwatched_internal
+                    mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=sync_provider, refresh_ui=False)
+                else:
+                    from resources.lib.simkl_sync import mark_as_unwatched_internal
+                    mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_simkl=sync_provider, refresh_ui=False)
+            with lock:
+                done.append(prov)
+        except Exception:
+            pass
+
+    workers = [threading.Thread(target=_one, args=(p,), daemon=True) for p in targets]
+    for t in workers:
+        t.start()
+    for t in workers:
+        t.join(30)
+    _refresh_tmdb_up_next(tmdb_id)
+    _invalidate_fast_cache()
+    ordered_done = [p for p in _WATCHED_MARK_PROVIDERS if p in done]
+    if notify:
+        import xbmcgui
+        _icon = os.path.join(ADDON_PATH, 'icon.png')
+        if ordered_done:
+            _names = ' + '.join(_WATCHED_MARK_LABELS[p] for p in ordered_done)
+            if watched:
+                _lbl = '[B]Mark %s[/B]' % _split_colored('Watched', ordered_done)
+            else:
+                _lbl = '[B]Mark %s[/B]' % _split_colored('Unwatched', ordered_done)
+            xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]', '%s on %s' % (_lbl, _names), _icon, 5000, False)
+        else:
+            xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]', 'No provider updated', _icon, 5000, False)
+    if do_refresh:
+        refresh_ui()
+    return ordered_done
+
+
+def mark_watched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True):
+    return _fanout_mark(True, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh)
+
+
+def mark_unwatched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True):
+    return _fanout_mark(False, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh)
+
 def get_provider():
     return _get_provider_raw()
 
@@ -91,34 +246,46 @@ def get_source_module():
     return __import__('resources.lib.trakt_sync', fromlist=['trakt_sync'])
 
 def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True):
+    targets = _mark_targets()
     prov = _get_provider_raw()
-    if prov == 'trakt':
-        from resources.lib.trakt_sync import mark_as_watched_internal
-        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_trakt=sync_provider, refresh_ui=do_refresh)
-    elif prov == 'mdblist':
-        from resources.lib.mdblist_sync import mark_as_watched_internal
-        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_mdblist=sync_provider, refresh_ui=do_refresh)
-    else:
-        from resources.lib.simkl_sync import mark_as_watched_internal
-        mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_simkl=sync_provider, refresh_ui=do_refresh)
-    _refresh_tmdb_up_next(tmdb_id)
-    _invalidate_fast_cache()
-    if do_refresh: refresh_ui()
+    if targets is None or targets == [prov]:
+        if prov == 'trakt':
+            from resources.lib.trakt_sync import mark_as_watched_internal
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_trakt=sync_provider, refresh_ui=do_refresh)
+        elif prov == 'mdblist':
+            from resources.lib.mdblist_sync import mark_as_watched_internal
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_mdblist=sync_provider, refresh_ui=do_refresh)
+        else:
+            from resources.lib.simkl_sync import mark_as_watched_internal
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_simkl=sync_provider, refresh_ui=do_refresh)
+        _refresh_tmdb_up_next(tmdb_id)
+        _invalidate_fast_cache()
+        if do_refresh: refresh_ui()
+        return
+    if not targets:
+        return
+    mark_watched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=notify, sync_provider=sync_provider, do_refresh=do_refresh)
 
 def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sync_provider=True, do_refresh=True):
+    targets = _mark_targets()
     prov = _get_provider_raw()
-    if prov == 'trakt':
-        from resources.lib.trakt_sync import mark_as_unwatched_internal
-        mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_trakt=sync_provider, refresh_ui=do_refresh)
-    elif prov == 'mdblist':
-        from resources.lib.mdblist_sync import mark_as_unwatched_internal
-        mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_mdblist=sync_provider, refresh_ui=do_refresh)
-    else:
-        from resources.lib.simkl_sync import mark_as_unwatched_internal
-        mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_simkl=sync_provider, refresh_ui=do_refresh)
-    _refresh_tmdb_up_next(tmdb_id)
-    _invalidate_fast_cache()
-    if do_refresh: refresh_ui()
+    if targets is None or targets == [prov]:
+        if prov == 'trakt':
+            from resources.lib.trakt_sync import mark_as_unwatched_internal
+            mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_trakt=sync_provider, refresh_ui=do_refresh)
+        elif prov == 'mdblist':
+            from resources.lib.mdblist_sync import mark_as_unwatched_internal
+            mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_mdblist=sync_provider, refresh_ui=do_refresh)
+        else:
+            from resources.lib.simkl_sync import mark_as_unwatched_internal
+            mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_simkl=sync_provider, refresh_ui=do_refresh)
+        _refresh_tmdb_up_next(tmdb_id)
+        _invalidate_fast_cache()
+        if do_refresh: refresh_ui()
+        return
+    if not targets:
+        return
+    mark_unwatched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=True, sync_provider=sync_provider, do_refresh=do_refresh)
 
 def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
     prov = _get_provider_raw()

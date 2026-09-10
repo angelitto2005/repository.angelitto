@@ -1550,7 +1550,7 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
     watched_params = {'mode': 'mark_watched', **base_params}
     unwatched_params = {'mode': 'mark_unwatched', **base_params}
 
-    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, is_episode_watched as _is_ep_watched
+    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, is_episode_watched as _is_ep_watched, mark_menu_label as _mml
     _prov_lbl = _prov_label()
     _prov_clr = _prov_color()
     is_ep_watched = False
@@ -1558,9 +1558,9 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
         is_ep_watched = _is_ep_watched(tmdb_id, season, episode)
 
     if is_ep_watched:
-        cm.append((f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+        cm.append((_mml(True) or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
     else:
-        cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
+        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
 
     return cm
 
@@ -1834,7 +1834,7 @@ class TraktRatingWindow(xbmcgui.WindowXMLDialog):
         if content_type == 'movie':
             self.setProperty('tmdbmovies.show_title', self.meta.get('title', 'Unknown'))
             self.setProperty('tmdbmovies.ep_label', '')
-        elif content_type == 'episode' and self.meta.get('season') and self.meta.get('episode'):
+        elif str(content_type).lower() in ('episode', 'tv', 'show', 'shows', 'series') and self.meta.get('season') is not None and self.meta.get('episode') is not None:
             self.setProperty('tmdbmovies.show_title', self.meta.get('tvshowtitle', 'Unknown'))
             s_val = int(self.meta.get('season'))
             e_val = int(self.meta.get('episode'))

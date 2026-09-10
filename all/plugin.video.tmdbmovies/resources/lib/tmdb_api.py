@@ -1337,7 +1337,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     # --- SFARSIT MODIFICARE ---
 
     # --- Mark as Watched/Unwatched direct in root menu ---
-    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+    from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
     _prov_lbl = _prov_label()
     _prov_clr = _prov_color()
     _w_label = f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]'
@@ -1347,20 +1347,20 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         _is_w = _is_mw(tmdb_id)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'movie'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'movie'})
-        cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type in ('tv', 'show'):
         from resources.lib.watched_provider import get_watched_counts as _get_wc
         _is_w = (_get_wc(tmdb_id, 'tv') > 0)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'tv'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'tv'})
-        cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type == 'episode':
         if season is not None and episode is not None:
             from resources.lib.watched_provider import is_episode_watched as _is_epw
             _is_w = _is_epw(tmdb_id, season, episode)
             _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
             _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
-            cm.append((_uw_label if _is_w else _w_label, f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+            cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
     # ---------------------------------------------------------
     
     # --- MODIFICARE: DOAR PENTRU FILME (nu seriale/foldere) ---
@@ -3654,11 +3654,183 @@ def _trakt_rating_payload(tmdb_id, content_type, season, episode, rating=None):
     if content_type == 'season' and season is not None:
         return {'shows': [{'ids': {'tmdb': int(tmdb_id)},
                            'seasons': [_add_rating({'number': int(season)})]}]}
-    if content_type == 'episode' and season is not None and episode is not None:
+    # 'tv' + season + episode = EPISOD: URL-urile de playback trimit type='tv'
+    # (nu 'episode'), deci fara normalizare asta ar rata SHOW-ul parinte pe Trakt.
+    if content_type in ('tv', 'episode', 'show', 'shows', 'series') and season is not None and episode is not None:
         return {'shows': [{'ids': {'tmdb': int(tmdb_id)},
                            'seasons': [{'number': int(season),
                                         'episodes': [_add_rating({'number': int(episode)})]}]}]}
     return {'shows': [_add_rating({'ids': {'tmdb': int(tmdb_id)}})]}
+
+
+_POSTWATCH_ICONS = {
+    'trakt': 'trakt.png',
+    'tmdb': 'tmdb.png',
+    'mdblist': 'mdblist.png',
+    'simkl': 'simkl.png',
+}
+
+_POSTWATCH_LABELS = {
+    'trakt': 'TRAKT',
+    'mdblist': 'MDBLIST',
+    'tmdb': 'TMDB',
+    'simkl': 'SIMKL',
+}
+
+
+def _connected_rating_providers():
+    connected = []
+    try:
+        from resources.lib import trakt_api
+        if trakt_api.get_trakt_token():
+            connected.append('trakt')
+    except Exception:
+        pass
+    try:
+        from resources.lib import mdblist
+        if mdblist.is_authenticated():
+            connected.append('mdblist')
+    except Exception:
+        pass
+    try:
+        if get_tmdb_session():
+            connected.append('tmdb')
+    except Exception:
+        pass
+    try:
+        from resources.lib import simkl
+        if simkl.is_authenticated():
+            connected.append('simkl')
+    except Exception:
+        pass
+    return connected
+
+
+def rate_on_providers(tmdb_id, content_type, season, episode, val, providers):
+    done = []
+    try:
+        if 'trakt' in providers:
+            from resources.lib import trakt_api
+            if val > 0:
+                payload = _trakt_rating_payload(tmdb_id, content_type, season, episode, val)
+                if trakt_api.trakt_api_request('/sync/ratings', method='POST', data=payload) is not None:
+                    done.append('trakt')
+            else:
+                payload = _trakt_rating_payload(tmdb_id, content_type, season, episode)
+                if trakt_api.trakt_api_request('/sync/ratings/remove', method='POST', data=payload) is not None:
+                    done.append('trakt')
+    except Exception:
+        pass
+    try:
+        if 'mdblist' in providers:
+            from resources.lib.mdblist_api import MDBListAPI
+            api = MDBListAPI()
+            if val > 0:
+                if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
+                    done.append('mdblist')
+            else:
+                if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
+                    done.append('mdblist')
+    except Exception:
+        pass
+    try:
+        if 'simkl' in providers:
+            from resources.lib.simkl_api import SIMKLAPI
+            api = SIMKLAPI()
+            if val > 0:
+                if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
+                    done.append('simkl')
+            else:
+                if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
+                    done.append('simkl')
+    except Exception:
+        pass
+    try:
+        # Guard TMDb: ratingul de SHOW scoate serialul din watchlist -> skip.
+        # 'tv' + season + episode = EPISOD (playback-ul trimite type='tv') -> permis.
+        _ct = str(content_type).lower()
+        if 'tmdb' in providers and not (_ct in ('tv', 'show', 'shows', 'series') and not (season and episode)):
+            if val > 0:
+                if rate_tmdb_item_silent(tmdb_id, content_type, val, season, episode):
+                    done.append('tmdb')
+            else:
+                if season is not None and episode is not None:
+                    res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating",
+                                            method='DELETE', v4=False)
+                    if res is not None:
+                        done.append('tmdb')
+                elif _ct == 'season' and season is not None:
+                    res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/rating",
+                                            method='DELETE', v4=False)
+                    if res is not None:
+                        done.append('tmdb')
+                elif delete_tmdb_rating(tmdb_id, content_type, notify=False):
+                    done.append('tmdb')
+    except Exception:
+        pass
+    return done
+
+
+def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, title=''):
+    try:
+        mode = ADDON.getSetting('rating_postwatch_mode') or '0'
+    except Exception:
+        mode = '0'
+    if mode not in ('1', '2'):
+        from resources.lib.watched_provider import is_mdblist, is_simkl
+        if is_mdblist():
+            from resources.lib.mdblist_api import prompt_mdblist_rating
+            prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
+        elif is_simkl():
+            from resources.lib.simkl_api import prompt_simkl_rating
+            prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
+        else:
+            from resources.lib import trakt_api
+            trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
+        return
+    connected = _connected_rating_providers()
+    if mode == '1':
+        targets = list(connected)
+    else:
+        toggles = {
+            'trakt': 'rating_postwatch_trakt',
+            'mdblist': 'rating_postwatch_mdblist',
+            'simkl': 'rating_postwatch_simkl',
+            'tmdb': 'rating_postwatch_tmdb',
+        }
+        targets = []
+        for prov in connected:
+            try:
+                if ADDON.getSetting(toggles[prov]) == 'true':
+                    targets.append(prov)
+            except Exception:
+                pass
+    if not targets:
+        return
+    if len(targets) == 1:
+        from resources.lib import trakt_api
+        trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=targets[0])
+        return
+    import os as _os
+    from resources.lib.trakt_api import show_rating_window
+    ordered = [p for p in _ALL_PROV_ORDER if p in targets]
+    _media_dir = _os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media')
+    if mode == '1':
+        _title = 'RATE ON ALL PROVIDERS'
+    else:
+        _title = 'RATE ON ' + ' + '.join(_POSTWATCH_LABELS[p] for p in ordered)
+    val = show_rating_window(tmdb_id, content_type, season, episode, title or '',
+                             _os.path.join(_media_dir, _POSTWATCH_ICONS[ordered[0]]),
+                             _title,
+                             extra_icons=[_os.path.join(_media_dir, _POSTWATCH_ICONS[p]) for p in ordered[1:4]])
+    if val <= 0:
+        return
+    done = rate_on_providers(tmdb_id, content_type, season, episode, val, targets)
+    if done:
+        msg = f'Rated [B][COLOR yellow]{val}/10[/COLOR][/B] on {_allprov_names(done)}'
+    else:
+        msg = 'No provider accepted the rating'
+    xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]', msg, TMDbmovies_ICON, 5000, False)
 
 
 def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', season=None, episode=None):
@@ -3811,39 +3983,11 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                                            TMDbmovies_ICON, 5000, False)
 
     elif action in ('watched', 'unwatched'):
-        # Trakt + MDBList (TMDb nu are watched)
-        try:
-            if 'trakt' in connected:
-                from resources.lib.trakt_sync import mark_as_watched_internal as _t_mark, mark_as_unwatched_internal as _t_unmark
-                if action == 'watched':
-                    _t_mark(tmdb_id, content_type, season, episode, notify=False, sync_trakt=True, refresh_ui=False)
-                else:
-                    _t_unmark(tmdb_id, content_type, season, episode, notify=False, sync_trakt=True, refresh_ui=False)
-                done.append('trakt')
-        except Exception:
-            pass
-        try:
-            if 'mdblist' in connected:
-                from resources.lib.mdblist_sync import mark_as_watched_internal as _m_mark, mark_as_unwatched_internal as _m_unmark
-                if action == 'watched':
-                    _m_mark(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=True, refresh_ui=False)
-                else:
-                    _m_unmark(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=True, refresh_ui=False)
-                done.append('mdblist')
-        except Exception:
-            pass
-        try:
-            if 'simkl' in connected:
-                from resources.lib.simkl_sync import mark_as_watched_internal as _sk_mark, mark_as_unwatched_internal as _sk_unmark
-                if action == 'watched':
-                    _sk_mark(tmdb_id, content_type, season, episode, notify=False, sync_simkl=True, refresh_ui=False)
-                else:
-                    _sk_unmark(tmdb_id, content_type, season, episode, notify=False, sync_simkl=True, refresh_ui=False)
-                done.append('simkl')
-        except Exception:
-            pass
-        from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache()
+        from resources.lib.watched_provider import mark_watched_on_providers as _w_mark, mark_unwatched_on_providers as _w_unmark
+        if action == 'watched':
+            done = _w_mark(tmdb_id, content_type, season, episode, providers=connected, notify=False, sync_provider=True, do_refresh=False)
+        else:
+            done = _w_unmark(tmdb_id, content_type, season, episode, providers=connected, notify=False, sync_provider=True, do_refresh=False)
         if done:
             lbl = f'[B]Mark {wch}[/B]' if action == 'watched' else f'[B]Mark {uwch}[/B]'
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
@@ -3865,64 +4009,7 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                 return
         else:
             val = 0
-        try:
-            if 'trakt' in connected:
-                from resources.lib import trakt_api
-                if val > 0:
-                    payload = _trakt_rating_payload(tmdb_id, content_type, season, episode, val)
-                    if trakt_api.trakt_api_request('/sync/ratings', method='POST', data=payload) is not None:
-                        done.append('trakt')
-                else:
-                    payload = _trakt_rating_payload(tmdb_id, content_type, season, episode)
-                    if trakt_api.trakt_api_request('/sync/ratings/remove', method='POST', data=payload) is not None:
-                        done.append('trakt')
-        except Exception:
-            pass
-        try:
-            if 'mdblist' in connected:
-                from resources.lib.mdblist_api import MDBListAPI
-                api = MDBListAPI()
-                if val > 0:
-                    if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
-                        done.append('mdblist')
-                else:
-                    if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
-                        done.append('mdblist')
-        except Exception:
-            pass
-        try:
-            if 'simkl' in connected:
-                from resources.lib.simkl_api import SIMKLAPI
-                api = SIMKLAPI()
-                if val > 0:
-                    if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
-                        done.append('simkl')
-                else:
-                    if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
-                        done.append('simkl')
-        except Exception:
-            pass
-        try:
-            # TMDb: sarim serialele — rating la show scoate serialul din watchlist (entry 104); il scot eu manual cand vreau
-            if 'tmdb' in connected and str(content_type).lower() not in ('tv', 'show', 'shows', 'series'):
-                if val > 0:
-                    if rate_tmdb_item_silent(tmdb_id, content_type, val, season, episode):
-                        done.append('tmdb')
-                else:
-                    if content_type == 'episode' and season is not None and episode is not None:
-                        res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating",
-                                                method='DELETE', v4=False)
-                        if res is not None:
-                            done.append('tmdb')
-                    elif content_type == 'season' and season is not None:
-                        res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/rating",
-                                                method='DELETE', v4=False)
-                        if res is not None:
-                            done.append('tmdb')
-                    elif delete_tmdb_rating(tmdb_id, content_type, notify=False):
-                        done.append('tmdb')
-        except Exception:
-            pass
+        done = rate_on_providers(tmdb_id, content_type, season, episode, val, connected)
         if done:
             msg = f'Rated [B][COLOR yellow]{val}/10[/COLOR][/B] on {_allprov_names(done)}' if val > 0 else f'Rating removed from {_allprov_names(done)}'
         else:
@@ -4358,13 +4445,14 @@ def show_details(tmdb_id, content_type):
         watched_params = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
         unwatched_params = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'season', 'season': s_num})
 
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
         _prov_lbl = _prov_label()
         _prov_clr = _prov_color()
+        _mw_multi = _mml(is_fully_watched)
         if is_fully_watched:
-            cm.append((f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
+            cm.append((_mw_multi or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
         else:
-            cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
+            cm.append((_mw_multi or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
             
         if ADDON.getSetting('show_cm_trakt') != 'false':
             trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
@@ -5751,7 +5839,7 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
         try:
             # Mirror-ul local se sterge DOAR la movie/show (serverul scoate itemul
             # din watchlist la rating de movie/show, dar pastreaza la episod — entry 104).
-            if content_type != 'episode':
+            if not (season and episode):
                 from resources.lib import trakt_sync
                 conn = trakt_sync.get_connection()
                 conn.execute("DELETE FROM tmdb_account_lists WHERE tmdb_id=? AND list_type='watchlist'", (str(tmdb_id),))
@@ -6267,8 +6355,8 @@ def in_progress_movies(params):
         }
         
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
-        cm.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
+        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
 
         url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
@@ -6733,11 +6821,11 @@ def in_progress_episodes(params):
             'duration': duration, 'studio': studio, 'mpaa': show_mpaa
         }
         
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
         _prov_lbl = _prov_label()
         _prov_clr = _prov_color()
         cm = [
-            (f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            (_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]

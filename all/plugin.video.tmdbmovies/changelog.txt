@@ -1,4 +1,18 @@
 
+1.1.272
+- Post-watch rating can now target Active provider, All providers, or a Custom selection (new toggles per provider in Accounts)
+- Post-watch rating uses a single dialog showing only the icons of the selected providers, with one rating sent to all of them
+- Mark as Watched/Unwatched can now target Active provider, All providers, or a Custom selection (parallel, with a single combined notification)
+- Root context menu Mark Watched/Unwatched entries show multi-color provider segments matching the Custom selection in All/Custom mode
+- The active provider is always included in watched marking so the UI can never desync from unwise toggle choices
+- Fixed Trakt post-watch ratings hitting the whole show instead of the episode (episode payload now built for tv-type items)
+- Fixed TMDb toggle doing nothing for episodes in multi-provider rating
+- Fixed missing SxxExx label (including Season 0 specials) in the rating dialog for tv-type episodes
+- Fixed TMDb watchlist mirror wrongly dropping shows on episode ratings
+- Widened season/episode patterns to 3+ digits (100+ episode seasons) in library cleanup, TPB filtering, and P2P file matching
+- Multi-provider watched notification restyled with provider colors, matching the All Providers menu
+- Fixed Simkl Watched History missing fully-watched shows
+
 1.1.271
 - Fixed Trakt watchlist sync cut off at 100 items: list endpoints are now fully paginated
 - Fixed Trakt discovery lists repeating the same items across periods; added Most Played and Most Favorited menus

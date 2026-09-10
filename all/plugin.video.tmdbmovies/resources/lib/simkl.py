@@ -100,11 +100,19 @@ def fetch_history(mediatype='movie', offset=0, limit=20):
     else:
         if not os.path.exists(simkl_sync.DB_PATH):
             return [], 0
+        try:
+            simkl_sync._ensure_db()
+        except:
+            pass
         conn = simkl_sync.get_connection()
         c = conn.cursor()
         try:
             c.execute("SELECT tmdb_id, MAX(last_watched_at) as lw FROM simkl_watched_episodes "
-                      "GROUP BY tmdb_id ORDER BY lw DESC")
+                      "GROUP BY tmdb_id "
+                      "UNION "
+                      "SELECT tmdb_id, last_watched_at as lw FROM simkl_fully_watched_shows "
+                      "WHERE tmdb_id NOT IN (SELECT DISTINCT tmdb_id FROM simkl_watched_episodes) "
+                      "ORDER BY lw DESC")
             rows = c.fetchall()
         except:
             rows = []
@@ -160,13 +168,10 @@ def _view_menu():
             c.execute("SELECT COUNT(*) FROM simkl_ratings")
             row = c.fetchone()
             rat_count = row[0] if row else 0
-            c.execute("SELECT COUNT(*) FROM simkl_watched_movies")
-            row = c.fetchone()
-            hist_count = row[0] if row else 0
-            c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM simkl_watched_episodes")
-            row = c.fetchone()
-            hist_count += row[0] if row else 0
             conn.close()
+            from resources.lib.simkl_sync import get_history_counts as _hist_counts
+            _hist_m, _hist_s = _hist_counts()
+            hist_count = _hist_m + _hist_s
     except:
         pass
 
@@ -282,10 +287,8 @@ def _view_account():
                 rat_e = c.fetchone()[0] or 0
                 c.execute("SELECT COUNT(*) FROM simkl_dropped")
                 drp_n = c.fetchone()[0] or 0
-                c.execute("SELECT COUNT(*) FROM simkl_watched_movies")
-                hist_m = c.fetchone()[0] or 0
-                c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM simkl_watched_episodes")
-                hist_s = c.fetchone()[0] or 0
+                from resources.lib.simkl_sync import get_history_counts as _hist_counts
+                hist_m, hist_s = _hist_counts()
                 conn.close()
         except:
             pass
@@ -991,17 +994,9 @@ def _view_history_menu():
     for label, db_type, url_type in [('Movies', 'movie', 'movie'), ('TV Shows', 'tv', 'show')]:
         count = 0
         try:
-            from resources.lib.simkl_sync import DB_PATH as SIMKL_DB_PATH, get_connection
-            if os.path.exists(SIMKL_DB_PATH):
-                conn = get_connection()
-                c = conn.cursor()
-                if db_type == 'movie':
-                    c.execute("SELECT COUNT(*) FROM simkl_watched_movies")
-                else:
-                    c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM simkl_watched_episodes")
-                row = c.fetchone()
-                count = row[0] if row else 0
-                conn.close()
+            from resources.lib.simkl_sync import get_history_counts as _hist_counts
+            _hc_m, _hc_s = _hist_counts()
+            count = _hc_m if db_type == 'movie' else _hc_s
         except:
             pass
         display = f'[B][COLOR mediumpurple]{label}[/COLOR][/B]'

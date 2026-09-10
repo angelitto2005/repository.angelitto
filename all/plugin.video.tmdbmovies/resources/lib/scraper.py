@@ -7220,7 +7220,7 @@ def scrape_thepiratebay(imdb_id, content_type, season=None, episode=None, title_
             if title_query.lower() not in name.lower():
                 continue
             if content_type == 'tv' and season is not None:
-                if not re.search(r'\bS\d{1,2}(E\d{1,2})?\b', name, re.I) and 'season' not in name.lower():
+                if not re.search(r'\bS\d+(E\d+)?\b', name, re.I) and 'season' not in name.lower():
                     if year_query and year_query in name:
                         pass
                     else:

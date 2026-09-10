@@ -285,7 +285,7 @@ _CUT_TAGS = re.compile(
     r'10bit|HDR|HDR10|DV|DoVi|Dolby[\.\s]?Vision|IMAX|'
     r'NF|AMZN|DSNP|ATVP|HMAX|PCOK|PMTP|STAN)\b', re.IGNORECASE)
 _BRACKETS = re.compile(r'[\[\(].*?[\)\]]')
-_SEASON_EP = re.compile(r'\b[Ss]\d{1,2}(?:[Ee]\d{1,2})?\b')
+_SEASON_EP = re.compile(r'\b[Ss]\d+(?:[Ee]\d+)?\b')
 
 def _extract_magnet_name(uri):
     if not uri or not uri.startswith('magnet:'):
@@ -349,7 +349,7 @@ def _format_file_label(f):
     name = os.path.basename(path)
     name_no_ext = name.rsplit('.', 1)[0] if '.' in name else name
     display = name_no_ext.replace('.', ' ').replace('_', ' ')
-    ep_match = re.search(r'[Ss](\d{1,2})[Ee](\d{1,2})', name)
+    ep_match = re.search(r'[Ss](\d+)[Ee](\d+)', name)
     if ep_match:
         ep_tag = "S%02dE%02d" % (int(ep_match.group(1)), int(ep_match.group(2)))
     else:

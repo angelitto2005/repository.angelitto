@@ -1982,19 +1982,11 @@ def start_playback_monitor(player_instance, dialog=None):
             # Rating (provider-aware)
             if getattr(player_instance, 'should_prompt_rating', False) and not prompted_next:
                 try:
-                    from resources.lib.watched_provider import is_trakt, is_mdblist, is_simkl
+                    from resources.lib import tmdb_api as _tmdb_post
                     rate_movies = ADDON.getSetting('trakt_rate_movies') == 'true'
                     rate_eps = ADDON.getSetting('trakt_rate_episodes') == 'true'
                     if (player_instance.content_type == 'movie' and rate_movies) or (is_ep and rate_eps):
-                        if is_mdblist():
-                            from resources.lib.mdblist_api import prompt_mdblist_rating
-                            prompt_mdblist_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
-                        elif is_simkl():
-                            from resources.lib.simkl_api import prompt_simkl_rating
-                            prompt_simkl_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
-                        else:
-                            from resources.lib import trakt_api
-                            trakt_api._prompt_trakt_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
+                        _tmdb_post.prompt_postwatch_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
             

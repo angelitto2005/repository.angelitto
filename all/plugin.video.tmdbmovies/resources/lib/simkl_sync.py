@@ -99,6 +99,35 @@ def _ensure_db():
     except:
         pass
 
+def get_history_counts():
+    try:
+        if not os.path.exists(DB_PATH):
+            return (0, 0)
+    except:
+        return (0, 0)
+    conn = None
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM simkl_watched_movies")
+        movies = c.fetchone()[0] or 0
+        c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM simkl_watched_episodes")
+        partial = c.fetchone()[0] or 0
+        try:
+            c.execute("SELECT COUNT(*) FROM simkl_fully_watched_shows WHERE tmdb_id NOT IN (SELECT DISTINCT tmdb_id FROM simkl_watched_episodes)")
+            fully = c.fetchone()[0] or 0
+        except:
+            fully = 0
+        return (movies, partial + fully)
+    except:
+        return (0, 0)
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except:
+            pass
+
 def init_database():
     conn = get_connection()
     c = conn.cursor()
@@ -1069,6 +1098,18 @@ def _sync_watched_phase1(api):
     data = api.get_all_items(None)
     if not data or not isinstance(data, dict):
         return
+    if not data.get('movies') and not data.get('shows') and not data.get('anime'):
+        try:
+            conn = get_connection()
+            c = conn.cursor()
+            c.execute("SELECT (SELECT COUNT(*) FROM simkl_watched_movies) + (SELECT COUNT(*) FROM simkl_watched_episodes) + (SELECT COUNT(*) FROM simkl_fully_watched_shows)")
+            local_n = c.fetchone()[0] or 0
+            conn.close()
+        except Exception:
+            local_n = 0
+        if local_n > 0:
+            xbmc.log('[SIMKL] Phase 1: empty server response with non-empty local mirror, keeping local data', xbmc.LOGWARNING)
+            return
     try:
         conn = get_connection()
         c = conn.cursor()

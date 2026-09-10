@@ -334,7 +334,7 @@ def _get_episode_strm_name(season, episode, ep_title):
 # =============================================================================
 # STALE FILE CLEANUP (prevents duplicate episodes when TMDb changes titles)
 # =============================================================================
-_EPISODE_FILE_RE = re.compile(r'^S(\d{2})E(\d{2,})(?!\d).*\.strm$', re.IGNORECASE)
+_EPISODE_FILE_RE = re.compile(r'^S(\d{2,})E(\d{2,})(?!\d).*\.strm$', re.IGNORECASE)
 
 def _cleanup_episode_variants(season_path, season_num, ep_num, keep_filename):
     """Sterge variantele vechi ale episodului S{ss}E{ee} (titlu generic 'Episode N'
