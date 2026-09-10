@@ -347,10 +347,10 @@
         <setting id="watched_status_provider" type="enum" label="[B]Provider[/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
 
 		<setting type="lsep" label="Watched"/>
-		<setting id="watched_mark_mode" type="enum" label="Mark as watched on" values="Active provider|All providers|Custom selection" default="0"/>
-		<setting id="watched_mark_trakt" type="bool" label="Mark watched on [B][COLOR pink]Trakt[/COLOR][/B]" default="true" visible="eq(-1,2)"/>
-		<setting id="watched_mark_mdblist" type="bool" label="Mark watched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="true" visible="eq(-2,2)"/>
-		<setting id="watched_mark_simkl" type="bool" label="Mark watched on [B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="true" visible="eq(-3,2)"/>
+		<setting id="watched_mark_mode" type="enum" label="[B]Mark as watched on[/B]" values="Active provider|All providers|Custom selection" default="0"/>
+		<setting id="watched_mark_trakt" type="bool" label="  └─ Mark watched on [B][COLOR pink]Trakt[/COLOR][/B]" default="true" visible="eq(-1,2)"/>
+		<setting id="watched_mark_mdblist" type="bool" label="  └─ Mark watched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="true" visible="eq(-2,2)"/>
+		<setting id="watched_mark_simkl" type="bool" label="  └─ Mark watched on [B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="true" visible="eq(-3,2)"/>
         
         <setting type="lsep" label="Trakt Account"/>
         <setting label="[B][COLOR pink]Connect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
@@ -400,11 +400,11 @@
 		<setting type="lsep" label="Rating"/>
 		<setting id="trakt_rate_movies" type="bool" label="Show Rating window for Movies" default="true"/>
 		<setting id="trakt_rate_episodes" type="bool" label="Show Rating window for Episodes" default="true"/>
-		<setting id="rating_postwatch_mode" type="enum" label="Post-watch rating sent to" values="Active provider|All providers|Custom selection" default="0"/>
-		<setting id="rating_postwatch_trakt" type="bool" label="Rate on [B][COLOR pink]Trakt[/COLOR][/B] after watching" default="true" visible="eq(-1,2)"/>
-		<setting id="rating_postwatch_mdblist" type="bool" label="Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
-		<setting id="rating_postwatch_simkl" type="bool" label="Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies + Shows only)" default="true" visible="eq(-3,2)"/>
-		<setting id="rating_postwatch_tmdb" type="bool" label="Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching  (Movies + Episodes only)" default="true" visible="eq(-4,2)"/>
+		<setting id="rating_postwatch_mode" type="enum" label="[B]Post-watch rating sent to[/B]" values="Active provider|All providers|Custom selection" default="0"/>
+		<setting id="rating_postwatch_trakt" type="bool" label="  └─ Rate on [B][COLOR pink]Trakt[/COLOR][/B] after watching" default="true" visible="eq(-1,2)"/>
+		<setting id="rating_postwatch_mdblist" type="bool" label="  └─ Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
+		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies + Shows only)" default="true" visible="eq(-3,2)"/>
+		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching  (Movies + Episodes only)" default="true" visible="eq(-4,2)"/>
 
 		<setting type="lsep" label="Developer Options (optional)"/>
 		<setting id="trakt_client_id" type="text" label="Custom Trakt Client ID (leave empty for default)" default=""/>

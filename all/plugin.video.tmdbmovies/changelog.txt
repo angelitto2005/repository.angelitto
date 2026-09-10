@@ -1,5 +1,5 @@
 
-1.1.272
+1.1.273
 - Post-watch rating can now target Active provider, All providers, or a Custom selection (new toggles per provider in Accounts)
 - Post-watch rating uses a single dialog showing only the icons of the selected providers, with one rating sent to all of them
 - Mark as Watched/Unwatched can now target Active provider, All providers, or a Custom selection (parallel, with a single combined notification)
