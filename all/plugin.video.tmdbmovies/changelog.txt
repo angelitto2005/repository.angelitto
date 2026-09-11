@@ -1,5 +1,6 @@
-1.1.274
+1.1.275
 - Removed Simkl episode ratings on all paths (menu, post-watch, All Providers), Simkl has no episode-level rating, so episode ratings were silently landing on the whole show; movies and whole shows are unaffected
+- Kodi log upload now lets you choose between kodi.log (active) and kodi.old.log (previous session) before uploading to paste.kodi.tv
 
 1.1.273
 - Post-watch rating can now target Active provider, All providers, or a Custom selection (new toggles per provider in Accounts)

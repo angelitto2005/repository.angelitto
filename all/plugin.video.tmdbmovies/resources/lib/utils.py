@@ -636,16 +636,21 @@ def upload_logfile():
     """Reads kodi.log file and uploads it to paste.kodi.tv"""
     import requests
     dialog = xbmcgui.Dialog()
-    
-    log_file = xbmcvfs.translatePath('special://logpath/kodi.log')
+
+    log_idx = dialog.select("Select log file", ["[B][COLOR FF6AFB92]kodi.log[/COLOR][/B] - active log", "[B][COLOR FFFF4444]kodi.old.log[/COLOR][/B] - old log"])
+    if log_idx is None or log_idx < 0:
+        return
+
+    log_filename = 'kodi.log' if log_idx == 0 else 'kodi.old.log'
+    log_file = xbmcvfs.translatePath(f'special://logpath/{log_filename}')
     url = 'https://paste.kodi.tv/'
-    
+
     if not xbmcvfs.exists(log_file):
-        dialog.ok("Error", "Log file not found.")
+        dialog.ok("Error", f"File {log_filename} not found.")
         return
 
     # Redus la 2 randuri
-    if not dialog.yesno("Upload Kodi Log", "Do you want to upload the Kodi log to paste.kodi.tv?\nUseful for error reporting."):
+    if not dialog.yesno("Upload Kodi Log", f"Do you want to upload {log_filename} to paste.kodi.tv?\nUseful for error reporting."):
         return
 
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
