@@ -167,7 +167,7 @@
 		<news>INFO: For latest changes see Changelog within add-on.</news>
 		<assets><icon>salts.png</icon><fanart>salts_fanart.jpg</fanart></assets>
 	</extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.275" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.276" name="[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -1136,7 +1136,7 @@ v5.3.2 (2020-09-30)
 - Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
     </news>
   </extension>
-</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.29" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.30" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="xbmc.python" version="3.0.0" />
     <import addon="script.module.requests" version="2.22.0" />

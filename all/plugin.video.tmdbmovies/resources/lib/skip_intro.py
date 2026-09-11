@@ -71,6 +71,8 @@ class SkipIntroWindow(xbmcgui.WindowXMLDialog):
         self.result = False
         self.is_closed = False
         self._ready = False
+        self._close_lock = threading.Lock()
+        self._close_sent = False
 
     def onInit(self):
         self._ready = True
@@ -112,6 +114,10 @@ class SkipIntroWindow(xbmcgui.WindowXMLDialog):
             pass
 
     def close(self):
+        with self._close_lock:
+            if self._close_sent:
+                return
+            self._close_sent = True
         self.is_closed = True
         try:
             xbmcgui.WindowXMLDialog.close(self)
@@ -122,17 +128,20 @@ class SkipIntroWindow(xbmcgui.WindowXMLDialog):
 def _show_modal(dialog):
     """doModal care se inchide automat la shutdown Kodi."""
     mon = xbmc.Monitor()
+    _done = {'flag': False}
 
     def _watch():
-        while not mon.abortRequested():
+        while not mon.abortRequested() and not _done['flag']:
             threading.Event().wait(0.5)
-        try:
-            dialog.close()
-        except:
-            pass
+        if mon.abortRequested():
+            try:
+                dialog.close()
+            except:
+                pass
 
     threading.Thread(target=_watch, daemon=True).start()
     dialog.doModal()
+    _done['flag'] = True
 
 
 # =============================================================================
@@ -157,6 +166,22 @@ def execute_skip_intro(player):
 
         if not player.isPlaying():
             return
+
+        try:
+            _total = 0
+            for _ in range(10):
+                try:
+                    _total = int(player.getTotalTime() or 0)
+                except Exception:
+                    _total = 0
+                if _total > 0:
+                    break
+                xbmc.sleep(500)
+            if 0 < _total < 180:
+                log(f"[SKIP-INTRO] Video scurt ({_total}s, dummy?) - sarim dialogul")
+                return
+        except Exception:
+            pass
 
         imdb_id = getattr(player, 'imdb_id', '') or ''
         if not imdb_id:

@@ -2,34 +2,34 @@
 # -*- coding: utf-8 -*-
 
 patterns = [
-    ('season', '[\. ]((?:Complete.)?s[0-9]{2}-s[0-9]{2}|'
-               's([0-9]{1,2})(?:e[0-9]{2})?|'
-               '([0-9]{1,2})x[0-9]{2})(?:[\. ]|$)'),
-    ('episode', '((?:[ex]|ep)([0-9]{2})(?:[^0-9]|$))'),
-    ('year', '([\[\(]?((?:19[0-9]|20[0123])[0-9])[\]\)]?)'),
-    ('resolution', '([0-9]{3,4}p|1280x720)'),
-    ('quality', ('((?:PPV\.)?[HP]DTV|(?:HD)?CAM|B[DR]Rip|(?:HD-?)?TS|'
-                 '(?:PPV )?WEB-?DL(?: DVDRip)?|HDRip|HDTVRip|DVDRip|DVDRIP|'
-                 'CamRip|W[EB]BRip|BluRay|DvDScr|hdtv|telesync)')),
-    ('codec', '(xvid|[hx]\.?26[45])'),
-    ('audio', ('(MP3|DD5\.?1|Dual[\- ]Audio|LiNE|DTS|'
-               'AAC[.-]LC|AAC(?:\.?2\.0)?|'
-               'AC3(?:\.5\.1)?)')),
-    ('group', '(- ?([^-]+(?:-={[^-]+-?$)?))$'),
-    ('region', 'R[0-9]'),
-    ('extended', '(EXTENDED(:?.CUT)?)'),
-    ('hardcoded', 'HC'),
-    ('proper', 'PROPER'),
-    ('repack', 'REPACK'),
-    ('container', '(MKV|AVI|MP4)'),
-    ('widescreen', 'WS'),
-    ('website', '^(\[ ?([^\]]+?) ?\])'),
-    ('language', '(rus\.eng|ita\.eng)'),
-    ('subtitles', '(DKsubs)'),
-    ('sbs', '(?:Half-)?SBS'),
-    ('unrated', 'UNRATED'),
-    ('size', '(\d+(?:\.\d+)?(?:GB|MB))'),
-    ('3d', '3D')
+    ('season', r'[\. ]((?:Complete.)?s[0-9]{2}-s[0-9]{2}|'
+               r's([0-9]{1,2})(?:e[0-9]{2})?|'
+               r'([0-9]{1,2})x[0-9]{2})(?:[\. ]|$)'),
+    ('episode', r'((?:[ex]|ep)([0-9]{2})(?:[^0-9]|$))'),
+    ('year', r'([\[\(]?((?:19[0-9]|20[0123])[0-9])[\]\)]?)'),
+    ('resolution', r'([0-9]{3,4}p|1280x720)'),
+    ('quality', (r'((?:PPV\.)?[HP]DTV|(?:HD)?CAM|B[DR]Rip|(?:HD-?)?TS|'
+                 r'(?:PPV )?WEB-?DL(?: DVDRip)?|HDRip|HDTVRip|DVDRip|DVDRIP|'
+                 r'CamRip|W[EB]BRip|BluRay|DvDScr|hdtv|telesync)')),
+    ('codec', r'(xvid|[hx]\.?26[45])'),
+    ('audio', (r'(MP3|DD5\.?1|Dual[\- ]Audio|LiNE|DTS|'
+               r'AAC[.-]LC|AAC(?:\.?2\.0)?|'
+               r'AC3(?:\.5\.1)?)')),
+    ('group', r'(- ?([^-]+(?:-={[^-]+-?$)?))$'),
+    ('region', r'R[0-9]'),
+    ('extended', r'(EXTENDED(:?.CUT)?)'),
+    ('hardcoded', r'HC'),
+    ('proper', r'PROPER'),
+    ('repack', r'REPACK'),
+    ('container', r'(MKV|AVI|MP4)'),
+    ('widescreen', r'WS'),
+    ('website', r'^(\[ ?([^\]]+?) ?\])'),
+    ('language', r'(rus\.eng|ita\.eng)'),
+    ('subtitles', r'(DKsubs)'),
+    ('sbs', r'(?:Half-)?SBS'),
+    ('unrated', r'UNRATED'),
+    ('size', r'(\d+(?:\.\d+)?(?:GB|MB))'),
+    ('3d', r'3D')
 ]
 
 types = {

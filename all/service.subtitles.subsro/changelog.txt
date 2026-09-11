@@ -1,3 +1,6 @@
+2.5.30
+- Remediază secvențele de escape invalide (raw strings) din PTN pentru a elimina avertismentele/erorile SyntaxWarning pe Kodi 22
+
 2.5.29
 - Mici imbunatatiri
 

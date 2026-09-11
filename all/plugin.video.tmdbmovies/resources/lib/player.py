@@ -36,6 +36,13 @@ def _current_win_id():
         return 0
 
 
+def _kodi_major():
+    try:
+        return int(xbmc.getInfoLabel('System.BuildVersion')[:2])
+    except:
+        return 21
+
+
 def _kodi_resume_bookmark_exists(tmdb_id, c_type, season=None, episode=None):
     """Verifica daca baza video Kodi are bookmark de resume pentru acest episod/film.
     Kodi salveaza bookmark-urile keyed by plugin URL (original_listitem_url), deci un
@@ -1831,12 +1838,15 @@ def start_playback_monitor(player_instance, dialog=None):
             try:
                 import json
                 if player_instance.content_type == 'movie':
-                    q = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovies", "params": {"properties": ["title", "year"], "filter": {"field": "title", "operator": "is", "value": player_instance.title}}, "id": 1}
+                    q = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovies", "params": {"properties": ["title", "year", "playcount"], "filter": {"field": "title", "operator": "is", "value": player_instance.title}}, "id": 1}
                     res = json.loads(xbmc.executeJSONRPC(json.dumps(q)))
                     for m in res.get('result', {}).get('movies', []):
                         if str(m.get('year', '')) == str(player_instance.year) or not player_instance.year:
-                            xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails", "params": {"movieid": m['movieid'], "playcount": 0}, "id": 1}))
-                            log(f"[PLAYER-MONITOR] Success: Am sters bifa Kodi pentru filmul {player_instance.title}")
+                            if m.get('playcount', 0) != 0:
+                                xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetMovieDetails", "params": {"movieid": m['movieid'], "playcount": 0}, "id": 1}))
+                                log(f"[PLAYER-MONITOR] Success: Am sters bifa Kodi pentru filmul {player_instance.title}")
+                            else:
+                                log(f"[PLAYER-MONITOR] Bifa Kodi deja 0 pentru filmul {player_instance.title}, skip scriere")
                             break
                 else:
                     if player_instance.tvshowtitle:
@@ -1845,12 +1855,15 @@ def start_playback_monitor(player_instance, dialog=None):
                         shows = res.get('result', {}).get('tvshows', [])
                         if shows:
                             tvshowid = shows[0]['tvshowid']
-                            q_ep = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", "params": {"tvshowid": tvshowid, "season": player_instance.season, "properties": ["episode"], "filter": {"field": "episode", "operator": "is", "value": str(player_instance.episode)}}, "id": 1}
+                            q_ep = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes", "params": {"tvshowid": tvshowid, "season": player_instance.season, "properties": ["episode", "playcount"], "filter": {"field": "episode", "operator": "is", "value": str(player_instance.episode)}}, "id": 1}
                             res_ep = json.loads(xbmc.executeJSONRPC(json.dumps(q_ep)))
                             eps = res_ep.get('result', {}).get('episodes', [])
                             if eps:
-                                xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": eps[0]['episodeid'], "playcount": 0}, "id": 1}))
-                                log(f"[PLAYER-MONITOR] Success: Am sters bifa Kodi pentru episodul S{player_instance.season}E{player_instance.episode}")
+                                if eps[0].get('playcount', 0) != 0:
+                                    xbmc.executeJSONRPC(json.dumps({"jsonrpc": "2.0", "method": "VideoLibrary.SetEpisodeDetails", "params": {"episodeid": eps[0]['episodeid'], "playcount": 0}, "id": 1}))
+                                    log(f"[PLAYER-MONITOR] Success: Am sters bifa Kodi pentru episodul S{player_instance.season}E{player_instance.episode}")
+                                else:
+                                    log(f"[PLAYER-MONITOR] Bifa Kodi deja 0 pentru episodul S{player_instance.season}E{player_instance.episode}, skip scriere")
             except Exception as e:
                 log(f"[PLAYER-MONITOR] Delete errora bifei Kodi: {e}")
                 
@@ -2733,8 +2746,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 try: p_dialog.close()
                 except: pass
                 p_dialog = None
-            xbmcplugin.setResolvedUrl(_current_handle(), True, li)
-            player.play(valid_url, li)
+            li.setPath(valid_url)
+            _play_handle = _current_handle()
+            if _play_handle >= 0 and _kodi_major() >= 22:
+                log("[PLAYER] Kodi 22+ resolve-only (single PlayFile, fara cursa)")
+                xbmcplugin.setResolvedUrl(_play_handle, True, li)
+            else:
+                if _play_handle >= 0:
+                    xbmcplugin.setResolvedUrl(_play_handle, True, li)
+                else:
+                    log("[PLAYER] RunPlugin handle -1 - play direct")
+                player.play(valid_url, li)
             
             start_playback_monitor(player, dialog=None)
             
@@ -3014,13 +3036,16 @@ def _scrape_locked(func):
 def _show_modal_abortable(dialog):
     """doModal() care se inchide automat la shutdown Kodi."""
     mon = xbmc.Monitor()
+    _done = {'flag': False}
     def _watch():
-        while not mon.abortRequested():
+        while not mon.abortRequested() and not _done['flag']:
             time.sleep(0.5)
-        try: dialog.close()
-        except: pass
+        if mon.abortRequested():
+            try: dialog.close()
+            except: pass
     threading.Thread(target=_watch, daemon=True).start()
     dialog.doModal()
+    _done['flag'] = True
 
 class ScanProgressDialog(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):

@@ -91,14 +91,17 @@ def run_modal_main_thread(dialog):
     """doModal() pe main thread (input garantat, ca TraktRatingWindow);
     se inchide automat la shutdown Kodi (ca _show_modal_abortable din player.py)."""
     mon = xbmc.Monitor()
+    _done = {'flag': False}
 
     def _watch():
-        while not mon.abortRequested():
+        while not mon.abortRequested() and not _done['flag']:
             time.sleep(0.5)
-        try:
-            dialog.close()
-        except:
-            pass
+        if mon.abortRequested():
+            try:
+                dialog.close()
+            except:
+                pass
 
     threading.Thread(target=_watch, daemon=True).start()
     dialog.doModal()
+    _done['flag'] = True
