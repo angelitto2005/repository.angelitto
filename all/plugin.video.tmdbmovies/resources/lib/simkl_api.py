@@ -613,5 +613,7 @@ def simkl_revoke():
 
 def prompt_simkl_rating(tmdb_id, content_type, season, episode, title):
     """Deschide TraktRating.xml cu service='simkl' pentru rating pe Simkl."""
+    if season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies'):
+        return
     from resources.lib.trakt_api import _prompt_trakt_rating
     _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service='simkl')

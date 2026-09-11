@@ -1,3 +1,5 @@
+1.1.274
+- Removed Simkl episode ratings on all paths (menu, post-watch, All Providers), Simkl has no episode-level rating, so episode ratings were silently landing on the whole show; movies and whole shows are unaffected
 
 1.1.273
 - Post-watch rating can now target Active provider, All providers, or a Custom selection (new toggles per provider in Accounts)

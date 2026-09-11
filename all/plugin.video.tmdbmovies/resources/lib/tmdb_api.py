@@ -3529,7 +3529,8 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
     else:
         options.append(('[B][COLOR FFE41B17]%s[/COLOR][/B]' % _drop_lbl, 'simkl_mark_dropped'))
 
-    if content_type != 'season':
+    _is_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
+    if content_type != 'season' and not _is_ep:
         options.append(('[B]Rate on [COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
 
     # Mark Watched/Unwatched (Dinamic, pe serverul Simkl — cross-provider)
@@ -3734,7 +3735,8 @@ def rate_on_providers(tmdb_id, content_type, season, episode, val, providers):
     except Exception:
         pass
     try:
-        if 'simkl' in providers:
+        _simkl_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
+        if 'simkl' in providers and not _simkl_ep:
             from resources.lib.simkl_api import SIMKLAPI
             api = SIMKLAPI()
             if val > 0:
@@ -3805,6 +3807,8 @@ def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, ti
                     targets.append(prov)
             except Exception:
                 pass
+    if season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies'):
+        targets = [p for p in targets if p != 'simkl']
     if not targets:
         return
     if len(targets) == 1:

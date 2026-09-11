@@ -403,7 +403,7 @@
 		<setting id="rating_postwatch_mode" type="enum" label="[B]Post-watch rating sent to[/B]" values="Active provider|All providers|Custom selection" default="0"/>
 		<setting id="rating_postwatch_trakt" type="bool" label="  └─ Rate on [B][COLOR pink]Trakt[/COLOR][/B] after watching" default="true" visible="eq(-1,2)"/>
 		<setting id="rating_postwatch_mdblist" type="bool" label="  └─ Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
-		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies + Shows only)" default="true" visible="eq(-3,2)"/>
+		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies only)" default="true" visible="eq(-3,2)"/>
 		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching  (Movies + Episodes only)" default="true" visible="eq(-4,2)"/>
 
 		<setting type="lsep" label="Developer Options (optional)"/>
