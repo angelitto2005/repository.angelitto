@@ -197,7 +197,7 @@ def set_sync_meta(key, value):
     conn.close()
 
 # ------------------------------------------------------------------
-# LIST CACHE HELPERS (POV-style: fara TTL, invalidat de activitati)
+# LIST CACHE HELPERS (fara TTL, invalidat de activitati)
 # ------------------------------------------------------------------
 def get_cached(key, ttl=0):
     """Returneaza data cache-uita sau None. ttl>0 = expirare in secunde."""
@@ -538,7 +538,7 @@ def _mark_activities_seen_local():
     Fara asta, urmatorul ciclu smart vede watched_at remote mai mare decat cel
     local si re-importa TOATE paginile de watched (4-5 GET) + upnext (2 GET)
     pentru o schimbare pe care am dus-o deja noi prin push. Un client extern
-    (POV, site) care marcheaza altceva produce un timestamp remote mai nou ->
+    (addon, site) care marcheaza altceva produce un timestamp remote mai nou ->
     comparatia remote > local ramane adevarata si re-importul se face normal.
     Comparatia e lexicografica pe ISO stringuri (paritate cu _changed)."""
     try:
@@ -839,7 +839,7 @@ def sync_full_library(silent=False, force=False):
 
         try:
             xbmc.log(f'[MDBList SYNC] === STARTING {"FORCE" if force else "SMART"} SYNC ===', xbmc.LOGINFO)
-            # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute (ca POV) ---
+            # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute ---
             need_watched = need_ratings = need_collection = need_dropped = need_playback = need_upnext = force
             if force:
                 # Force = refresh complet: golim cache-urile de liste ca sa se refaca
@@ -866,7 +866,7 @@ def sync_full_library(silent=False, force=False):
                     need_ratings   = _changed('rated_at')
                     need_collection = _changed('collected_at')
                     need_dropped   = _changed('dropped_at')
-                    # invalidare cache liste POV-style (only daca activitatea s-a schimbat)
+                    # invalidare cache liste (only daca activitatea s-a schimbat)
                     if _changed('watchlisted_at'):
                         clear_cached('watchlist')
                     if _changed('collected_at'):

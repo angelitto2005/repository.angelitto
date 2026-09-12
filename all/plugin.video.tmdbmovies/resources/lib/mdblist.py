@@ -181,7 +181,7 @@ def _delete(path):
     return None
 
 def fetch_user_lists():
-    """Listele utilizatorului — cache POV-style (0 calluri la revizitare)."""
+    """Listele utilizatorului (0 calluri la revizitare)."""
     from resources.lib.mdblist_sync import get_cached, set_cached
     cached = get_cached('lists_user')
     if cached is not None:
@@ -277,7 +277,7 @@ def fetch_watchlist(mediatype=None):
     return data.get('movies', []) + data.get('shows', [])
 
 def fetch_external_lists():
-    """Liste externe (made by others) — cache POV-style."""
+    """Liste externe (made by others)."""
     from resources.lib.mdblist_sync import get_cached, set_cached
     cached = get_cached('external_user')
     if cached is not None:

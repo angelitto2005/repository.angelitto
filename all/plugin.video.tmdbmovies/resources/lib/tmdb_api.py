@@ -4792,7 +4792,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         except: skin_compat = '0'
         
         # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
-        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        # thumb/landscape devin still-ul episodului (thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
             landscape_art = thumb_art or ep_icon
@@ -6900,7 +6900,7 @@ def in_progress_episodes(params):
         except: skin_compat = '0'
         
         # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
-        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        # thumb/landscape devin still-ul episodului (thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
             landscape_art = thumb_art or ep_icon
@@ -7477,7 +7477,7 @@ def get_next_episodes(params=None):
         except: skin_compat = '0'
         
         # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
-        # thumb/landscape devin still-ul episodului (identic cu POV: thumb != poster)
+        # thumb/landscape devin still-ul episodului (thumb != poster)
         if art_pref in ('2', '3'):
             thumb_art = f"{IMG_BASE}{ep_still}" if has_still else ''
             landscape_art = thumb_art or ep_icon

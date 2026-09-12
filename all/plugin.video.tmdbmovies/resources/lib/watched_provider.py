@@ -364,7 +364,7 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     remove_from_progress(tmdb_id, content_type, season, episode)
     # 3. Bookmark Kodi (dialogul nativ de resume nu mai trebuie sa apara la click)
     _kodi_delete_resume_bookmark(tmdb_id, content_type, season, episode)
-    # 4. Refresh widget-uri de pe Home (UpdateLibrary ca POV) — Container.Refresh din
+    # 4. Refresh widget-uri de pe Home (UpdateLibrary) — Container.Refresh din
     #    remove_from_progress doar reimprospateaza containerul activ, nu widget-urile.
     _invalidate_fast_cache()
     refresh_ui()

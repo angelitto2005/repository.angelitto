@@ -1504,7 +1504,7 @@ _forced_widget_refresh_done = [False]
 def _maybe_refresh_widgets_after_sync(force=False):
     """Refresh widget-urile de pe Home dupa un sync automat reusit, DOAR daca
     setarea 'Attempt to Refresh Widgets After Refresh' e activa (default false).
-    La fel ca POV (trakt.sync_refresh_widgets): fara asta, widget-urile AF3 (Next
+    trakt.sync_refresh_widgets: fara asta, widget-urile AF3 (Next
     Episodes, In Progress, etc.) raman stale dupa ce sync-ul aduce watched/resume
     de pe server — doar restart/refresh manual le improspata.
     force=True = primul sync reusit dupa update de addon (_version_changed):

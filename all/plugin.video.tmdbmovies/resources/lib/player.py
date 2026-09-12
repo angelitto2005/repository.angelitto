@@ -432,7 +432,7 @@ def check_url_validity(url, headers=None, max_timeout=None):
 
 
 def _fast_aio_resolve_link(url, timeout=25):
-    """Rezolva URL-uri AIO/Stremio la link-ul final (stil POV): 4xx/5xx/timeout = None, fara retry."""
+    """Rezolva URL-uri AIO/Stremio la link-ul final: 4xx/5xx/timeout = None, fara retry."""
     clean_url = url.split('|')[0]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     if '|' in url:
@@ -1726,7 +1726,7 @@ def start_playback_monitor(player_instance, dialog=None):
         player_instance.playback_start_time = time.time()
         
         # ============================================================
-        # SKIP INTRO (stil POV): fereastra mica in dreapta sus la generic
+        # SKIP INTRO: fereastra mica in dreapta sus la generic
         # ============================================================
         is_episode_playback = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
         if is_episode_playback and ADDON.getSetting('skip_intro.enable') != 'false':
@@ -2007,7 +2007,7 @@ def start_playback_monitor(player_instance, dialog=None):
             xbmc.sleep(5000)
             xbmc.executebuiltin('Container.Refresh')
             log("[PLAYER-MONITOR] Container refreshed")
-            # Refresh widget-uri de pe Home (UpdateLibrary ca POV): Container.Refresh nu
+            # Refresh widget-uri de pe Home (UpdateLibrary): Container.Refresh nu
             # atinge widget-urile din skin (Next Episodes / In Progress). UpdateLibrary
             # emite VideoLibrary.OnUpdate -> toate widget-urile se re-randa in ~5s.
             try:
@@ -2740,7 +2740,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             xbmcplugin.setResolvedUrl(_current_handle(), True, li)
             start_playback_monitor(player, dialog=None)
         else:
-            # Playback normal: player.play() pe main thread (ca POV) pentru metadate corecte
+            # Playback normal: player.play() pe main thread pentru metadate corecte
             # Asta asigura ca VideoPlayer.IMDBNumber e populat corect pentru toate addonurile de srt
             if p_dialog:
                 try: p_dialog.close()
@@ -3413,7 +3413,7 @@ def list_sources(params):
         scan_thread = threading.Thread(target=_run_scan, daemon=True)
         scan_thread.start()
 
-        # Ruleaza doModal in thread separat (ca POV) — dialogul ramane deschis
+        # Ruleaza doModal in thread separat  — dialogul ramane deschis
         # pana cand ResultsWindow e gata, eliminand gap-ul vizual
         _dialog_thread = threading.Thread(target=dialog.doModal, daemon=True)
         _dialog_thread.start()
