@@ -1726,7 +1726,7 @@ def start_playback_monitor(player_instance, dialog=None):
         player_instance.playback_start_time = time.time()
         
         # ============================================================
-        # SKIP INTRO: fereastra mica in dreapta sus la generic
+        # SKIP INTRO : fereastra mica in dreapta sus la generic
         # ============================================================
         is_episode_playback = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
         if is_episode_playback and ADDON.getSetting('skip_intro.enable') != 'false':
@@ -3413,7 +3413,7 @@ def list_sources(params):
         scan_thread = threading.Thread(target=_run_scan, daemon=True)
         scan_thread.start()
 
-        # Ruleaza doModal in thread separat  — dialogul ramane deschis
+        # Ruleaza doModal in thread separat — dialogul ramane deschis
         # pana cand ResultsWindow e gata, eliminand gap-ul vizual
         _dialog_thread = threading.Thread(target=dialog.doModal, daemon=True)
         _dialog_thread.start()

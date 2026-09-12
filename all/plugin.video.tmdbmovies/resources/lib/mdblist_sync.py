@@ -538,7 +538,7 @@ def _mark_activities_seen_local():
     Fara asta, urmatorul ciclu smart vede watched_at remote mai mare decat cel
     local si re-importa TOATE paginile de watched (4-5 GET) + upnext (2 GET)
     pentru o schimbare pe care am dus-o deja noi prin push. Un client extern
-    (addon, site) care marcheaza altceva produce un timestamp remote mai nou ->
+    (addons, site) care marcheaza altceva produce un timestamp remote mai nou ->
     comparatia remote > local ramane adevarata si re-importul se face normal.
     Comparatia e lexicografica pe ISO stringuri (paritate cu _changed)."""
     try:

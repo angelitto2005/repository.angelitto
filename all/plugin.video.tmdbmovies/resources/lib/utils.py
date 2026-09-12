@@ -765,9 +765,11 @@ def view_kodi_log():
 
 
 INVOKER_SETTING = 'reuse_language_invoker'
+INVOKER_ADDONS = ('plugin.video.tmdbmovies', 'tmdbm.trailers')
+INVOKER_SHORT = {'plugin.video.tmdbmovies': 'Movies', 'tmdbm.trailers': 'Trailers'}
 
-def _invoker_xml_path():
-    return xbmcvfs.translatePath('special://home/addons/plugin.video.tmdbmovies/addon.xml')
+def _invoker_xml_path(addon_id):
+    return xbmcvfs.translatePath('special://home/addons/%s/addon.xml' % addon_id)
 
 def get_invoker_setting():
     try:
@@ -775,22 +777,27 @@ def get_invoker_setting():
     except:
         return 'true'
 
-def read_invoker_xml():
+def read_invoker_xml(addon_id):
     try:
         import xml.etree.ElementTree as ET
-        tree = ET.parse(_invoker_xml_path())
+        path = _invoker_xml_path(addon_id)
+        if not xbmcvfs.exists(path):
+            return None
+        tree = ET.parse(path)
         item = next(tree.getroot().iter('reuselanguageinvoker'), None)
         if item is not None and item.text:
             return item.text.strip()
         return None
     except Exception as e:
-        xbmc.log(f"[UTILS] Invoker XML read error: {e}", xbmc.LOGERROR)
+        xbmc.log(f"[UTILS] Invoker XML read error ({addon_id}): {e}", xbmc.LOGERROR)
         return None
 
-def apply_invoker_to_xml(value):
+def apply_invoker_to_xml(addon_id, value):
     try:
         import xml.etree.ElementTree as ET
-        path = _invoker_xml_path()
+        path = _invoker_xml_path(addon_id)
+        if not xbmcvfs.exists(path):
+            return None
         tree = ET.parse(path)
         item = next(tree.getroot().iter('reuselanguageinvoker'), None)
         if item is None:
@@ -799,17 +806,21 @@ def apply_invoker_to_xml(value):
         tree.write(path, encoding='utf-8', xml_declaration=True)
         return True
     except Exception as e:
-        xbmc.log(f"[UTILS] Invoker XML write error: {e}", xbmc.LOGERROR)
+        xbmc.log(f"[UTILS] Invoker XML write error ({addon_id}): {e}", xbmc.LOGERROR)
         return False
 
 def check_language_invoker_mismatch():
     try:
         setting = get_invoker_setting()
-        current = read_invoker_xml()
-        if current is None or current == setting:
-            return
-        if apply_invoker_to_xml(setting):
-            xbmc.log(f"[UTILS] Invoker mismatch fixed (xml {current} -> {setting}). Restart Kodi to apply.", xbmc.LOGINFO)
+        fixed = []
+        for addon_id in INVOKER_ADDONS:
+            current = read_invoker_xml(addon_id)
+            if current is None or current == setting:
+                continue
+            if apply_invoker_to_xml(addon_id, setting):
+                fixed.append(addon_id)
+        if fixed:
+            xbmc.log(f"[UTILS] Invoker mismatch fixed ({', '.join(fixed)} -> {setting}). Restart Kodi to apply.", xbmc.LOGINFO)
             xbmcgui.Dialog().notification("TMDb Movies", "Invoker setting applied. Restart Kodi.", TMDbmovies_ICON, 5000, False)
     except:
         pass
@@ -826,10 +837,28 @@ def toggle_language_invoker():
         if not dialog.yesno("Reuse Language Invoker", "Current: " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if current == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + ". Switch to " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if new_value == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + "?"):
             return
         ADDON.setSetting(INVOKER_SETTING, new_value)
-        if not apply_invoker_to_xml(new_value):
+        applied = []
+        missing = []
+        for addon_id in INVOKER_ADDONS:
+            if not xbmcvfs.exists(_invoker_xml_path(addon_id)):
+                if addon_id != 'plugin.video.tmdbmovies':
+                    missing.append(INVOKER_SHORT.get(addon_id, addon_id))
+                continue
+            if apply_invoker_to_xml(addon_id, new_value):
+                applied.append(INVOKER_SHORT.get(addon_id, addon_id))
+        if 'Movies' not in applied:
             dialog.ok("Error", "Could not write addon.xml.")
             return
-        dialog.ok("Reuse Language Invoker", "Set to " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if new_value == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + ". Reloading profile now to apply.")
+        _inv_colored = '[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if new_value == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]'
+        _movies_colored = '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/COLOR][/B]'
+        _trailers_colored = '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/COLOR][/B]'
+        if 'Trailers' in applied:
+            _scope = _movies_colored + ' + ' + _trailers_colored
+        else:
+            _scope = _movies_colored + ' only'
+            if missing:
+                _scope += ' (' + ', '.join(missing) + ' not installed)'
+        dialog.ok("Reuse Language Invoker", "Set to " + _inv_colored + " (" + _scope + ")" + chr(10) + "Reload profile to apply.")
         try:
             xbmc.executebuiltin('LoadProfile(%s)' % xbmc.getInfoLabel('System.ProfileName'))
         except: pass
