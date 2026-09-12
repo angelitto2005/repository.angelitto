@@ -209,6 +209,9 @@ def cleanup_empty_download_folders():
     try:
         base_dir = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
         downloads_dir = os.path.join(base_dir, 'Downloads')
+        if not xbmcvfs.exists(downloads_dir):
+            xbmcvfs.mkdirs(downloads_dir)
+            return
         _prune_empty_dirs(downloads_dir, downloads_dir)
     except Exception as e:
         xbmc.log(f"[DOWNLOAD] Cleanup error: {e}", xbmc.LOGERROR)

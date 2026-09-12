@@ -123,7 +123,7 @@ def render_from_fast_cache(items):
             _props = item.get('properties') or {}
             for _k, _v in _props.items():
                 if _v:
-                    li.setProperty(_k, str(_v))
+                    _safe_set_prop(li, _k, str(_v))
 
         items_to_add.append((item['url'], li, item['is_folder']))
     
@@ -456,7 +456,7 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
     
     mode = params.get('mode', '')
     if not folder and mode not in ACTION_MODES:
-        li.setProperty('IsPlayable', 'true')
+        _safe_set_prop(li, 'IsPlayable', 'true')
     # Pentru mode=sources, NU setam IsPlayable - plugin-ul gestioneaza singur
     # ============================================================
 
@@ -492,13 +492,19 @@ def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None,
 
     # --- MODIFICARE NOUA ---
     if uids and 'tmdb' in uids:
-        li.setProperty('tmdb_id', str(uids['tmdb']))
+        _safe_set_prop(li, 'tmdb_id', str(uids['tmdb']))
     # -----------------------
     
     if cm:
-        li.addContextMenuItems(cm)
+        try:
+            li.addContextMenuItems(cm)
+        except Exception as e:
+            log(f"[LIST] addContextMenuItems esuat: {e}")
 
-    xbmcplugin.addDirectoryItem(HANDLE, url, li, folder)
+    try:
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, folder)
+    except Exception as e:
+        log(f"[LIST] addDirectoryItem esuat ({mode}): {e}")
 
 
 def build_menu(menu_list):
@@ -1107,7 +1113,11 @@ def build_movie_list(params):
     prefetch_metadata_parallel(current_items, 'movie')
 
     for item in current_items:
-        processed = _process_movie_item(item, return_data=True, skip_details=True)
+        try:
+            processed = _process_movie_item(item, return_data=True, skip_details=True)
+        except Exception as e:
+            log(f"[LIST] Item film sarit la procesare: {e}")
+            continue
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -1219,7 +1229,11 @@ def build_tvshow_list(params):
     prefetch_metadata_parallel(current_items, 'tv')
 
     for item in current_items:
-        processed = _process_tv_item(item, return_data=True, skip_details=True)
+        try:
+            processed = _process_tv_item(item, return_data=True, skip_details=True)
+        except Exception as e:
+            log(f"[LIST] Item serial sarit la procesare: {e}")
+            continue
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -1395,6 +1409,14 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     return cm
 
+def _safe_set_prop(li, key, value):
+    try:
+        li.setProperty(str(key), str(value))
+        return True
+    except Exception as e:
+        log(f"[LIST] setProperty esuat ({key}): {e}")
+        return False
+
 def _process_movie_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
     from resources.lib import watched_provider
     tmdb_id = str(item.get('id', ''))
@@ -1513,7 +1535,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
         art['clearlogo'] = movie_logo
     li.setArt(art)
     
-    li.setProperty('tmdb_id', tmdb_id)
+    _safe_set_prop(li, 'tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=is_watched)
     
     if resume_time > 0:
@@ -1652,7 +1674,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
         art['fanart_clearlogo'] = tv_logo
     li.setArt(art)
     
-    li.setProperty('tmdb_id', tmdb_id)
+    _safe_set_prop(li, 'tmdb_id', tmdb_id)
     set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched_info)
     
     if cm: li.addContextMenuItems(cm)
@@ -2592,7 +2614,7 @@ def _render_tmdb_calendar_entries(entries, wnd):
             display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
 
         li = xbmcgui.ListItem(display)
-        li.setProperty('cal_diff', str(diff))
+        _safe_set_prop(li, 'cal_diff', str(diff))
         li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': fanart})
         if is_movie:
             watched = _wp_is_mw(tmdb_id)
@@ -3291,9 +3313,9 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
     options.append(('Add to [B][COLOR FF00CED1]My Lists[/COLOR][/B]', 'add_to_list'))
     options.append(('Remove from [B][COLOR FF00CED1]My Lists[/COLOR][/B]', 'remove_from_list'))
 
-    # TMDb: ratingul e ascuns si la seriale (nu doar sezoane) — rating la show scoate serialul din watchlist (entry 104)
-    if str(content_type).lower() not in ('season', 'tv', 'show', 'shows', 'series'):
-        options.append(('[B]Rate on [COLOR FF00CED1]TMDb[/COLOR][/B]', 'rate_item'))
+    if str(content_type).lower() != 'season':
+        options.append(('Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B]', 'rate_item'))
+        options.append(('Remove rating on [B][COLOR FF00CED1]TMDb[/COLOR][/B]', 'remove_rating'))
 
     dialog = xbmcgui.Dialog()
     display_options = [opt[0] for opt in options]
@@ -3322,6 +3344,9 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
         show_tmdb_remove_from_list_dialog(tmdb_id, content_type)
     elif action == 'rate_item':
         if rate_tmdb_item(tmdb_id, content_type, season, episode, title):
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'remove_rating':
+        if remove_tmdb_rating(tmdb_id, content_type, season, episode):
             xbmc.executebuiltin("Container.Refresh")
 
 
@@ -3388,7 +3413,8 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'mdblist_mark_dropped'))
 
     if content_type != 'season':
-        options.append(('[B]Rate on [COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
+        options.append(('Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
+        options.append(('Remove rating on [B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_remove_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul MDBList — cross-provider) ---
     from resources.lib.mdblist_sync import is_movie_watched as _mdb_is_mw, is_episode_watched as _mdb_is_ep, get_watched_episodes_count as _mdb_cnt
     if str(content_type).lower() in ('movie', 'movies'):
@@ -3430,6 +3456,12 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
     elif action == 'mdblist_rating':
         from resources.lib.mdblist_api import prompt_mdblist_rating
         prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'mdblist_remove_rating':
+        from resources.lib.mdblist_api import MDBListAPI
+        if MDBListAPI().remove_rating(content_type, tmdb_id, season, episode) is not None:
+            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Rating removed", MDB_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_mark_watched':
         from resources.lib.mdblist_sync import mark_as_watched_internal as _mdb_mark
         _mdb_mark(tmdb_id, content_type, season, episode, sync_mdblist=True, refresh_ui=True)
@@ -3531,7 +3563,8 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
 
     _is_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
     if content_type != 'season' and not _is_ep:
-        options.append(('[B]Rate on [COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
+        options.append(('Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
+        options.append(('Remove rating on [B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_remove_rating'))
 
     # Mark Watched/Unwatched (Dinamic, pe serverul Simkl — cross-provider)
     from resources.lib.simkl_sync import is_movie_watched as _sk_is_mw, is_episode_watched as _sk_is_ep, get_watched_episodes_count as _sk_cnt
@@ -3579,6 +3612,12 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
     elif action == 'simkl_rating':
         from resources.lib.simkl_api import prompt_simkl_rating
         prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'simkl_remove_rating':
+        from resources.lib.simkl_api import SIMKLAPI
+        if SIMKLAPI().remove_rating(content_type, tmdb_id, season, episode) is not None:
+            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Rating removed", SIMKL_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
     elif action == 'simkl_mark_watched':
         from resources.lib.simkl_sync import mark_as_watched_internal as _sk_mark
         _sk_mark(tmdb_id, content_type, season, episode, sync_simkl=True, refresh_ui=True)
@@ -4781,9 +4820,9 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             art['tvshow.clearlogo'] = f"{IMG_BASE}{show_logo}" if not show_logo.startswith('http') else show_logo
         li.setArt(art)
         
-        li.setProperty('tmdb_id', tmdb_id)
+        _safe_set_prop(li, 'tmdb_id', tmdb_id)
         if ep_type:
-            li.setProperty('episode_type', ep_type)
+            _safe_set_prop(li, 'episode_type', ep_type)
         set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': show_imdb_id}, watched_info=is_watched)
         set_resume_point(li, resume_seconds, duration)
         
@@ -5821,14 +5860,6 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
                                        TMDB_ICON, 4000, False)
         return False
 
-    if str(content_type).lower() in ('tv', 'show', 'shows', 'series') and not (season and episode):
-        # Rating la SHOW -> TMDb il scoate din watchlist (comportament server, entry 104).
-        # Userul scoate serialele din watchlist manual cand vrea.
-        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
-                                       'TMDb show rating skipped - would remove the show from your watchlist',
-                                       TMDB_ICON, 4000, False)
-        return False
-
     if content_type == 'episode' or (season and episode):
         # v3 + Bearer (accepta token v4)
         result = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating", method='POST',
@@ -5927,6 +5958,20 @@ def delete_tmdb_rating(tmdb_id, content_type, notify=True):
             xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
         return True
 
+    return False
+
+
+def remove_tmdb_rating(tmdb_id, content_type, season=None, episode=None, notify=True):
+    if content_type == 'episode' or (season is not None and episode is not None):
+        res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/episode/{episode}/rating", method='DELETE', v4=False)
+    elif str(content_type).lower() == 'season' and season is not None:
+        res = tmdb_auth_request(f"/tv/{tmdb_id}/season/{season}/rating", method='DELETE', v4=False)
+    else:
+        return delete_tmdb_rating(tmdb_id, content_type, notify=notify)
+    if res is not None:
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", "Rating removed", TMDB_ICON, 3000, False)
+        return True
     return False
 
 
@@ -6881,9 +6926,9 @@ def in_progress_episodes(params):
         if show_logo: art_dict['clearlogo'] = show_logo
         li.setArt(art_dict)
         
-        li.setProperty('tmdb_id', tmdb_id)
+        _safe_set_prop(li, 'tmdb_id', tmdb_id)
         if ep_type:
-            li.setProperty('episode_type', ep_type)
+            _safe_set_prop(li, 'episode_type', ep_type)
             
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': show_imdb_id}, watched_info=show_watched_info)
         set_resume_point(li, resume_seconds, duration)
@@ -7462,9 +7507,9 @@ def get_next_episodes(params=None):
             art['logo'] = show_logo
             art['fanart_clearlogo'] = show_logo
         li.setArt(art)
-        li.setProperty('tmdb_id', str(tmdb_id))
+        _safe_set_prop(li, 'tmdb_id', str(tmdb_id))
         if ep_type:
-            li.setProperty('episode_type', ep_type)
+            _safe_set_prop(li, 'episode_type', ep_type)
         # Modificat watched_info pentru a seta proprietatile AF3
         set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
         

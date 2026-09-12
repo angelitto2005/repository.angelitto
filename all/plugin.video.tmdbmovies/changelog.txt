@@ -1,3 +1,8 @@
+1.1.277
+- Added Reuse Language Invoker toggle (Settings → Performance) with auto profile reload
+- Fixed empty listings on Kodinerds Android builds: isolated per-item errors so one bad item no longer kills the whole list
+- Individual provider menus (Trakt/TMDb/MDBList/Simkl) now offer Remove rating next to Rate on movies, shows and episodes, with TMDb show rating re-enabled behind a watchlist-removal confirmation shown before the rating dialog
+
 1.1.276
 - Fix crash on Kodi 22 when playing from skin widgets
 

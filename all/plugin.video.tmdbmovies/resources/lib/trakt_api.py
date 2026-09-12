@@ -1685,7 +1685,8 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'hide_progress'))
         
     if content_type != 'season':
-        options.append(('[B]Rate on [COLOR pink]Trakt[/COLOR][/B]', 'add_rating'))
+        options.append(('Rate on [B][COLOR pink]Trakt[/COLOR][/B]', 'add_rating'))
+        options.append(('Remove rating on [B][COLOR pink]Trakt[/COLOR][/B]', 'remove_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul Trakt — cross-provider) ---
     if content_type == 'movie':
         _trak_is_w = trakt_sync.is_movie_watched(tmdb_id)
@@ -1714,6 +1715,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
     elif action == 'hide_progress': hide_show_from_progress(tmdb_id)
     elif action == 'unhide_progress': unhide_show_from_progress(tmdb_id)
     elif action == 'add_rating': rate_trakt_item(tmdb_id, content_type, season, episode, title)
+    elif action == 'remove_rating': remove_trakt_rating(tmdb_id, content_type, season, episode)
     elif action == 'mark_watched_trakt':
         from resources.lib import trakt_sync
         trakt_sync.mark_as_watched_internal(tmdb_id, content_type, season, episode, sync_trakt=True, refresh_ui=True)
@@ -1928,6 +1930,17 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
         # TMDb
         service_label = "RATE ON TMDB"
         service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
+        from resources.lib.tmdb_api import is_in_tmdb_watchlist
+        _ct = str(content_type).lower()
+        _tmdb_warn = _ct in ('movie', 'movies', 'tv', 'show', 'shows', 'series') and not (season and episode)
+        if _tmdb_warn:
+            try:
+                _tmdb_warn = bool(is_in_tmdb_watchlist(tmdb_id, content_type))
+            except:
+                _tmdb_warn = False
+        if _tmdb_warn:
+            if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rating [B][COLOR yellow]{title or 'this item'}[/COLOR][/B] will remove it from your [B][COLOR FF00CED1]TMDb Watchlist[/COLOR][/B].\nContinue?"):
+                return
     
     val_10 = show_rating_window(tmdb_id, content_type, season, episode, title, service_icon, service_label)
     
@@ -1972,6 +1985,16 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
 
 def rate_trakt_item(tmdb_id, content_type, season=None, episode=None, title=''):
     _prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
+
+def remove_trakt_rating(tmdb_id, content_type, season=None, episode=None, notify=True):
+    from resources.lib.tmdb_api import _trakt_rating_payload
+    payload = _trakt_rating_payload(tmdb_id, content_type, season, episode)
+    res = trakt_api_request('/sync/ratings/remove', method='POST', data=payload)
+    if res is not None:
+        if notify:
+            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Rating removed", TRAKT_ICON, 3000, False)
+        return True
+    return False
 
 # ===================== TRAKT MY LISTS - MODIFICAT COMPLET =====================
 

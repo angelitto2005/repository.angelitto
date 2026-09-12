@@ -411,12 +411,17 @@ def set_resume_point(li, resume_seconds, total_seconds):
             info_tag.setResumePoint(0.0, 0.0)
     except AttributeError:
         # Fallback for Kodi 19 (Leia)
-        if resume_seconds > 0 and total_seconds > 0:
-            li.setProperty('resumetime', str(int(resume_seconds)))
-            li.setProperty('totaltime', str(int(total_seconds)))
-        else:
-            li.setProperty('resumetime', '0')
-            li.setProperty('totaltime', '0')
+        try:
+            if resume_seconds > 0 and total_seconds > 0:
+                li.setProperty('resumetime', str(int(resume_seconds)))
+                li.setProperty('totaltime', str(int(total_seconds)))
+            else:
+                li.setProperty('resumetime', '0')
+                li.setProperty('totaltime', '0')
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 
 # =============================================================================
@@ -757,6 +762,79 @@ def view_kodi_log():
         lines.reverse()
 
     dialog.textviewer(heading, _style_kodi_log('\n'.join(lines)))
+
+
+INVOKER_SETTING = 'reuse_language_invoker'
+
+def _invoker_xml_path():
+    return xbmcvfs.translatePath('special://home/addons/plugin.video.tmdbmovies/addon.xml')
+
+def get_invoker_setting():
+    try:
+        return (ADDON.getSetting(INVOKER_SETTING) or 'true').strip().lower()
+    except:
+        return 'true'
+
+def read_invoker_xml():
+    try:
+        import xml.etree.ElementTree as ET
+        tree = ET.parse(_invoker_xml_path())
+        item = next(tree.getroot().iter('reuselanguageinvoker'), None)
+        if item is not None and item.text:
+            return item.text.strip()
+        return None
+    except Exception as e:
+        xbmc.log(f"[UTILS] Invoker XML read error: {e}", xbmc.LOGERROR)
+        return None
+
+def apply_invoker_to_xml(value):
+    try:
+        import xml.etree.ElementTree as ET
+        path = _invoker_xml_path()
+        tree = ET.parse(path)
+        item = next(tree.getroot().iter('reuselanguageinvoker'), None)
+        if item is None:
+            return False
+        item.text = value
+        tree.write(path, encoding='utf-8', xml_declaration=True)
+        return True
+    except Exception as e:
+        xbmc.log(f"[UTILS] Invoker XML write error: {e}", xbmc.LOGERROR)
+        return False
+
+def check_language_invoker_mismatch():
+    try:
+        setting = get_invoker_setting()
+        current = read_invoker_xml()
+        if current is None or current == setting:
+            return
+        if apply_invoker_to_xml(setting):
+            xbmc.log(f"[UTILS] Invoker mismatch fixed (xml {current} -> {setting}). Restart Kodi to apply.", xbmc.LOGINFO)
+            xbmcgui.Dialog().notification("TMDb Movies", "Invoker setting applied. Restart Kodi.", TMDbmovies_ICON, 5000, False)
+    except:
+        pass
+
+def toggle_language_invoker():
+    try:
+        xbmc.executebuiltin('Dialog.Close(all,true)')
+        xbmc.sleep(500)
+    except: pass
+    dialog = xbmcgui.Dialog()
+    try:
+        current = get_invoker_setting()
+        new_value = 'false' if current == 'true' else 'true'
+        if not dialog.yesno("Reuse Language Invoker", "Current: " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if current == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + ". Switch to " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if new_value == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + "?"):
+            return
+        ADDON.setSetting(INVOKER_SETTING, new_value)
+        if not apply_invoker_to_xml(new_value):
+            dialog.ok("Error", "Could not write addon.xml.")
+            return
+        dialog.ok("Reuse Language Invoker", "Set to " + ('[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if new_value == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]') + ". Reloading profile now to apply.")
+        try:
+            xbmc.executebuiltin('LoadProfile(%s)' % xbmc.getInfoLabel('System.ProfileName'))
+        except: pass
+    except Exception as e:
+        xbmc.log(f"[UTILS] Invoker toggle error: {e}", xbmc.LOGERROR)
     
 
 DONATE_URL = 'https://ko-fi.com/angelitto'

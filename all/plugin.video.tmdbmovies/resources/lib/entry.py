@@ -241,6 +241,12 @@ def get_settings_menu_items():
     addon = get_addon()
     items.append({'name': '[B]Addon Settings[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
     items.append({'name': '[B]My Providers[/B]', 'iconImage': 'DefaultAddonWebSkin.png', 'mode': 'providers_menu'})
+    try:
+        _inv_state = (addon.getSetting('reuse_language_invoker') or 'true').strip().lower()
+    except:
+        _inv_state = 'true'
+    _inv_label = '[B]Reuse Language Invoker: [/B]' + ('[B][COLOR FF6AFB92]ON[/COLOR][/B]' if _inv_state == 'true' else '[B][COLOR FFF535AA]OFF[/COLOR][/B]')
+    items.append({'name': _inv_label, 'iconImage': 'DefaultAddonService.png', 'mode': 'toggle_language_invoker', 'folder': False})
     trakt_user = None
     token = addon.getSetting('trakt_access_token')
     if token:
@@ -1325,6 +1331,11 @@ def run_plugin():
         utils.view_kodi_log()
         return
 
+    if mode == 'toggle_language_invoker':
+        from resources.lib import utils
+        utils.toggle_language_invoker()
+        return
+
     if mode == 'show_donate':
         from resources.lib import utils
         utils.show_donate_link()
@@ -1662,6 +1673,13 @@ def run_service():
     try:
         sys.setswitchinterval(0.001)
     except Exception:
+        pass
+
+    # --- Reuse Language Invoker drift check (addon updates overwrite addon.xml) ---
+    try:
+        from resources.lib import utils
+        utils.check_language_invoker_mismatch()
+    except:
         pass
 
     # --- PRE-IMPORT modulele grele in fundal (fix deadlock de import: Kodi
