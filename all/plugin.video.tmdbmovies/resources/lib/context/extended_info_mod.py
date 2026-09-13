@@ -8,6 +8,8 @@ import sys
 import os
 import html
 import threading
+import random
+import time
 from urllib.parse import urlencode, quote
 from datetime import datetime, date
 from resources.lib import trakt_sync
@@ -350,6 +352,151 @@ def get_youtube_api_data(query):
             
     xbmc.log("[YOUTUBE_DEBUG] All keys failed!", level=xbmc.LOGINFO)
     return []
+
+_YT_IOS_UA = 'com.google.ios.youtube/20.20.7 (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)'
+_YT_SEARCH_CACHE = {}
+_YT_SEARCH_TTL = 604800
+
+
+def _yt_cache_get(query):
+    try:
+        hit = _YT_SEARCH_CACHE.get(query)
+        if hit and time.time() - hit[0] < _YT_SEARCH_TTL:
+            return hit[1]
+    except:
+        pass
+    try:
+        from resources.lib.cache import MainCache
+        data = MainCache().get('ytsearch_' + query)
+        if data:
+            try:
+                _YT_SEARCH_CACHE[query] = (time.time(), data)
+            except:
+                pass
+            return data
+    except:
+        pass
+    return None
+
+
+def _yt_cache_set(query, items):
+    try:
+        _YT_SEARCH_CACHE[query] = (time.time(), items)
+    except:
+        pass
+    try:
+        from resources.lib.cache import MainCache
+        MainCache().set('ytsearch_' + query, items, expiration=168)
+    except:
+        pass
+
+
+def search_youtube_innertube(query, max_results=25):
+    if not query:
+        return []
+    try:
+        cpn = ''.join(random.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_') for _ in range(16))
+        payload = {
+            'context': {'client': {
+                'clientName': 'IOS',
+                'clientVersion': '20.20.7',
+                'deviceMake': 'Apple',
+                'deviceModel': 'iPhone16,2',
+                'osName': 'iOS',
+                'osVersion': '18.5.0.22F76',
+                'platform': 'MOBILE',
+                'hl': 'en',
+                'gl': 'US',
+            }},
+            'cpn': cpn,
+            'query': query,
+        }
+        headers = {
+            'Origin': 'https://m.youtube.com',
+            'User-Agent': _YT_IOS_UA,
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '20.20.7',
+            'Content-Type': 'application/json',
+        }
+        r = requests.post('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', data=json.dumps(payload), headers=headers, timeout=15)
+        body = r.json()
+    except Exception as e:
+        log(f"Innertube search error: {e}")
+        return []
+    out = []
+    seen_ids = set()
+
+    def push(vid, title):
+        if vid in seen_ids or not vid:
+            return
+        seen_ids.add(vid)
+        out.append((vid, (title or '').strip()))
+        return len(out) >= max_results
+
+    def walk(node, cur_title=''):
+        if len(out) >= max_results:
+            return True
+        if isinstance(node, dict):
+            vr = node.get('videoRenderer')
+            if isinstance(vr, dict):
+                vid = vr.get('videoId') or ''
+                runs = (vr.get('title') or {}).get('runs') or []
+                t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
+                if push(vid, t):
+                    return True
+            cvm = node.get('compactVideoModel')
+            if isinstance(cvm, dict):
+                try:
+                    cur_title = cvm['compactVideoData']['videoData']['metadata']['title']
+                except Exception:
+                    cur_title = ''
+            w = node.get('watchEndpoint')
+            if isinstance(w, dict) and w.get('videoId'):
+                if push(w['videoId'], cur_title or ''):
+                    return True
+            for v in node.values():
+                if walk(v, cur_title):
+                    return True
+        elif isinstance(node, list):
+            for v in node:
+                if walk(v, cur_title):
+                    return True
+        return False
+
+    try:
+        contents = body['contents']['sectionListRenderer']['contents']
+    except Exception:
+        contents = None
+    if contents is None:
+        try:
+            contents = body['contents']['twoColumnSearchResultsRenderer']['primaryContents']['sectionListRenderer']['contents']
+        except Exception:
+            contents = []
+    try:
+        for sec in contents:
+            if walk(sec):
+                break
+    except Exception as e:
+        log(f"Innertube search parse error: {e}")
+    return out
+
+
+def get_youtube_search_results(query, max_results=25):
+    if not query:
+        return []
+    cached = _yt_cache_get(query)
+    if cached is not None:
+        return cached
+    pairs = search_youtube_innertube(query, max_results)
+    if pairs:
+        log(f"Innertube search OK: {len(pairs)} videos.")
+        items = [{'id': {'videoId': vid}, 'snippet': {'title': title, 'thumbnails': {'high': {'url': 'https://img.youtube.com/vi/' + vid + '/mqdefault.jpg'}}, 'publishedAt': ''}} for vid, title in pairs]
+        _yt_cache_set(query, items)
+        return items
+    items = get_youtube_api_data(query)
+    if items:
+        _yt_cache_set(query, items)
+    return items
 
 def format_money(val):
     if not val: return ''
@@ -781,7 +928,7 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         # PLAN B: Google YouTube API (in randul "YouTube Videos", mereu)
         # =========================================================================
         search_query = f"{self.title_text} {year} trailer"
-        yt_results = get_youtube_api_data(search_query)
+        yt_results = get_youtube_search_results(search_query)
         
         if yt_results:
             yt_list = []
@@ -1569,7 +1716,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
         # PLAN B: Google YouTube API (in randul "YouTube Videos", mereu)
         # =========================================================================
         search_query = f"{self.title_text} {year} trailer"
-        yt_results = get_youtube_api_data(search_query)
+        yt_results = get_youtube_search_results(search_query)
         
         if yt_results:
             yt_list = []
@@ -2319,7 +2466,7 @@ class ActorInfo(xbmcgui.WindowXMLDialog):
         try:
             
             search_query = f"{actor_name} interview best moments"
-            results = get_youtube_api_data(search_query)
+            results = get_youtube_search_results(search_query)
             
             list_items = []
             if results:

@@ -36,15 +36,14 @@ def get_json(url):
     return {}
 
 def search_youtube_api(title, year=None):
-    """Cauta pe YouTube prin Google API v3 (rotatie de chei) si alege primul
-    cel mai bun rezultat: prefera un videoclip cu 'trailer'/'teaser' in titlu."""
+    """Cauta trailer pe YouTube: intai Innertube gratis, fallback Google API v3."""
     try:
-        from resources.lib.context.extended_info_mod import get_youtube_api_data
+        from resources.lib.context.extended_info_mod import get_youtube_search_results
     except Exception:
         return None
     query = '{} {} trailer'.format(title, year) if year else '{} trailer'.format(title)
     try:
-        items = get_youtube_api_data(query)
+        items = get_youtube_search_results(query)
     except Exception:
         return None
     if not items:
