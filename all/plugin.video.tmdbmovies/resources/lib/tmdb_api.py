@@ -4431,6 +4431,12 @@ def show_details(tmdb_id, content_type):
     today = datetime.date.today()
 
     show_specials = ADDON.getSetting('show_specials') == 'true'
+    if ADDON.getSetting('flatten_single_season') == 'true':
+        _flat = [s for s in data.get('seasons', []) if (s.get('season_number', 0) or 0) != 0 or show_specials]
+        _flat = [s for s in _flat if int(s.get('episode_count') or 0) > 0]
+        if len(_flat) == 1:
+            list_episodes(tmdb_id, str(int(_flat[0].get('season_number', 0) or 0)), tv_title)
+            return
     for s in data.get('seasons', []):
         s_num = s['season_number']
         if s_num == 0 and not show_specials:

@@ -1,5 +1,6 @@
-1.1.280
+1.1.281
 - Fixed Browse Show / Browse Season doing nothing from Home widgets
+- Added optional "Flatten single-season shows" setting (default off)
 
 1.1.279
 - Added optional "Show Specials (Season 0)" setting (TV Shows Settings, default off) — when enabled, a "Specials" folder appears first in the season list with its episodes
