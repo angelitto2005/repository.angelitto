@@ -51,6 +51,14 @@ def refresh_ui():
     except:
         pass
 
+def browse_command(url):
+    try:
+        if _on_home_widget():
+            return 'ActivateWindow(Videos,%s,return)' % url
+    except:
+        pass
+    return 'Container.Update(%s)' % url
+
 _WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl')
 
 _WATCHED_MARK_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}

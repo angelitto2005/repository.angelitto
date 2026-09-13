@@ -3035,7 +3035,7 @@ def _view_trakt_my_calendar():
     from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel, get_tmdb_item_details, _get_full_context_menu
     from resources.lib.cache import ram_pool_get
     from resources.lib.mdblist_sync import get_cached, set_cached
-    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
+    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
     from resources.lib.config import calendar_localized_label, IMG_BASE, BACKDROP_BASE
     import datetime as _dt
 
@@ -3301,9 +3301,9 @@ def _view_trakt_my_calendar():
             li.setArt(art)
             cm = _get_full_context_menu(it['tmdb_id'], 'episode', it['title'], season=it['season'], episode=it['episode'])
             b_show_params = urlencode({'mode': 'details', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'title': it['title']})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
             b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': it['tmdb_id'], 'season': str(it['season']), 'tv_show_title': it['title']})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
             clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': it['tmdb_id'], 'type': 'tv',
                                         'season': str(it['season']), 'episode': str(it['episode']),
                                         'title': f"{it['title']} S{it['season']:02d}E{it['episode']:02d}"})

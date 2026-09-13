@@ -2509,7 +2509,7 @@ def tmdb_calendar_my():
 def _render_tmdb_calendar_entries(entries, wnd):
     import datetime as _dt
     from resources.lib.config import calendar_localized_label
-    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
     from resources.lib.cache import ram_pool_get
     from resources.lib.config import get_plot_language_code
 
@@ -2632,9 +2632,9 @@ def _render_tmdb_calendar_entries(entries, wnd):
         else:
             cm = _get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode'])
             b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
             b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
         if cm:
             li.addContextMenuItems(cm)
         if is_movie:
@@ -6871,7 +6871,7 @@ def in_progress_episodes(params):
             'duration': duration, 'studio': studio, 'mpaa': show_mpaa
         }
         
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
+        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml, browse_command as _browse_cmd
         _prov_lbl = _prov_label()
         _prov_clr = _prov_color()
         cm = [
@@ -6883,10 +6883,10 @@ def in_progress_episodes(params):
             cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
         
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
         
         b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_name})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
         
         clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': f"{show_name} S{season:02d}E{episode:02d}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
@@ -6977,7 +6977,7 @@ def get_next_episodes(params=None):
     from resources.lib import trakt_sync
 
     # 1. OBTINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALA (sursa dinamica pe provider)
-    from resources.lib.watched_provider import _get_provider_raw as _get_prov
+    from resources.lib.watched_provider import _get_provider_raw as _get_prov, browse_command as _browse_cmd
     use_tmdb = bool(params and params.get('use_tmdb') == 'true')
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
@@ -7452,11 +7452,11 @@ def get_next_episodes(params=None):
         # --- INCEPUT ADAUGARE BROWSE OPTIONS ---
         # Browse Show (Afiseaza sezoanele)
         b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': it['show_title']})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_show_params})"))
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
         
         # Browse Season (Afiseaza episoadele din sezonul curent)
         b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(it['season']), 'tv_show_title': it['show_title']})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{b_season_params})"))
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
         # --- SFARSIT ADAUGARE BROWSE OPTIONS ----
         
         # --- INCEPUT ADAUGARE NOUA: Clear Sources Cache pentru Up Next ---

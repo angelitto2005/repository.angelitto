@@ -1103,7 +1103,7 @@ def _view_calendar(page=1):
     from resources.lib.config import IMG_BASE, BACKDROP_BASE
     from resources.lib.config import calendar_localized_label
     from resources.lib.tmdb_api import set_metadata, get_tmdb_item_details, _get_full_context_menu
-    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
+    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
     fake_items = []
     for item in page_items:
         if item.get('type') == 'movie':
@@ -1278,9 +1278,9 @@ def _view_calendar(page=1):
         li.setArt(art)
         cm = _get_full_context_menu(str(tmdb_id), 'episode', show_title, season=s_num, episode=ep_num)
         b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_show_params})"))
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_show_params}")))
         b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_season_params})"))
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_season_params}")))
         clear_p_params = urllib.parse.urlencode({'mode': 'clear_sources_context', 'tmdb_id': str(tmdb_id), 'type': 'tv',
                                                   'season': str(s_num), 'episode': str(ep_num),
                                                   'title': f"{show_title} S{s_num:02d}E{ep_num:02d}"})

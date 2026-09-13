@@ -825,7 +825,7 @@ def _render_calendar_entries(entries, wnd):
     import datetime as _dt
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, calendar_localized_label
     from resources.lib.tmdb_api import set_metadata, _get_full_context_menu, _get_cached_details
-    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
 
     fake_items = [{'id': e['tmdb_id'], 'media_type': 'tv' if e['media_type'] == 'tv' else 'movie'} for e in entries]
     # Prefetch doar itemii lipsa din cache (pool/SQLite) — evita rate-limit TMDb la 500 itemi.
@@ -943,9 +943,9 @@ def _render_calendar_entries(entries, wnd):
         else:
             cm = _get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode'])
             b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_show_params})"))
+            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_show_params}")))
             b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', f"Container.Update({_BASE_URL}?{b_season_params})"))
+            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_season_params}")))
         if cm:
             li.addContextMenuItems(cm)
         if is_movie:
