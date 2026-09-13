@@ -4430,12 +4430,13 @@ def show_details(tmdb_id, content_type):
     import datetime
     today = datetime.date.today()
 
+    show_specials = ADDON.getSetting('show_specials') == 'true'
     for s in data.get('seasons', []):
         s_num = s['season_number']
-        if s_num == 0:
+        if s_num == 0 and not show_specials:
             continue
 
-        name = f"Season {s_num}"
+        name = "Specials" if s_num == 0 else f"Season {s_num}"
         ep_count = s.get('episode_count', 0)
         
         # s_poster primeste automat posterul RO din creierul central!

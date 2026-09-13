@@ -13,6 +13,7 @@
 		<setting id="skip_intro.enable" type="bool" label="[B][COLOR FFCCCCFF]Show [COLOR FFFF4444]Skip Intro[COLOR FFCCCCFF] dialog[/COLOR][/B]" default="true"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Show future episodes (over 7 days / TBA)" default="false"/>
         <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="true"/>
+        <setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
 		<setting id="skin_type" type="enum" label="Skin Compatibility (Fix Art/Thumbnails)" values="[B][COLOR FF6AFB92]Estuary (Standard)[/COLOR][/B]|[B][COLOR FF6AFB92]Arctic Fuse 3 (Modern)[/COLOR][/B]" default="0"/>
 		<setting id="show_motto_genre" type="bool" label="Show Motto + Genre above description" default="true"/>
@@ -407,7 +408,7 @@
 		<setting id="rating_postwatch_trakt" type="bool" label="  └─ Rate on [B][COLOR pink]Trakt[/COLOR][/B] after watching" default="true" visible="eq(-1,2)"/>
 		<setting id="rating_postwatch_mdblist" type="bool" label="  └─ Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
 		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies only)" default="true" visible="eq(-3,2)"/>
-		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching  (Movies + Episodes only)" default="true" visible="eq(-4,2)"/>
+		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching" default="true" visible="eq(-4,2)"/>
 
 		<setting type="lsep" label="Developer Options (optional)"/>
 		<setting id="trakt_client_id" type="text" label="Custom Trakt Client ID (leave empty for default)" default=""/>

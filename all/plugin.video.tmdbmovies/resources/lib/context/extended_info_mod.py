@@ -1894,12 +1894,16 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
 
     def fill_season_list(self, list_id, seasons):
         try:
+            from resources.lib.config import ADDON as _cfg_addon
+            _show_specials = _cfg_addon.getSetting('show_specials') == 'true'
             ctl = self.getControl(list_id)
             ctl.reset()
             list_items = []
 
             for s in seasons:
                 season_num = s.get('season_number', 0)
+                if season_num == 0 and not _show_specials:
+                    continue
                 ep_count = s.get('episode_count', 0)
                 
                 # --- MODIFICARE: Titlu BOLD ---
