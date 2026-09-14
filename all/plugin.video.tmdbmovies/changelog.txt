@@ -1,3 +1,6 @@
+1.1.284
+- After an addon update resets the manifest, a delayed Yes/No dialog now offers to reload the profile to re-apply your saved Reuse Language Invoker choice (Reload now / Later), replacing the restart request.
+
 1.1.283
 - Added "Date format" setting (European dd.mm.yyyy / US mm/dd/yyyy) applied to all air-date and premiere displays across calendars, Up Next, lists and Extended Info.
 - Air dates from Trakt are now converted from UTC to your local day using the device timezone (Auto, DST-aware) with an optional manual UTC offset override for boxes with a wrong system clock.

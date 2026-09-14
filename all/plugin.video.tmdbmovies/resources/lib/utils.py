@@ -809,19 +809,42 @@ def apply_invoker_to_xml(addon_id, value):
         xbmc.log(f"[UTILS] Invoker XML write error ({addon_id}): {e}", xbmc.LOGERROR)
         return False
 
+def _ask_invoker_reload(desired, before):
+    try:
+        import time
+        time.sleep(60)
+        _col = lambda v: '[B][COLOR FF6AFB92]TRUE[/COLOR][/B]' if v == 'true' else '[B][COLOR FFF535AA]FALSE[/COLOR][/B]'
+        _txt = "The addon update reset addon.xml to " + _col(before) + ", but your setting is " + _col(desired) + ".[CR]Reload the profile now to re-apply your choice?"
+        if xbmcgui.Dialog().yesno("Reuse Language Invoker", _txt, nolabel="Later", yeslabel="Reload now"):
+            try:
+                xbmc.executebuiltin('LoadProfile(%s)' % xbmc.getInfoLabel('System.ProfileName'))
+                xbmc.log('[UTILS] Invoker profile reloaded after user confirm.', xbmc.LOGINFO)
+            except:
+                pass
+        else:
+            xbmc.log('[UTILS] Invoker reload postponed by user. Restart Kodi to apply.', xbmc.LOGINFO)
+    except:
+        pass
+
 def check_language_invoker_mismatch():
     try:
         setting = get_invoker_setting()
         fixed = []
+        before = setting
         for addon_id in INVOKER_ADDONS:
             current = read_invoker_xml(addon_id)
             if current is None or current == setting:
                 continue
+            before = current
             if apply_invoker_to_xml(addon_id, setting):
                 fixed.append(addon_id)
         if fixed:
-            xbmc.log(f"[UTILS] Invoker mismatch fixed ({', '.join(fixed)} -> {setting}). Restart Kodi to apply.", xbmc.LOGINFO)
-            xbmcgui.Dialog().notification("TMDb Movies", "Invoker setting applied. Restart Kodi.", TMDbmovies_ICON, 5000, False)
+            xbmc.log(f"[UTILS] Invoker mismatch fixed ({', '.join(fixed)} -> {setting}). Asking user for profile reload.", xbmc.LOGINFO)
+            try:
+                import threading
+                threading.Thread(target=_ask_invoker_reload, args=(setting, before), daemon=True).start()
+            except:
+                pass
     except:
         pass
 
