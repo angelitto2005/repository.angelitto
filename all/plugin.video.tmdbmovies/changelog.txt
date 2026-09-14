@@ -1,3 +1,8 @@
+1.1.283
+- Added "Date format" setting (European dd.mm.yyyy / US mm/dd/yyyy) applied to all air-date and premiere displays across calendars, Up Next, lists and Extended Info.
+- Air dates from Trakt are now converted from UTC to your local day using the device timezone (Auto, DST-aware) with an optional manual UTC offset override for boxes with a wrong system clock.
+- Fixed TMDB and Simkl calendars showing the show plot on every episode — each calendar episode now shows its own plot (as Trakt/MDBList already did), falling back to the show plot when the episode has none yet.
+
 1.1.282
 - Fixed Browse Show / Browse Season doing nothing from Home widgets
 - Added optional "Flatten single-season shows" setting (default off)

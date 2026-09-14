@@ -17,7 +17,7 @@ from resources.lib.config import (
     TMDB_SESSION_FILE, FAVORITES_FILE,
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
-    TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN
+    TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy
 )
 from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
@@ -1488,7 +1488,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
                 elif release_date == today + datetime.timedelta(days=1):
                     date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
                 else:
-                    date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
                 display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] {date_label}"
         except: pass
 
@@ -1630,7 +1630,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
                 elif release_date == today + datetime.timedelta(days=1):
                     date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
                 else:
-                    date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
                 display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] {date_label}"
         except: pass
 
@@ -2493,6 +2493,7 @@ def tmdb_calendar_my():
                             'season': sn,
                             'episode': ep_num,
                             'ep_title': ep_name,
+                            'ep_plot': str(ep.get('overview', '') or ''),
                             'air_date': air,
                             'diff': (d - wnd['today']).days,
                             'poster': '',
@@ -2585,6 +2586,8 @@ def _render_tmdb_calendar_entries(entries, wnd):
         if bd:
             fanart = f"{BACKDROP_BASE}{bd}"
         plot = cached.get('overview', '') or ''
+        if not is_movie:
+            plot = str(e.get('ep_plot') or '') or plot
 
         diff = e['diff']
         try:
@@ -4455,7 +4458,7 @@ def show_details(tmdb_id, content_type):
             try:
                 parts = str(premiered).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({parts[2]}.{parts[1]}.{parts[0]}[/B])"
+                    display_name = f"[B][COLOR FFE238EC]{name}[/COLOR] ({_fmt_dmy(premiered)}[/B])"
             except: pass
 
         # Plot-ul sezonului vine deja tradus daca setarea e pe RO
@@ -4687,7 +4690,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
             try:
                 parts = str(ep_air_date).split('-')
                 if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({parts[2]}.{parts[1]}.{parts[0]})[/B]"
+                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({_fmt_dmy(ep_air_date)})[/B]"
             except: pass
         # -----------------------------------------------
         
@@ -7432,7 +7435,7 @@ def get_next_episodes(params=None):
                     elif 1 < days_until <= 7:
                         zile_str = f"In {days_until} zile"
                     else:
-                        zile_str = f"{parts[2]}.{parts[1]}.{parts[0]}"
+                        zile_str = _fmt_dmy(it['air_date'])
                     label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR yellow]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"
             except: 
                 pass

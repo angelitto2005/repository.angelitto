@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from resources.lib.config import (
     TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
-    HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY
+    HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date
 )
 from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list
 from resources.lib.cache import cache_object, MainCache
@@ -3151,7 +3151,7 @@ def _view_trakt_my_calendar():
             dedup = (tmdb_id, s_num, ep_num)
             if dedup in seen_ids: continue
             seen_ids.add(dedup)
-            air_date = (item.get('first_aired', '') or '')[:10]
+            air_date = utc_to_local_date(item.get('first_aired', '') or '')
             show_img = show.get('images') or {}
             if not isinstance(show_img, dict): show_img = {}
             poster_obj = show_img.get('poster') or {}
@@ -3205,7 +3205,7 @@ def _view_trakt_my_calendar():
             parts = str(raw_date).split('T')[0].split('-')
             d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
             diff = (d - today).days
-            ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
+            ds = f'{parts[0]}-{parts[1]}-{parts[2]}'
             if diff == -1 or diff <= -2:
                 color = 'FF00FA9A'
             elif diff == 0:
@@ -3425,7 +3425,7 @@ def trakt_calendar(params):
                 if int(season_num or 0) <= 0:
                     continue
                 ep_title = episode.get('title', '')
-                air_date = (item.get('first_aired', '') or '')[:10]
+                air_date = utc_to_local_date(item.get('first_aired', '') or '')
                 raw_items.append({
                     'id': int(tmdb_id),
                     'show_title': show_title,
@@ -3500,7 +3500,7 @@ def trakt_calendar(params):
                         label = calendar_localized_label(diff_d, '')
                         date_label = f"[B][COLOR white]({label})[/COLOR][/B]"
                     else:
-                        date_label = f"[B][COLOR white]({parts[2]}.{parts[1]}.{parts[0]})[/COLOR][/B]"
+                        date_label = f"[B][COLOR white]({_fmt_dmy(ad)})[/COLOR][/B]"
                     if ep_date == today or ep_date == today + datetime.timedelta(days=1):
                         display_label = f"{display_label} {date_label}"
                     elif ep_date > today:
@@ -3622,7 +3622,7 @@ def trakt_account_info():
                 joined = joined.replace('T', ' ').replace('Z', '')[:10]
                 parts = joined.split('-')
                 if len(parts) == 3:
-                    joined = f'{parts[2]}.{parts[1]}.{parts[0]}'
+                    joined = _fmt_dmy(joined)
             except:
                 pass
 

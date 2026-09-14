@@ -421,23 +421,58 @@ def get_plot_img_lang():
     return f'{code},en,null'
 
 def _fmt_dmy(ds):
-    """Normalizeaza data la dd.mm.yyyy. Accepta date/datetime sau string ISO; string-urile
-    deja in alt format (ex: dd.mm.yyyy de la Trakt/MDBList) trec neschimbate."""
     try:
         import datetime as _dtm
+        try:
+            _us = ADDON.getSetting('date_format') == '1'
+        except:
+            _us = False
         if isinstance(ds, (_dtm.date, _dtm.datetime)):
-            return ds.strftime('%d.%m.%Y')
+            return ds.strftime('%m/%d/%Y') if _us else ds.strftime('%d.%m.%Y')
         s = str(ds)
         parts = s.split('T')[0].split('-')
         if len(parts) == 3 and len(parts[0]) == 4 and parts[0].isdigit():
+            if _us:
+                return f'{parts[1]}/{parts[2]}/{parts[0]}'
             return f'{parts[2]}.{parts[1]}.{parts[0]}'
         return s
     except:
         return str(ds)
 
+_TZ_OFFSET_VALUES = ('auto', '-12', '-11', '-10', '-09', '-08', '-07', '-06', '-05', '-04', '-03', '-02', '-01', '+00', '+01', '+02', '+03', '+04', '+05', '+06', '+07', '+08', '+09', '+10', '+11', '+12', '+13', '+14')
+
+def utc_to_local_date(iso_ts):
+    try:
+        import datetime as _dtm
+        s = str(iso_ts or '').strip()
+        if not s:
+            return ''
+        try:
+            _ov_idx = int(ADDON.getSetting('timezone_override') or '0')
+            _ov = _TZ_OFFSET_VALUES[_ov_idx] if 0 <= _ov_idx < len(_TZ_OFFSET_VALUES) else 'auto'
+        except:
+            _ov = 'auto'
+        _s = s.replace('Z', '+00:00')
+        dt = _dtm.datetime.fromisoformat(_s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dtm.timezone.utc)
+        if _ov != 'auto':
+            try:
+                _tz = _dtm.timezone(_dtm.timedelta(hours=float(_ov)))
+                return dt.astimezone(_tz).date().isoformat()
+            except:
+                pass
+            return dt.date().isoformat()
+        return dt.astimezone().date().isoformat()
+    except:
+        try:
+            return str(iso_ts).split('T')[0]
+        except:
+            return ''
+
 def calendar_localized_label(diff, ds):
     """Relative date label for calendars: RO when plot_language='ro', else English.
-    Data e mereu afisata dd.mm.yyyy indiferent de tipul primit (date object sau ISO)."""
+    Data e afisata dupa setarea date_format (EU dd.mm.yyyy sau US mm/dd/yyyy)."""
     ds = _fmt_dmy(ds)
     try:
         is_ro = get_plot_language_code() == 'ro'

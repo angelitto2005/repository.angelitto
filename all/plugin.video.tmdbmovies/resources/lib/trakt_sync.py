@@ -8,7 +8,7 @@ import datetime
 import json
 import time
 import zlib
-from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE
+from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, utc_to_local_date
 from resources.lib.utils import log, read_json, write_json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -2411,7 +2411,7 @@ def fetch_single_show_progress(item):
     if progress and progress.get('next_episode'):
         next_ep = progress['next_episode']
         air_date = next_ep.get('first_aired', '')
-        if air_date: air_date = air_date.split('T')[0]
+        if air_date: air_date = utc_to_local_date(air_date)
 
         # Returnam datele FARA poster din DB. Posterul va fi rezolvat in firul principal.
         return {
@@ -2453,7 +2453,7 @@ def fetch_up_next_worker(args):
             
             # Fix-ul pentru split (sa nu moara sync-ul)
             air_date = nxt.get('first_aired', '')
-            if air_date: air_date = air_date.split('T')[0]
+            if air_date: air_date = utc_to_local_date(air_date)
             
             # Request TMDb (poster + validare an)
             poster = ''

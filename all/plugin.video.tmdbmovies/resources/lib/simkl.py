@@ -880,6 +880,26 @@ def _render_calendar_entries(entries, wnd):
         pass
 
     items_to_add = []
+    try:
+        from resources.lib.tmdb_api import get_smart_season_details as _gsd
+        ep_overview_map = {}
+        _seen_seasons = set()
+        for _e in entries:
+            if _e['media_type'] == 'movie':
+                continue
+            _key = (str(_e['tmdb_id']), int(_e.get('season') or 0))
+            if _key in _seen_seasons:
+                continue
+            _seen_seasons.add(_key)
+            try:
+                _sd = _gsd(_key[0], _key[1]) or {}
+                for _ep in (_sd.get('episodes') or []):
+                    if isinstance(_ep, dict) and _ep.get('overview'):
+                        ep_overview_map[(_key[0], _key[1], int(_ep.get('episode_number') or 0))] = _ep.get('overview')
+            except Exception:
+                pass
+    except Exception:
+        ep_overview_map = {}
     for e in entries:
         tmdb_id = e['tmdb_id']
         is_movie = e['media_type'] == 'movie'
@@ -896,6 +916,11 @@ def _render_calendar_entries(entries, wnd):
         if bd:
             fanart = f"{BACKDROP_BASE}{bd}"
         plot = cached.get('overview', '') or ''
+        if not is_movie:
+            try:
+                plot = ep_overview_map.get((str(tmdb_id), int(e.get('season') or 0), int(e.get('episode') or 0)), '') or plot
+            except Exception:
+                pass
 
         diff = e['diff']
         try:

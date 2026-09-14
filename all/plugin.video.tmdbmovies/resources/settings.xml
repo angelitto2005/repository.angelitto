@@ -15,6 +15,8 @@
         <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="true"/>
         <setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="flatten_single_season" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Flatten single-season shows" default="false"/>
+        <setting id="date_format" type="enum" label="Date format" values="European (13.09.2026)|US (09/13/2026)" default="0"/>
+        <setting id="timezone_override" type="enum" label="Timezone for air dates" values="Auto (device)|-12|-11|-10|-09|-08|-07|-06|-05|-04|-03|-02|-01|+00|+01|+02|+03|+04|+05|+06|+07|+08|+09|+10|+11|+12|+13|+14" default="0"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
 		<setting id="skin_type" type="enum" label="Skin Compatibility (Fix Art/Thumbnails)" values="[B][COLOR FF6AFB92]Estuary (Standard)[/COLOR][/B]|[B][COLOR FF6AFB92]Arctic Fuse 3 (Modern)[/COLOR][/B]" default="0"/>
 		<setting id="show_motto_genre" type="bool" label="Show Motto + Genre above description" default="true"/>

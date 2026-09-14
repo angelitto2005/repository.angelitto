@@ -1152,7 +1152,7 @@ def _view_calendar(page=1):
             parts = str(raw_date).split('T')[0].split('-')
             d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
             diff = (d - today).days
-            ds = f'{parts[2]}.{parts[1]}.{parts[0]}'
+            ds = f'{parts[0]}-{parts[1]}-{parts[2]}'
             if diff == -1 or diff <= -2:
                 color = 'FF00FA9A'
             elif diff == 0:

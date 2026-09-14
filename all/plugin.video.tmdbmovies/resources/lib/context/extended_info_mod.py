@@ -526,22 +526,16 @@ def format_money_short(val):
 def format_date(date_str):
     if not date_str: return ''
     try:
-        # Converteste din YYYY-MM-DD in DD.MM.YYYY fara datetime / strptime
-        parts = str(date_str).strip().split('-')
-        if len(parts) == 3:
-            return f"{parts[2]}.{parts[1]}.{parts[0]}"
-        return date_str
+        from resources.lib.config import _fmt_dmy
+        return _fmt_dmy(date_str)
     except:
         return date_str
 
 def format_date_short(date_str):
     if not date_str: return ''
     try:
-        # Converteste din YYYY-MM-DD in DD.MM.YYYY fara datetime / strptime
-        parts = str(date_str).strip().split('-')
-        if len(parts) == 3:
-            return f"{parts[2]}.{parts[1]}.{parts[0]}"
-        return date_str
+        from resources.lib.config import _fmt_dmy
+        return _fmt_dmy(date_str)
     except:
         return date_str
 
