@@ -554,7 +554,7 @@ def _is_permanent_error(msg):
         return False
     low = msg.lower()
     return any(h in low for h in ('unplayable', 'login_required', 'not available',
-                                  'private', 'deleted', 'removed')) or 'country' in low
+                                   'unavailable', 'private', 'deleted', 'removed')) or 'country' in low
 
 # Clip/spot alternative videos shorter than this (seconds) are deprioritized
 # in favor of real trailer-length clips.
