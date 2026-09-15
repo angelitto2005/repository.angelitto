@@ -825,7 +825,11 @@ def _render_calendar_entries(entries, wnd):
     import datetime as _dt
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, calendar_localized_label
     from resources.lib.tmdb_api import set_metadata, _get_full_context_menu, _get_cached_details
-    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
+    try:
+        from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
+    except ImportError:
+        from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+        _browse_cmd = lambda url: 'Container.Update(%s)' % url
 
     fake_items = [{'id': e['tmdb_id'], 'media_type': 'tv' if e['media_type'] == 'tv' else 'movie'} for e in entries]
     # Prefetch doar itemii lipsa din cache (pool/SQLite) — evita rate-limit TMDb la 500 itemi.

@@ -1103,7 +1103,11 @@ def _view_calendar(page=1):
     from resources.lib.config import IMG_BASE, BACKDROP_BASE
     from resources.lib.config import calendar_localized_label
     from resources.lib.tmdb_api import set_metadata, get_tmdb_item_details, _get_full_context_menu
-    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
+    try:
+        from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
+    except ImportError:
+        from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
+        _browse_cmd = lambda url: 'Container.Update(%s)' % url
     fake_items = []
     for item in page_items:
         if item.get('type') == 'movie':

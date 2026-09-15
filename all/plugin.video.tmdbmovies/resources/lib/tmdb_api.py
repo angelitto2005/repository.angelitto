@@ -1333,6 +1333,12 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if imdb_id: allp_params_dict['imdb_id'] = imdb_id
         cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
 
+    yt_params_dict = {'mode': 'youtube_search', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'year': year}
+    if season is not None: yt_params_dict['season'] = str(season)
+    if episode is not None: yt_params_dict['episode'] = str(episode)
+    if ADDON.getSetting('show_cm_youtube') != 'false':
+        cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(yt_params_dict)})"))
+
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
         'mode': 'show_my_plays_menu',
@@ -2512,7 +2518,11 @@ def tmdb_calendar_my():
 def _render_tmdb_calendar_entries(entries, wnd):
     import datetime as _dt
     from resources.lib.config import calendar_localized_label
-    from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
+    try:
+        from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
+    except ImportError:
+        from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw
+        _browse_cmd = lambda url: 'Container.Update(%s)' % url
     from resources.lib.cache import ram_pool_get
     from resources.lib.config import get_plot_language_code
 
@@ -6882,7 +6892,11 @@ def in_progress_episodes(params):
             'duration': duration, 'studio': studio, 'mpaa': show_mpaa
         }
         
-        from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml, browse_command as _browse_cmd
+        try:
+            from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml, browse_command as _browse_cmd
+        except ImportError:
+            from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
+            _browse_cmd = lambda url: 'Container.Update(%s)' % url
         _prov_lbl = _prov_label()
         _prov_clr = _prov_color()
         cm = [
@@ -6988,7 +7002,11 @@ def get_next_episodes(params=None):
     from resources.lib import trakt_sync
 
     # 1. OBTINEREA DATELOR BRUTE DIN BAZA DE DATE LOCALA (sursa dinamica pe provider)
-    from resources.lib.watched_provider import _get_provider_raw as _get_prov, browse_command as _browse_cmd
+    try:
+        from resources.lib.watched_provider import _get_provider_raw as _get_prov, browse_command as _browse_cmd
+    except ImportError:
+        from resources.lib.watched_provider import _get_provider_raw as _get_prov
+        _browse_cmd = lambda url: 'Container.Update(%s)' % url
     use_tmdb = bool(params and params.get('use_tmdb') == 'true')
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'

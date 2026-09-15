@@ -13,10 +13,21 @@ import datetime
 from urllib.parse import urlencode
 from concurrent.futures import ThreadPoolExecutor
 
-from resources.lib.config import (
-    TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
-    HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date
-)
+try:
+    from resources.lib.config import (
+        TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
+        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date
+    )
+except ImportError:
+    from resources.lib.config import (
+        TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
+        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy
+    )
+    def utc_to_local_date(iso_ts):
+        try:
+            return str(iso_ts).split('T')[0]
+        except:
+            return ''
 from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list
 from resources.lib.cache import cache_object, MainCache
 
@@ -3035,7 +3046,11 @@ def _view_trakt_my_calendar():
     from resources.lib.tmdb_api import set_metadata, add_directory, get_smart_season_details, prefetch_metadata_parallel, get_tmdb_item_details, _get_full_context_menu
     from resources.lib.cache import ram_pool_get
     from resources.lib.mdblist_sync import get_cached, set_cached
-    from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
+    try:
+        from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw, browse_command as _browse_cmd
+    except ImportError:
+        from resources.lib.watched_provider import is_movie_watched as _wp_is_mw, is_episode_watched as _wp_is_epw
+        _browse_cmd = lambda url: 'Container.Update(%s)' % url
     from resources.lib.config import calendar_localized_label, IMG_BASE, BACKDROP_BASE
     import datetime as _dt
 

@@ -1,3 +1,7 @@
+1.1.286
+- Update hardening: mixed old/new files during an addon update no longer throw import errors — affected lists temporarily fall back to previous behavior until extraction finishes
+- Added YouTube search option with support for autoplaying suggested videos
+
 1.1.285
 - Premiere and Up Next labels now follow the language setting, and TMDB calendar movie dates match trending (generic release date first).
 

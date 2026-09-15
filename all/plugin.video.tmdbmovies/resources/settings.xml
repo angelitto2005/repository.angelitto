@@ -61,6 +61,8 @@
         <setting id="show_cm_mdblist" type="bool" label="Show [B][COLOR lightskyblue]My MDBList[/COLOR][/B] in context menu" default="true"/>
         <setting id="show_cm_simkl" type="bool" label="Show [B][COLOR mediumpurple]My Simkl[/COLOR][/B] in context menu" default="true"/>
         <setting id="all_providers_menu" type="bool" label="Show [B][COLOR pink]All [/COLOR][COLOR FF00CED1]Pro[/COLOR][COLOR lightskyblue]vid[/COLOR][COLOR mediumpurple]ers[/COLOR][/B] in context menu (batch: TMDb + Trakt + MDBList + Simkl)" default="false"/>
+        <setting id="show_cm_youtube" type="bool" label="Show [B][COLOR FFF70D1A]Search Youtube[/COLOR][/B] in context menu" default="true"/>
+        <setting id="youtube_autoplay" type="bool" label="   └─ [B][COLOR FFF70D1A]Youtube Autoplay[/COLOR][/B] (keep playing suggested videos)" default="false"/>
         <setting id="show_cm_my_plays" type="bool" label="Show [B][COLOR FFFF69B4]My Plays[/COLOR][/B] in context menu" default="true"/>
 
         <setting type="lsep" label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B] (choose which players appear in menu)"/>

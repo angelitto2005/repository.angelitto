@@ -302,6 +302,93 @@ def get_search_menu_items():
 # ROUTER PRINCIPAL
 # =============================================================================
 
+def _youtube_autoplay_loop(seen_ids, order):
+    import time
+    try:
+        _ap = xbmc.Player()
+        _apl = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+        _rel_cache = {}
+        _idle = 0
+        _cool = 0
+        xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay loop started ({len(order)} queued)", xbmc.LOGINFO)
+        while True:
+            if xbmc.getInfoLabel('Window(10000).Property(TMDbMovies.YoutubeAutoplay)') != 'true':
+                xbmc.log("[TMDb Movies] [YOUTUBE] autoplay loop exit: flag off", xbmc.LOGINFO)
+                return
+            if not _ap.isPlayingVideo():
+                _idle += 1
+                if _idle > 6:
+                    try:
+                        xbmcgui.Window(10000).clearProperty('TMDbMovies.YoutubeAutoplay')
+                    except:
+                        pass
+                    xbmc.log("[TMDb Movies] [YOUTUBE] autoplay loop exit: idle", xbmc.LOGINFO)
+                    return
+                time.sleep(5)
+                continue
+            _idle = 0
+            try:
+                _pos = _apl.getposition()
+                _size = _apl.size()
+            except:
+                time.sleep(5)
+                continue
+            if _pos < 0 or _size - (_pos + 1) > 3:
+                time.sleep(5)
+                continue
+            if _cool > 0:
+                _cool -= 1
+                time.sleep(5)
+                continue
+            try:
+                from resources.lib.context.extended_info_mod import get_youtube_related
+                from resources.lib.trailer_player import get_trailer_url
+            except:
+                time.sleep(5)
+                continue
+            xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay topup pos={_pos} size={_size}", xbmc.LOGINFO)
+            _need = 5
+            _fetches = 0
+            for _probe in reversed(order[-8:]):
+                if _need <= 0:
+                    break
+                _rel = _rel_cache.get(_probe)
+                if _rel is None:
+                    if _fetches >= 3:
+                        continue
+                    _fetches += 1
+                    try:
+                        _rel = get_youtube_related(_probe, 10)
+                    except Exception as _e:
+                        xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay probe error: {_e}", xbmc.LOGWARNING)
+                        _rel = []
+                    if _rel:
+                        _rel_cache[_probe] = _rel
+                for _rv, _rt in _rel:
+                    if _need <= 0:
+                        break
+                    if _rv in seen_ids:
+                        continue
+                    seen_ids.add(_rv)
+                    order.append(_rv)
+                    try:
+                        _eu = get_trailer_url(_rv, title=(_rt or _rv))
+                        if not _eu:
+                            continue
+                        _eli = xbmcgui.ListItem(label=(_rt or _rv))
+                        _etb = f"https://img.youtube.com/vi/{_rv}/mqdefault.jpg"
+                        _eli.setArt({'icon': _etb, 'thumb': _etb, 'poster': _etb})
+                        _apl.add(url=_eu, listitem=_eli)
+                        _need -= 1
+                    except:
+                        continue
+            xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay topup done: +{5 - _need}", xbmc.LOGINFO)
+            if _need >= 5:
+                _cool = 11
+            time.sleep(5)
+    except:
+        return
+
 def run_plugin():
     global _handle
     import time
@@ -510,6 +597,10 @@ def run_plugin():
 
     if mode == 'play_trailer':
         video_id = params.get('video_id')
+        try:
+            xbmcgui.Window(10000).clearProperty('TMDbMovies.YoutubeAutoplay')
+        except:
+            pass
         if video_id:
             from resources.lib.trailer_player import play_trailer
             _tid = params.get('tmdb_id') or params.get('tmdb')
@@ -523,6 +614,97 @@ def run_plugin():
                 _yr = _yr or xbmc.getInfoLabel('ListItem.Year') or ''
             play_trailer(video_id, tmdb_id=_tid, dbtype=_dbtype,
                          title=_ttl, year=_yr)
+        return
+
+    if mode == 'youtube_search':
+        _yt_title = params.get('title') or ''
+        _yt_year = params.get('year') or ''
+        _yt_init = f"{_yt_title} {_yt_year}".strip() if _yt_year else _yt_title
+        _yt_q = xbmcgui.Dialog().input('Search Youtube', defaultt=_yt_init, type=xbmcgui.INPUT_ALPHANUM)
+        if not _yt_q:
+            return
+        _yt_rp = {'mode': 'youtube_results', 'query': _yt_q, 'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': params.get('title') or '', 'year': params.get('year') or ''}
+        if params.get('season'):
+            _yt_rp['season'] = params.get('season')
+        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_rp)})')
+        return
+
+    if mode == 'youtube_results':
+        _yt_q = params.get('query') or ''
+        xbmc.log(f"[TMDb Movies] [YOUTUBE] results query=[{_yt_q}]", xbmc.LOGINFO)
+        if _yt_q:
+            from resources.lib.context.extended_info_mod import search_youtube_innertube
+            _yt_pairs = search_youtube_innertube(_yt_q, 25)
+            xbmc.log(f"[TMDb Movies] [YOUTUBE] found {len(_yt_pairs)} items", xbmc.LOGINFO)
+        else:
+            _yt_pairs = []
+        if not _yt_pairs:
+            if _yt_q:
+                xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'No results found', xbmcgui.NOTIFICATION_INFO, 3000)
+            xbmcplugin.endOfDirectory(handle)
+            return
+        _yt_listing = []
+        for _yt_vid, _yt_t in _yt_pairs:
+            _yt_li = xbmcgui.ListItem(label=(_yt_t or _yt_vid))
+            _yt_thumb = f"https://img.youtube.com/vi/{_yt_vid}/mqdefault.jpg"
+            _yt_li.setArt({'icon': _yt_thumb, 'thumb': _yt_thumb, 'poster': _yt_thumb})
+            _yt_li.setProperty('IsPlayable', 'true')
+            _yt_p = {'mode': 'youtube_play', 'yt_src': 'search', 'video_id': _yt_vid, 'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': params.get('title') or '', 'year': params.get('year') or ''}
+            if params.get('season'):
+                _yt_p['season'] = params.get('season')
+            _yt_listing.append((f"{sys.argv[0]}?{urlencode(_yt_p)}", _yt_li, False))
+        xbmcplugin.addDirectoryItems(handle, _yt_listing, len(_yt_listing))
+        xbmcplugin.setContent(handle, 'videos')
+        xbmcplugin.endOfDirectory(handle)
+        return
+
+    if mode == 'youtube_play':
+        from resources.lib.trailer_player import get_trailer_url
+        _yp_vid = params.get('video_id')
+        if _yp_vid and params.get('yt_src') == 'search' and get_addon().getSetting('youtube_autoplay') == 'true':
+            _yp_first = get_trailer_url(_yp_vid, tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title') or _yp_vid, year=params.get('year'), season=params.get('season'))
+            if not _yp_first:
+                xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
+                return
+            xbmcplugin.setResolvedUrl(handle, True, xbmcgui.ListItem(path=_yp_first))
+            _yp_seen = set([_yp_vid])
+            _yp_order = [_yp_vid]
+            try:
+                from resources.lib.context.extended_info_mod import get_youtube_related
+                _yp_rel = get_youtube_related(_yp_vid, 10)
+            except:
+                _yp_rel = []
+            try:
+                _yp_pl = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+                _yp_added = 0
+                for _rv, _rt in _yp_rel:
+                    if _rv in _yp_seen:
+                        continue
+                    _yp_seen.add(_rv)
+                    _yp_order.append(_rv)
+                    try:
+                        _eu = get_trailer_url(_rv, title=(_rt or _rv))
+                        if not _eu:
+                            continue
+                        _eli = xbmcgui.ListItem(label=(_rt or _rv))
+                        _etb = f"https://img.youtube.com/vi/{_rv}/mqdefault.jpg"
+                        _eli.setArt({'icon': _etb, 'thumb': _etb, 'poster': _etb})
+                        _yp_pl.add(url=_eu, listitem=_eli)
+                        _yp_added += 1
+                    except:
+                        continue
+                xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay queued {_yp_added} after {_yp_vid}", xbmc.LOGINFO)
+            except:
+                pass
+            xbmcgui.Window(10000).setProperty('TMDbMovies.YoutubeAutoplay', 'true')
+            import threading as _yt_threading
+            _yt_threading.Thread(target=_youtube_autoplay_loop, args=(_yp_seen, _yp_order), daemon=True).start()
+            return
+        _yp_url = get_trailer_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'))
+        if _yp_url:
+            xbmcplugin.setResolvedUrl(handle, True, xbmcgui.ListItem(path=_yp_url))
+        else:
+            xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
         return
 
     if mode == 'noop':

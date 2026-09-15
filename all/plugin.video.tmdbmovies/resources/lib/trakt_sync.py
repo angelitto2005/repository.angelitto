@@ -8,7 +8,15 @@ import datetime
 import json
 import time
 import zlib
-from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, utc_to_local_date
+try:
+    from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, utc_to_local_date
+except ImportError:
+    from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE
+    def utc_to_local_date(iso_ts):
+        try:
+            return str(iso_ts).split('T')[0]
+        except:
+            return ''
 from resources.lib.utils import log, read_json, write_json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 

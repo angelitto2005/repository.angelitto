@@ -481,6 +481,159 @@ def search_youtube_innertube(query, max_results=25):
     return out
 
 
+def _yt_valid_duration(ts):
+    try:
+        parts = str(ts or '').strip().split(':')
+        if len(parts) not in (2, 3):
+            return False
+        return all(p.isdigit() and p for p in parts)
+    except:
+        return False
+
+
+def get_youtube_related(video_id, max_results=10):
+    if not video_id:
+        return []
+    try:
+        cpn = ''.join(random.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_') for _ in range(16))
+        payload = {
+            'context': {'client': {
+                'clientName': 'IOS',
+                'clientVersion': '20.20.7',
+                'deviceMake': 'Apple',
+                'deviceModel': 'iPhone16,2',
+                'osName': 'iOS',
+                'osVersion': '18.5.0.22F76',
+                'platform': 'MOBILE',
+                'hl': 'en',
+                'gl': 'US',
+            }},
+            'cpn': cpn,
+            'videoId': video_id,
+            'contentCheckOk': True,
+            'racyCheckOk': True,
+        }
+        headers = {
+            'Origin': 'https://m.youtube.com',
+            'User-Agent': _YT_IOS_UA,
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '20.20.7',
+            'Content-Type': 'application/json',
+        }
+        r = requests.post('https://www.youtube.com/youtubei/v1/next?prettyPrint=false', data=json.dumps(payload), headers=headers, timeout=15)
+        body = r.json()
+    except Exception as e:
+        log(f"Innertube related error: {e}")
+        return []
+    out = []
+    seen_ids = set()
+    ts_map = {}
+
+    def push(vid, title, ts=None):
+        if vid in seen_ids or not vid:
+            return
+        seen_ids.add(vid)
+        out.append((vid, (title or '').strip()))
+        ts_map[vid] = ts
+        return len(out) >= max_results
+
+    def walk(node, cur_title=''):
+        if len(out) >= max_results:
+            return True
+        if isinstance(node, dict):
+            for key in ('videoRenderer', 'compactVideoRenderer'):
+                vr = node.get(key)
+                if isinstance(vr, dict):
+                    vid = vr.get('videoId') or ''
+                    runs = (vr.get('title') or {}).get('runs') or []
+                    t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
+                    ts = None
+                    try:
+                        for ov in vr.get('thumbnailOverlays', []) or []:
+                            tos = (ov or {}).get('thumbnailOverlayTimeStatusRenderer')
+                            if isinstance(tos, dict):
+                                tx = tos.get('text')
+                                if isinstance(tx, dict):
+                                    oruns = tx.get('runs') or []
+                                    ts = ''.join(x.get('text', '') for x in oruns) if oruns else (tx.get('simpleText') or '')
+                                elif isinstance(tx, str):
+                                    ts = tx
+                                break
+                    except:
+                        ts = None
+                    if push(vid, t, ts):
+                        return True
+            vwd = node.get('videoWithContextData')
+            if isinstance(vwd, dict):
+                try:
+                    vd = vwd.get('videoData') or {}
+                    durl = vd.get('dragAndDropUrl') or ''
+                    vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                    if len(vid) != 11:
+                        vid = ''
+                    t = ''
+                    try:
+                        t = vd['lockupMetadata']['lockupMetadataViewModel']['title']['content'] or ''
+                    except Exception:
+                        pass
+                    if not t:
+                        try:
+                            t = vwd['onTap']['innertubeCommand']['coWatchWatchEndpointWrapperCommand']['videoTitle'] or ''
+                        except Exception:
+                            pass
+                    ts = None
+                    try:
+                        ts = (vd.get('thumbnail') or {}).get('timestampText')
+                    except:
+                        ts = None
+                    if vid and push(vid, t, ts):
+                        return True
+                except Exception:
+                    pass
+            cvm = node.get('compactVideoModel')
+            if isinstance(cvm, dict):
+                try:
+                    cur_title = cvm['compactVideoData']['videoData']['metadata']['title']
+                except Exception:
+                    cur_title = ''
+            w = node.get('watchEndpoint')
+            if isinstance(w, dict) and w.get('videoId'):
+                if push(w['videoId'], cur_title or ''):
+                    return True
+            for v in node.values():
+                if walk(v, cur_title):
+                    return True
+        elif isinstance(node, list):
+            for v in node:
+                if walk(v, cur_title):
+                    return True
+        return False
+
+    try:
+        sections = body['contents']['twoColumnWatchNextResults']['secondaryResults']['secondaryResults']['results']
+    except Exception:
+        sections = []
+    if not sections:
+        try:
+            sections = []
+            for sec in body['contents']['singleColumnWatchNextResults']['results']['results']['contents']:
+                if isinstance(sec, dict) and 'itemSectionRenderer' in sec:
+                    sections.extend(sec['itemSectionRenderer'].get('contents', []))
+        except Exception:
+            sections = []
+    try:
+        for sec in sections:
+            if walk(sec):
+                break
+    except Exception as e:
+        log(f"Innertube related parse error: {e}")
+    good = [(v, t) for v, t in out if ts_map.get(v) is None or _yt_valid_duration(ts_map.get(v))]
+    if not good:
+        good = out
+    log(f"Innertube related OK: {len(good)} videos ({len(out) - len(good)} without duration skipped).")
+    return good
+
+
 def get_youtube_search_results(query, max_results=25):
     if not query:
         return []
