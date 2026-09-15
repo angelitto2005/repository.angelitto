@@ -504,6 +504,8 @@ def sync_full_library(silent=False, force=False):
                     # indiferent de provider (date de curatare manuala, tabele separate
                     # de mdblist_dropped — fara interferenta).
                     _sync_hidden_shows(c); conn.commit()
+            elif ADDON.getSetting('trakt_permanent_fail') == 'true' and ADDON.getSetting('trakt_access_token'):
+                log("[TRAKT SYNC] Trakt section skipped: saved token unusable (permanent fail). Re-auth Trakt on THIS device.")
 
             # --- SINCRONIZARE DISCOVERY (Independenta) ---
             last_disc = local_sync.get('discovery_ts', 0)

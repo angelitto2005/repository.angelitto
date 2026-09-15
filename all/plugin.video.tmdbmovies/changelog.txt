@@ -1,3 +1,6 @@
+1.1.287
+- Trakt auth now recovers cleanly from expired logins with clearer logging
+
 1.1.286
 - Update hardening: mixed old/new files during an addon update no longer throw import errors — affected lists temporarily fall back to previous behavior until extraction finishes
 - Added YouTube search option with support for autoplaying suggested videos

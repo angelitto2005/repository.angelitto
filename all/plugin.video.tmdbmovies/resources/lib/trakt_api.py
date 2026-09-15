@@ -68,11 +68,13 @@ def _save_trakt_tokens(data):
     created_at = data.get('created_at', int(time.time()))
     expires_in = data.get('expires_in', 7776000)
 
-    ADDON.setSetting('trakt_access_token', str(access_token))
     ADDON.setSetting('trakt_refresh_token', str(refresh_token))
     ADDON.setSetting('trakt_created_at', str(created_at))
     ADDON.setSetting('trakt_expires_in', str(expires_in))
+    ADDON.setSetting('trakt_access_token', str(access_token))
     ADDON.setSetting('trakt_permanent_fail', 'false')
+    ADDON.setSetting('trakt_permanent_fail_ts', '')
+    ADDON.setSetting('trakt_permanent_fail_reason', '')
 
 
 def _get_trakt_settings():
@@ -149,7 +151,13 @@ def refresh_trakt_token():
             return None
 
         if ADDON.getSetting('trakt_permanent_fail') == 'true':
-            log("[TRAKT] Permanent fail flag set. Skipping refresh.")
+            _fail_ts = ADDON.getSetting('trakt_permanent_fail_ts')
+            _fail_reason = ADDON.getSetting('trakt_permanent_fail_reason') or 'invalid_grant'
+            try:
+                _fail_when = time.strftime('%Y-%m-%d %H:%M', time.localtime(int(float(_fail_ts))))
+            except:
+                _fail_when = 'unknown time'
+            log(f"[TRAKT] Permanent fail flag set (latched {_fail_when}, {_fail_reason}). Skipping refresh. Re-auth Trakt on THIS device.")
             return None
 
         retry_until_str = ADDON.getSetting('trakt_retry_until')
@@ -213,6 +221,8 @@ def refresh_trakt_token():
                     resp = r.json()
                     if resp.get('error') == 'invalid_grant':
                         ADDON.setSetting('trakt_permanent_fail', 'true')
+                        ADDON.setSetting('trakt_permanent_fail_ts', str(int(time.time())))
+                        ADDON.setSetting('trakt_permanent_fail_reason', 'invalid_grant')
                         log("[TRAKT] invalid_grant → permanent fail. Re-auth required.", xbmc.LOGERROR)
                 except:
                     pass
@@ -408,6 +418,8 @@ def trakt_revoke():
     ADDON.setSetting('trakt_created_at', '')
     ADDON.setSetting('trakt_expires_in', '')
     ADDON.setSetting('trakt_permanent_fail', 'false')
+    ADDON.setSetting('trakt_permanent_fail_ts', '')
+    ADDON.setSetting('trakt_permanent_fail_reason', '')
     ADDON.setSetting('trakt_retry_until', '')
 
     if xbmcvfs.exists(TRAKT_TOKEN_FILE):
