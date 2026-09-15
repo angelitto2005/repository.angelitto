@@ -1,3 +1,6 @@
+1.0.20
+- Skip subtitle search for TMDbM Trailers and YouTube CDN playback (proxy MPD and googlevideo URLs).
+
 1.0.19
 - "Accepta subtitrarile externe" prinde doar codurile strict externe — nu mai opreste cautarea la subtitrari interne (ex. EN).
 - Pe surse TorrServer/m3u accepta si streamurile doar-eng (RO etichetat gresit); cu alte limbi continua cautarea online.

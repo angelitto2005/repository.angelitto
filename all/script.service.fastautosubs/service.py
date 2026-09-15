@@ -1147,6 +1147,16 @@ class AutoSubsPlayer(xbmc.Player):
         # ======================================================================
         if "youtube" in str(movieFullPath).lower(): 
             return True
+        _mp_lower = str(movieFullPath).lower()
+        if "tmdbm" in _mp_lower:
+            log("Detectat TMDbM Trailers in cale. Skip.")
+            return True
+        if "googlevideo" in _mp_lower:
+            log("Detectat GoogleVideo CDN (YouTube) in cale. Skip.")
+            return True
+        if "/yt_" in _mp_lower and ".mpd" in _mp_lower:
+            log("Detectat proxy MPD TMDbM Trailers in cale. Skip.")
+            return True
         if "rotv123" in str(movieFullPath).lower(): 
             return True
         if "http://" in movieFullPath and __addon__.getSetting('ExcludeHTTP') == 'true': 
