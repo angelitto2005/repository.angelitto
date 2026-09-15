@@ -17,7 +17,8 @@ from resources.lib.config import (
     TMDB_SESSION_FILE, FAVORITES_FILE,
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
-    TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy
+    TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy, calendar_localized_label,
+    get_plot_language_code
 )
 from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
@@ -1484,9 +1485,9 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
             today = datetime.date.today()
             if release_date > today:
                 if release_date == today:
-                    date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({calendar_localized_label(0, '')})[/COLOR][/B]"
                 elif release_date == today + datetime.timedelta(days=1):
-                    date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({calendar_localized_label(1, '')})[/COLOR][/B]"
                 else:
                     date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
                 display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] {date_label}"
@@ -1626,9 +1627,9 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
             today = datetime.date.today()
             if release_date > today:
                 if release_date == today:
-                    date_label = f"[B][COLOR white](Today)[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({calendar_localized_label(0, '')})[/COLOR][/B]"
                 elif release_date == today + datetime.timedelta(days=1):
-                    date_label = f"[B][COLOR white](Tomorrow)[/COLOR][/B]"
+                    date_label = f"[B][COLOR white]({calendar_localized_label(1, '')})[/COLOR][/B]"
                 else:
                     date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
                 display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] {date_label}"
@@ -2305,8 +2306,9 @@ def _tmdb_calendar_window():
 
 
 def _tmdb_movie_release_date(details):
-    """Data de lansare a unui film din release_dates (US first, fallback prima disponibila)."""
     if not isinstance(details, dict): return ''
+    generic = str(details.get('release_date', '') or '')[:10]
+    if generic: return generic
     rd = (details.get('release_dates') or {}).get('results') or []
     if not isinstance(rd, list): return ''
     for r in rd:
@@ -7431,9 +7433,9 @@ def get_next_episodes(params=None):
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
                     if days_until == 1:
-                        zile_str = "Maine"
+                        zile_str = calendar_localized_label(1, '')
                     elif 1 < days_until <= 7:
-                        zile_str = f"In {days_until} zile"
+                        zile_str = f"In {days_until} zile" if get_plot_language_code() == 'ro' else f"In {days_until} days"
                     else:
                         zile_str = _fmt_dmy(it['air_date'])
                     label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR yellow]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str})[/COLOR]{badge}[/B]"

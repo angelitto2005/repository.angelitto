@@ -1,3 +1,6 @@
+1.1.285
+- Premiere and Up Next labels now follow the language setting, and TMDB calendar movie dates match trending (generic release date first).
+
 1.1.284
 - After an addon update resets the manifest, a delayed Yes/No dialog now offers to reload the profile to re-apply your saved Reuse Language Invoker choice (Reload now / Later), replacing the restart request.
 
