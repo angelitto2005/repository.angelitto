@@ -917,7 +917,43 @@ def _max_res_height():
     return 2160
 
 
-def _build_mpd(data, proxy_base=''):
+_RANGE_CACHE = {}
+_RANGE_CACHE_LOADED = False
+
+
+def _range_cache_load():
+    global _RANGE_CACHE_LOADED
+    if _RANGE_CACHE_LOADED:
+        return
+    _RANGE_CACHE_LOADED = True
+    try:
+        p = xbmcvfs.translatePath('special://temp/yt_ranges.json')
+        with open(p, 'r') as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            now = time.time()
+            _RANGE_CACHE = {k: v for k, v in data.items()
+                            if isinstance(v, dict) and now - v.get('ts', 0) < 2592000}
+    except:
+        pass
+
+
+def _range_cache_store(video_id, format_id, dinit, dindex):
+    if not video_id or not format_id:
+        return
+    try:
+        _RANGE_CACHE['{}:{}'.format(video_id, format_id)] = {
+            'init': list(dinit), 'index': list(dindex), 'ts': time.time()}
+        while len(_RANGE_CACHE) > 200:
+            _RANGE_CACHE.pop(next(iter(_RANGE_CACHE)))
+        p = xbmcvfs.translatePath('special://temp/yt_ranges.json')
+        with open(p, 'w') as f:
+            json.dump(_RANGE_CACHE, f)
+    except:
+        pass
+
+
+def _build_mpd(data, proxy_base='', video_id=''):
     from collections import defaultdict
 
     duration = data.get('duration', 0) or 0
@@ -1001,6 +1037,44 @@ def _build_mpd(data, proxy_base=''):
     mpd = '<MPD minBufferTime="PT1.5S" mediaPresentationDuration="PT{}S" type="static" profiles="urn:mpeg:dash:profile:isoff-main:2011">\n<Period>'.format(duration)
 
     written_sets = 0
+    disc_needed = []
+    for group, formats in groups.items():
+        for fmt in formats:
+            if not fmt.get('indexRange') or not fmt.get('initRange'):
+                disc_needed.append(fmt)
+    disc_results = {}
+    if disc_needed:
+        _range_cache_load()
+        pending = []
+        for fmt in disc_needed:
+            hit = _RANGE_CACHE.get('{}:{}'.format(video_id, fmt.get('format_id'))) if video_id else None
+            if hit and hit.get('init') and hit.get('index'):
+                disc_results[id(fmt)] = (tuple(hit['init']), tuple(hit['index']))
+            else:
+                pending.append(fmt)
+        if pending:
+            try:
+                from concurrent.futures import ThreadPoolExecutor, wait
+                ex = ThreadPoolExecutor(max_workers=4)
+                try:
+                    fm = {ex.submit(_discover_dash_ranges, unquote(fmt['url']), fmt.get('http_headers', {})): fmt for fmt in pending}
+                    done, _ = wait(set(fm), timeout=90)
+                finally:
+                    try:
+                        ex.shutdown(wait=False, cancel_futures=True)
+                    except:
+                        pass
+                for f in done:
+                    try:
+                        dinit, dindex = f.result()
+                    except:
+                        dinit, dindex = None, None
+                    fmt = fm[f]
+                    if dinit and dindex:
+                        disc_results[id(fmt)] = (dinit, dindex)
+                        _range_cache_store(video_id, fmt.get('format_id'), dinit, dindex)
+            except Exception as e:
+                _log('Parallel range discovery error: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
     for idx, (group, formats) in enumerate(groups.items()):
         contentType = 'audio' if group == 'audio/mp4' else 'video'
         reps = []
@@ -1011,8 +1085,9 @@ def _build_mpd(data, proxy_base=''):
             index_range = fmt.get('indexRange')
             init_range = fmt.get('initRange')
             if not index_range or not init_range:
-                dinit, dindex = _discover_dash_ranges(unquote(fmt['url']), fmt.get('http_headers', {}))
-                if dinit and dindex:
+                got = disc_results.get(id(fmt))
+                if got:
+                    dinit, dindex = got
                     index_range = {'start': dindex[0], 'end': dindex[1]}
                     init_range = {'start': dinit[0], 'end': dinit[1]}
                 else:
@@ -1141,8 +1216,29 @@ def _find_clean_progressive(data):
 _last_extract_time = 0
 
 
+def _tmdb_details_plot(tmdb_id, dbtype):
+    try:
+        import requests as _rq
+        media_type = 'tv' if (dbtype or '').lower() in ('tvshow', 'tv', 'season', 'episode') else 'movie'
+        r = _rq.get('https://api.themoviedb.org/3/{}/{}?api_key={}&language=en-US'.format(
+            media_type, tmdb_id, _TMDB_API_KEY), timeout=10)
+        d = r.json()
+        if not isinstance(d, dict):
+            return '', '', '', ''
+        ov = d.get('overview') or ''
+        cos = d.get('production_companies') or [] or d.get('networks') or []
+        st = cos[0].get('name') if cos and isinstance(cos, list) and cos[0].get('name') else ''
+        tg = (d.get('tagline') or '').strip()
+        gn = [g.get('name') for g in (d.get('genres') or []) if g.get('name')]
+        return ov, st, tg, gn
+    except Exception as e:
+        _log('TMDb details plot error: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
+        return '', '', '', []
+
+
 def play_youtube(video_id, title=None, genre=None, year=None,
-                 tmdb_id=None, dbtype=None, season=None):
+                 tmdb_id=None, dbtype=None, season=None, episode_num=None,
+                 plot=None, studio=None, tagline=None, lang=None):
     _cleanup_old_mpd()
 
     # Rate-limit: random delay between extractions to avoid bot detection
@@ -1214,9 +1310,72 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     tag.setOriginalTitle(display_title)
     if year and str(year).isdigit():
         tag.setYear(int(year))
+    if season is not None:
+        try:
+            tag.setSeason(int(season))
+            if episode_num:
+                tag.setEpisode(int(episode_num))
+        except Exception:
+            pass
     if genre:
         genres_list = [g.strip() for g in genre.replace('/', ',').split(',') if g.strip()]
         tag.setGenres(genres_list)
+    if tagline:
+        tag.setTagLine(tagline)
+    _thumb = 'https://i.ytimg.com/vi/{}/hqdefault.jpg'.format(video_id)
+    li.setArt({'thumb': _thumb, 'poster': _thumb, 'fanart': _thumb})
+    if plot:
+        tag.setPlot(plot)
+    if studio:
+        tag.setStudios([studio])
+    if dbtype and (dbtype.lower() in ('episode', 'season')) and tmdb_id and season is not None and not plot:
+        # Episoade: overview-ul EPISODULUI cu eticheta SxxEyy (plotul serialului
+        # e separat si derutant, ex "The Chronicle of 1812"). Sezoane:
+        # overview-ul SEZONULUI. Interogam direct: harta veche dbtype->tip
+        # mediu nu cunostea 'episode' si interoga /movie/{id}!
+        try:
+            import requests as _rq2
+            _lng = lang or 'en-US'
+
+            def _req(path):
+                r2 = _rq2.get('https://api.themoviedb.org/3/{}?api_key={}&language={}'.format(
+                    path, _TMDB_API_KEY, _lng), timeout=10)
+                d2 = r2.json() if r2.status_code == 200 else {}
+                if (not d2 or d2.get('success') is False) and _lng != 'en-US':
+                    r2 = _rq2.get('https://api.themoviedb.org/3/{}?api_key={}&language=en-US'.format(
+                        path, _TMDB_API_KEY), timeout=10)
+                    d2 = r2.json() if r2.status_code == 200 else {}
+                return d2 or {}
+
+            if dbtype.lower() == 'episode' and episode_num:
+                _ep = _req('tv/{}/season/{}/episode/{}'.format(tmdb_id, season, episode_num))
+                if _ep.get('overview'):
+                    tag.setPlot('[COLOR FF20B2AA]S{:02d}E{:02d}[/COLOR]  {}'.format(
+                        season, episode_num, _ep['overview']))
+            else:
+                _se = _req('tv/{}/season/{}'.format(tmdb_id, season))
+                if _se.get('overview'):
+                    tag.setPlot(_se['overview'])
+        except Exception as _e:
+            _log('Season/episode plot error: {}'.format(str(_e)[:120]), xbmc.LOGWARNING)
+    elif (not plot or not studio) and tmdb_id:
+        _dov, _dst, _dtg, _dgn = _tmdb_details_plot(tmdb_id, dbtype)
+        if not plot and (_dov or _dtg):
+            _head = ''
+            _gns = ', '.join(_dgn) if isinstance(_dgn, list) else (_dgn or '')
+            if _dtg and _gns:
+                _head = '[B][COLOR yellow]' + _dtg + '[/COLOR][/B] | [B][COLOR FF00CED1]' + _gns + '[/COLOR][/B]\n'
+            elif _dtg:
+                _head = '[B][COLOR yellow]' + _dtg + '[/COLOR][/B]\n'
+            elif _gns:
+                _head = '[B][COLOR FF00CED1]' + _gns + '[/COLOR][/B]\n'
+            tag.setPlot(_head + _dov)
+        if _dst and not studio:
+            tag.setStudios([_dst])
+    try:
+        _log('Resolve tag plot={} chars studios={} tagline={} genre_len={}'.format(len(plot or ''), [studio] if studio else [], len(tagline or ''), len(genre or '')))
+    except:
+        pass
 
     # Build YouTube CDN headers for InputStream Adaptive segment requests
     yt_headers = dict(_YT_HEADERS)
@@ -1230,7 +1389,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     if data and data.get('formats'):
         port = _start_proxy()
     proxy_base = 'http://127.0.0.1:{}/'.format(port) if port else ''
-    mpd, headers = _build_mpd(data, proxy_base) if data else (None, {})
+    mpd, headers = _build_mpd(data, proxy_base, video_id) if data else (None, {})
 
     if fallback_fmt:
         direct_url = fallback_fmt.get('url')

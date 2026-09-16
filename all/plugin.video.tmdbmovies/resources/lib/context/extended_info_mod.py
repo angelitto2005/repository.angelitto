@@ -426,40 +426,92 @@ def search_youtube_innertube(query, max_results=25):
     out = []
     seen_ids = set()
 
-    def push(vid, title):
+    def push(info):
+        vid = (info.get('id') or '').strip()
         if vid in seen_ids or not vid:
             return
         seen_ids.add(vid)
-        out.append((vid, (title or '').strip()))
+        info['id'] = vid
+        info['title'] = (info.get('title') or '').strip()
+        out.append(info)
         return len(out) >= max_results
 
-    def walk(node, cur_title=''):
+    def walk(node, cur=None):
         if len(out) >= max_results:
             return True
         if isinstance(node, dict):
             vr = node.get('videoRenderer')
             if isinstance(vr, dict):
-                vid = vr.get('videoId') or ''
                 runs = (vr.get('title') or {}).get('runs') or []
                 t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
-                if push(vid, t):
+                if push({'id': vr.get('videoId') or '', 'title': t}):
                     return True
+            cvm_title = ''
+            try:
+                vd = (node.get('compactVideoModel') or {}).get('compactVideoData', {}).get('videoData', {})
+                if isinstance(vd, dict) and vd.get('dragAndDropUrl'):
+                    durl = vd.get('dragAndDropUrl') or ''
+                    vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                    md = vd.get('metadata') or {}
+                    vt = md.get('title') or ''
+                    if isinstance(vt, dict):
+                        runs = vt.get('runs') or []
+                        vt = ''.join(x.get('text', '') for x in runs) if runs else (vt.get('simpleText') or '')
+                    det = md.get('metadataDetails') or ''
+                    if isinstance(det, dict):
+                        runs = det.get('runs') or []
+                        det = ''.join(x.get('text', '') for x in runs) if runs else (det.get('simpleText') or '')
+                    views = ''
+                    published = ''
+                    if det and '\u00b7' in det:
+                        views, published = [x.strip() for x in det.split('\u00b7', 1)]
+                    th = vd.get('thumbnail') or {}
+                    srcs = th.get('image', {}).get('sources') or []
+                    thumb = srcs[0].get('url') if srcs else ''
+                    cvm_title = vt if isinstance(vt, str) else ''
+                    if push({'id': vid, 'title': vt, 'channel': md.get('byline') or '',
+                             'views_text': det, 'views': views, 'published': published,
+                             'duration': th.get('timestampText') or '', 'thumb': thumb}):
+                        return True
+            except Exception:
+                pass
+            try:
+                vd = ((node.get('videoWithContextData') or {}).get('videoData')) or {}
+                durl = vd.get('dragAndDropUrl') or ''
+                vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                if vid and len(vid) == 11:
+                    t = ''
+                    try:
+                        t = vd['lockupMetadata']['lockupMetadataViewModel']['title']['content'] or ''
+                    except Exception:
+                        pass
+                    ts = None
+                    try:
+                        ts = (vd.get('thumbnail') or {}).get('timestampText')
+                    except Exception:
+                        ts = None
+                    if push({'id': vid, 'title': t, 'duration': ts or ''}):
+                        return True
+            except Exception:
+                pass
             cvm = node.get('compactVideoModel')
             if isinstance(cvm, dict):
                 try:
                     cur_title = cvm['compactVideoData']['videoData']['metadata']['title']
                 except Exception:
                     cur_title = ''
+            else:
+                cur_title = (cur or {}).get('title', '')
             w = node.get('watchEndpoint')
             if isinstance(w, dict) and w.get('videoId'):
-                if push(w['videoId'], cur_title or ''):
+                if push({'id': w['videoId'], 'title': cur_title or ''}):
                     return True
             for v in node.values():
-                if walk(v, cur_title):
+                if walk(v, cur):
                     return True
         elif isinstance(node, list):
             for v in node:
-                if walk(v, cur_title):
+                if walk(v, cur):
                     return True
         return False
 
@@ -529,11 +581,14 @@ def get_youtube_related(video_id, max_results=10):
     seen_ids = set()
     ts_map = {}
 
-    def push(vid, title, ts=None):
+    def push(info, ts=None):
+        vid = (info.get('id') or '').strip()
         if vid in seen_ids or not vid:
             return
         seen_ids.add(vid)
-        out.append((vid, (title or '').strip()))
+        info['id'] = vid
+        info['title'] = (info.get('title') or '').strip()
+        out.append(info)
         ts_map[vid] = ts
         return len(out) >= max_results
 
@@ -548,6 +603,9 @@ def get_youtube_related(video_id, max_results=10):
                     runs = (vr.get('title') or {}).get('runs') or []
                     t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
                     ts = None
+                    vw = ''
+                    dt = ''
+                    du = ''
                     try:
                         for ov in vr.get('thumbnailOverlays', []) or []:
                             tos = (ov or {}).get('thumbnailOverlayTimeStatusRenderer')
@@ -561,7 +619,19 @@ def get_youtube_related(video_id, max_results=10):
                                 break
                     except:
                         ts = None
-                    if push(vid, t, ts):
+                    try:
+                        vw = ((vr.get('viewCountText') or {}).get('simpleText')) or ''
+                    except:
+                        pass
+                    try:
+                        dt = ((vr.get('publishedTimeText') or {}).get('simpleText')) or ''
+                    except:
+                        pass
+                    try:
+                        du = ((vr.get('lengthText') or {}).get('simpleText')) or ''
+                    except:
+                        pass
+                    if push({'id': vid, 'title': t, 'views': vw, 'date': dt, 'duration': du or ts or ''}, ts):
                         return True
             vwd = node.get('videoWithContextData')
             if isinstance(vwd, dict):
@@ -586,7 +656,38 @@ def get_youtube_related(video_id, max_results=10):
                         ts = (vd.get('thumbnail') or {}).get('timestampText')
                     except:
                         ts = None
-                    if vid and push(vid, t, ts):
+                    ch = ''
+                    vw = ''
+                    dt = ''
+                    try:
+                        rows = vd['lockupMetadata']['lockupMetadataViewModel']['metadata']['contentMetadataViewModel']['metadataRows'] or []
+                        _texts = []
+                        for _row in rows:
+                            for _mp in (_row.get('metadataParts') or []):
+                                _c = ((_mp.get('text') or {}).get('content')) or ''
+                                if _c:
+                                    _texts.append(_c.strip())
+                        for _tx in _texts:
+                            if '\u00b7' in _tx:
+                                _pp = [_x.strip() for _x in _tx.split('\u00b7')]
+                                if len(_pp) >= 3:
+                                    ch, vw, dt = _pp[0], _pp[1], _pp[2]
+                                elif len(_pp) == 2:
+                                    vw, dt = _pp
+                                break
+                        if not vw:
+                            for _tx in _texts:
+                                if 'view' in _tx.lower():
+                                    vw = _tx
+                                    break
+                        if not ch:
+                            try:
+                                ch = vwd['onTap']['innertubeCommand']['coWatchWatchEndpointWrapperCommand']['ownerDisplayName'] or ''
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    if vid and push({'id': vid, 'title': t, 'channel': ch, 'views': vw, 'date': dt, 'duration': ts or ''}, ts):
                         return True
                 except Exception:
                     pass
@@ -598,7 +699,7 @@ def get_youtube_related(video_id, max_results=10):
                     cur_title = ''
             w = node.get('watchEndpoint')
             if isinstance(w, dict) and w.get('videoId'):
-                if push(w['videoId'], cur_title or ''):
+                if push({'id': w['videoId'], 'title': cur_title or ''}):
                     return True
             for v in node.values():
                 if walk(v, cur_title):
@@ -627,7 +728,7 @@ def get_youtube_related(video_id, max_results=10):
                 break
     except Exception as e:
         log(f"Innertube related parse error: {e}")
-    good = [(v, t) for v, t in out if ts_map.get(v) is None or _yt_valid_duration(ts_map.get(v))]
+    good = [d for d in out if ts_map.get(d.get('id')) is None or _yt_valid_duration(ts_map.get(d.get('id')))]
     if not good:
         good = out
     log(f"Innertube related OK: {len(good)} videos ({len(out) - len(good)} without duration skipped).")
@@ -640,16 +741,113 @@ def get_youtube_search_results(query, max_results=25):
     cached = _yt_cache_get(query)
     if cached is not None:
         return cached
-    pairs = search_youtube_innertube(query, max_results)
-    if pairs:
-        log(f"Innertube search OK: {len(pairs)} videos.")
-        items = [{'id': {'videoId': vid}, 'snippet': {'title': title, 'thumbnails': {'high': {'url': 'https://img.youtube.com/vi/' + vid + '/mqdefault.jpg'}}, 'publishedAt': ''}} for vid, title in pairs]
+    found = search_youtube_innertube(query, max_results)
+    if found:
+        log(f"Innertube search OK: {len(found)} videos.")
+        items = [{'id': {'videoId': d.get('id')}, 'snippet': {'title': d.get('title', ''), 'channelTitle': d.get('channel', ''), 'thumbnails': {'high': {'url': d.get('thumb') or 'https://img.youtube.com/vi/' + d.get('id', '') + '/mqdefault.jpg'}}, 'publishedAt': ''}} for d in found]
         _yt_cache_set(query, items)
         return items
     items = get_youtube_api_data(query)
     if items:
         _yt_cache_set(query, items)
     return items
+
+def _yt_ts_to_seconds(ts):
+    try:
+        parts = [int(x) for x in str(ts or '').strip().split(':')]
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    except:
+        pass
+    return 0
+
+
+_YT_META_CACHE = {}
+_YT_META_TTL = 604800
+
+
+def get_youtube_video_meta(video_id):
+    if not video_id:
+        return {}
+    try:
+        hit = _YT_META_CACHE.get(video_id)
+        if hit and time.time() - hit[0] < _YT_META_TTL:
+            return hit[1]
+    except:
+        pass
+    try:
+        from resources.lib.cache import MainCache
+        data = MainCache().get('ytmeta_' + video_id)
+        if data:
+            try:
+                _YT_META_CACHE[video_id] = (time.time(), data)
+            except:
+                pass
+            return data
+    except:
+        pass
+    meta = {}
+    try:
+        cpn = ''.join(random.choice('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_') for _ in range(16))
+        payload = {
+            'context': {'client': {
+                'clientName': 'IOS',
+                'clientVersion': '20.20.7',
+                'deviceMake': 'Apple',
+                'deviceModel': 'iPhone16,2',
+                'osName': 'iOS',
+                'osVersion': '18.5.0.22F76',
+                'platform': 'MOBILE',
+                'hl': 'en',
+                'gl': 'US',
+            }},
+            'cpn': cpn,
+            'videoId': video_id,
+            'contentCheckOk': True,
+            'racyCheckOk': True,
+        }
+        headers = {
+            'Origin': 'https://m.youtube.com',
+            'User-Agent': _YT_IOS_UA,
+            'X-YouTube-Client-Name': '5',
+            'X-YouTube-Client-Version': '20.20.7',
+            'Content-Type': 'application/json',
+        }
+        r = requests.post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', data=json.dumps(payload), headers=headers, timeout=15)
+        body = r.json()
+        vd = (body.get('videoDetails')) or {}
+        try:
+            dur = int(vd.get('lengthSeconds') or 0)
+        except:
+            dur = 0
+        meta = {'description': (vd.get('shortDescription') or '').strip(),
+                'channel': vd.get('author') or '',
+                'channel_id': vd.get('channelId') or '',
+                'duration_sec': dur}
+        try:
+            mf = (body.get('microformat') or {}).get('playerMicroformatRenderer') or {}
+            for k in ('publishDate', 'uploadDate'):
+                if mf.get(k):
+                    meta['published_date'] = str(mf[k])[:10]
+                    break
+        except:
+            pass
+    except Exception as e:
+        log(f"Innertube meta error: {e}")
+        return {}
+    try:
+        _YT_META_CACHE[video_id] = (time.time(), meta)
+    except:
+        pass
+    try:
+        from resources.lib.cache import MainCache
+        MainCache().set('ytmeta_' + video_id, meta, expiration=168)
+    except:
+        pass
+    return meta
+
 
 def format_money(val):
     if not val: return ''
@@ -2800,6 +2998,7 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
                     play_youtube_and_return(next_data, title=t, genre=g,
+                                            plot=_trailer_info_plot(meta, g)[0], studio=_trailer_info_plot(meta, g)[1] or None,
                                             tmdb_id=current.get('tmdb_id'),
                                             dbtype=current.get('media_type'))
                     continue
@@ -2824,6 +3023,7 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
                     play_youtube_and_return(next_data, title=t, genre=g,
+                                            plot=_trailer_info_plot(meta, g)[0], studio=_trailer_info_plot(meta, g)[1] or None,
                                             tmdb_id=current.get('tmdb_id'),
                                             dbtype=current.get('media_type'))
                     continue
@@ -2846,11 +3046,19 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
             elif wd.next_info:
                 next_type, next_data = wd.next_info
                 if next_type == 'youtube_play':
-                    meta = getattr(wd, 'meta', {})
+                    meta = getattr(wd, 'meta', {}) or {}
+                    # Sezonul TMDb nu are tagline/genuri: le completam din
+                    # serial, altfel trailerul pleaca fara motto+gen in OSD.
+                    _tg, _gn = _show_tagline_genres(current.get('tv_id'))
+                    if _tg and not meta.get('tagline'):
+                        meta['tagline'] = _tg
+                    if _gn and not meta.get('genres'):
+                        meta['genres'] = [{'name': x.strip()} for x in _gn.split(',')]
                     t = meta.get('title') or meta.get('name') or current.get('tv_name')
                     g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
                     del wd
                     play_youtube_and_return(next_data, title=t, genre=g,
+                                            plot=_trailer_info_plot(meta, g)[0], studio=_trailer_info_plot(meta, g)[1] or None,
                                             tmdb_id=current.get('tv_id'),
                                             dbtype='tv' if current.get('type') == 'season' else None)
                     continue
@@ -2882,14 +3090,52 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
     
     NAVIGATION_STACK.clear()
 
-def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=None, year=None):
+_season_show_cache = {}
+
+
+def _show_tagline_genres(tv_id):
+    """Tagline + genurile SERIALULUI. Sezonul TMDb (tv/{id}/season/{n}) nu are
+    campuri de tagline/genres, deci antetul 'motto | gen' pentru OSD-ul
+    trailerului nu s-ar putea construi din meta-ul sezonului."""
+    try:
+        if tv_id not in _season_show_cache:
+            _season_show_cache[tv_id] = get_tmdb_data(f"tv/{tv_id}") or {}
+        d = _season_show_cache[tv_id]
+        tg = (d.get('tagline') or '').strip()
+        gn = ', '.join([g.get('name') for g in (d.get('genres') or []) if g.get('name')])
+        return tg, gn
+    except Exception:
+        return '', ''
+
+
+def _trailer_info_plot(meta, genres_str):
+    tagline = ((meta or {}).get('tagline') or '').strip()
+    overview = ((meta or {}).get('overview') or '').strip()
+    head = ''
+    if tagline and genres_str:
+        head = f"[B][COLOR yellow]{tagline}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+    elif tagline:
+        head = f"[B][COLOR yellow]{tagline}[/COLOR][/B]\n"
+    elif genres_str:
+        head = f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+    studio = ''
+    try:
+        cos = ((meta or {}).get('production_companies') or []) or ((meta or {}).get('networks') or [])
+        if cos and isinstance(cos, list) and cos[0].get('name'):
+            studio = cos[0]['name']
+    except:
+        pass
+    return head + overview, studio
+
+
+def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=None, year=None, plot=None, studio=None):
     from resources.lib.trailer_player import get_trailer_mode, get_trailer_url
     mode = get_trailer_mode()
     if mode == 'youtube_plugin':
         url = f"plugin://plugin.video.youtube/play/?video_id={yt_id}"
     else:
         url = get_trailer_url(yt_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                              title=title, year=year)
+                              title=title, year=year, plot=plot, studio=studio)
         if genre:
             from urllib.parse import urlencode
             url = '{}&{}'.format(url, urlencode({'genre': genre}))

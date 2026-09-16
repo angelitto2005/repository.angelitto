@@ -55,7 +55,7 @@ def _notify_no_trailer_addon():
         _icon(), 5000
     )
 
-def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
     from urllib.parse import urlencode
     mode = get_trailer_mode()
     extra = ''
@@ -70,6 +70,23 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, 
         parts.append(('year', str(year)))
     if season:
         parts.append(('season', str(season)))
+    if plot:
+        _pp = str(plot)[:2000]
+        if '[' in _pp[-40:] and ']' not in _pp.rsplit('[', 1)[-1]:
+            _pp = _pp.rsplit('[', 1)[0]
+        parts.append(('plot', _pp))
+    if studio:
+        parts.append(('studio', str(studio)))
+    if tagline:
+        parts.append(('tagline', str(tagline)))
+    if genre:
+        parts.append(('genre', str(genre)))
+    # Limba pentru meta-urile luate de tmdbm.trailers (plot sezon/episod)
+    try:
+        from resources.lib.config import get_plot_language_code, LANG_TO_TMDB
+        parts.append(('lang', LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')))
+    except:
+        pass
     if parts:
         extra = '&' + urlencode(parts)
 
@@ -96,16 +113,18 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, 
 
     return None
 
-def play_trailer(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
+def play_trailer(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
     url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                          title=title, year=year, season=season)
+                          title=title, year=year, season=season,
+                          plot=plot, studio=studio, tagline=tagline, genre=genre)
     if url:
         xbmc.executebuiltin(f'RunPlugin({url})')
 
-def play_trailer_blocking(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
+def play_trailer_blocking(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
     """Play trailer and block until playback finishes."""
     url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                          title=title, year=year, season=season)
+                          title=title, year=year, season=season,
+                          plot=plot, studio=studio, tagline=tagline, genre=genre)
     if not url:
         return
     xbmc.Player().play(url)

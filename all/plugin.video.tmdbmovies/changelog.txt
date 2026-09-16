@@ -1,3 +1,7 @@
+1.1.288
+- Fixed trailer OSD (duplicate tagline, wrong season/episode plot) and colored Season/SxxExx labels in TMDb Info dialog
+- Added history to YouTube search
+
 1.1.287
 - Trakt auth now recovers cleanly from expired logins with clearer logging
 

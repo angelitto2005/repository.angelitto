@@ -1333,12 +1333,6 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if imdb_id: allp_params_dict['imdb_id'] = imdb_id
         cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
 
-    yt_params_dict = {'mode': 'youtube_search', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'year': year}
-    if season is not None: yt_params_dict['season'] = str(season)
-    if episode is not None: yt_params_dict['episode'] = str(episode)
-    if ADDON.getSetting('show_cm_youtube') != 'false':
-        cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(yt_params_dict)})"))
-
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
         'mode': 'show_my_plays_menu',
@@ -1413,6 +1407,12 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if season: rem_params['season'] = str(season)
         if episode: rem_params['episode'] = str(episode)
         cm.append(('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
+
+    yt_params_dict = {'mode': 'youtube_search', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'year': year}
+    if season is not None: yt_params_dict['season'] = str(season)
+    if episode is not None: yt_params_dict['episode'] = str(episode)
+    if ADDON.getSetting('show_cm_youtube') != 'false':
+        cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{urlencode(yt_params_dict)})"))
 
     return cm
 
@@ -4987,8 +4987,35 @@ def show_info_dialog(params):
     if found_video:
         from resources.lib.config import get_trailer_url as _gtu
         _yr = (data.get('release_date') or data.get('first_air_date') or '')[:4]
+        _tst = (data.get('production_companies') or []) or (data.get('networks') or [])
+        _tst = _tst[0].get('name') if _tst and isinstance(_tst, list) and _tst[0].get('name') else ''
+        # Plotul merge FARA antet (motto+gen ajung prin tagline + genre), ca
+        # tmdbm.trailers sa nu afiseze motto-ul de doua ori in OSD. Nu trimitem
+        # plot=None: tmdbm.trailers si-ar lua singur overview-ul in ENGLEZA si
+        # am pierde traducerea RO obtinuta mai sus.
+        _plot_clean = plot
+        if show_motto and plot_header and plot.startswith(plot_header):
+            _plot_clean = plot[len(plot_header):]
+        # Tagline pentru OSD: FARA [B]! Randul TagLine din OSD pierde [/B]-ul
+        # final (il afiseaza literal) cand stringul se termina cu [/COLOR][/B].
+        # Format simplu, doar culori - genul e inclus in string ca sa apara
+        # pe acelasi rand cu motto-ul (parametrul genre= alimenteaza doar
+        # linia de sub titlul clipului, nu randul din OSD).
+        _gnames = ", ".join([g['name'] for g in data.get('genres', []) if g.get('name')]) or None
+        _tag_param = None
+        if show_motto:
+            if tagline_text and _gnames:
+                _tag_param = f"[COLOR yellow]{tagline_text}[/COLOR]   |   [COLOR FF00CED1]{_gnames}[/COLOR]"
+            elif tagline_text:
+                _tag_param = f"[COLOR yellow]{tagline_text}[/COLOR]"
+            elif _gnames:
+                _tag_param = f"[COLOR FF00CED1]{_gnames}[/COLOR]"
         trailer_url = _gtu(found_video.get('key'), tmdb_id=tmdb_id,
-                           dbtype=content_type, title=title, year=_yr)
+                           dbtype=content_type, title=title, year=_yr,
+                           plot=_plot_clean or None, studio=_tst or None,
+                           tagline=_tag_param,
+                           genre=_gnames)
+        log(f"[TMDB-INFO] trailer builder v4 plot={len(_plot_clean or '')}c tagline_param={bool(_tag_param)} genre_param={bool(_gnames)}")
     # --- SFARSIT MODIFICARE ---
 
 
@@ -5014,6 +5041,7 @@ def show_info_dialog(params):
         # --- 1. SETARE GENURI SI TAGLINE ---
         genres_str = ""
         colored_genres_list = []
+        genres_list = []
         if data.get('genres'):
             genres_list = [g['name'] for g in data['genres']]
             colored_genres_list = [f"[B][COLOR cyan]{g}[/COLOR][/B]" for g in genres_list]
@@ -5028,26 +5056,40 @@ def show_info_dialog(params):
             if colored_genres_list:
                 tag.setGenres(colored_genres_list)
                 
-            if tagline and genres_str:
-                tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}")
-            elif tagline:
-                tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]")
-            elif genres_str:
-                tag.setTagLine(f"{genres_str}")
+            # TagLine pentru afisare sub titlu in dialog (doar vizual in dialog).
+            # Trailerul primeste propriul tagline prin URL, deci nu mai are ce
+            # mosteni din dialog in OSD. Gatesc si cu show_motto ca setarea
+            # "motto+gen" sa controleze si aceasta linie (si ca sa nu existe
+            # niciun caz in care OSD-ul mosteneste un tagline fara tagline propriu).
+            if show_motto:
+                if tagline and genres_str:
+                    tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}")
+                elif tagline:
+                    tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]")
+                elif genres_list:
+                    # Fallback fara bullet: "•" + [B] multiplu se randeaza gresit
+                    # daca ar ajunge vreodata mostenit in OSD.
+                    tag.setTagLine(f"[COLOR cyan]{', '.join(genres_list)}[/COLOR]")
         else:
             # PACALIM KODI LA SERIALE! 
             # Pentru ca ignora Tagline-ul, il unim cu Genul (pe care stim ca il afiseaza sub titlu)
             final_tv_string = ""
             if tagline and genres_str:
-                final_tv_string = f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}"
+                final_tv_string = f"[B][COLOR yellow]{tagline}[/COLOR]   |   {genres_str}"
             elif tagline:
-                final_tv_string = f"[B][COLOR yellow]{tagline}[/COLOR][/B]"
+                final_tv_string = f"[B][COLOR yellow]{tagline}[/COLOR]"
             elif genres_str:
                 final_tv_string = genres_str
                 
             if final_tv_string:
                 # Trimitem totul ca un singur "Gen"
                 tag.setGenres([final_tv_string])
+
+        try:
+            _dtl = tag.getTagLine() if hasattr(tag, 'getTagLine') else ''
+        except:
+            _dtl = ''
+        log(f"[TMDB-INFO] dialog tags v2 tagline_B={'[B' in str(_dtl)}")
 
         # --- FIX STATUS: Folosim "Studios" pentru a afisa Statusul in dreapta ---
         # Estuary afiseaza lista de Studiouri (Networks) sub Rating/An.
@@ -5337,11 +5379,23 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
 
     poster_path = data.get('poster_path') or data.get('still_path')
     
-    # Construim ListItem
-    li = xbmcgui.ListItem(title)
+    # Construim ListItem. Estuary (VideoInfoSubLabelVar) afiseaza sub titlul
+    # serialului: la SEZON -> ListItem.Label, la EPISOD -> "Sx: ListItem.Title".
+    # Culori: verde "TMDb Info" din CM (FF6AFB92) pentru sezon si pentru
+    # prefix-ul "1x01" al episodului; turcoaz (FF00CED1) pentru titlu.
+    _acc = 'FF6AFB92'
+    if specific_type == 'season':
+        _disp = f"[B][COLOR {_acc}]{title}[/COLOR][/B]"
+    elif specific_type == 'episode':
+        _se_n = season if season is not None else (data.get('season_number') or 0)
+        _ep_n = episode if episode is not None else (data.get('episode_number') or 0)
+        _disp = f"[B][COLOR {_acc}]{_se_n}x{_ep_n:02d}[/COLOR][/B]: [B][COLOR FF00CED1]{title}[/COLOR][/B]"
+    else:
+        _disp = title
+    li = xbmcgui.ListItem(_disp if specific_type == 'season' else title)
     tag = li.getVideoInfoTag()
     
-    tag.setTitle(title)
+    tag.setTitle(_disp if specific_type == 'episode' else title)
     tag.setPlot(overview)
     tag.setMediaType(specific_type) 
     
@@ -5351,8 +5405,13 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
         except: pass
         
     if 'vote_average' in data: tag.setRating(float(data['vote_average']))
-    if 'season_number' in data: tag.setSeason(int(data['season_number']))
-    if 'episode_number' in data: tag.setEpisode(int(data['episode_number']))
+    # La EPISOD NU setam Season/Episode pe tag: Estuary isi construieste
+    # propriul prefix "1x01:" simplu (alb) din ele si ar aparea DUBLU langa
+    # prefix-ul nostru colorat. Sezonul le pastreaza (afisarea lui foloseste
+    # ListItem.Label, nu aceste numere).
+    if specific_type != 'episode':
+        if 'season_number' in data: tag.setSeason(int(data['season_number']))
+        if 'episode_number' in data: tag.setEpisode(int(data['episode_number']))
     
     # Setam TVShowTitle
     if show_data:
@@ -5368,13 +5427,30 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     #    sezon catre tmdbm.trailers, ca fallback-ul lui sa aleaga trailerul corect
     #    al sezonului (nu al serialului) cand lista de aici nu-l are.
     videos = data.get('videos', {}).get('results', [])
+    _tst2 = ((show_data.get('production_companies') or []) if show_data else []) or ((show_data.get('networks') or []) if show_data else [])
+    _tst2 = _tst2[0].get('name') if _tst2 and isinstance(_tst2, list) and _tst2[0].get('name') else ''
+    _sht = ((show_data.get('tagline') or '').strip() if show_data else '')
+    _sht = f"[COLOR yellow]{_sht}[/COLOR]" if _sht else None
+    _shg = ", ".join([g['name'] for g in ((show_data.get('genres') or []) if show_data else []) if g.get('name')]) or None
+    # Antet "motto | gen" inglobat in plot (acelasi tipar ca la filme/Extended Info).
+    # NU transmitem tagline separat: tmdbm.trailers l-ar afisa pe un rand propriu in OSD.
+    _plot_hdr = ''
+    if _sht and _shg:
+        _plot_hdr = f"[B]{_sht}[/B] | [B][COLOR FF00CED1]{_shg}[/COLOR][/B]\n"
+    elif _sht:
+        _plot_hdr = f"[B]{_sht}[/B]\n"
+    elif _shg:
+        _plot_hdr = f"[B][COLOR FF00CED1]{_shg}[/COLOR][/B]\n"
+    _plot_full = _plot_hdr + (overview or '')
     for vid_type in priority_types:
         for v in videos:
             if v.get('site') == 'YouTube' and v.get('type') == vid_type:
                 from resources.lib.config import get_trailer_url as _gtu
                 trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
                                   dbtype=_dbtype, title=_show_title, year='',
-                                  season=season if specific_type == 'season' else None)
+                                  season=season if specific_type == 'season' else None,
+                                  plot=_plot_full or None, studio=_tst2 or None,
+                                  genre=_shg)
                 break
         if trailer_url:
             break
@@ -5388,10 +5464,13 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
                     from resources.lib.config import get_trailer_url as _gtu
                     trailer_url = _gtu(v.get('key'), tmdb_id=tmdb_id,
                                       dbtype=_dbtype, title=_show_title, year='',
-                                      season=season if specific_type == 'season' else None)
+                                      season=season if specific_type == 'season' else None,
+                                      plot=_plot_full or None, studio=_tst2 or None,
+                                      genre=_shg)
                     break
             if trailer_url:
                 break
+        log(f"[TMDB-INFO] trailer builder v2 season plot={bool(overview)} tagline_param=False genre_param=True")
     
     if trailer_url:
         tag.setTrailer(trailer_url)

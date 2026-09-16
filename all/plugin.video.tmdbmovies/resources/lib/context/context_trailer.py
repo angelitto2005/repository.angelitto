@@ -142,6 +142,83 @@ def search_trailer_by_title(title, year=None, media_type='movie', season=None):
             return find_trailer_video(str(found_id), media_type, season=season)
     return None
 
+def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
+    """Overview + tagline|gen pentru OSD-ul trailerului, in limba setata pentru
+    plot (fallback EN). Fara asta, tmdbm.trailers isi ia singur plotul: pentru
+    episoade harta lui de dbtype nu cunoaste 'episode' si interogheaza
+    /movie/{tmdb_id} cu ID-ul SERIALULUI -> overview-ul altui film!
+    Tagline-ul pleaca FARA [B] (randul TagLine din OSD afiseaza literal
+    [/B]-ul final) si cu genurile incluse in string (parametrul genre=
+    alimenteaza doar linia de sub titlul clipului, nu randul din OSD)."""
+    try:
+        from resources.lib.config import get_plot_language_code, LANG_TO_TMDB
+        lang = LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')
+    except Exception:
+        lang = 'en-US'
+
+    def _get(path):
+        d = get_json(f"{BASE_URL}/{path}?api_key={API_KEY}&language={lang}") or {}
+        if not d or d.get('success') is False:
+            d = get_json(f"{BASE_URL}/{path}?api_key={API_KEY}&language=en-US") or {}
+        return d
+
+    try:
+        if dbtype == 'movie':
+            item, show = _get(f'movie/{tmdb_id}'), {}
+        elif dbtype == 'season' and season is not None:
+            show = _get(f'tv/{tmdb_id}')
+            item = _get(f'tv/{tmdb_id}/season/{season}')
+        elif dbtype == 'episode' and season is not None and episode:
+            show = _get(f'tv/{tmdb_id}')
+            item = _get(f'tv/{tmdb_id}/season/{season}/episode/{episode}')
+        else:
+            item, show = _get(f'tv/{tmdb_id}'), {}
+
+        overview = (item.get('overview') or '').strip() or (show.get('overview') or '').strip()
+        # Genuri/tagline: la serial vin din 'show', la film sunt pe 'item'
+        # (sezoanele/episoadele TMDb nu au aceste campuri deloc).
+        _gsrc = show if show else item
+        tagline_text = ((show.get('tagline') or item.get('tagline') or '')).strip()
+        # TMDb nu traduce motto-ul in multe limbi (de multe ori nici nu il are
+        # localizat): fallback la EN ca randul "motto | gen" sa nu dispara.
+        if not tagline_text:
+            _en_path = 'movie/{}'.format(tmdb_id) if dbtype == 'movie' else 'tv/{}'.format(tmdb_id)
+            _en = get_json(f"{BASE_URL}/{_en_path}?api_key={API_KEY}&language=en-US") or {}
+            tagline_text = (_en.get('tagline') or '').strip()
+        genres_str = ', '.join(g.get('name') for g in (_gsrc.get('genres') or []) if g.get('name'))
+
+        def _head():
+            # Acelasi format ca la Extended Info (dovedit corect in OSD).
+            if tagline_text and genres_str:
+                return f"[B][COLOR yellow]{tagline_text}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+            if tagline_text:
+                return f"[B][COLOR yellow]{tagline_text}[/COLOR][/B]\n"
+            if genres_str:
+                return f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
+            return ''
+
+        if dbtype in ('season', 'episode'):
+            # OSD-ul pentru continut episodic nu randeaza fiabil TagLine ->
+            # ingropam motto+gen in plot (ca la Extended Info) si nu trimitem
+            # tagline separat (ar risca duplicare).
+            plot_out = _head() + overview
+            log('OSD meta (seas/ep): plot={}c (cu antet motto|gen)'.format(len(plot_out or '')))
+            return plot_out or None, None
+
+        tagline_param = None
+        if tagline_text and genres_str:
+            tagline_param = f"[COLOR yellow]{tagline_text}[/COLOR]   |   [COLOR FF00CED1]{genres_str}[/COLOR]"
+        elif tagline_text:
+            tagline_param = f"[COLOR yellow]{tagline_text}[/COLOR]"
+        elif genres_str:
+            tagline_param = f"[COLOR FF00CED1]{genres_str}[/COLOR]"
+        log('OSD meta: plot={}c tagline={}'.format(len(overview or ''), bool(tagline_param)))
+        return overview or None, tagline_param
+    except Exception as e:
+        log('OSD meta error: {}'.format(e))
+        return None, None
+
+
 def main():
     tmdb_id = get_first_valid([
         'ListItem.Property(show_tmdb_id)',
@@ -176,8 +253,13 @@ def main():
         media_type = None
 
     season = None
-    if dbtype == 'season' and season_raw and season_raw.isdigit():
+    if dbtype in ('season', 'episode') and season_raw and season_raw.isdigit():
         season = int(season_raw)
+    episode_num = None
+    if dbtype == 'episode':
+        _ep_raw = (xbmc.getInfoLabel('ListItem.Episode') or '').strip()
+        if _ep_raw.isdigit():
+            episode_num = int(_ep_raw)
 
     if dbtype in ('episode', 'season'):
         title = get_first_valid(['ListItem.TVShowTitle', 'ListItem.Property(tvshow.title)'])
@@ -188,6 +270,13 @@ def main():
     genre = get_first_valid(['ListItem.Genre'])
 
     log('title={} year={} genre={} media_type={} season={}'.format(title, year, genre, media_type, season))
+
+    # Meta pentru OSD (motto+gen + plot in limba setata), ca la TMDb INFO.
+    _osd_dbtype = dbtype if dbtype in ('movie', 'tvshow', 'tv', 'season', 'episode') else media_type
+    plot_param, tagline_param = None, None
+    if tmdb_id and media_type:
+        plot_param, tagline_param = _get_details_for_osd(
+            _osd_dbtype, tmdb_id, season=season, episode=episode_num)
 
     video_id = None
     if tmdb_id and media_type:
@@ -206,9 +295,12 @@ def main():
     if video_id:
         from resources.lib.trailer_player import get_trailer_url, has_tmdbm_trailers, has_youtube_plugin
         url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                              title=title, year=year, season=season)
+                              title=title, year=year, season=season,
+                              plot=plot_param, tagline=tagline_param)
         if not url:
             return
+        if genre:
+            url = '{}&{}'.format(url, urlencode({'genre': genre}))
         li = xbmcgui.ListItem(path=url)
         if title:
             tag = li.getVideoInfoTag()

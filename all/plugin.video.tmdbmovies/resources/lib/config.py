@@ -392,7 +392,7 @@ def get_trailer_mode():
     except:
         return 'yt-dlp'
 
-def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
     mode = get_trailer_mode()
     extra = ''
     parts = []
@@ -406,6 +406,22 @@ def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, 
         parts.append(('year', str(year)))
     if season:
         parts.append(('season', str(season)))
+    if plot:
+        _pp = str(plot)[:2000]
+        if '[' in _pp[-40:] and ']' not in _pp.rsplit('[', 1)[-1]:
+            _pp = _pp.rsplit('[', 1)[0]
+        parts.append(('plot', _pp))
+    if studio:
+        parts.append(('studio', str(studio)))
+    if tagline:
+        parts.append(('tagline', str(tagline)))
+    if genre:
+        parts.append(('genre', str(genre)))
+    # Limba pentru meta-urile luate de tmdbm.trailers (plot sezon/episod)
+    try:
+        parts.append(('lang', LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')))
+    except:
+        pass
     if parts:
         from urllib.parse import urlencode
         extra = '&' + urlencode(parts)

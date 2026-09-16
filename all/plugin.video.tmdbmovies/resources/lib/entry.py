@@ -302,6 +302,156 @@ def get_search_menu_items():
 # ROUTER PRINCIPAL
 # =============================================================================
 
+def _youtube_fmt_dur(sec):
+    try:
+        sec = int(sec)
+    except:
+        return ''
+    if sec <= 0:
+        return ''
+    h, sec = divmod(sec, 3600)
+    m, s = divmod(sec, 60)
+    if h:
+        return '{}:{:02d}:{:02d}'.format(h, m, s)
+    return '{}:{:02d}'.format(m, s)
+
+
+def _youtube_plot(channel='', views='', date='', dur='', desc=''):
+    if date and date in views:
+        date = ''
+    lines = []
+    if channel:
+        lines.append('[B][COLOR FF00CED1]' + channel + '[/COLOR][/B]')
+    stats = []
+    if views:
+        stats.append('[B][COLOR FFFFD700]' + views + '[/COLOR][/B]')
+    if date:
+        stats.append('[B][COLOR FFFF69B4]' + date + '[/COLOR][/B]')
+    if dur:
+        stats.append('[B][COLOR FF87CEEB]' + dur + '[/COLOR][/B]')
+    if stats:
+        lines.append(' - '.join(stats))
+    head = '\n'.join(lines)
+    if desc:
+        return (head + '\n\n' + desc) if head else desc
+    return head
+
+
+def _youtube_queue_entry(vid, title, views='', date='', dur=''):
+    from resources.lib.trailer_player import get_trailer_url
+    from resources.lib.context.extended_info_mod import get_youtube_video_meta
+    try:
+        m = get_youtube_video_meta(vid) or {}
+    except:
+        m = {}
+    ch = m.get('channel') or ''
+    desc = m.get('description') or ''
+    mdate = m.get('published_date') or ''
+    try:
+        dur_sec = int(m.get('duration_sec') or 0)
+    except:
+        dur_sec = 0
+    plot = _youtube_plot(channel=ch, views=views, date=(mdate or date), dur=(_youtube_fmt_dur(dur_sec) or dur), desc=desc)
+    try:
+        url = get_trailer_url(vid, title=title or vid, plot=plot or None, studio=ch or None)
+    except:
+        return None
+    if not url:
+        return None
+    li = xbmcgui.ListItem(label=title or vid)
+    tb = f"https://img.youtube.com/vi/{vid}/mqdefault.jpg"
+    li.setArt({'icon': tb, 'thumb': tb, 'poster': tb})
+    try:
+        tag = li.getVideoInfoTag()
+        tag.setTitle(title or vid)
+        if plot:
+            tag.setPlot(plot)
+        if ch:
+            tag.setStudios([ch])
+        if dur_sec:
+            tag.setDuration(dur_sec)
+        if mdate:
+            tag.setPremiered(mdate)
+    except:
+        pass
+    return (url, li)
+
+
+def _yt_icon():
+    try:
+        return os.path.join(get_addon().getAddonInfo('path'), 'icon.png')
+    except:
+        return ''
+
+
+def _yt_hist_file():
+    try:
+        return get_profile() + 'youtube_search_history.json'
+    except:
+        return ''
+
+
+def _yt_hist_load():
+    try:
+        with open(_yt_hist_file(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict) and x.get('query')]
+    except:
+        pass
+    return []
+
+
+def _yt_hist_save(hist):
+    try:
+        with open(_yt_hist_file(), 'w', encoding='utf-8') as f:
+            json.dump(hist[:20], f)
+        return True
+    except:
+        return False
+
+
+def _yt_hist_add(query, ctx):
+    if not query:
+        return
+    hist = [h for h in _yt_hist_load() if h.get('query') != query]
+    item = {'query': query}
+    for k in ('tmdb_id', 'type', 'title', 'year', 'season'):
+        if ctx.get(k):
+            item[k] = ctx[k]
+    hist.insert(0, item)
+    _yt_hist_save(hist)
+
+
+def _yt_hist_remove(query):
+    _yt_hist_save([h for h in _yt_hist_load() if h.get('query') != query])
+
+
+def _yt_hist_rename(old_q, new_q):
+    if not new_q or new_q == old_q:
+        return False
+    hist = _yt_hist_load()
+    for h in hist:
+        if h.get('query') == old_q:
+            h['query'] = new_q
+            break
+    else:
+        return False
+    _yt_hist_save(hist)
+    return True
+
+
+def _yt_hist_clear():
+    _yt_hist_save([])
+
+
+def _yt_results_params(query, ctx):
+    rp = {'mode': 'youtube_results', 'query': query, 'tmdb_id': ctx.get('tmdb_id') or '', 'type': ctx.get('type') or '', 'title': ctx.get('title') or '', 'year': ctx.get('year') or ''}
+    if ctx.get('season'):
+        rp['season'] = ctx['season']
+    return rp
+
+
 def _youtube_autoplay_loop(seen_ids, order):
     import time
     try:
@@ -317,7 +467,7 @@ def _youtube_autoplay_loop(seen_ids, order):
                 return
             if not _ap.isPlayingVideo():
                 _idle += 1
-                if _idle > 6:
+                if _idle > 18:
                     try:
                         xbmcgui.Window(10000).clearProperty('TMDbMovies.YoutubeAutoplay')
                     except:
@@ -342,7 +492,6 @@ def _youtube_autoplay_loop(seen_ids, order):
                 continue
             try:
                 from resources.lib.context.extended_info_mod import get_youtube_related
-                from resources.lib.trailer_player import get_trailer_url
             except:
                 time.sleep(5)
                 continue
@@ -364,20 +513,19 @@ def _youtube_autoplay_loop(seen_ids, order):
                         _rel = []
                     if _rel:
                         _rel_cache[_probe] = _rel
-                for _rv, _rt in _rel:
+                for _rd in _rel:
                     if _need <= 0:
                         break
-                    if _rv in seen_ids:
+                    _rv = (_rd.get('id') or '') if isinstance(_rd, dict) else ''
+                    if not _rv or _rv in seen_ids:
                         continue
                     seen_ids.add(_rv)
                     order.append(_rv)
                     try:
-                        _eu = get_trailer_url(_rv, title=(_rt or _rv))
-                        if not _eu:
+                        _entry = _youtube_queue_entry(_rv, _rd.get('title'), _rd.get('views'), _rd.get('date'), _rd.get('duration'))
+                        if not _entry:
                             continue
-                        _eli = xbmcgui.ListItem(label=(_rt or _rv))
-                        _etb = f"https://img.youtube.com/vi/{_rv}/mqdefault.jpg"
-                        _eli.setArt({'icon': _etb, 'thumb': _etb, 'poster': _etb})
+                        _eu, _eli = _entry
                         _apl.add(url=_eu, listitem=_eli)
                         _need -= 1
                     except:
@@ -613,20 +761,86 @@ def run_plugin():
                 _ttl = _ttl or xbmc.getInfoLabel('ListItem.Title') or ''
                 _yr = _yr or xbmc.getInfoLabel('ListItem.Year') or ''
             play_trailer(video_id, tmdb_id=_tid, dbtype=_dbtype,
-                         title=_ttl, year=_yr)
+                         title=_ttl, year=_yr, plot=params.get('plot'),
+                         studio=params.get('studio'), tagline=params.get('tagline'),
+                         genre=params.get('genre'))
         return
 
     if mode == 'youtube_search':
+        _yts_list = []
+        _yts_art = get_art_path()
+        _yts_ctx = {'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': params.get('title') or '', 'year': params.get('year') or ''}
+        if params.get('season'):
+            _yts_ctx['season'] = params.get('season')
+        _yts_newp = dict({'mode': 'youtube_search_title'}, **_yts_ctx)
+        _yts_new_li = xbmcgui.ListItem(label='[B]Search Now[/B]')
+        _yts_new_li.setArt({'icon': _yts_art + 'search_movie.png', 'thumb': _yts_art + 'search_movie.png'})
+        _yts_list.append((f"{sys.argv[0]}?{urlencode(_yts_newp)}", _yts_new_li, False))
+        _yts_emptyp = dict({'mode': 'youtube_search_empty'}, **_yts_ctx)
+        _yts_empty_li = xbmcgui.ListItem(label='[B]Empty Search[/B]')
+        _yts_empty_li.setArt({'icon': _yts_art + 'search_movie.png', 'thumb': _yts_art + 'search_movie.png'})
+        _yts_list.append((f"{sys.argv[0]}?{urlencode(_yts_emptyp)}", _yts_empty_li, False))
+        _yts_hist = _yt_hist_load()[:20]
+        for _hh in _yts_hist:
+            _hq = _hh.get('query') or ''
+            if not _hq:
+                continue
+            _hli = xbmcgui.ListItem(label=_hq)
+            _hli.setArt({'icon': _yts_art + 'search_history.png', 'thumb': _yts_art + 'search_history.png'})
+            _hli.addContextMenuItems([
+                ('Rename', f"RunPlugin({sys.argv[0]}?{urlencode({'mode': 'youtube_history_rename', 'query': _hq})})"),
+                ('Delete', f"RunPlugin({sys.argv[0]}?{urlencode({'mode': 'youtube_history_delete', 'query': _hq})})")])
+            _yts_list.append((f"{sys.argv[0]}?{urlencode(_yt_results_params(_hq, _hh))}", _hli, True))
+        if _yts_hist:
+            _yts_clear_li = xbmcgui.ListItem(label='[B][COLOR FFFF4444]Delete all history[/COLOR][/B]')
+            _yts_clear_li.setArt({'icon': 'DefaultAddonNone.png', 'thumb': 'DefaultAddonNone.png'})
+            _yts_list.append((f"{sys.argv[0]}?{urlencode({'mode': 'youtube_history_clear'})}", _yts_clear_li, False))
+        xbmcplugin.addDirectoryItems(handle, _yts_list, len(_yts_list))
+        xbmcplugin.endOfDirectory(handle)
+        return
+
+    if mode == 'youtube_search_title':
         _yt_title = params.get('title') or ''
         _yt_year = params.get('year') or ''
         _yt_init = f"{_yt_title} {_yt_year}".strip() if _yt_year else _yt_title
         _yt_q = xbmcgui.Dialog().input('Search Youtube', defaultt=_yt_init, type=xbmcgui.INPUT_ALPHANUM)
         if not _yt_q:
             return
-        _yt_rp = {'mode': 'youtube_results', 'query': _yt_q, 'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': params.get('title') or '', 'year': params.get('year') or ''}
-        if params.get('season'):
-            _yt_rp['season'] = params.get('season')
-        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_rp)})')
+        _yt_hist_add(_yt_q, params)
+        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_results_params(_yt_q, params))})')
+        return
+
+    if mode == 'youtube_search_empty':
+        _yt_q = xbmcgui.Dialog().input('Search Youtube', defaultt='', type=xbmcgui.INPUT_ALPHANUM)
+        if not _yt_q:
+            return
+        _yt_hist_add(_yt_q, params)
+        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_results_params(_yt_q, params))})')
+        return
+
+    if mode == 'youtube_history_rename':
+        _hq = params.get('query') or ''
+        if not _hq:
+            return
+        _nq = xbmcgui.Dialog().input('Rename search', defaultt=_hq, type=xbmcgui.INPUT_ALPHANUM)
+        if _nq and _nq != _hq and _yt_hist_rename(_hq, _nq):
+            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'Renamed', _yt_icon(), 2000, False)
+            xbmc.executebuiltin('Container.Refresh')
+        return
+
+    if mode == 'youtube_history_delete':
+        _hq = params.get('query') or ''
+        if not _hq:
+            return
+        _yt_hist_remove(_hq)
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'Deleted', _yt_icon(), 2000, False)
+        xbmc.executebuiltin('Container.Refresh')
+        return
+
+    if mode == 'youtube_history_clear':
+        _yt_hist_clear()
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'History cleared', _yt_icon(), 2000, False)
+        xbmc.executebuiltin('Container.Refresh')
         return
 
     if mode == 'youtube_results':
@@ -634,24 +848,81 @@ def run_plugin():
         xbmc.log(f"[TMDb Movies] [YOUTUBE] results query=[{_yt_q}]", xbmc.LOGINFO)
         if _yt_q:
             from resources.lib.context.extended_info_mod import search_youtube_innertube
-            _yt_pairs = search_youtube_innertube(_yt_q, 25)
-            xbmc.log(f"[TMDb Movies] [YOUTUBE] found {len(_yt_pairs)} items", xbmc.LOGINFO)
+            _yt_found = search_youtube_innertube(_yt_q, 25)
+            xbmc.log(f"[TMDb Movies] [YOUTUBE] found {len(_yt_found)} items", xbmc.LOGINFO)
         else:
-            _yt_pairs = []
-        if not _yt_pairs:
+            _yt_found = []
+        if not _yt_found:
             if _yt_q:
-                xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'No results found', xbmcgui.NOTIFICATION_INFO, 3000)
+                xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', 'No results found', _yt_icon(), 3000, False)
             xbmcplugin.endOfDirectory(handle)
             return
+        try:
+            from concurrent.futures import ThreadPoolExecutor, wait
+            from resources.lib.context.extended_info_mod import get_youtube_video_meta
+            _yt_meta = {}
+            _yt_ex = ThreadPoolExecutor(max_workers=10)
+            try:
+                _yt_fm = {_yt_ex.submit(get_youtube_video_meta, _d.get('id')): _d.get('id') for _d in _yt_found if _d.get('id')}
+                _yt_done, _ = wait(set(_yt_fm), timeout=8)
+                for _f in _yt_done:
+                    try:
+                        _yt_meta[_yt_fm[_f]] = _f.result() or {}
+                    except:
+                        pass
+            finally:
+                try:
+                    _yt_ex.shutdown(wait=False, cancel_futures=True)
+                except:
+                    pass
+        except:
+            _yt_meta = {}
         _yt_listing = []
-        for _yt_vid, _yt_t in _yt_pairs:
-            _yt_li = xbmcgui.ListItem(label=(_yt_t or _yt_vid))
-            _yt_thumb = f"https://img.youtube.com/vi/{_yt_vid}/mqdefault.jpg"
-            _yt_li.setArt({'icon': _yt_thumb, 'thumb': _yt_thumb, 'poster': _yt_thumb})
+        for _d in _yt_found:
+            _yt_vid = _d.get('id') or ''
+            _yt_t = _d.get('title') or _yt_vid
+            _m = _yt_meta.get(_yt_vid) or {}
+            _ch = _m.get('channel') or _d.get('channel') or ''
+            _desc = _m.get('description') or ''
+            _dur_raw = _d.get('duration') or ''
+            try:
+                _dur_sec = int(_m.get('duration_sec') or 0)
+            except:
+                _dur_sec = 0
+            if not _dur_sec and _dur_raw:
+                try:
+                    from resources.lib.context.extended_info_mod import _yt_ts_to_seconds
+                    _dur_sec = _yt_ts_to_seconds(_dur_raw)
+                except:
+                    pass
+            _head_views = _d.get('views') or _d.get('views_text') or ''
+            _head_date = _m.get('published_date') or _d.get('published') or ''
+            _dur_txt = _dur_raw or _youtube_fmt_dur(_dur_sec)
+            _plot = _youtube_plot(channel=_ch, views=_head_views, date=_head_date, dur=_dur_txt, desc=_desc)
+            _yt_li = xbmcgui.ListItem(label=_yt_t)
+            _yt_thumb = _d.get('thumb') or f"https://img.youtube.com/vi/{_yt_vid}/mqdefault.jpg"
+            _yt_li.setArt({'icon': _yt_thumb, 'thumb': _yt_thumb, 'poster': _yt_thumb, 'fanart': f"https://img.youtube.com/vi/{_yt_vid}/sddefault.jpg"})
+            try:
+                _tag = _yt_li.getVideoInfoTag()
+                _tag.setTitle(_yt_t)
+                if _plot:
+                    _tag.setPlot(_plot)
+                if _ch:
+                    _tag.setStudios([_ch])
+                if _dur_sec:
+                    _tag.setDuration(_dur_sec)
+                if _m.get('published_date'):
+                    _tag.setPremiered(_m['published_date'])
+            except:
+                pass
             _yt_li.setProperty('IsPlayable', 'true')
-            _yt_p = {'mode': 'youtube_play', 'yt_src': 'search', 'video_id': _yt_vid, 'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': params.get('title') or '', 'year': params.get('year') or ''}
+            _yt_p = {'mode': 'youtube_play', 'yt_src': 'search', 'video_id': _yt_vid, 'tmdb_id': params.get('tmdb_id') or '', 'type': params.get('type') or '', 'title': _yt_t, 'year': params.get('year') or ''}
             if params.get('season'):
                 _yt_p['season'] = params.get('season')
+            if _plot:
+                _yt_p['plot'] = _plot[:2000]
+            if _ch:
+                _yt_p['studio'] = _ch
             _yt_listing.append((f"{sys.argv[0]}?{urlencode(_yt_p)}", _yt_li, False))
         xbmcplugin.addDirectoryItems(handle, _yt_listing, len(_yt_listing))
         xbmcplugin.setContent(handle, 'videos')
@@ -661,8 +932,10 @@ def run_plugin():
     if mode == 'youtube_play':
         from resources.lib.trailer_player import get_trailer_url
         _yp_vid = params.get('video_id')
+        _yp_plot = params.get('plot') or ''
+        _yp_studio = params.get('studio') or ''
         if _yp_vid and params.get('yt_src') == 'search' and get_addon().getSetting('youtube_autoplay') == 'true':
-            _yp_first = get_trailer_url(_yp_vid, tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title') or _yp_vid, year=params.get('year'), season=params.get('season'))
+            _yp_first = get_trailer_url(_yp_vid, tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title') or _yp_vid, year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
             if not _yp_first:
                 xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
                 return
@@ -677,18 +950,37 @@ def run_plugin():
             try:
                 _yp_pl = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
                 _yp_added = 0
-                for _rv, _rt in _yp_rel:
-                    if _rv in _yp_seen:
-                        continue
-                    _yp_seen.add(_rv)
-                    _yp_order.append(_rv)
+                try:
+                    from concurrent.futures import ThreadPoolExecutor, wait
+                    _yp_ex = ThreadPoolExecutor(max_workers=5)
                     try:
-                        _eu = get_trailer_url(_rv, title=(_rt or _rv))
-                        if not _eu:
-                            continue
-                        _eli = xbmcgui.ListItem(label=(_rt or _rv))
-                        _etb = f"https://img.youtube.com/vi/{_rv}/mqdefault.jpg"
-                        _eli.setArt({'icon': _etb, 'thumb': _etb, 'poster': _etb})
+                        _yp_want = []
+                        for _rd in _yp_rel:
+                            _rv = (_rd.get('id') or '') if isinstance(_rd, dict) else ''
+                            if _rv and _rv not in _yp_seen:
+                                _yp_seen.add(_rv)
+                                _yp_order.append(_rv)
+                                _yp_want.append(_rd)
+                        _yp_fm = {_yp_ex.submit(_youtube_queue_entry, _rd.get('id'), _rd.get('title'), _rd.get('views'), _rd.get('date'), _rd.get('duration')): _rd.get('id') for _rd in _yp_want}
+                        _yp_dn, _ = wait(set(_yp_fm), timeout=15)
+                    finally:
+                        try:
+                            _yp_ex.shutdown(wait=False, cancel_futures=True)
+                        except:
+                            pass
+                except:
+                    _yp_dn = set()
+                    _yp_fm = {}
+                for _f in _yp_dn:
+                    _rv = _yp_fm.get(_f, '')
+                    try:
+                        _entry = _f.result()
+                    except:
+                        _entry = None
+                    if not _entry or not _rv:
+                        continue
+                    _eu, _eli = _entry
+                    try:
                         _yp_pl.add(url=_eu, listitem=_eli)
                         _yp_added += 1
                     except:
@@ -700,7 +992,7 @@ def run_plugin():
             import threading as _yt_threading
             _yt_threading.Thread(target=_youtube_autoplay_loop, args=(_yp_seen, _yp_order), daemon=True).start()
             return
-        _yp_url = get_trailer_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'))
+        _yp_url = get_trailer_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
         if _yp_url:
             xbmcplugin.setResolvedUrl(handle, True, xbmcgui.ListItem(path=_yp_url))
         else:
