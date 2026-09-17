@@ -1990,15 +1990,17 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
                                                f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         elif service == 'simkl':
+            if season is not None or episode is not None:
+                xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]",
+                                               "Simkl has no season/episode ratings.",
+                                               service_icon, 4000, False)
+                return
             from resources.lib.simkl_api import SIMKLAPI
             api = SIMKLAPI()
             res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
             if res is not None:
-                # Simkl nu suporta rating per episod/sezon — ratingul se aplica
-                # show-ului parinte (vezi simkl_api.rate_item).
-                target = 'Show' if content_type != 'movie' else ''
                 xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]",
-                                               f"Rated {target} [B][COLOR lime]{val_10}/10[/COLOR][/B]",
+                                               f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         else:
             # TMDb - Ramane 1-10

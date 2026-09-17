@@ -1111,9 +1111,7 @@ def _push_ratings_to_simkl(api, items, progress_cb):
     movies = [(t, min(max(int(r), 1), 10), d)
               for t, mt, _s, _e, r, d in items if mt == 'movie']
     shows = [(t, min(max(int(r), 1), 10), d)
-             for t, mt, _s, _e, r, d in items if mt in ('show', 'season')]
-    episodes = [(t, s, e, r, d)
-                for t, mt, s, e, r, d in items if mt == 'episode']
+             for t, mt, _s, _e, r, d in items if mt == 'show']
     added = 0
     done = 0
     total = len(movies) + len(shows)
@@ -1129,7 +1127,7 @@ def _push_ratings_to_simkl(api, items, progress_cb):
         added += int(added_block.get('shows') or 0)
         done += len(chunk)
         progress_cb(done, total)
-    return added, episodes
+    return added
 
 
 def _mirror_ratings_to_mdblist_db(items):
@@ -1230,20 +1228,23 @@ def import_ratings(direction):
         dst_keys = {(t, mt, s, e) for t, mt, s, e, _r, _d in dst_items}
         items = [it for it in src_items if (it[0], it[1], it[2], it[3]) not in dst_keys]
         skipped = len(src_items) - len(items)
-        xbmc.log("[RATINGS IMPORT] %s -> %s: source %d | to push %d | skipped (already rated): %d"
-                 % (src, dst, len(src_items), len(items), skipped), xbmc.LOGINFO)
+        unsupported = 0
+        if dst == 'simkl':
+            supported = [it for it in items if it[1] in ('movie', 'show')]
+            unsupported = len(items) - len(supported)
+            items = supported
+        xbmc.log("[RATINGS IMPORT] %s -> %s: source %d | to push %d | skipped (already rated): %d | skipped (unsupported by Simkl): %d"
+                 % (src, dst, len(src_items), len(items), skipped, unsupported), xbmc.LOGINFO)
 
         def cb(done, total):
             update(25 + 65 * done // max(total, 1),
                    "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
-        local_only = 0
         if dst == 'trakt':
             added = _push_ratings_to_trakt(items, cb)
         elif dst == 'mdblist':
             added = _push_ratings_to_mdblist(api, items, cb)
         else:
-            added, local_eps = _push_ratings_to_simkl(skapi, items, cb)
-            local_only = len(local_eps)
+            added = _push_ratings_to_simkl(skapi, items, cb)
 
         update(92, "Updating local database...")
         if dst == 'mdblist':
@@ -1263,9 +1264,9 @@ def import_ratings(direction):
 
         msg = ("[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]: imported "
                "[B][COLOR FF6AFB92]%d ratings[/COLOR][/B]. Skipped (already rated): [B]%d[/B]."
-               % (src_color, src_name, dst_color, dst_name, added + local_only, skipped))
-        if local_only:
-            msg += " ([B]%d[/B] episode ratings kept locally - Simkl has no episode ratings.)" % local_only
+               % (src_color, src_name, dst_color, dst_name, added, skipped))
+        if unsupported:
+            msg += " ([B]%d[/B] season/episode ratings skipped - Simkl has no season/episode ratings.)" % unsupported
         xbmcgui.Dialog().notification("[B][COLOR yellow]Ratings Import[/COLOR][/B]", msg, dst_icon, 8000, False)
     except Exception as e:
         xbmc.log("[RATINGS IMPORT] Error: %s" % e, xbmc.LOGERROR)

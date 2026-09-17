@@ -3789,8 +3789,8 @@ def rate_on_providers(tmdb_id, content_type, season, episode, val, providers):
     except Exception:
         pass
     try:
-        _simkl_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
-        if 'simkl' in providers and not _simkl_ep:
+        _simkl_locked = (season is not None or episode is not None) and str(content_type).lower() not in ('movie', 'movies')
+        if 'simkl' in providers and not _simkl_locked:
             from resources.lib.simkl_api import SIMKLAPI
             api = SIMKLAPI()
             if val > 0:
@@ -3838,8 +3838,9 @@ def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, ti
             from resources.lib.mdblist_api import prompt_mdblist_rating
             prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
         elif is_simkl():
-            from resources.lib.simkl_api import prompt_simkl_rating
-            prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
+            if season is None and episode is None:
+                from resources.lib.simkl_api import prompt_simkl_rating
+                prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
         else:
             from resources.lib import trakt_api
             trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
@@ -3930,8 +3931,13 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
     fav = _allprov_colored('Favorite', (3, 2, 3), ('trakt', 'mdblist', 'tmdb'))
     wch = _allprov_colored('Watched', (3, 2, 2), ('trakt', 'mdblist', 'simkl'))
     uwch = _allprov_colored('Unwatched', (3, 3, 3), ('trakt', 'mdblist', 'simkl'))
-    rate = _allprov_colored('Rate it', (2, 2, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl'))
-    rmrate = _allprov_colored('rating', (1, 1, 1, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))
+    _no_simkl_rate = str(content_type).lower() not in ('movie', 'movies') and (season is not None or episode is not None)
+    if _no_simkl_rate:
+        rate = _allprov_colored('Rate it', (2, 2, 3), ('trakt', 'tmdb', 'mdblist'))
+        rmrate = _allprov_colored('rating', (1, 1, 4), ('trakt', 'tmdb', 'mdblist'))
+    else:
+        rate = _allprov_colored('Rate it', (2, 2, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl'))
+        rmrate = _allprov_colored('rating', (1, 1, 1, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))
 
     options = [
         (f'[B]Add to {wl}[/B]', 'wl_add'),
@@ -4053,21 +4059,24 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                                            TMDbmovies_ICON, 5000, False)
 
     elif action in ('rate', 'rate_remove'):
+        rate_targets = [p for p in connected if p != 'simkl'] if _no_simkl_rate else list(connected)
         if action == 'rate':
             import os as _os
             from resources.lib.trakt_api import show_rating_window
             _media_dir = _os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media')
+            _rate_icons = [_os.path.join(_media_dir, 'tmdb.png'),
+                           _os.path.join(_media_dir, 'mdblist.png')]
+            if 'simkl' in rate_targets:
+                _rate_icons.append(_os.path.join(_media_dir, 'simkl.png'))
             val = show_rating_window(tmdb_id, content_type, season, episode, title or '',
                                      _os.path.join(_media_dir, 'trakt.png'),
                                      'RATE ON ALL PROVIDERS',
-                                     extra_icons=[_os.path.join(_media_dir, 'tmdb.png'),
-                                                  _os.path.join(_media_dir, 'mdblist.png'),
-                                                  _os.path.join(_media_dir, 'simkl.png')])
+                                     extra_icons=_rate_icons)
             if val <= 0:
                 return
         else:
             val = 0
-        done = rate_on_providers(tmdb_id, content_type, season, episode, val, connected)
+        done = rate_on_providers(tmdb_id, content_type, season, episode, val, rate_targets)
         if done:
             msg = f'Rated [B][COLOR yellow]{val}/10[/COLOR][/B] on {_allprov_names(done)}' if val > 0 else f'Rating removed from {_allprov_names(done)}'
         else:

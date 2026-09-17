@@ -258,41 +258,39 @@ class SIMKLAPI:
         return self._get('sync/ratings', params={'extended': extended})
 
     def rate_item(self, media_type, tmdb_id, rating, season=None, episode=None, rated_at=None):
+        if season is not None or episode is not None:
+            xbmc.log('[SIMKL] Refusing %s rating for tmdb=%s: Simkl has no season/episode ratings.'
+                     % (media_type, tmdb_id), xbmc.LOGINFO)
+            return None
         if rated_at is None:
             rated_at = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
         rating = min(max(int(rating), 1), 10)
         if media_type == 'movie':
             data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}, 'rating': rating, 'rated_at': rated_at}]}
         else:
-            # Simkl NU suporta rating de episod/sezon (RatingItem are doar
-            # rating/rated_at/ids; nested seasons -> not_found, flat episodes ->
-            # ignorat silentios — verificat live + schema OpenAPI). Ratingul pe
-            # episod/sezon se aplica SHOW-ului parinte.
-            # type='tv' obligatoriu la tmdb pt TV (docs: "tmdb — for TV, specify
-            # type") — fara el, id-urile cu coliziune movie/show (ex. 97546 =
-            # film german pe Simkl) nu se rezolva ca show.
             data = {'shows': [{'ids': {'tmdb': int(tmdb_id), 'type': 'tv'},
                                'rating': rating, 'rated_at': rated_at}]}
         return self._post('sync/ratings', data=data)
 
     def remove_rating(self, media_type, tmdb_id, season=None, episode=None):
+        if season is not None or episode is not None:
+            xbmc.log('[SIMKL] Refusing %s rating removal for tmdb=%s: Simkl has no season/episode ratings.'
+                     % (media_type, tmdb_id), xbmc.LOGINFO)
+            return None
         if media_type == 'movie':
             data = {'movies': [{'ids': {'tmdb': int(tmdb_id)}}]}
         else:
-            # Remove-ul de episod/sezon scoate ratingul show-ului (Simkl nu are
-            # rating per episod). type='tv' — paritate cu rate_item.
             data = {'shows': [{'ids': {'tmdb': int(tmdb_id), 'type': 'tv'}}]}
         return self._post('sync/ratings/remove', data=data)
 
     def add_ratings_bulk(self, movies, shows, episodes):
-        """Bulk add ratings (import). Idempotent — re-push nu face dubluri.
+        """Bulk add ratings (import). Idempotent - re-push nu face dubluri.
 
         movies:   list[(tmdb_id, rating, rated_at)]
         shows:    list[(tmdb_id, rating, rated_at)]
-        episodes: list[(tmdb_id, season, episode, rating, rated_at)] — NU se trimit:
-        Simkl nu suporta rating de episod (cheia flat episodes e ignorata silentios,
-        nested seasons[].episodes[] -> not_found — verificat live + schema OpenAPI).
-        Episoadele raman doar in mirror-ul local (dedupe la re-import).
+        episodes: list[(tmdb_id, season, episode, rating, rated_at)] - NU se trimit
+        NICIODATA: Simkl nu suporta rating de episod/sezon. Apelantul filtreaza;
+        lista ramane doar ca plasa de siguranta si e ignorata aici.
         """
         data = {}
         if movies:
@@ -612,8 +610,10 @@ def simkl_revoke():
 
 
 def prompt_simkl_rating(tmdb_id, content_type, season, episode, title):
-    """Deschide TraktRating.xml cu service='simkl' pentru rating pe Simkl."""
-    if season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies'):
+    if season is not None or episode is not None:
+        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+                                       'Simkl has no season/episode ratings.',
+                                       SIMKL_ICON, 4000, False)
         return
     from resources.lib.trakt_api import _prompt_trakt_rating
     _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service='simkl')
