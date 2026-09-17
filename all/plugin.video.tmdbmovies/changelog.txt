@@ -1,3 +1,6 @@
+1.1.289
+- Reworked provider imports into a 3-step picker (what to import, direction, run) and added Ratings and Dropped TV Shows transfers between Trakt, MDBList and Simkl
+
 1.1.288
 - Fixed trailer OSD (duplicate tagline, wrong season/episode plot) and colored Season/SxxExx labels in TMDb Info dialog
 - Added history to YouTube search

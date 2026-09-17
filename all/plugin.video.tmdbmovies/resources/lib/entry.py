@@ -1105,7 +1105,7 @@ def run_plugin():
         return
     if mode == 'run_import':
         from resources.lib.history_import import run_import
-        run_import(get_addon().getSetting('import_selector'))
+        run_import()
         return
     if mode == 'tmdb_refresh_lists':
         # Refresh DOAR contul TMDb (watchlist/favorites/liste/recommendations) — fara sync Trakt

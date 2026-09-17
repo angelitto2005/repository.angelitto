@@ -89,7 +89,7 @@ My flagship video add-on for movies and TV shows.
 
 <div align="center">
 
-[![TMDb Movies](https://i.postimg.cc/1R6Mh0JJ/tmdbm.jpg)](https://rumble.com/playlists/JBKb6vlm5U8)
+<a href="https://rumble.com/playlists/JBKb6vlm5U8"><img src="https://i.postimg.cc/hj2tjZ8v/tmdbm.jpg" alt="TMDb Movies" width="500"></a>
 
 ### [▶️ Watch the Full Playlist on Rumble](https://rumble.com/playlists/JBKb6vlm5U8)
 

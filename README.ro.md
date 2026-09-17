@@ -89,7 +89,7 @@ Add-onul meu principal pentru filme și seriale.
 
 <div align="center">
 
-[![TMDb Movies](https://i.postimg.cc/1R6Mh0JJ/tmdbm.jpg)](https://rumble.com/playlists/JBKb6vlm5U8)
+<a href="https://rumble.com/playlists/JBKb6vlm5U8"><img src="https://i.postimg.cc/hj2tjZ8v/tmdbm.jpg" alt="TMDb Movies" width="500"></a>
 
 ### [▶️ Vezi Playlistul Complet pe Rumble](https://rumble.com/playlists/JBKb6vlm5U8)
 
