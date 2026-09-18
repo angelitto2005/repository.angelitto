@@ -253,20 +253,24 @@ def get_source_module():
         return __import__('resources.lib.mdblist_sync', fromlist=['mdblist_sync'])
     return __import__('resources.lib.trakt_sync', fromlist=['trakt_sync'])
 
-def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True):
+def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True, async_tmdb=False, skip_library_hack=False):
     targets = _mark_targets()
     prov = _get_provider_raw()
     if targets is None or targets == [prov]:
         if prov == 'trakt':
             from resources.lib.trakt_sync import mark_as_watched_internal
-            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_trakt=sync_provider, refresh_ui=do_refresh)
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_trakt=sync_provider, refresh_ui=do_refresh, skip_library_hack=skip_library_hack)
         elif prov == 'mdblist':
             from resources.lib.mdblist_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_mdblist=sync_provider, refresh_ui=do_refresh)
         else:
             from resources.lib.simkl_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_simkl=sync_provider, refresh_ui=do_refresh)
-        _refresh_tmdb_up_next(tmdb_id)
+        if async_tmdb:
+            import threading
+            threading.Thread(target=_refresh_tmdb_up_next, args=(tmdb_id,), daemon=True).start()
+        else:
+            _refresh_tmdb_up_next(tmdb_id)
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
         return

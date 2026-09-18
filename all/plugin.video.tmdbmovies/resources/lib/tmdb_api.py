@@ -2767,7 +2767,9 @@ def tmdb_list_items(params):
     page = int(params.get('page', '1'))
 
     # --- FAST CACHE CHECK (RAM) ---
-    cache_key = f"tmdb_custom_list_{list_id}_{page}"
+    from resources.lib.utils import sort_personal_list, personal_lists_sort_az
+    sort_suffix = 'az' if personal_lists_sort_az() else 'orig'
+    cache_key = f"tmdb_custom_list_{list_id}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -2778,6 +2780,7 @@ def tmdb_list_items(params):
     if not items_raw:
         xbmcplugin.endOfDirectory(HANDLE); return
 
+    items_raw = sort_personal_list(items_raw)
     paginated, total = paginate_list(items_raw, page, PAGE_LIMIT)
     
     # REPARAT NameError: folosim variabila m_type determinata corect
@@ -2816,7 +2819,9 @@ def tmdb_watchlist(params):
     page = int(params.get('page', '1'))
 
     # --- 1. FAST CACHE CHECK (RAM) ---
-    cache_key = f"tmdb_watchlist_{content_type}_{page}"
+    from resources.lib.utils import sort_personal_list, personal_lists_sort_az
+    sort_suffix = 'az' if personal_lists_sort_az() else 'orig'
+    cache_key = f"tmdb_watchlist_{content_type}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -2849,6 +2854,7 @@ def tmdb_watchlist(params):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    results = sort_personal_list(results)
     paginated, total = paginate_list(results, page, PAGE_LIMIT)
     prefetch_metadata_parallel(paginated, content_type)
     
@@ -2891,7 +2897,9 @@ def tmdb_favorites(params):
     page = int(params.get('page', '1'))
 
     # --- FAST CACHE CHECK (RAM) ---
-    cache_key = f"tmdb_favorites_{content_type}_{page}"
+    from resources.lib.utils import sort_personal_list, personal_lists_sort_az
+    sort_suffix = 'az' if personal_lists_sort_az() else 'orig'
+    cache_key = f"tmdb_favorites_{content_type}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -2924,6 +2932,7 @@ def tmdb_favorites(params):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    results = sort_personal_list(results)
     paginated, total = paginate_list(results, page, PAGE_LIMIT)
     prefetch_metadata_parallel(paginated, content_type)
     

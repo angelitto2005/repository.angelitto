@@ -672,9 +672,18 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
     def _trigger_ui_refresh():
         try:
             import xbmc
+            import xbmcgui
+            import time
+            try:
+                _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
+            except:
+                _binge_since = 0.0
+            if _binge_since > 0 and time.time() - _binge_since < 120:
+                return
             container_path = xbmc.getInfoLabel('Container.FolderPath')
             if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
                 xbmc.executebuiltin("Container.Refresh")
+                xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
         except:
             pass
 

@@ -1494,6 +1494,23 @@ class TMDbPlayer(xbmc.Player):
             pass
 
 
+def _warmup_next_season(player):
+    try:
+        from resources.lib.tmdb_api import get_smart_season_details
+        if getattr(player, 'season', None) is None:
+            return
+        try:
+            get_smart_season_details(player.tmdb_id, int(player.season))
+        except:
+            pass
+        try:
+            get_smart_season_details(player.tmdb_id, int(player.season) + 1)
+        except:
+            pass
+    except:
+        pass
+
+
 def _silent_scrape_next_episode(player):
     """
     Background worker invizibil. Cauta sezonul/episodul urmator si face 
@@ -1777,6 +1794,8 @@ def start_playback_monitor(player_instance, dialog=None):
                     if not player_instance.watched_marked and progress >= 85:
                         log(f"[PLAYER-MONITOR] 85% reached. Will mark on stop.")
                         player_instance.watched_marked = True
+                        if not getattr(player_instance, 'next_episode_scraped', False):
+                            threading.Thread(target=_warmup_next_season, args=(player_instance,), daemon=True).start()
                     
                     if abs(progress - player_instance.last_progress_sent) >= player_instance.scrobble_threshold:
                         player_instance._send_trakt_scrobble('scrobble', progress)
@@ -1873,6 +1892,11 @@ def start_playback_monitor(player_instance, dialog=None):
         # ============================================================
 
         # SALVARE PROGRES (LOGICA NOUA)
+        stop_net_threads = []
+        try:
+            xbmcgui.Window(10000).setProperty('tmdbmovies.binge_open', str(time.time()))
+        except:
+            pass
         try:
             from resources.lib import trakt_sync
 
@@ -1881,7 +1905,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 dispatch_mark_watched(
                     player_instance.tmdb_id, player_instance.content_type,
                     player_instance.season, player_instance.episode,
-                    notify=True, do_refresh=False
+                    notify=True, do_refresh=False, async_tmdb=True, skip_library_hack=True
                 )
                 # Stergem punctul de resume
                 trakt_sync.update_local_playback_progress(
@@ -1889,7 +1913,9 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.season, player_instance.episode, 
                     100, player_instance.title, player_instance.year
                 )
-                player_instance._send_trakt_scrobble('stop', 100)
+                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), daemon=True)
+                _stop_net_thread.start()
+                stop_net_threads.append(_stop_net_thread)
                 
                 # BIFAM CA E ELIGIBIL PENTRU RATING LA FINAL
                 player_instance.should_prompt_rating = True
@@ -1906,7 +1932,9 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.title, player_instance.year
                 )
                 
-                player_instance._send_trakt_scrobble('pause', last_known_progress)
+                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', last_known_progress), daemon=True)
+                _stop_net_thread.start()
+                stop_net_threads.append(_stop_net_thread)
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
@@ -1931,11 +1959,15 @@ def start_playback_monitor(player_instance, dialog=None):
                         # Pastram resume-ul vechi valid - nu-l stergem!
                         log(f"[PLAYER-MONITOR] Watched <3min, dar exista resume vechi valid ({int(old_resume_seconds)}s). Il PASTRAM!")
                         old_pct = (old_resume_seconds / last_known_total * 100) if last_known_total > 0 else 0
-                        player_instance._send_trakt_scrobble('pause', old_pct)
+                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', old_pct), daemon=True)
+                        _stop_net_thread.start()
+                        stop_net_threads.append(_stop_net_thread)
                     else:
                         # Nu exista resume valid sau era si el sub 3 min -> stergem tot
                         log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
-                        player_instance._send_trakt_scrobble('stop', 0)
+                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 0), daemon=True)
+                        _stop_net_thread.start()
+                        stop_net_threads.append(_stop_net_thread)
                         conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
                                      (str(player_instance.tmdb_id), player_instance.season or 0, player_instance.episode or 0))
                         if player_instance.content_type == 'movie':
@@ -1970,6 +2002,12 @@ def start_playback_monitor(player_instance, dialog=None):
                     log(f"[BINGE-WATCH] Buton apasat: {ret}")
                     if ret == 1 or ret == 2:
                         prompted_next = True
+                        for _net_thread in stop_net_threads:
+                            try:
+                                if _net_thread.is_alive():
+                                    _net_thread.join(timeout=2)
+                            except:
+                                pass
                         url_params = {
                             'mode': 'sources', 'tmdb_id': player_instance.tmdb_id, 'type': 'tv',
                             'season': str(n_info['season']), 'episode': str(n_info['episode']),
@@ -2003,10 +2041,34 @@ def start_playback_monitor(player_instance, dialog=None):
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
             
-            # Refresh unic dupa 5s — suficient cat fullscreenvideo sa se inchida complet (chiar si Torrentio)
-            xbmc.sleep(5000)
-            xbmc.executebuiltin('Container.Refresh')
-            log("[PLAYER-MONITOR] Container refreshed")
+            try:
+                xbmcgui.Window(10000).clearProperty('tmdbmovies.binge_open')
+            except:
+                pass
+            if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
+                try:
+                    from resources.lib.trakt_sync import update_kodi_library_watchstatus as _update_lib_watch
+                    _lib_title = player_instance.title
+                    if player_instance.season is not None and player_instance.episode is not None:
+                        _lib_title = f"{_lib_title} - S{int(player_instance.season):02d}E{int(player_instance.episode):02d}"
+                    threading.Thread(target=_update_lib_watch, args=(player_instance.content_type, 'mark_as_watched', _lib_title, player_instance.tmdb_id, player_instance.season, player_instance.episode), daemon=True).start()
+                except:
+                    pass
+            for _fs_wait in range(34):
+                try:
+                    if not xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                        break
+                except:
+                    break
+                xbmc.sleep(150)
+            _last_upnext_refresh = 0.0
+            try:
+                _last_upnext_refresh = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
+            except:
+                pass
+            if time.time() - _last_upnext_refresh > 10:
+                xbmc.executebuiltin('Container.Refresh')
+                log("[PLAYER-MONITOR] Container refreshed")
             # Refresh widget-uri de pe Home (UpdateLibrary): Container.Refresh nu
             # atinge widget-urile din skin (Next Episodes / In Progress). UpdateLibrary
             # emite VideoLibrary.OnUpdate -> toate widget-urile se re-randa in ~5s.
@@ -3253,6 +3315,10 @@ def list_sources(params):
         else:
             if http_master_enabled:
                 active_providers.append(pid)
+    show_aio = any(pid in debrid_ids for pid in active_providers)
+    show_http = any(pid not in debrid_ids and pid not in p2p_ids for pid in active_providers)
+    show_p2p = any(pid in p2p_ids for pid in active_providers)
+    visible_cats = {'aio': show_aio, 'http': show_http, 'p2p': show_p2p}
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
@@ -3371,6 +3437,8 @@ def list_sources(params):
                                 f"{lb}Total:{le} [B][COLOR {color}]{total}[/COLOR][/B]")
                     rows = []
                     for label, color, key in [("AIO", "FFFF00FF", "aio"), ("HTTP", "FF7CFC00", "http"), ("P2P", "FFF4A460", "p2p")]:
+                        if not visible_cats.get(key):
+                            continue
                         d = cats.get(key)
                         if d:
                             rows.append(fmt_row(label, color, d, lbl_bold=True, lbl_color="FFCCCCFF"))

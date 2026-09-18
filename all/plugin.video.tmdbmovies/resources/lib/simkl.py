@@ -482,6 +482,9 @@ def _view_status_items(status, kind, page=1):
         _end()
         return
 
+    from resources.lib.utils import sort_personal_list
+    items = sort_personal_list(items)
+
     # Watching = echivalentul Trakt In Progress TV Shows — afisam TOATE pe o
     # singura pagina (fara paginare), paritate cu in_progress_tvshows.
     if status == 'watching':

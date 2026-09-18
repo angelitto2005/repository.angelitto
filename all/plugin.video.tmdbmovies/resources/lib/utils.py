@@ -187,6 +187,38 @@ def paginate_list(item_list, page, limit=20):
     
     return current_items, total_pages
 
+def personal_lists_sort_az():
+    try:
+        return ADDON.getSetting('personal_lists_sort') == '1'
+    except:
+        return False
+
+def sort_personal_list(items):
+    if not items:
+        return items
+    try:
+        az = ADDON.getSetting('personal_lists_sort') == '1'
+    except:
+        return items
+    if not az:
+        return items
+    def _title(it):
+        if not isinstance(it, dict):
+            return ''
+        t = it.get('title') or it.get('name') or ''
+        if not t:
+            for k in ('movie', 'show', 'anime'):
+                sub = it.get(k)
+                if isinstance(sub, dict):
+                    t = sub.get('title') or sub.get('name') or ''
+                    if t:
+                        break
+        return str(t).casefold()
+    try:
+        return sorted(items, key=_title)
+    except:
+        return items
+
 def extract_details(raw_title, raw_name):
     from resources.lib.utils import clean_text
     import re

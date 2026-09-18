@@ -832,7 +832,9 @@ def _view_watchlist_items(mediatype, page=1):
         return
 
     from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.utils import sort_personal_list
 
+    all_items = sort_personal_list(all_items)
     start = (page - 1) * limit
     page_items = all_items[start:start + limit]
     
@@ -930,7 +932,9 @@ def _view_collection_items(mediatype, page=1):
         return
     
     from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.utils import sort_personal_list
 
+    items_list = sort_personal_list(items_list)
     start = (page - 1) * limit
     page_items = items_list[start:start + limit]
     

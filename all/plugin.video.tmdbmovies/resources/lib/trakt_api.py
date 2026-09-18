@@ -548,6 +548,10 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
                     return (data_json, page_count)
                 return data_json
 
+            if r.status_code in (409, 422) and method == 'POST' and endpoint == '/scrobble/stop':
+                log(f"[TRAKT] scrobble/stop {r.status_code} - raspuns benign, tratat ca succes", xbmc.LOGINFO)
+                return (True, 1) if pagination else True
+
             log(f"[TRAKT] {method} {endpoint} → HTTP {r.status_code}",
                 xbmc.LOGWARNING)
             return (None, 0) if pagination else None
@@ -2425,7 +2429,7 @@ def trakt_list_items(params):
         prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details,
         _get_cached_details
     )
-    from resources.lib.utils import paginate_list
+    from resources.lib.utils import paginate_list, sort_personal_list, personal_lists_sort_az
     from resources.lib import trakt_sync
     import xbmcplugin
 
@@ -2436,7 +2440,8 @@ def trakt_list_items(params):
     page = int(params.get('new_page', '1'))
 
     # 1. RAM Check
-    cache_key = f"trakt_list_{list_type}_{slug}_{media_filter}_{page}"
+    sort_suffix = 'az' if personal_lists_sort_az() else 'orig'
+    cache_key = f"trakt_list_{list_type}_{slug}_{media_filter}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -2478,6 +2483,8 @@ def trakt_list_items(params):
         xbmcplugin.endOfDirectory(HANDLE); return
 
     # 4. Procesare
+    if list_type in ('favorites', 'watchlist', 'user_list'):
+        data = sort_personal_list(data)
     paginated_items, total_pages = paginate_list(data, page, limit=PAGE_LIMIT)
     
     # Prefetch-ul este critic aici pentru History TV (unde lipsesc date in SQL)
@@ -2877,10 +2884,17 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
 def trakt_favorites_list(params):
     """Afiseaza Favoritele Trakt cu paginare si threading."""
     from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, prefetch_metadata_parallel
-    from resources.lib.utils import paginate_list
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache
+    from resources.lib.utils import paginate_list, sort_personal_list, personal_lists_sort_az
     
     m_type = params.get('type')
     page = int(params.get('page', '1'))
+
+    cache_key_fav = f"trakt_fav_{m_type}_{page}_{'az' if personal_lists_sort_az() else 'orig'}"
+    cached_fav = get_fast_cache(cache_key_fav)
+    if cached_fav:
+        render_from_fast_cache(cached_fav)
+        return
     
     data = trakt_sync.get_trakt_favorites_from_db(m_type)
     
@@ -2888,6 +2902,7 @@ def trakt_favorites_list(params):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
+    data = sort_personal_list(data)
     paginated, total_pages = paginate_list(data, page, PAGE_LIMIT)
     
     # Threading pentru viteza
@@ -2933,7 +2948,6 @@ def trakt_favorites_list(params):
     xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
 
-    cache_key_fav = f"trakt_fav_{m_type}_{page}"
     from resources.lib.tmdb_api import set_fast_cache
     set_fast_cache(cache_key_fav, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
                                     'art': i['art'], 'info': i['info'], 'cm': i['cm_items'],

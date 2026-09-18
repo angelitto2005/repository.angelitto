@@ -2920,7 +2920,7 @@ def sync_single_unwatched_to_trakt(tmdb_id, content_type, season=None, episode=N
         
     trakt_api.trakt_api_request("/sync/history/remove", method='POST', data=data)
 
-def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True, refresh_ui=True):
+def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, notify=True, sync_trakt=True, refresh_ui=True, skip_library_hack=False):
     from resources.lib import tmdb_api
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, ADDON
     import threading
@@ -3063,10 +3063,11 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
             except: pass
             
     # --- START KODI LIBRARY HACK (INSTANT) ---
-    try:
-        # Folosim tmdb_id in loc de year_val pentru o precizie de 100%
-        threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, tmdb_id, season, episode), daemon=True).start()
-    except: pass
+    if not skip_library_hack:
+        try:
+            # Folosim tmdb_id in loc de year_val pentru o precizie de 100%
+            threading.Thread(target=update_kodi_library_watchstatus, args=(content_type, 'mark_as_watched', title_val, tmdb_id, season, episode), daemon=True).start()
+        except: pass
     # --- END KODI LIBRARY HACK ---
     
     from resources.lib.cache import clear_all_fast_cache
@@ -3178,9 +3179,18 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     def _trigger_ui_refresh():
         try:
             import xbmc
+            import xbmcgui
+            import time
+            try:
+                _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
+            except:
+                _binge_since = 0.0
+            if _binge_since > 0 and time.time() - _binge_since < 120:
+                return
             container_path = xbmc.getInfoLabel('Container.FolderPath')
             if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
                 xbmc.executebuiltin("Container.Refresh")
+                xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
         except: pass
         
     try:
@@ -3700,6 +3710,21 @@ def refresh_next_episode_tmdb(tmdb_id):
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
+        except Exception:
+            pass
+        try:
+            import xbmcgui as _xg
+            import time as _tm
+            try:
+                _binge_since = float(_xg.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
+            except:
+                _binge_since = 0.0
+            if _binge_since > 0 and _tm.time() - _binge_since < 120:
+                return
+            _cp = xbmc.getInfoLabel('Container.FolderPath')
+            if not _cp or 'plugin.video.tmdbmovies' in _cp.lower():
+                xbmc.executebuiltin("Container.Refresh")
+                _xg.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(_tm.time()))
         except Exception:
             pass
     except Exception as e:
