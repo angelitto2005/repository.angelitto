@@ -119,11 +119,12 @@
         <setting id="use_fshdnet" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]FSHDnet[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
 		
         <setting type="lsep" label="Exclusions"/>
-		<setting id="exclude_hdr_dv" type="bool" label="Exclude HDR / Dolby Vision" default="false"/>
-		<setting id="exclude_4k" type="bool" label="Exclude 4K / 2160p" default="false"/>
-		<setting id="exclude_1080p" type="bool" label="Exclude 1080p" default="false"/>
-		<setting id="exclude_720p" type="bool" label="Exclude 720p" default="false"/>
-		<setting id="exclude_sd" type="bool" label="Exclude SD / 480p and below" default="false"/>
+		<setting id="exclude_dv" type="bool" label="Exclude [B][COLOR FFFFCC00]Dolby Vision[/COLOR][/B] (also DV+ HDR hybrids)" default="false"/>
+		<setting id="exclude_hdr" type="bool" label="Exclude [B][COLOR FF00FA9A]HDR[/COLOR][/B] (also HDR + DV hybrids)" default="false"/>
+		<setting id="exclude_4k" type="bool" label="Exclude [B][COLOR FFFF00FF]4K / 2160p[/COLOR][/B]" default="false"/>
+		<setting id="exclude_1080p" type="bool" label="Exclude [B][COLOR FFDAA520]1080p[/COLOR][/B]" default="false"/>
+		<setting id="exclude_720p" type="bool" label="Exclude [B][COLOR FF9932CC]720p[/COLOR][/B]" default="false"/>
+		<setting id="exclude_sd" type="bool" label="Exclude [B][COLOR FF6495ED]SD / 480p and below[/COLOR][/B]" default="false"/>
 		
         <setting type="lsep" label="Source Filtering"/>
 		<setting id="filter_duplicate_urls" type="bool" label="Filter duplicate sources (same URL)" default="true"/>

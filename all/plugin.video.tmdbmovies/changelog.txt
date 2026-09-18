@@ -1,7 +1,8 @@
-1.1.291
+1.1.292
 - Search splash now shows only rows for enabled groups (AIO / HTTP / P2P) - disabled groups are hidden instead of showing 0 results.
 - Personal lists (watchlist, favorites, collection, custom) can now be ordered Original or A-Z via Settings > General > Personal lists order, applied globally before pagination.
 - Instant binge dialog and Up Next refresh after stop, no more spinner blocking input
+- Split the HDR/Dolby Vision exclusion into two separate switches (Exclude DV / Exclude HDR) in Settings and in the sources filter menu
 
 1.1.290
 - Reworked provider imports into a 3-step picker (what to import, direction, run) and added Ratings and Dropped TV Shows transfers between Trakt, MDBList and Simkl

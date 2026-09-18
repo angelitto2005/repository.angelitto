@@ -874,7 +874,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             options.append("[B]SHOW 1080P ONLY[/B]")
             options.append("[B]SHOW 720P ONLY[/B]")
             options.append("[B]SHOW SD ONLY[/B]")
-            options.append("[B]Filter by HDR/DV[/B]")
+            options.append("[B]Filter by DV[/B]")
+            options.append("[B]Filter by HDR[/B]")
             options.append("[B]Filter by SDR[/B]")
             options.append("[B]Filter by Provider[/B]")
             options.append("[B]Filter by Title[/B]")
@@ -926,19 +927,20 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif ret == 3: self.apply_filter('quality', '1080p')
             elif ret == 4: self.apply_filter('quality', '720p')
             elif ret == 5: self.apply_filter('quality', 'SD')
-            elif ret == 6: self.apply_filter('hdr', True)
-            elif ret == 7: self.apply_filter('sdr', True)
-            elif ret == 8:
+            elif ret == 6: self.apply_filter('dv', True)
+            elif ret == 7: self.apply_filter('hdr', True)
+            elif ret == 8: self.apply_filter('sdr', True)
+            elif ret == 9:
                 providers = sorted(list(set([str(r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id', '') or r.get('provider_id', '')).strip() for r in self.all_results if (r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id') or r.get('provider_id'))])))
                 if not providers: return
                 p_idx = xbmcgui.Dialog().select("Select Provider", providers)
                 if p_idx >= 0:
                     self.apply_filter('provider', providers[p_idx])
-            elif ret == 9:
+            elif ret == 10:
                 keyword = xbmcgui.Dialog().input("Enter keyword")
                 if keyword:
                     self.apply_filter('title', keyword)
-            elif ret == 10:
+            elif ret == 11:
                 all_tags = []
                 for r in self.all_results:
                     # Colectam toate tag-urile din info/tags
@@ -963,8 +965,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         import xbmcgui
         if filter_type == 'quality':
             self.results = [r for r in self.all_results if r.get('info', {}).get('quality') == value]
+        elif filter_type == 'dv':
+            self.results = [r for r in self.all_results if any(x in ['DV', 'DOVI', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'hdr':
-            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'Dolby Vision', 'HLG'] for x in r.get('info', {}).get('tags', []))]
+            self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'sdr':
             self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'Dolby Vision', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'provider':

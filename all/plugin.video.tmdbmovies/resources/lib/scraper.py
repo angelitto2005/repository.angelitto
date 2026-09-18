@@ -233,6 +233,24 @@ def _normalize_quality(quality_str):
         return 'SD'
 
 
+def _hdr_dv_flags(text):
+    t = str(text or '').lower()
+    has_dv = ('dolby vision' in t or '.dv.' in t or ' dv ' in t or 'dovi' in t
+              or re.search(r'\bdovi\b', t) or re.search(r'\bdv\b', t))
+    has_hdr = (('hdr' in t and 'hdrip' not in t) or 'hlg' in t)
+    return has_hdr, bool(has_dv)
+
+
+def _migrate_hdr_dv_setting():
+    try:
+        if ADDON.getSetting('exclude_hdr_dv') == 'true':
+            ADDON.setSetting('exclude_dv', 'true')
+            ADDON.setSetting('exclude_hdr', 'true')
+            ADDON.setSetting('exclude_hdr_dv', 'false')
+    except:
+        pass
+
+
 def filter_streams_for_display(streams):
     """
     Filtreaza streamurile pentru AFISARE bazat pe setarile curente.
@@ -248,8 +266,11 @@ def filter_streams_for_display(streams):
     exclude_1080p = ADDON.getSetting('exclude_1080p') == 'true'
     exclude_720p = ADDON.getSetting('exclude_720p') == 'true'
     exclude_sd = ADDON.getSetting('exclude_sd') == 'true'
-    try: exclude_hdr_dv = ADDON.getSetting('exclude_hdr_dv') == 'true'
-    except: exclude_hdr_dv = False
+    _migrate_hdr_dv_setting()
+    try: exclude_dv = ADDON.getSetting('exclude_dv') == 'true'
+    except: exclude_dv = False
+    try: exclude_hdr = ADDON.getSetting('exclude_hdr') == 'true'
+    except: exclude_hdr = False
     # Source Priority (Sorting): la optiunile 1+ (grup-major) lista e deja sortata
     # de sort_streams_by_quality — nu o mai re-sortam dupa calitate (stable sort-ul
     # vechi facea calitatea cheie primara si grupurile doar tiebreaker).
@@ -264,7 +285,7 @@ def filter_streams_for_display(streams):
         stats[normalized] = stats.get(normalized, 0) + 1
     
     # Daca nu e nimic de exclus, returneaza toate
-    if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_hdr_dv]):
+    if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_dv, exclude_hdr]):
         if sort_opt > 0:
             return streams, stats
         sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
@@ -288,13 +309,14 @@ def filter_streams_for_display(streams):
         if normalized in excluded:
             continue
             
-        if exclude_hdr_dv:
+        if exclude_dv or exclude_hdr:
             full_text = (str(stream.get('name', '')) + ' ' + str(stream.get('title', '')) + ' ' + str(stream.get('info', ''))).lower()
             if isinstance(stream.get('info'), dict):
                 full_text += ' ' + str(stream['info'].get('original_info_str', '')).lower()
                 full_text += ' ' + str(stream['info'].get('releaseGroup', '')).lower()
-                
-            if 'hdr' in full_text or 'dolby vision' in full_text or '.dv.' in full_text or 'hlg' in full_text or 'dovi' in full_text:
+
+            has_hdr, has_dv = _hdr_dv_flags(full_text)
+            if (exclude_dv and has_dv) or (exclude_hdr and has_hdr):
                 continue
                 
         filtered.append(stream)
