@@ -207,8 +207,10 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
         _add("[B][COLOR lightskyblue]My MDBList[/COLOR][/B]", 'mdblist_context_menu')
     if ADDON.getSetting('show_cm_simkl') != 'false':
         _add("[B][COLOR mediumpurple]My Simkl[/COLOR][/B]", 'simkl_context_menu')
+    if ADDON.getSetting('show_cm_punchplay') != 'false':
+        _add("[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]", 'punchplay_context_menu')
     if ADDON.getSetting('all_providers_menu') == 'true':
-        _add(f"[B]{_allprov_colored('All Providers', (3, 4, 3, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))}[/B]", 'all_providers_context_menu')
+        _add(f"[B]{_allprov_colored('All Providers', (3, 3, 2, 3, 2), ('trakt', 'tmdb', 'mdblist', 'simkl', 'punchplay'))}[/B]", 'all_providers_context_menu')
     if ADDON.getSetting('show_cm_my_plays') != 'false':
         _add("[B][COLOR FFFF69B4]My Plays[/COLOR][/B]", 'show_my_plays_menu')
     _add("[B][COLOR orange]Clear sources cache[/COLOR][/B]", 'clear_sources_context')

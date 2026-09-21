@@ -8,6 +8,7 @@ import xbmcvfs
 import os
 import json
 from urllib.parse import parse_qsl, urlencode, quote, unquote
+from resources.lib.config import provider_title
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZA
@@ -27,6 +28,8 @@ def _migrate_simkl_status():
         _a = get_addon()
         if _a.getSetting('simkl_status') == '' and not _a.getSetting('simkl_access_token'):
             _a.setSetting('simkl_status', 'Disconnected')
+        if _a.getSetting('punchplay_status') == '' and not _a.getSetting('punchplay_access_token'):
+            _a.setSetting('punchplay_status', 'Disconnected')
     except:
         pass
 
@@ -232,6 +235,26 @@ def get_providers_menu_items():
     else:
         items.append({'name': '[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_auth', 'folder': False})
 
+    # PunchPlay Status
+    punchplay_token = addon.getSetting('punchplay_access_token')
+    punchplay_username = addon.getSetting('punchplay_username') or ''
+    if punchplay_token:
+        if not punchplay_username:
+            try:
+                from resources.lib.punchplay_api import PunchplayAPI
+                _pp_info = PunchplayAPI().get_user_info()
+                if isinstance(_pp_info, dict) and _pp_info.get('username'):
+                    punchplay_username = _pp_info['username']
+                    addon.setSetting('punchplay_username', punchplay_username)
+                    addon.setSetting('punchplay_status', f'Connected: {punchplay_username}')
+            except:
+                pass
+        display_name = punchplay_username or 'Connected'
+        items.append({'name': f'[B][COLOR FFFF6600]PunchPlay: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': '[B][COLOR FFF535AA]Disconnect PunchPlay[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'punchplay_revoke', 'folder': False})
+    else:
+        items.append({'name': '[B][COLOR FFFF6600]Connect PunchPlay[/COLOR][/B]', 'iconImage': 'punchplay.png', 'mode': 'punchplay_auth', 'folder': False})
+
     return items
 
 
@@ -255,7 +278,8 @@ def get_settings_menu_items():
     mdblist_token = addon.getSetting('mdblist_access_token')
     mdblist_api_key = addon.getSetting('mdblist_api')
     simkl_token = addon.getSetting('simkl_access_token')
-    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token:
+    punchplay_token = addon.getSetting('punchplay_access_token')
+    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token or punchplay_token:
         items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
         items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_action', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
@@ -1111,9 +1135,9 @@ def run_plugin():
         # Refresh DOAR contul TMDb (watchlist/favorites/liste/recommendations) — fara sync Trakt
         from resources.lib import trakt_sync, tmdb_api
         if not tmdb_api.get_tmdb_session():
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
             return
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Syncing TMDb...", tmdb_api.TMDB_ICON, 2000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Syncing TMDb...", tmdb_api.TMDB_ICON, 2000, False)
         trakt_sync.sync_tmdb_only(silent=True, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
@@ -1411,7 +1435,20 @@ def run_plugin():
         mtype = params.get('type', 'movie')
         if tmdb_id:
             from resources.lib.context.extended_info_mod import run_extended_info
-            run_extended_info(tmdb_id, mtype)
+            # season/episode/tv_name: fara ele, un rand de EPISOD ar deschide serialul.
+            # (acelasi lucru il trimite si context item-ul 'TMDb Info' din context_extended.py)
+            def _sel_int(val):
+                try:
+                    s = str(val).strip()
+                    return int(s) if s.isdigit() else None
+                except:
+                    return None
+            run_extended_info(
+                tmdb_id, mtype,
+                season=_sel_int(params.get('season')),
+                episode=_sel_int(params.get('episode')),
+                tv_name=params.get('tv_name') or params.get('title') or ''
+            )
         return
 
     if mode == 'mdblist_auth':
@@ -1464,7 +1501,7 @@ def run_plugin():
         from resources.lib.mdblist_sync import drop_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show dropped", _icon, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), "Show dropped", _icon, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
         return
@@ -1473,7 +1510,7 @@ def run_plugin():
         from resources.lib.mdblist_sync import restore_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
         if restore_show(params.get('tmdb_id')):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Show restored", _icon, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), "Show restored", _icon, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
         return
@@ -1540,7 +1577,7 @@ def run_plugin():
         from resources.lib.simkl_sync import drop_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
-            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Show dropped", _icon, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('simkl'), "Show dropped", _icon, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
         return
@@ -1549,7 +1586,7 @@ def run_plugin():
         from resources.lib.simkl_sync import restore_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
         if restore_show(params.get('tmdb_id')):
-            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Show restored", _icon, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('simkl'), "Show restored", _icon, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
         return
@@ -1559,6 +1596,77 @@ def run_plugin():
         if mode in SIMKL_ACTIONS or mode in ('simkl_dropped_restore', 'simkl_connect', 'simkl_disconnect'):
             from resources.lib.config import ADDON
             handle_simkl_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+        return
+
+    if mode == 'punchplay_auth':
+        from resources.lib.punchplay_api import punchplay_auth
+        punchplay_auth()
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'punchplay_revoke':
+        from resources.lib.punchplay_api import punchplay_revoke
+        punchplay_revoke()
+        return
+
+    if mode == 'punchplay_sync':
+        from resources.lib.punchplay_sync import sync_full_library
+        sync_full_library(silent=False, force=True)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'punchplay_sync_smart':
+        from resources.lib.punchplay_sync import sync_full_library
+        sync_full_library(silent=False, force=False)
+        xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'punchplay_rating':
+        from resources.lib.punchplay_api import prompt_punchplay_rating
+        prompt_punchplay_rating(
+            params.get('tmdb_id'),
+            params.get('type'),
+            params.get('season'),
+            params.get('episode'),
+            params.get('title', '')
+        )
+        return
+
+    if mode == 'punchplay_context_menu':
+        from resources.lib import tmdb_api
+        tmdb_api.show_punchplay_context_menu(
+            params.get('tmdb_id'),
+            params.get('imdb_id'),
+            params.get('type'),
+            params.get('title', ''),
+            params.get('season'),
+            params.get('episode')
+        )
+        return
+
+    if mode == 'punchplay_mark_dropped':
+        from resources.lib.punchplay_sync import drop_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
+        if drop_show(params.get('tmdb_id'), params.get('title', '')):
+            xbmcgui.Dialog().notification(provider_title('punchplay'), "Show dropped", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode == 'punchplay_unmark_dropped':
+        from resources.lib.punchplay_sync import restore_show
+        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
+        if restore_show(params.get('tmdb_id')):
+            xbmcgui.Dialog().notification(provider_title('punchplay'), "Show restored", _icon, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+        return
+
+    if mode and mode.startswith('punchplay_'):
+        from resources.lib.punchplay import handle_punchplay_action, PUNCHPLAY_ACTIONS
+        if mode in PUNCHPLAY_ACTIONS or mode in ('punchplay_dropped_restore', 'punchplay_connect', 'punchplay_disconnect'):
+            from resources.lib.config import ADDON
+            handle_punchplay_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
     
     if mode == 'trakt_context_menu':
@@ -2121,6 +2229,14 @@ def _run_forced_post_update_sync():
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Simkl post-update forced sync - Failed: {e}", xbmc.LOGERROR)
 
+        if _A.getSetting('punchplay_access_token'):
+            try:
+                from resources.lib import punchplay_sync
+                punchplay_sync.sync_full_library(silent=True, force=True)
+                xbmc.log("[TMDb Movies] PunchPlay post-update forced sync - Success.", xbmc.LOGINFO)
+            except Exception as e:
+                xbmc.log(f"[TMDb Movies] PunchPlay post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+
         # Toate providerii au terminat -> UN singur widget refresh (Up Next-ul
         # alimentat si de TMDb e complet abia acum).
         _maybe_refresh_widgets_after_sync(force=True)
@@ -2223,6 +2339,12 @@ def run_service():
                 self._last_tmdb_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted')
             except:
                 self._last_tmdb_unstarted = None
+            try:
+                from resources.lib.watched_provider import ensure_active_provider
+                import threading as _th
+                _th.Thread(target=ensure_active_provider, daemon=True).start()
+            except:
+                pass
 
         def onWindowActivated(self, windowId):
             # Cand se inchide dialogul de setari, fereastra de dedesubt se reactiveaza.
@@ -2282,14 +2404,119 @@ def run_service():
                                 elif _prov == 'simkl':
                                     from resources.lib.simkl_api import SIMKLAPI as _SKAPI
                                     _connected = _SKAPI().is_authenticated()
+                                elif _prov == 'punchplay':
+                                    from resources.lib.punchplay_api import PunchplayAPI as _PPAPI
+                                    _connected = _PPAPI().is_authenticated()
                                 else:
                                     _connected = bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
                                 if not _connected:
-                                    _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl'}.get(_prov, _prov)
-                                    _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}.get(_prov, 'yellow')
-                                    xbmcgui.Dialog().notification(f'[B][COLOR {_clr}]{_name}[/COLOR][/B]',
-                                                                  f'Provider switched to [B]{_name}[/B], but {_name} is not connected. Connect it in Settings!',
-                                                                  xbmcgui.NOTIFICATION_WARNING, 6000, False)
+                                    _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}.get(_prov, _prov)
+                                    _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}.get(_prov, 'yellow')
+                                    # Iconita addonului (conventia downloader/player:
+                                    # icon.png din radacina addonului), nu iconita
+                                    # generica de warning a Kodi (al 3-lea arg este
+                                    # ICONUL, xbmcgui.NOTIFICATION_WARNING nu e
+                                    # iconita, e doar constanta pentru heading).
+                                    try:
+                                        _notif_icon = os.path.join(get_addon().getAddonInfo('path'), 'icon.png')
+                                    except Exception:
+                                        _notif_icon = xbmcgui.NOTIFICATION_WARNING
+                                    # POARTA (nu doar informare): userul NU poate ramine pe un
+                                    # provider deconectat. Ori se conecteaza (si trece verificarea),
+                                    # ori setarea revine automat la providerul anterior / la primul
+                                    # provider CONECTAT gasit. Back/Esc (fara alegere) = tot revert.
+                                    # Inainte raminea activat un provider mort, cu o simpla notificare.
+                                    _NAMES = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}
+                                    _CLRS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}
+
+                                    def _is_conn(_p):
+                                        # Verificare locala (fara retea) pe fiecare provider.
+                                        try:
+                                            if _p == 'trakt':
+                                                from resources.lib.trakt_api import get_trakt_token as _t
+                                                return bool(_t())
+                                            if _p == 'mdblist':
+                                                return bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
+                                            if _p == 'simkl':
+                                                from resources.lib.simkl_api import SIMKLAPI as _S
+                                                return _S().is_authenticated()
+                                            if _p == 'punchplay':
+                                                from resources.lib.punchplay_api import PunchplayAPI as _P
+                                                return _P().is_authenticated()
+                                        except Exception:
+                                            return False
+                                        return False
+
+                                    _prev = getattr(self, '_last_provider', None)
+                                    _can_revert = bool(_prev) and _prev != _prov
+                                    _prev_name = _NAMES.get(_prev, _prev)
+                                    _opts = [f'Connect {_name} now']
+                                    if _can_revert:
+                                        _opts.append(f'Keep {_prev_name} (without {_name})')
+                                    try:
+                                        _sel = xbmcgui.Dialog().select(f'{_name} is not connected', _opts)
+                                    except Exception:
+                                        _sel = 1 if _can_revert else -1
+                                    _connected_now = False
+                                    if _sel == 0:
+                                        try:
+                                            if _prov == 'trakt':
+                                                from resources.lib.trakt_api import trakt_auth as _auth
+                                            elif _prov == 'mdblist':
+                                                from resources.lib.mdblist_api import mdblist_auth as _auth
+                                            elif _prov == 'simkl':
+                                                from resources.lib.simkl_api import simkl_auth as _auth
+                                            else:
+                                                from resources.lib.punchplay_api import punchplay_auth as _auth
+                                            xbmc.log(f'[TMDb Movies] Provider switch: user chose to connect {_prov}.', xbmc.LOGINFO)
+                                            _auth()
+                                        except Exception as _ae:
+                                            xbmc.log(f'[TMDb Movies] Provider switch: connect {_prov} failed: {_ae}', xbmc.LOGERROR)
+                                        _csc()
+                                        _cc()
+                                        _connected_now = _is_conn(_prov)
+                                        if not _connected_now:
+                                            # Unele fluxuri de login scriu tokenurile cu o mica intirziere.
+                                            xbmc.sleep(1000)
+                                            _csc()
+                                            _connected_now = _is_conn(_prov)
+                                    if not _connected_now:
+                                        # Back/Esc, "Keep ..." sau connect esuat -> revenim pe un
+                                        # provider CONECTAT (cel anterior are prioritate).
+                                        _order = []
+                                        if _can_revert:
+                                            _order.append(_prev)
+                                        for _p in ('trakt', 'mdblist', 'simkl', 'punchplay'):
+                                            if _p != _prov and _p not in _order:
+                                                _order.append(_p)
+                                        _target = None
+                                        for _p in _order:
+                                            if _is_conn(_p):
+                                                _target = _p
+                                                break
+                                        if _target:
+                                            try:
+                                                _idx = ('trakt', 'mdblist', 'simkl', 'punchplay').index(_target)
+                                            except Exception:
+                                                _idx = 0
+                                            try:
+                                                get_addon().setSetting('watched_status_provider', str(_idx))
+                                            except Exception as _se:
+                                                xbmc.log(f'[TMDb Movies] Provider switch: revert setSetting failed: {_se}', xbmc.LOGERROR)
+                                            _csc()
+                                            _cc()
+                                            _prov = _target
+                                            self._last_provider = _target
+                                            _t_name = _NAMES.get(_target, _target)
+                                            xbmc.log(f'[TMDb Movies] Provider switch: reverted to {_target} ({_name} not connected).', xbmc.LOGINFO)
+                                            xbmcgui.Dialog().notification(f"[B][COLOR {_CLRS.get(_target, 'yellow')}]{_t_name}[/COLOR][/B]",
+                                                                          f'Kept [B]{_t_name}[/B] - [B]{_name}[/B] is not connected.',
+                                                                          _notif_icon, 5000, False)
+                                        else:
+                                            xbmc.log(f'[TMDb Movies] Provider switch: {_name} not connected and no other connected provider found.', xbmc.LOGWARNING)
+                                            xbmcgui.Dialog().notification(f'[B][COLOR {_clr}]{_name}[/COLOR][/B]',
+                                                                          f'No account is connected. Connect [B]{_name}[/B] in Settings!',
+                                                                          _notif_icon, 6000, False)
                             except:
                                 pass
                             # FARA refresh inainte de sync: culorile/etichetele
@@ -2306,7 +2533,12 @@ def run_service():
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] Provider switch sync error: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_provider_switch_sync, daemon=True).start()
-                self._last_provider = _current
+                # Re-citim providerul real: daca in threadul de mai sus userul a ales
+                # "Keep <anterior>" (revert), aici nu mai pornim un sync pe cel nou.
+                try:
+                    self._last_provider = _get_prov()
+                except Exception:
+                    self._last_provider = _current
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Provider switch detection error: {e}", xbmc.LOGERROR)
             try:
@@ -2529,6 +2761,20 @@ def run_service():
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] SimklMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
                     threading.Thread(target=_run_simkl, daemon=True).start()
+
+                # --- PunchPlay auto-sync (daca exista token) ---
+                if get_addon().getSetting('punchplay_access_token'):
+                    xbmc.log("[TMDb Movies] PunchPlayMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
+
+                    def _run_punchplay():
+                        try:
+                            from resources.lib.punchplay_sync import sync_full_library
+                            sync_full_library(silent=True, force=self._sync_force())
+                            xbmc.log("[TMDb Movies] PunchPlayMonitor Service Update - Success.", xbmc.LOGINFO)
+                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
+                        except Exception as e:
+                            xbmc.log(f"[TMDb Movies] PunchPlayMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                    threading.Thread(target=_run_punchplay, daemon=True).start()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 

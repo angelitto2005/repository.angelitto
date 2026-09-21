@@ -16,7 +16,7 @@ def _get_provider_raw():
         idx = int(ADDON.getSetting('watched_status_provider') or '0')
     except:
         idx = 0
-    return ('trakt', 'mdblist', 'simkl')[idx]
+    return ('trakt', 'mdblist', 'simkl', 'punchplay')[idx] if idx <= 3 else 'trakt'
 
 def clear_cache():
     """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
@@ -59,20 +59,26 @@ def browse_command(url):
         pass
     return 'Container.Update(%s)' % url
 
-_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl')
+_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl', 'punchplay')
 
-_WATCHED_MARK_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}
+# Culorile providerilor vin din config (sursa unica de adevar); PUNCHPLAY_COLOR
+# rămâne în config pentru compatibilitate cu importurile existente.
+from resources.lib.config import PROVIDER_COLORS as _CFG_PROVIDER_COLORS, PROVIDER_ICONS as _CFG_PROVIDER_ICONS, provider_title as _cfg_provider_title
+
+_WATCHED_MARK_COLORS = {p: _CFG_PROVIDER_COLORS[p] for p in _WATCHED_MARK_PROVIDERS}
 
 _WATCHED_MARK_LABELS = {
-    'trakt': '[B][COLOR pink]Trakt[/COLOR][/B]',
-    'mdblist': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-    'simkl': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+    'trakt': _cfg_provider_title('trakt'),
+    'mdblist': _cfg_provider_title('mdblist'),
+    'simkl': _cfg_provider_title('simkl'),
+    'punchplay': _cfg_provider_title('punchplay'),
 }
 
 _WATCHED_MARK_TOGGLES = {
     'trakt': 'watched_mark_trakt',
     'mdblist': 'watched_mark_mdblist',
     'simkl': 'watched_mark_simkl',
+    'punchplay': 'watched_mark_punchplay',
 }
 
 
@@ -94,6 +100,12 @@ def _connected_mark_providers():
         from resources.lib import simkl
         if simkl.is_authenticated():
             connected.append('simkl')
+    except Exception:
+        pass
+    try:
+        from resources.lib import punchplay
+        if punchplay.is_authenticated():
+            connected.append('punchplay')
     except Exception:
         pass
     return connected
@@ -121,6 +133,118 @@ def _mark_targets():
     if prov in connected and prov not in targets:
         targets.append(prov)
     return [p for p in _WATCHED_MARK_PROVIDERS if p in targets]
+
+
+_PROVIDER_LABELS = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}
+_PROVIDER_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}
+
+
+def _run_provider_auth(prov):
+    try:
+        if prov == 'trakt':
+            from resources.lib.trakt_api import trakt_auth
+            trakt_auth()
+        elif prov == 'mdblist':
+            from resources.lib.mdblist_api import mdblist_auth
+            mdblist_auth()
+        elif prov == 'simkl':
+            from resources.lib.simkl_api import simkl_auth
+            simkl_auth()
+        elif prov == 'punchplay':
+            from resources.lib.punchplay_api import punchplay_auth
+            punchplay_auth()
+        else:
+            return
+    except Exception:
+        pass
+
+
+def ensure_active_provider(notify=True, interactive=True):
+    try:
+        prov = _get_provider_raw()
+    except Exception:
+        return False
+    try:
+        connected = _connected_mark_providers()
+    except Exception:
+        return False
+    if prov in connected:
+        return False
+    fallback = next((p for p in _WATCHED_MARK_PROVIDERS if p in connected), None)
+    if interactive:
+        try:
+            import xbmcgui
+            dead_lbl = _PROVIDER_LABELS.get(prov, prov)
+            dead_clr = _PROVIDER_COLORS.get(prov, 'yellow')
+            options = []
+            if fallback:
+                new_lbl = _PROVIDER_LABELS.get(fallback, fallback)
+                new_clr = _PROVIDER_COLORS.get(fallback, 'yellow')
+                options.append(f'Switch to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B]')
+            options.append(f'Reconnect [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] (QR)')
+            choice = xbmcgui.Dialog().contextmenu(options)
+            if choice < 0:
+                return False
+            if fallback and choice == 0:
+                pass
+            else:
+                _run_provider_auth(prov)
+                try:
+                    reconnected = prov in _connected_mark_providers()
+                except Exception:
+                    reconnected = False
+                if reconnected:
+                    try:
+                        ADDON.setSetting('watched_status_provider', str(_WATCHED_MARK_PROVIDERS.index(prov)))
+                    except Exception:
+                        return False
+                    try:
+                        _invalidate_fast_cache()
+                    except Exception:
+                        pass
+                    if notify:
+                        try:
+                            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]Watched Provider[/COLOR][/B]',
+                                                          f'Reconnected [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B]',
+                                                          os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
+                        except Exception:
+                            pass
+                    return True
+                if notify:
+                    try:
+                        xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]Watched Provider[/COLOR][/B]',
+                                                      f'Still disconnected [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B]',
+                                                      os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
+                    except Exception:
+                        pass
+                return False
+        except Exception:
+            pass
+    if fallback is None:
+        fallback = 'trakt'
+    try:
+        ADDON.setSetting('watched_status_provider', str(_WATCHED_MARK_PROVIDERS.index(fallback)))
+    except Exception:
+        return False
+    try:
+        _invalidate_fast_cache()
+    except Exception:
+        pass
+    if notify:
+        try:
+            import xbmcgui
+            dead_lbl = _PROVIDER_LABELS.get(prov, prov)
+            dead_clr = _PROVIDER_COLORS.get(prov, 'yellow')
+            new_lbl = _PROVIDER_LABELS.get(fallback, fallback)
+            new_clr = _PROVIDER_COLORS.get(fallback, 'yellow')
+            if fallback in connected:
+                msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, switched to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B]'
+            else:
+                msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, no provider connected'
+            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]Watched Provider[/COLOR][/B]', msg, os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
+        except Exception:
+            pass
+    return True
 
 
 def _split_colored(word, provs):
@@ -163,9 +287,12 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
                 elif prov == 'mdblist':
                     from resources.lib.mdblist_sync import mark_as_watched_internal
                     mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=sync_provider, refresh_ui=False)
-                else:
+                elif prov == 'simkl':
                     from resources.lib.simkl_sync import mark_as_watched_internal
                     mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_simkl=sync_provider, refresh_ui=False)
+                else:
+                    from resources.lib.punchplay_sync import mark_as_watched_internal
+                    mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=False, sync_punchplay=sync_provider, refresh_ui=False)
             else:
                 if prov == 'trakt':
                     from resources.lib.trakt_sync import mark_as_unwatched_internal
@@ -173,9 +300,12 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
                 elif prov == 'mdblist':
                     from resources.lib.mdblist_sync import mark_as_unwatched_internal
                     mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_mdblist=sync_provider, refresh_ui=False)
-                else:
+                elif prov == 'simkl':
                     from resources.lib.simkl_sync import mark_as_unwatched_internal
                     mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_simkl=sync_provider, refresh_ui=False)
+                else:
+                    from resources.lib.punchplay_sync import mark_as_unwatched_internal
+                    mark_as_unwatched_internal(tmdb_id, content_type, season, episode, notify=False, sync_punchplay=sync_provider, refresh_ui=False)
             with lock:
                 done.append(prov)
         except Exception:
@@ -225,28 +355,31 @@ def is_mdblist():
 def is_simkl():
     return _get_provider_raw() == 'simkl'
 
+def is_punchplay():
+    return _get_provider_raw() == 'punchplay'
+
 def get_label():
-    return ('Trakt', 'MDBList', 'Simkl')[('trakt', 'mdblist', 'simkl').index(_get_provider_raw())]
+    return ('Trakt', 'MDBList', 'Simkl', 'PunchPlay')[('trakt', 'mdblist', 'simkl', 'punchplay').index(_get_provider_raw())]
 
 def get_color():
-    return {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple'}[_get_provider_raw()]
+    return _CFG_PROVIDER_COLORS.get(_get_provider_raw(), 'white')
 
 def get_icon():
-    name = {'trakt': 'trakt.png', 'mdblist': 'mdblist.png', 'simkl': 'simkl.png'}[_get_provider_raw()]
-    return os.path.join(ADDON_PATH, 'resources', 'media', name)
+    return _CFG_PROVIDER_ICONS.get(_get_provider_raw()) or os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 
 def get_status_setting():
-    return {'trakt': 'trakt_status', 'mdblist': 'mdblist_status', 'simkl': 'simkl_status'}[_get_provider_raw()]
+    return {'trakt': 'trakt_status', 'mdblist': 'mdblist_status', 'simkl': 'simkl_status', 'punchplay': 'punchplay_status'}[_get_provider_raw()]
 
 def get_access_token_setting():
-    return {'trakt': 'trakt_access_token', 'mdblist': 'mdblist_access_token', 'simkl': 'simkl_access_token'}[_get_provider_raw()]
+    return {'trakt': 'trakt_access_token', 'mdblist': 'mdblist_access_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_access_token'}[_get_provider_raw()]
 
 def get_refresh_token_setting():
-    return {'trakt': 'trakt_refresh_token', 'mdblist': 'mdblist_refresh_token', 'simkl': 'simkl_access_token'}[_get_provider_raw()]
+    return {'trakt': 'trakt_refresh_token', 'mdblist': 'mdblist_refresh_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_refresh_token'}[_get_provider_raw()]
 
 def get_source_module():
-    """Returneaza modulul de date (trakt_sync | mdblist_sync | simkl_sync) al providerului activ."""
     prov = _get_provider_raw()
+    if prov == 'punchplay':
+        return __import__('resources.lib.punchplay_sync', fromlist=['punchplay_sync'])
     if prov == 'simkl':
         return __import__('resources.lib.simkl_sync', fromlist=['simkl_sync'])
     if prov == 'mdblist':
@@ -263,9 +396,12 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         elif prov == 'mdblist':
             from resources.lib.mdblist_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_mdblist=sync_provider, refresh_ui=do_refresh)
-        else:
+        elif prov == 'simkl':
             from resources.lib.simkl_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_simkl=sync_provider, refresh_ui=do_refresh)
+        else:
+            from resources.lib.punchplay_sync import mark_as_watched_internal
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_punchplay=sync_provider, refresh_ui=do_refresh)
         if async_tmdb:
             import threading
             threading.Thread(target=_refresh_tmdb_up_next, args=(tmdb_id,), daemon=True).start()
@@ -288,9 +424,12 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
         elif prov == 'mdblist':
             from resources.lib.mdblist_sync import mark_as_unwatched_internal
             mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_mdblist=sync_provider, refresh_ui=do_refresh)
-        else:
+        elif prov == 'simkl':
             from resources.lib.simkl_sync import mark_as_unwatched_internal
             mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_simkl=sync_provider, refresh_ui=do_refresh)
+        else:
+            from resources.lib.punchplay_sync import mark_as_unwatched_internal
+            mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_punchplay=sync_provider, refresh_ui=do_refresh)
         _refresh_tmdb_up_next(tmdb_id)
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
@@ -299,7 +438,7 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
         return
     mark_unwatched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=True, sync_provider=sync_provider, do_refresh=do_refresh)
 
-def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
+def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, duration_seconds=0, position_seconds=0, watched=None, watched_threshold=None):
     prov = _get_provider_raw()
     if prov == 'trakt':
         from resources.lib.trakt_api import send_trakt_scrobble
@@ -316,7 +455,7 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
         elif action == 'stop':
             api.scrobble_stop(content_type, tmdb_id, progress, season, episode)
             _invalidate_fast_cache()
-    else:
+    elif prov == 'simkl':
         from resources.lib.simkl_api import SIMKLAPI
         api = SIMKLAPI()
         if action == 'start' or action == 'scrobble':
@@ -325,6 +464,23 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress):
             api.scrobble_pause(content_type, tmdb_id, progress, season, episode)
         elif action == 'stop':
             api.scrobble_stop(content_type, tmdb_id, progress, season, episode)
+            _invalidate_fast_cache()
+    else:
+        from resources.lib.punchplay_api import PunchplayAPI, _pp_enqueue
+        api = PunchplayAPI()
+        if not api.is_authenticated():
+            return
+        _key = (str(tmdb_id), season, episode)
+        if action == 'start':
+            _pp_enqueue('start', lambda: api.scrobble_start(content_type, tmdb_id, progress, season, episode))
+        elif action == 'scrobble':
+            _pp_enqueue('progress', lambda: api.scrobble_progress(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds), coalesce_key=_key)
+        elif action == 'pause':
+            _pp_enqueue('pause', lambda: api.scrobble_pause(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds))
+        elif action == 'resume':
+            _pp_enqueue('resume', lambda: api.scrobble_resume(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds))
+        elif action == 'stop':
+            _pp_enqueue('stop', lambda: api.scrobble_stop(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds, watched=watched, watched_threshold=watched_threshold))
             _invalidate_fast_cache()
 
 def _kodi_delete_resume_bookmark(tmdb_id, content_type, season=None, episode=None):
@@ -371,6 +527,14 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
             _api.playback_remove(content_type, tmdb_id, season, episode)
     except Exception:
         pass
+    # 1c. Server PunchPlay (daca e autorizat)
+    try:
+        from resources.lib.punchplay_api import PunchplayAPI
+        _api = PunchplayAPI()
+        if _api.is_authenticated():
+            _api.playback_remove(content_type, tmdb_id, season, episode)
+    except Exception:
+        pass
     # 2. Server Trakt + stergere locala + clear fast cache + Container.Refresh
     from resources.lib.trakt_api import remove_from_progress
     remove_from_progress(tmdb_id, content_type, season, episode)
@@ -396,13 +560,16 @@ def get_episode_watched_count(tmdb_id):
     elif prov == 'mdblist':
         from resources.lib.mdblist_sync import get_watched_episodes_count as _chk
         return _chk(tmdb_id)
-    else:
+    elif prov == 'simkl':
         from resources.lib.simkl_sync import get_watched_episodes_count as _chk
+        return _chk(tmdb_id)
+    else:
+        from resources.lib.punchplay_sync import get_watched_episodes_count as _chk
         return _chk(tmdb_id)
 
 def get_watched_episodes_set(tmdb_id):
     prov = _get_provider_raw()
-    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes'}[prov]
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes'}[prov]
     res = {'set': set(), 'last': None, 'last_at': ''}
     try:
         mod = get_source_module()
@@ -429,7 +596,7 @@ def get_watched_episodes_set(tmdb_id):
 
 def get_watched_episodes_set_batch(tmdb_ids):
     prov = _get_provider_raw()
-    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes'}[prov]
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes'}[prov]
     result = {}
     ids = [str(x) for x in (tmdb_ids or []) if x]
     if not ids:
@@ -481,25 +648,36 @@ def get_season_watched_count(tmdb_id, season):
     elif prov == 'mdblist':
         from resources.lib.mdblist_sync import get_watched_season_episodes_count as _chk
         return _chk(tmdb_id, season)
-    else:
+    elif prov == 'simkl':
         from resources.lib.simkl_sync import get_watched_season_episodes_count as _chk
+        return _chk(tmdb_id, season)
+    else:
+        from resources.lib.punchplay_sync import get_watched_season_episodes_count as _chk
         return _chk(tmdb_id, season)
 
 def sync_full_library(silent=False, force=False):
+    if not silent:
+        try:
+            ensure_active_provider()
+        except:
+            pass
     prov = _get_provider_raw()
     from resources.lib.trakt_sync import sync_full_library as _trakt_sync
     from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
     from resources.lib.simkl_sync import sync_full_library as _simkl_sync
+    from resources.lib.punchplay_sync import sync_full_library as _punchplay_sync
 
-    order = [prov] + [p for p in ('trakt', 'mdblist', 'simkl') if p != prov]
+    order = [prov] + [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay') if p != prov]
     for p in order:
         try:
             if p == 'trakt':
                 _trakt_sync(silent=silent, force=force)
             elif p == 'mdblist':
                 _mdblist_sync(silent=silent, force=force)
-            else:
+            elif p == 'simkl':
                 _simkl_sync(silent=silent, force=force)
+            else:
+                _punchplay_sync(silent=silent, force=force)
         except Exception as e:
             xbmc.log(f'[{p.upper()} SYNC] secondary sync error: {e}', xbmc.LOGERROR)
 
@@ -520,8 +698,14 @@ def get_watched_counts(tmdb_id, content_type, season=None):
             return get_watched_season_episodes_count(tmdb_id, season)
         else:
             return get_watched_episodes_count(tmdb_id)
-    else:
+    elif prov == 'simkl':
         from resources.lib.simkl_sync import get_watched_episodes_count, get_watched_season_episodes_count
+        if content_type == 'season' and season is not None:
+            return get_watched_season_episodes_count(tmdb_id, season)
+        else:
+            return get_watched_episodes_count(tmdb_id)
+    else:
+        from resources.lib.punchplay_sync import get_watched_episodes_count, get_watched_season_episodes_count
         if content_type == 'season' and season is not None:
             return get_watched_season_episodes_count(tmdb_id, season)
         else:

@@ -205,6 +205,105 @@ MDBLIST_API_URL = "https://api.mdblist.com"
 MDBLIST_CLIENT_ID = ADDON.getSetting('mdblist_client_id') or "qjBRQUdgmOXXnAXjcLzupQVirkO31LQ2d8qQl0J3"
 SIMKL_API_URL = "https://api.simkl.com"
 SIMKL_CLIENT_ID = ADDON.getSetting('simkl_client_id') or "7824e353ba2d0d0e4d46245dd57f32fbe78d0c108a3fd23d68215f579db38f2f"
+PUNCHPLAY_API_URL = "https://punchplay.tv/api/platform/v1"
+PUNCHPLAY_CLIENT_ID = ADDON.getSetting('punchplay_client_id') or "ppc_b409dfbdf612ab1917f519a2"
+PUNCHPLAY_COLOR = "FFFF6600"
+
+# =============================================================================
+# IDENTITATE VIZUALA PER PROVIDER (sursa unica de adevar pentru randari / CM /
+# notificari): culori + iconite pentru Trakt, MDBList, Simkl, PunchPlay si TMDb.
+# - PROVIDER_COLORS / PROVIDER_ICONS: chei canonice 'trakt'|'mdblist'|'simkl'|
+#   'punchplay' (+ 'tmdb' la iconite);
+# - PROVIDER_ALIASES: variantele de chei folosite in randare ('show'/'shows'/'tv'
+#   pentru seriale, 'movie'/'movies' pentru filme, 'anime') -> cheie canonica;
+# - provider_color(key) / provider_icon(key) intoarce mereu o valoare valida
+#   (fallback: TMDb icon / 'white'), deci randarile nu pot pica pe chei noi;
+# - provider_title(key) construieste titlul standard de notificare
+#   '[B][COLOR x]Nume[/COLOR][/B]' — sursa unica pentru toate notificarile.
+# Consumatori: watched_provider (dicturile _WATCHED_MARK_*), tmdb_api
+# (Up Next show_color), trakt_api/mdblist/simkl/punchplay (randari + calendare).
+# =============================================================================
+PROVIDER_COLORS = {
+    'trakt': 'pink',
+    'mdblist': 'lightskyblue',
+    'simkl': 'mediumpurple',
+    'punchplay': 'FFFF6600',
+    'tmdb': 'FF00CED1',
+}
+
+PROVIDER_ICONS = {
+    'trakt': os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png'),
+    'mdblist': os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png'),
+    'simkl': os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png'),
+    'punchplay': os.path.join(ADDON_PATH, 'resources', 'media', 'punchplay.png'),
+    'tmdb': os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png'),
+}
+
+PROVIDER_ALIASES = {
+    'trakt': 'trakt',
+    'mdblist': 'mdblist',
+    'mdb': 'mdblist',
+    'simkl': 'simkl',
+    'punchplay': 'punchplay',
+    'tmdb': 'tmdb',
+    'show': 'trakt',
+    'shows': 'trakt',
+    'tv': 'trakt',
+    'tvshow': 'trakt',
+    'movie': 'tmdb',
+    'movies': 'tmdb',
+    'anime': 'tmdb',
+}
+
+
+def provider_color(key):
+    """Culoarea providerului pentru orice cheie de randare ('trakt', 'mdblist',
+    'simkl', 'punchplay', 'tmdb', 'show(s)', 'tv', 'movie(s)', 'anime').
+    Fallback sigur: 'white'."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        return PROVIDER_COLORS.get(canon, 'white')
+    except Exception:
+        return 'white'
+
+
+def provider_icon(key):
+    """Iconita providerului pentru aceleasi chei. Fallback sigur: iconita TMDb."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        path = PROVIDER_ICONS.get(canon)
+        if path:
+            return path
+    except Exception:
+        pass
+    return PROVIDER_ICONS.get('tmdb', '')
+
+
+# Numele afisat per provider (folosit la notificari si label-uri colorate).
+PROVIDER_NAMES = {
+    'trakt': 'Trakt',
+    'mdblist': 'MDBList',
+    'simkl': 'Simkl',
+    'punchplay': 'PunchPlay',
+    'tmdb': 'TMDb',
+}
+
+
+def provider_title(key, name=None):
+    """Titlul standard de notificare '[B][COLOR x]Nume[/COLOR][/B]' pentru un
+    provider. Accepta aceleasi chei ca provider_color/provider_icon. 'name'
+    poate suprascrie numele afisat (ex: 'Disconnect Trakt' in dialoguri)."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        color = PROVIDER_COLORS.get(canon, 'white')
+    except Exception:
+        canon, color = None, 'white'
+    try:
+        label = name or PROVIDER_NAMES.get(canon) or str(key or '')
+    except Exception:
+        label = str(key or '')
+    return '[B][COLOR %s]%s[/COLOR][/B]' % (color, label)
+
 # --- V4 API CONFIGURATION (TV SHOWS) ---
 # Path where we save the user token (if it doesn't already exist, check line 35)
 TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
@@ -486,6 +585,37 @@ def utc_to_local_date(iso_ts):
         except:
             return ''
 
+def utc_to_local_time(iso_ts):
+    try:
+        import datetime as _dtm
+        s = str(iso_ts or '').strip()
+        if not s or 'T' not in s:
+            return ''
+        try:
+            _ov_idx = int(ADDON.getSetting('timezone_override') or '0')
+            _ov = _TZ_OFFSET_VALUES[_ov_idx] if 0 <= _ov_idx < len(_TZ_OFFSET_VALUES) else 'auto'
+        except:
+            _ov = 'auto'
+        _s = s.replace('Z', '+00:00')
+        dt = _dtm.datetime.fromisoformat(_s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dtm.timezone.utc)
+        if _ov != 'auto':
+            try:
+                _tz = _dtm.timezone(_dtm.timedelta(hours=float(_ov)))
+                dt = dt.astimezone(_tz)
+            except:
+                pass
+        else:
+            dt = dt.astimezone()
+        _h12 = dt.hour % 12 or 12
+        _ap = 'pm' if dt.hour >= 12 else 'am'
+        if dt.minute:
+            return '%d:%02d%s' % (_h12, dt.minute, _ap)
+        return '%d%s' % (_h12, _ap)
+    except:
+        return ''
+
 def calendar_localized_label(diff, ds):
     """Relative date label for calendars: RO when plot_language='ro', else English.
     Data e afisata dupa setarea date_format (EU dd.mm.yyyy sau US mm/dd/yyyy)."""
@@ -505,3 +635,114 @@ def calendar_localized_label(diff, ds):
     if diff <= -2:
         return f'acum {-diff} zile ({ds})' if is_ro else f'{-diff} days ago ({ds})'
     return ds
+
+
+# =============================================================================
+# Daemon-thread safety net (fix shutdown hang: "script didn't stop in 5
+# seconds"). ThreadPoolExecutor workers are NON-daemon by default since
+# Python 3.9; at interpreter exit (reused invoker, reuselanguageinvoker=true)
+# threading._shutdown joins them, so any worker stuck in a network call holds
+# Kodi open until it is killed. Forcing daemon=True on every Thread created in
+# this interpreter makes exit independent of in-flight background work.
+# =============================================================================
+try:
+    import threading as _thr
+    _orig_init = _thr.Thread.__init__
+
+    def _daemon_init(self, *args, **kwargs):
+        _orig_init(self, *args, **kwargs)
+        try:
+            self.daemon = True
+        except Exception:
+            pass
+
+    _thr.Thread.__init__ = _daemon_init
+except Exception:
+    pass
+
+
+# =============================================================================
+# Addon-wide shutdown hook: la inchiderea interpretului (shutdown Kodi / RLI
+# teardown / stale-invoker SystemExit), buclele infinite de fundal (ex.
+# worker-ul de scrobble PunchPlay, care asteapta pe xbmc.sleep) pot concura
+# cu teardown-ul si il pot tine peste fereastra de 5s a lui Kodi. Acest hook
+# (rulat garantat la exit, inclusiv la SystemExit) seteaza fiecare Event
+# inregistrat si inchide generatoarele inregistrate, eliberand buclele care
+# asteapta pe ele -> thread-urile ies imediat, interpretul se termina curat.
+# =============================================================================
+try:
+    import atexit as _atexit
+
+    _SHUTDOWN_EVENTS = []
+    _SHUTDOWN_ITERATORS = []
+
+    def register_shutdown_event(ev):
+        try:
+            if ev is not None and ev not in _SHUTDOWN_EVENTS:
+                _SHUTDOWN_EVENTS.append(ev)
+        except Exception:
+            pass
+
+    def register_shutdown_iterator(it):
+        try:
+            if it is not None and it not in _SHUTDOWN_ITERATORS:
+                _SHUTDOWN_ITERATORS.append(it)
+        except Exception:
+            pass
+
+    _ADDON_SHUTTING_DOWN = [False]
+
+    def _addon_shutdown_hook():
+        try:
+            _ADDON_SHUTTING_DOWN[0] = True
+        except Exception:
+            pass
+        try:
+            for _ev in _SHUTDOWN_EVENTS:
+                try:
+                    _ev.set()
+                except Exception:
+                    pass
+            for _it in _SHUTDOWN_ITERATORS:
+                try:
+                    _it.close()
+                except Exception:
+                    pass
+            _SHUTDOWN_EVENTS[:] = []
+            _SHUTDOWN_ITERATORS[:] = []
+        except Exception:
+            pass
+
+    _atexit.register(_addon_shutdown_hook)
+except Exception:
+    _ADDON_SHUTTING_DOWN = [False]
+
+# =============================================================================
+# Helper de shutdown pentru buclele de fundal: Kodi (CPythonInvoker) NU intrerupe
+# firele Python la inchidere - trimite doar un AbortNotify catre monitoarele din
+# interpretul respectiv, apoi asteapta 5s si ucide invokerul daca firele inca
+# ruleaza ("script didn't stop in 5 seconds"), lasind procesul agatat. Orice
+# bucla de fundal trebuie sa iasa singura: fie pe evenimentul de shutdown, fie
+# pe kodi_abort_requested().
+# =========================================================================
+_KODI_ABORT_MONITOR = None
+
+def kodi_abort_requested():
+    global _KODI_ABORT_MONITOR
+    try:
+        if _ADDON_SHUTTING_DOWN[0]:
+            return True
+    except Exception:
+        pass
+    if _KODI_ABORT_MONITOR is None:
+        try:
+            import xbmc as _kodi_xbmc
+            _KODI_ABORT_MONITOR = _kodi_xbmc.Monitor()
+        except Exception:
+            _KODI_ABORT_MONITOR = False
+    if not _KODI_ABORT_MONITOR:
+        return False
+    try:
+        return bool(_KODI_ABORT_MONITOR.abortRequested())
+    except Exception:
+        return False

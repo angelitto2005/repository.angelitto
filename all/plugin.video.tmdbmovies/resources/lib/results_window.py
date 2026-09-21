@@ -73,6 +73,31 @@ _SEEDERS_RE = _cached_re(r'(?:👤|👥|S:)\s*(\d+)')
 _COLOR_STRIP_RE = _cached_re(r'\[/?COLOR.*?\]')
 _RO_DUB_RE = _cached_re(r'(?i)(?:\bRO[\s._-]?DUB(?:BED)?\b|\bROMANIAN\b|\bLIMBA.?ROM[\u00c2A]NA?\b|\(RO\)|\[RO\]|\bRO\b.*?\bDUB(?:BED)?\b)')
 
+_PACK_SEASON_MARK = _cached_re(r'(?:\bS0?\d{1,2}\b|\bseasons?\b[.\s-]*0?\d{1,2}\b)')
+_PACK_SINGLE_EP = _cached_re(r'\bS\d{1,3}E\d{1,3}\b(?!\s*[-_\u2013])')
+_PACK_RANGE = _cached_re(r'(?:\bS0?\d{1,2}\s*[-_\u2013]\s*S?0?\d{1,2}\b|\bseasons?\b[.\s-]*\d{1,2}\s*[-_\u2013])')
+_PACK_EP_RANGE = _cached_re(r'\bS\d{1,3}E\d{1,3}\s*[-_\u2013]\s*E?\d{1,3}\b')
+_SHOW_PACK_KEY = _cached_re(r'(complete|collection|boxset|anthology|\bseries\b|\bseasons\b|all\.seasons|total\.series|tv\.series)')
+
+def is_season_pack(name):
+    name = str(name or '')
+    if _PACK_SINGLE_EP.search(name) or _PACK_RANGE.search(name):
+        return False
+    if _PACK_EP_RANGE.search(name):
+        return True
+    if _PACK_SEASON_MARK.search(name):
+        return True
+    low = name.lower()
+    return 'season' in low and 'complete' in low
+
+def is_show_pack(name):
+    name = str(name or '')
+    if _PACK_SINGLE_EP.search(name):
+        return False
+    if is_season_pack(name):
+        return False
+    return bool(_SHOW_PACK_KEY.search(name))
+
 # === AIO STREAMS DICTS ===
 AIO_ADDON_COLORS = {
     'comet':          'FFFF4500',
@@ -874,7 +899,11 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             options.append("[B]SHOW 1080P ONLY[/B]")
             options.append("[B]SHOW 720P ONLY[/B]")
             options.append("[B]SHOW SD ONLY[/B]")
+            is_tv = (c_type == 'tv')
+            if is_tv:
+                options.append("[B]SHOW PACKS ONLY[/B]")
             options.append("[B]Filter by DV[/B]")
+            options.append("[B]Filter by DV-only[/B]")
             options.append("[B]Filter by HDR[/B]")
             options.append("[B]Filter by SDR[/B]")
             options.append("[B]Filter by Provider[/B]")
@@ -927,20 +956,22 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             elif ret == 3: self.apply_filter('quality', '1080p')
             elif ret == 4: self.apply_filter('quality', '720p')
             elif ret == 5: self.apply_filter('quality', 'SD')
-            elif ret == 6: self.apply_filter('dv', True)
-            elif ret == 7: self.apply_filter('hdr', True)
-            elif ret == 8: self.apply_filter('sdr', True)
-            elif ret == 9:
+            elif ret == 6 and is_tv: self.apply_filter('pack', True)
+            elif ret == (7 if is_tv else 6): self.apply_filter('dv', True)
+            elif ret == (8 if is_tv else 7): self.apply_filter('dv_only', True)
+            elif ret == (9 if is_tv else 8): self.apply_filter('hdr', True)
+            elif ret == (10 if is_tv else 9): self.apply_filter('sdr', True)
+            elif ret == (11 if is_tv else 10):
                 providers = sorted(list(set([str(r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id', '') or r.get('provider_id', '')).strip() for r in self.all_results if (r.get('info', {}).get('provider') or r.get('raw_stream_data', {}).get('provider_id') or r.get('provider_id'))])))
                 if not providers: return
                 p_idx = xbmcgui.Dialog().select("Select Provider", providers)
                 if p_idx >= 0:
                     self.apply_filter('provider', providers[p_idx])
-            elif ret == 10:
+            elif ret == (12 if is_tv else 11):
                 keyword = xbmcgui.Dialog().input("Enter keyword")
                 if keyword:
                     self.apply_filter('title', keyword)
-            elif ret == 11:
+            elif ret == (13 if is_tv else 12):
                 all_tags = []
                 for r in self.all_results:
                     # Colectam toate tag-urile din info/tags
@@ -967,10 +998,15 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             self.results = [r for r in self.all_results if r.get('info', {}).get('quality') == value]
         elif filter_type == 'dv':
             self.results = [r for r in self.all_results if any(x in ['DV', 'DOVI', 'Dolby Vision'] for x in r.get('info', {}).get('tags', []))]
+        elif filter_type == 'dv_only':
+            self.results = [r for r in self.all_results if any(x in ['DV', 'DOVI', 'Dolby Vision'] for x in r.get('info', {}).get('tags', [])) and not any(x in ['HDR', 'HDR10', 'HDR10+', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'hdr':
             self.results = [r for r in self.all_results if any(x in ['HDR', 'HDR10', 'HDR10+', 'HLG'] for x in r.get('info', {}).get('tags', []))]
         elif filter_type == 'sdr':
             self.results = [r for r in self.all_results if not any(x in ['HDR', 'HDR10', 'HDR10+', 'DV', 'DOVI', 'Dolby Vision', 'HLG'] for x in r.get('info', {}).get('tags', []))]
+        elif filter_type == 'pack':
+            self.results = [r for r in self.all_results
+                            if is_season_pack(r.get('name', '')) or is_show_pack(r.get('name', ''))]
         elif filter_type == 'provider':
             v = str(value).strip().lower()
             def _prov_match(r):

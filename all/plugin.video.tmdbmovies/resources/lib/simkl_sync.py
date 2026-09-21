@@ -24,7 +24,7 @@ import threading
 import xbmc
 import xbmcgui
 
-from resources.lib.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE
+from resources.lib.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE, provider_title, provider_icon
 from resources.lib.simkl_api import SIMKLAPI, SIMKL_ICON, SIMKL_CLIENT_ID
 
 DB_PATH = os.path.join(ADDON_DATA_DIR, 'simkl_sync.db')
@@ -172,9 +172,14 @@ def init_database():
             episode INTEGER DEFAULT 0,
             rating INTEGER DEFAULT 0,
             rated_at TEXT,
+            title TEXT DEFAULT '',
             UNIQUE(tmdb_id, media_type, season, episode)
         )
     ''')
+    try:
+        c.execute("ALTER TABLE simkl_ratings ADD COLUMN title TEXT DEFAULT ''")
+    except:
+        pass
     c.execute('''
         CREATE TABLE IF NOT EXISTS simkl_dropped (
             tmdb_id TEXT PRIMARY KEY,
@@ -652,8 +657,8 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         pass
 
     if notify:
-        msg = f'[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on [B][COLOR mediumpurple]Simkl[/COLOR][/B]'
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', msg, SIMKL_ICON, 3000, False)
+        msg = f'[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on ' + provider_title('simkl')
+        xbmcgui.Dialog().notification(provider_title('simkl'), msg, SIMKL_ICON, 3000, False)
 
     if sync_simkl:
         threading.Thread(target=_sync_single_watched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -764,8 +769,8 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         pass
 
     if notify:
-        msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR mediumpurple]Simkl[/COLOR][/B]'
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', msg, SIMKL_ICON, 3000, False)
+        msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on ' + provider_title('simkl')
+        xbmcgui.Dialog().notification(provider_title('simkl'), msg, SIMKL_ICON, 3000, False)
 
     if sync_simkl:
         threading.Thread(target=_sync_single_unwatched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -812,6 +817,11 @@ def refresh_next_episode_simkl(tmdb_id, ignore_hidden=False):
 
     def _trigger_ui_refresh():
         try:
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
             import xbmc
             import xbmcgui
             import time
@@ -1004,6 +1014,8 @@ def sync_full_library(silent=False, force=False):
         if lock and not force:
             xbmc.log('[SIMKL] Sync already running, skipping', xbmc.LOGINFO)
             conn.close()
+            if not silent:
+                xbmcgui.Dialog().notification(provider_title('simkl'), 'Sync already in progress', SIMKL_ICON, 2000, False)
             return
         c.execute("INSERT OR REPLACE INTO simkl_sync_meta (key, value) VALUES (?,?)", (SYNC_LOCK_KEY, '1'))
         conn.commit()
@@ -1013,12 +1025,18 @@ def sync_full_library(silent=False, force=False):
 
     try:
         xbmc.log(f'[SIMKL SYNC] Starting (provider_active={"simkl" if is_active else "other"}, force={force}, silent={silent})', xbmc.LOGINFO)
+        p_dialog = None
+        if not silent:
+            p_dialog = xbmcgui.DialogProgressBG()
+            p_dialog.create('[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', '[B][COLOR mediumpurple]Checking for changes...[/COLOR][/B]')
         # Throttle 15 min (fara force)
         if not force:
             try:
                 last = float(get_sync_meta('last_sync_ts', '0') or 0)
                 if last and (time.time() - last) < 15 * 60:
                     xbmc.log('[SIMKL] Sync throttled (<15 min since last)', xbmc.LOGINFO)
+                    if p_dialog:
+                        p_dialog.close()
                     return
             except:
                 pass
@@ -1044,6 +1062,8 @@ def sync_full_library(silent=False, force=False):
 
         if (changed or force) and is_active:
             last_date = get_sync_meta('last_sync_date', '')
+            if p_dialog:
+                p_dialog.update(30, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Watched[/COLOR][/B]')
             if last_date and not force:
                 # ---- Phase 2 delta ----
                 _sync_all_items_delta(api, last_date)
@@ -1059,14 +1079,25 @@ def sync_full_library(silent=False, force=False):
         # daca /sync/activities arata schimbari (sau force manual). Daca activitatile
         # n-au miscat, zero apeluri API. Calendarul (CDN public) ramane pe TTL 24h.
         if changed or force:
-            xbmc.log(f'[SIMKL SYNC] Flags: watched={is_active} upnext={is_active} ratings={is_active} playback={is_active} watchlist=True dropped=True calendar=True (provider={"simkl" if is_active else "other"})', xbmc.LOGINFO)
+            try:
+                from resources.lib.watched_provider import _get_provider_raw as _get_prov_raw
+                _prov_name = _get_prov_raw()
+            except:
+                _prov_name = 'simkl' if is_active else 'other'
+            xbmc.log(f'[SIMKL SYNC] Flags: watched={is_active} upnext={is_active} ratings={is_active} playback={is_active} watchlist=True dropped=True calendar=True (provider={_prov_name})', xbmc.LOGINFO)
+            if p_dialog:
+                p_dialog.update(60, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Watchlist[/COLOR][/B]')
             _sync_watchlist(api)
             if is_active:
+                if p_dialog:
+                    p_dialog.update(70, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Up Next[/COLOR][/B]')
                 _sync_up_next(api)
                 _sync_ratings(api)
             _sync_dropped(api)
             if is_active:
                 _sync_playback(api)
+            if p_dialog:
+                p_dialog.update(85, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Calendar[/COLOR][/B]')
             _sync_calendar(api)
         else:
             xbmc.log('[SIMKL SYNC] No activity changes - skipping user endpoints (activities gate)', xbmc.LOGINFO)
@@ -1080,10 +1111,18 @@ def sync_full_library(silent=False, force=False):
         except:
             pass
 
+        if p_dialog:
+            p_dialog.close()
         if not silent:
+            xbmcgui.Dialog().notification(provider_title('simkl'), 'Sync complete!', SIMKL_ICON, 3000, False)
             _trigger_ui_refresh()
     except Exception as e:
         xbmc.log(f'[SIMKL] sync_full_library error: {e}', xbmc.LOGERROR)
+        if p_dialog:
+            try:
+                p_dialog.close()
+            except:
+                pass
     finally:
         try:
             conn = get_connection()
@@ -1518,7 +1557,7 @@ def _sync_ratings(api):
                 rating = item.get('rating')
             rated_at = item.get('user_rated_at') or item.get('rated_at') or ''
             if tmdb_id and tmdb_id != 'None' and rating is not None:
-                rows.append((tmdb_id, 'movie', 0, 0, rating, rated_at))
+                rows.append((tmdb_id, 'movie', 0, 0, rating, rated_at, str(inner.get('title') or '')))
         for item in data.get('shows', []) or []:
             if not isinstance(item, dict):
                 continue
@@ -1530,7 +1569,7 @@ def _sync_ratings(api):
                 rating = item.get('rating')
             rated_at = item.get('user_rated_at') or item.get('rated_at') or ''
             if tmdb_id and tmdb_id != 'None' and rating is not None:
-                rows.append((tmdb_id, 'show', 0, 0, rating, rated_at))
+                rows.append((tmdb_id, 'show', 0, 0, rating, rated_at, str(inner.get('title') or '')))
                 for season in item.get('seasons') or []:
                     if not isinstance(season, dict):
                         continue
@@ -1544,14 +1583,19 @@ def _sync_ratings(api):
                             continue
                         ep_rated_at = ep.get('user_rated_at') or ep.get('rated_at') or rated_at
                         rows.append((tmdb_id, 'episode', int(season.get('number') or 0),
-                                     int(ep.get('number') or 0), ep_rating, ep_rated_at))
+                                     int(ep.get('number') or 0), ep_rating, ep_rated_at, str(inner.get('title') or '')))
         if rows:
             # Upsert din GET — NU stergem randurile care lipsesc din raspuns:
             # filmele/serialele inexistente in baza Simkl (POST 201 dar lipsesc
             # din GET — verificat live) raman ca marcaje de import in tabela
             # locala; altfel re-importul le retrimite la fiecare rulare.
-            c.executemany("INSERT OR REPLACE INTO simkl_ratings (tmdb_id, media_type, season, episode, rating, rated_at) VALUES (?,?,?,?,?,?)", rows)
+            c.executemany("INSERT OR REPLACE INTO simkl_ratings (tmdb_id, media_type, season, episode, rating, rated_at, title) VALUES (?,?,?,?,?,?,?)", rows)
             conn.commit()
+            try:
+                c.execute("UPDATE simkl_ratings SET title=(SELECT s2.title FROM simkl_ratings s2 WHERE s2.tmdb_id=simkl_ratings.tmdb_id AND s2.media_type='show' AND s2.title<>'' LIMIT 1) WHERE media_type='episode' AND (title IS NULL OR title='')")
+                conn.commit()
+            except:
+                pass
             xbmc.log(f'[SIMKL] ratings stored: {len(rows)}', xbmc.LOGINFO)
     except Exception as e:
         xbmc.log(f'[SIMKL] _sync_ratings error: {e}', xbmc.LOGERROR)
@@ -1797,6 +1841,19 @@ def drop_show(tmdb_id, title='', media_type='show'):
         api = SIMKLAPI()
         if api.watchlist_add(media_type, tmdb_id, status='dropped'):
             drop_add_local(tmdb_id, title)
+            try:
+                conn = get_connection()
+                c = conn.cursor()
+                _db_exec_retry(c, "DELETE FROM simkl_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+                _db_commit_retry(conn)
+                conn.close()
+            except:
+                pass
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
             return True
     except Exception as e:
         xbmc.log(f'[SIMKL] drop_show error: {e}', xbmc.LOGERROR)
@@ -1810,6 +1867,10 @@ def restore_show(tmdb_id, media_type='show'):
         api = SIMKLAPI()
         if api.watchlist_remove(media_type, tmdb_id, status='dropped'):
             drop_remove_local(tmdb_id)
+            try:
+                threading.Thread(target=refresh_next_episode_simkl, args=(str(tmdb_id),), daemon=True).start()
+            except:
+                pass
             return True
     except Exception as e:
         xbmc.log(f'[SIMKL] restore_show error: {e}', xbmc.LOGERROR)
@@ -1860,417 +1921,4 @@ def get_watched_episode_count():
     conn.close()
     return count
 
-# ------------------------------------------------------------------
-# DROPPED IMPORT (paritate cu mdblist_sync.import_dropped_from_trakt)
-# ------------------------------------------------------------------
-def import_dropped_from_trakt(silent=False):
-    """Importa (copy) dropped-urile din Trakt (trakt_hidden_shows) in Simkl.
-    Doar seriale. Returneaza (imported, skipped)."""
-    try:
-        init_database()
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import init_database error: {e}', xbmc.LOGERROR)
-    try:
-        from resources.lib import trakt_sync
-        if not os.path.exists(trakt_sync.DB_PATH):
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Connect Trakt first (no Trakt sync data found)', SIMKL_ICON, 3000, False)
-            return 0, 0
-        tconn = trakt_sync.get_connection()
-        try:
-            trows = tconn.execute("SELECT tmdb_id FROM trakt_hidden_shows").fetchall()
-        finally:
-            tconn.close()
-        trakt_ids = [str(r[0]) for r in trows if r[0]]
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import_dropped_from_trakt read error: {e}', xbmc.LOGERROR)
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Could not read Trakt dropped list', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    if not trakt_ids:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'No dropped shows found on Trakt', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    existing = set()
-    if os.path.exists(DB_PATH):
-        conn = get_connection()
-        try:
-            for r in conn.execute("SELECT tmdb_id FROM simkl_dropped").fetchall():
-                existing.add(str(r[0]))
-        finally:
-            conn.close()
-
-    pending = [tid for tid in trakt_ids if tid not in existing]
-
-    if not pending:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Nothing to import - all dropped shows already on Simkl', SIMKL_ICON, 3000, False)
-        return 0, len(trakt_ids)
-
-    p_dialog = None
-    if not silent:
-        p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create('[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]', f'Importing dropped: 0 / {len(pending)}')
-
-    imported = 0
-    try:
-        api = SIMKLAPI()
-        from resources.lib.history_import import _chunks
-        total = len(pending)
-        done = 0
-        for chunk in _chunks(pending, 150):
-            if _abort_requested():
-                break
-            if p_dialog:
-                p_dialog.update(int(done * 100 / max(total, 1)),
-                                '[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]',
-                                f'Importing dropped: {done} / {total}')
-            try:
-                res = api.watchlist_add_bulk([], [int(t) for t in chunk], status='dropped')
-                if res is not None:
-                    added_items = (res or {}).get('added') or {}
-                    imported += len(added_items.get('shows') or []) + len(added_items.get('anime') or [])
-                    for tid in chunk:
-                        drop_add_local(tid)
-            except Exception as e:
-                xbmc.log(f'[SIMKL] import dropped chunk error: {e}', xbmc.LOGERROR)
-            done += len(chunk)
-            if _abort_requested():
-                break
-    finally:
-        if p_dialog:
-            p_dialog.close()
-
-    # Re-pull de pe server: umple titlurile reale (importul salveaza doar tmdb_id)
-    if imported > 0 and not _abort_requested():
-        try:
-            _sync_dropped(api)
-        except Exception as e:
-            xbmc.log(f'[SIMKL] import dropped re-pull error: {e}', xbmc.LOGERROR)
-
-    skipped = len(pending) - imported
-    if not silent:
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
-                                      f'Dropped imported: [B][COLOR FF6AFB92]{imported}[/COLOR][/B], failed: {skipped}', SIMKL_ICON, 4000, False)
-    return imported, skipped
-
-
-# ------------------------------------------------------------------
-# RATINGS IMPORT (paritate cu import_dropped_from_*)
-# ------------------------------------------------------------------
-def _parse_ratings_items(items):
-    """Normalizeaza items de ratings din Trakt (/sync/ratings) sau MDBList
-    (get_sync_ratings) la lista uniforma de dicturi:
-    {tmdb_id, media_type: movie|show|episode, season, episode, rating, rated_at}
-    Returneaza (movies, shows, episodes) ca liste de dicturi."""
-    movies, shows, episodes = [], [], []
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        rating = item.get('rating') or 0
-        rated_at = item.get('rated_at') or ''
-        if 'episode' in item and isinstance(item.get('episode'), dict):
-            ep_obj = item['episode']
-            show_obj = item.get('show') or (ep_obj.get('show') if isinstance(ep_obj, dict) else None) or {}
-            ids = (show_obj.get('ids') or {}) if isinstance(show_obj, dict) else {}
-            tmdb_id = str(ids.get('tmdb', '') or show_obj.get('tmdb_id', '') or '')
-            season = int(ep_obj.get('season') or item.get('season') or 0)
-            episode = int(ep_obj.get('number') or ep_obj.get('episode') or item.get('episode') or 0)
-            if tmdb_id and tmdb_id != 'None':
-                episodes.append({'tmdb_id': tmdb_id, 'media_type': 'episode', 'season': season,
-                                 'episode': episode, 'rating': rating, 'rated_at': rated_at})
-        elif 'movie' in item and isinstance(item.get('movie'), dict):
-            inner = item['movie']
-            ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
-            tmdb_id = str(ids.get('tmdb', '') or inner.get('tmdb_id', '') or '')
-            if tmdb_id and tmdb_id != 'None':
-                movies.append({'tmdb_id': tmdb_id, 'media_type': 'movie', 'rating': rating, 'rated_at': rated_at})
-        elif 'show' in item and isinstance(item.get('show'), dict):
-            inner = item['show']
-            ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
-            tmdb_id = str(ids.get('tmdb', '') or inner.get('tmdb_id', '') or '')
-            if tmdb_id and tmdb_id != 'None':
-                shows.append({'tmdb_id': tmdb_id, 'media_type': 'show', 'rating': rating, 'rated_at': rated_at})
-    return movies, shows, episodes
-
-
-def import_ratings_from_trakt(silent=False):
-    """Importa (copy) rating-urile din Trakt (/sync/ratings) in Simkl.
-    Filme + seriale + episoade. Returneaza (imported, skipped)."""
-    try:
-        init_database()
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import init_database error: {e}', xbmc.LOGERROR)
-    try:
-        from resources.lib import trakt_api
-        if not ADDON.getSetting('trakt_access_token'):
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Connect Trakt first (no Trakt access token)', SIMKL_ICON, 3000, False)
-            return 0, 0
-        data = trakt_api._get_trakt_paginated_list('/sync/ratings', params={'extended': 'full'})
-        if not data or not isinstance(data, list):
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Could not fetch Trakt ratings', SIMKL_ICON, 3000, False)
-            return 0, 0
-        movies, shows, episodes = _parse_ratings_items(data)
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import_ratings_from_trakt fetch error: {e}', xbmc.LOGERROR)
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Could not fetch Trakt ratings', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    return _push_ratings(movies, shows, episodes, 'Trakt', silent)
-
-
-def import_ratings_from_mdblist(silent=False):
-    """Importa (copy) rating-urile din MDBList (sync/ratings) in Simkl.
-    Filme + seriale + episoade. Returneaza (imported, skipped)."""
-    try:
-        init_database()
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import init_database error: {e}', xbmc.LOGERROR)
-    try:
-        from resources.lib import mdblist_api
-        api = mdblist_api.MDBListAPI()
-        if not api.is_authenticated():
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Connect MDBList first (no MDBList auth)', SIMKL_ICON, 3000, False)
-            return 0, 0
-        movies, shows, episodes = [], [], []
-        cursor = None
-        while True:
-            if _abort_requested():
-                break
-            data = api.get_sync_ratings(cursor=cursor, limit=1000)
-            if not data:
-                break
-            m, s, e = _parse_ratings_items(
-                (data.get('movies') or []) + (data.get('shows') or []) + (data.get('episodes') or []))
-            movies += m
-            shows += s
-            episodes += e
-            pagination = data.get('pagination', {})
-            if not pagination.get('has_more'):
-                break
-            cursor = pagination.get('next_cursor')
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import_ratings_from_mdblist fetch error: {e}', xbmc.LOGERROR)
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Could not fetch MDBList ratings', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    return _push_ratings(movies, shows, episodes, 'MDBList', silent)
-
-
-def _ratings_add_local(items):
-    """Salveaza local itemele de ratings trimise (INSERT OR REPLACE).
-    Folosit la import — episoadele NU sunt returnate de GET /sync/ratings,
-    deci singura sursa de dedupe pentru ele e tabela locala."""
-    if not items:
-        return
-    try:
-        conn = get_connection()
-        try:
-            rows = [(it['tmdb_id'], it['media_type'], int(it.get('season') or 0), int(it.get('episode') or 0),
-                     it.get('rating') or 0, it.get('rated_at') or '') for it in items]
-            conn.executemany("INSERT OR REPLACE INTO simkl_ratings (tmdb_id, media_type, season, episode, rating, rated_at) VALUES (?,?,?,?,?,?)", rows)
-            conn.commit()
-        finally:
-            conn.close()
-    except Exception as e:
-        xbmc.log(f'[SIMKL] _ratings_add_local error: {e}', xbmc.LOGERROR)
-
-
-def _push_ratings(movies, shows, episodes, source_label, silent=False):
-    """Dedupe pe simkl_ratings local + push prin add_ratings_bulk (chunk 150).
-    Re-pull _sync_ratings la final. Returneaza (imported, skipped)."""
-    total = len(movies) + len(shows) + len(episodes)
-    if not total:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', f'No ratings found on {source_label}', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    # Dedupe: cheie (tmdb_id, media_type, season, episode)
-    existing = set()
-    if os.path.exists(DB_PATH):
-        conn = get_connection()
-        try:
-            for r in conn.execute("SELECT tmdb_id, media_type, season, episode FROM simkl_ratings").fetchall():
-                existing.add((str(r[0]), r[1], int(r[2] or 0), int(r[3] or 0)))
-        finally:
-            conn.close()
-
-    def _key(it):
-        return (it['tmdb_id'], it['media_type'], int(it.get('season') or 0), int(it.get('episode') or 0))
-
-    p_movies = [it for it in movies if _key(it) not in existing]
-    p_shows = [it for it in shows if _key(it) not in existing]
-    p_episodes = [it for it in episodes if _key(it) not in existing]
-    pending = len(p_movies) + len(p_shows) + len(p_episodes)
-
-    if not pending:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Nothing to import - all ratings already on Simkl', SIMKL_ICON, 3000, False)
-        return 0, total
-
-    p_dialog = None
-    if not silent:
-        p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create('[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]', f'Importing ratings: 0 / {pending}')
-
-    imported = 0
-    try:
-        api = SIMKLAPI()
-        from resources.lib.history_import import _chunks
-        all_pending = p_movies + p_shows + p_episodes
-        done = 0
-        for chunk in _chunks(all_pending, 150):
-            if _abort_requested():
-                break
-            if p_dialog:
-                p_dialog.update(int(done * 100 / max(pending, 1)),
-                                '[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]',
-                                f'Importing ratings: {done} / {pending}')
-            try:
-                c_movies = [(it['tmdb_id'], it['rating'], it['rated_at']) for it in chunk if it['media_type'] == 'movie']
-                c_shows = [(it['tmdb_id'], it['rating'], it['rated_at']) for it in chunk if it['media_type'] == 'show']
-                c_eps = [(it['tmdb_id'], it['season'], it['episode'], it['rating'], it['rated_at'])
-                         for it in chunk if it['media_type'] == 'episode']
-                res = api.add_ratings_bulk(c_movies, c_shows, c_eps)
-                if res is not None:
-                    added_items = (res or {}).get('added') or {}
-                    if isinstance(added_items, dict):
-                        for k in ('movies', 'shows'):
-                            v = added_items.get(k)
-                            if isinstance(v, list):
-                                imported += len(v)
-                            elif isinstance(v, int):
-                                imported += v
-                    elif isinstance(added_items, int):
-                        imported += added_items
-                    # Salveaza local itemele trimise (episoadele NU sunt returnate de GET —
-                    # singura sursa de dedupe pt ele). Movies/shows le re-pull-ul le
-                    # suprascrie cu datele reale de pe server.
-                    _ratings_add_local(chunk)
-            except Exception as e:
-                xbmc.log(f'[SIMKL] import ratings chunk error: {e}', xbmc.LOGERROR)
-            done += len(chunk)
-            if _abort_requested():
-                break
-    finally:
-        if p_dialog:
-            p_dialog.close()
-
-    # Re-pull de pe server: umple titlurile/rated_at reale
-    if imported > 0 and not _abort_requested():
-        try:
-            _sync_ratings(api)
-            # Itemele trimise care NU apar in GET (Simkl accepta POST-ul 201
-            # dar filmul/serialul poate lipsi din baza lor sau are alt tmdb_id —
-            # verificat live: /movies/1024127 -> 200 []) trebuie pastrate local
-            # ca baza de dedupe, altfel re-importul le retrimite la fiecare rulare.
-            _ratings_add_local(all_pending)
-        except Exception as e:
-            xbmc.log(f'[SIMKL] import ratings re-pull error: {e}', xbmc.LOGERROR)
-
-    skipped = pending - imported
-    if not silent:
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
-                                      f'Ratings imported: [B][COLOR FF6AFB92]{imported}[/COLOR][/B], failed: {skipped}', SIMKL_ICON, 4000, False)
-    return imported, skipped
-
-
-def import_dropped_from_mdblist(silent=False):
-    """Importa (copy) dropped-urile din MDBList (mdblist_dropped) in Simkl.
-    Doar seriale. Returneaza (imported, skipped)."""
-    try:
-        init_database()
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import init_database error: {e}', xbmc.LOGERROR)
-    try:
-        from resources.lib import mdblist_sync
-        if not os.path.exists(mdblist_sync.DB_PATH):
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Sync MDBList first (no MDBList sync data found)', SIMKL_ICON, 3000, False)
-            return 0, 0
-        mconn = mdblist_sync.get_connection()
-        try:
-            mrows = mconn.execute("SELECT tmdb_id FROM mdblist_dropped").fetchall()
-        finally:
-            mconn.close()
-        mdblist_ids = [str(r[0]) for r in mrows if r[0]]
-    except Exception as e:
-        xbmc.log(f'[SIMKL] import_dropped_from_mdblist read error: {e}', xbmc.LOGERROR)
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Could not read MDBList dropped list', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    if not mdblist_ids:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'No dropped shows found on MDBList', SIMKL_ICON, 3000, False)
-        return 0, 0
-
-    existing = set()
-    if os.path.exists(DB_PATH):
-        conn = get_connection()
-        try:
-            for r in conn.execute("SELECT tmdb_id FROM simkl_dropped").fetchall():
-                existing.add(str(r[0]))
-        finally:
-            conn.close()
-
-    pending = [tid for tid in mdblist_ids if tid not in existing]
-
-    if not pending:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'Nothing to import - all dropped shows already on Simkl', SIMKL_ICON, 3000, False)
-        return 0, len(mdblist_ids)
-
-    p_dialog = None
-    if not silent:
-        p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create('[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]', f'Importing dropped: 0 / {len(pending)}')
-
-    imported = 0
-    try:
-        api = SIMKLAPI()
-        from resources.lib.history_import import _chunks
-        total = len(pending)
-        done = 0
-        for chunk in _chunks(pending, 150):
-            if _abort_requested():
-                break
-            if p_dialog:
-                p_dialog.update(int(done * 100 / max(total, 1)),
-                                '[B][COLOR mediumpurple]Simkl Import[/COLOR][/B]',
-                                f'Importing dropped: {done} / {total}')
-            try:
-                res = api.watchlist_add_bulk([], [int(t) for t in chunk], status='dropped')
-                if res is not None:
-                    added_items = (res or {}).get('added') or {}
-                    imported += len(added_items.get('shows') or []) + len(added_items.get('anime') or [])
-                    for tid in chunk:
-                        drop_add_local(tid)
-            except Exception as e:
-                xbmc.log(f'[SIMKL] import dropped chunk error: {e}', xbmc.LOGERROR)
-            done += len(chunk)
-            if _abort_requested():
-                break
-    finally:
-        if p_dialog:
-            p_dialog.close()
-
-    # Re-pull de pe server: umple titlurile reale (importul salveaza doar tmdb_id)
-    if imported > 0 and not _abort_requested():
-        try:
-            _sync_dropped(api)
-        except Exception as e:
-            xbmc.log(f'[SIMKL] import dropped re-pull error: {e}', xbmc.LOGERROR)
-
-    skipped = len(pending) - imported
-    if not silent:
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
-                                      f'Dropped imported: [B][COLOR FF6AFB92]{imported}[/COLOR][/B], failed: {skipped}', SIMKL_ICON, 4000, False)
-    return imported, skipped
+    return count

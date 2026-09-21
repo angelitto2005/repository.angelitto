@@ -14,7 +14,8 @@ import xbmc
 import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
-from resources.lib.config import ADDON as PROXIED_ADDON
+from resources.lib.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item
 
 SIMKL_ACTIONS = {
     'simkl_menu',
@@ -26,14 +27,7 @@ SIMKL_ACTIONS = {
     'simkl_upnext',
     'simkl_history_menu',
     'simkl_history_items',
-    'simkl_ratings_menu',
-    'simkl_ratings_items',
     'simkl_calendar',
-    'simkl_public_calendar',
-    'simkl_import_dropped_trakt',
-    'simkl_import_dropped_mdblist',
-    'simkl_import_ratings_trakt',
-    'simkl_import_ratings_mdblist',
 }
 
 _STATUS_KEYS = ('plantowatch', 'watching', 'hold', 'completed', 'dropped')
@@ -54,8 +48,7 @@ def _ensure_globals():
         except: _HANDLE = -1
 
 def _simkl_icon():
-    _ensure_globals()
-    return os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+    return provider_icon('simkl')
 
 def _build_url(query):
     _ensure_globals()
@@ -107,17 +100,18 @@ def fetch_history(mediatype='movie', offset=0, limit=20):
         conn = simkl_sync.get_connection()
         c = conn.cursor()
         try:
-            c.execute("SELECT tmdb_id, MAX(last_watched_at) as lw FROM simkl_watched_episodes "
+            c.execute("SELECT tmdb_id, MAX(title), MAX(last_watched_at) as lw FROM simkl_watched_episodes "
                       "GROUP BY tmdb_id "
                       "UNION "
-                      "SELECT tmdb_id, last_watched_at as lw FROM simkl_fully_watched_shows "
-                      "WHERE tmdb_id NOT IN (SELECT DISTINCT tmdb_id FROM simkl_watched_episodes) "
+                      "SELECT f.tmdb_id, COALESCE(w.title,'') as title, f.last_watched_at as lw FROM simkl_fully_watched_shows f "
+                      "LEFT JOIN simkl_watchlist w ON w.tmdb_id=f.tmdb_id "
+                      "WHERE f.tmdb_id NOT IN (SELECT DISTINCT tmdb_id FROM simkl_watched_episodes) "
                       "ORDER BY lw DESC")
             rows = c.fetchall()
         except:
             rows = []
         conn.close()
-        items = [{'show': {'ids': {'tmdb': r[0]}, 'title': '', 'year': ''}, 'watched_at': r[1]} for r in rows]
+        items = [{'show': {'ids': {'tmdb': r[0]}, 'title': r[1] or '', 'year': ''}, 'watched_at': r[2]} for r in rows]
     total = len(items)
     paginated = items[offset:offset + limit]
     return paginated, total
@@ -165,9 +159,6 @@ def _view_menu():
                 c.execute("SELECT COUNT(*) FROM simkl_watchlist WHERE status=?", (st,))
                 row = c.fetchone()
                 counts[st] = row[0] if row else 0
-            c.execute("SELECT COUNT(*) FROM simkl_ratings")
-            row = c.fetchone()
-            rat_count = row[0] if row else 0
             conn.close()
             from resources.lib.simkl_sync import get_history_counts as _hist_counts
             _hist_m, _hist_s = _hist_counts()
@@ -195,9 +186,7 @@ def _view_menu():
     for st in _STATUS_KEYS:
         sections.append((_counted(status_labels[st], counts.get(st, 0)), 'simkl_status_menu', m_icon, True, {'status': st}))
     sections += [
-        (_counted('[B][COLOR mediumpurple]Simkl Ratings[/COLOR][/B]', rat_count), 'simkl_ratings_menu', m_icon, True, {}),
-        ('[B][COLOR FFFF6600]Simkl [COLOR yellow]My Calendar[/COLOR][/B]', 'simkl_calendar', m_icon, True, {}),
-        ('[B][COLOR FFFF6600]Simkl [COLOR white]Public Calendar[/COLOR][/B]', 'simkl_public_calendar', m_icon, True, {}),
+        ('[B][COLOR mediumpurple]Simkl [COLOR yellow]My Calendar[/COLOR][/B]', 'simkl_calendar', m_icon, True, {}),
         (_counted('[B][COLOR mediumpurple]Simkl Watched History[/COLOR][/B]', hist_count), 'simkl_history_menu', m_icon, True, {}),
     ]
 
@@ -307,9 +296,7 @@ def _view_account():
         labels.append(('  Dropped Shows: [B]%d[/B]' % drp_n, None, False))
         labels.append(('  History: [B]%d[/B] movies, [B]%d[/B] shows' % (hist_m, hist_s), None, False))
 
-    if is_authenticated():
-        labels.append(('[B][COLOR FFE41B17]Disconnect Simkl[/COLOR][/B]', 'simkl_disconnect', False))
-    else:
+    if not is_authenticated():
         labels.append(('[B][COLOR FF6AFB92]Connect Simkl[/COLOR][/B]', 'simkl_connect', False))
 
     for label, action, is_folder in labels:
@@ -367,20 +354,6 @@ def _fetch_status_items(status):
     if isinstance(data, dict) and status == 'watching':
         data = _filter_fully_watched(data)
     return data if isinstance(data, dict) else {}
-
-def _add_import_dropped_buttons():
-    """Butoane de import dropped din Trakt/MDBList — DOAR la seriale (TV Shows)."""
-    _ensure_globals()
-    art_path = _simkl_icon()
-    if _ADDON.getSetting('trakt_access_token'):
-        li = xbmcgui.ListItem(label='[B][COLOR mediumpurple]Import Dropped from Trakt[/COLOR][/B]')
-        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'simkl_import_dropped_trakt'}), li, False)
-    if _ADDON.getSetting('mdblist_access_token') or _ADDON.getSetting('mdblist_api'):
-        li = xbmcgui.ListItem(label='[B][COLOR mediumpurple]Import Dropped from MDBList[/COLOR][/B]')
-        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'simkl_import_dropped_mdblist'}), li, False)
-
 
 def _view_status_menu(status):
     _ensure_globals()
@@ -476,8 +449,6 @@ def _view_status_items(status, kind, page=1):
                           'year': inner.get('year') or '', 'media_type': 'movie' if is_movie else 'tv'})
 
     if not items:
-        if status == 'dropped' and kind == 'tv':
-            _add_import_dropped_buttons()
         _empty('[No items in this status]')
         _end()
         return
@@ -493,29 +464,26 @@ def _view_status_items(status, kind, page=1):
         start = (page - 1) * limit
         page_items = items[start:start + limit]
 
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, _get_cached_details
+    from resources.lib.tmdb_api import _get_cached_details
     mt = 'movie' if is_movie else 'tv'
     fake_items = [{'id': i['tmdb_id'], 'media_type': mt} for i in page_items]
     _prefetch_or_fill(fake_items, mt)
 
     is_dropped = status == 'dropped'
-    if is_dropped and kind == 'tv':
-        _add_import_dropped_buttons()
     for item in page_items:
         tmdb_id = item.get('tmdb_id')
         if not tmdb_id:
             continue
         fake_item = {'id': tmdb_id, 'title': item.get('title', ''), 'name': item.get('title', ''), 'overview': ''}
-        processed = _process_movie_item(fake_item, return_data=True, skip_details=True) if is_movie \
-            else _process_tv_item(fake_item, return_data=True, skip_details=True)
+        processed = process_media_item(fake_item, is_movie)
         if not processed:
             continue
         li = processed['li']
         if is_dropped:
             label = f'[B][COLOR FFE41B17]{processed.get("label", "")}[/COLOR][/B]'
             li.setLabel(label)
-            cm = [('[B][COLOR FF6AFB92]Restore Show[/COLOR][/B]',
-                   f"RunPlugin({_build_url({'action': 'simkl_dropped_restore', 'tmdb_id': tmdb_id, 'mediatype': mt, 'title': processed.get('label', '')})})")]
+            from resources.lib.tmdb_api import _get_full_context_menu
+            cm = list(_get_full_context_menu(str(tmdb_id), 'tv', item.get('title', '')) or [])
             li.addContextMenuItems(cm)
         _add_dir(processed['url'], li, processed['is_folder'])
 
@@ -523,110 +491,6 @@ def _view_status_items(status, kind, page=1):
         li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
         li.setArt({'icon': _simkl_icon(), 'thumb': _simkl_icon(), 'poster': _simkl_icon()})
         _add_dir(_build_url({'action': 'simkl_status_items', 'status': status, 'kind': kind, 'page': page + 1}), li, True)
-    _end()
-
-def _add_import_ratings_buttons():
-    """Butoane de import ratings din Trakt/MDBList (filme + seriale + episoade)."""
-    _ensure_globals()
-    art_path = _simkl_icon()
-    if _ADDON.getSetting('trakt_access_token'):
-        li = xbmcgui.ListItem(label='[B][COLOR mediumpurple]Import Ratings from Trakt[/COLOR][/B]')
-        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'simkl_import_ratings_trakt'}), li, False)
-    if _ADDON.getSetting('mdblist_access_token') or _ADDON.getSetting('mdblist_api'):
-        li = xbmcgui.ListItem(label='[B][COLOR mediumpurple]Import Ratings from MDBList[/COLOR][/B]')
-        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'simkl_import_ratings_mdblist'}), li, False)
-
-
-def _view_ratings_menu():
-    _ensure_globals()
-    art_path = _simkl_icon()
-    from resources.lib import simkl_sync
-    movie_count = 0
-    show_count = 0
-    if os.path.exists(simkl_sync.DB_PATH):
-        try:
-            conn = simkl_sync.get_connection()
-            c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM simkl_ratings WHERE media_type='movie'")
-            row = c.fetchone()
-            movie_count = row[0] if row else 0
-            c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM simkl_ratings WHERE media_type IN ('show','episode')")
-            row = c.fetchone()
-            show_count = row[0] if row else 0
-            conn.close()
-        except:
-            pass
-    _add_import_ratings_buttons()
-    for label, db_type, mtype in [('Movies', 'movie', 'movie'), ('TV Shows', 'tv', 'show')]:
-        count = movie_count if db_type == 'movie' else show_count
-        display = f'[B][COLOR mediumpurple]{label}[/COLOR][/B]'
-        if count > 0:
-            display = f'{display} [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
-        li = xbmcgui.ListItem(label=display)
-        li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
-        _add_dir(_build_url({'action': 'simkl_ratings_items', 'mediatype': mtype, 'page': 1}), li, True)
-    _end()
-
-def _view_ratings_items(mediatype, page=1):
-    _ensure_globals()
-    kodi_content = 'movies' if mediatype == 'movie' else 'tvshows'
-    xbmcplugin.setContent(_HANDLE, kodi_content)
-    limit = _page_limit()
-    page = int(page)
-
-    from resources.lib import simkl_sync
-    items = []
-    if os.path.exists(simkl_sync.DB_PATH):
-        conn = simkl_sync.get_connection()
-        c = conn.cursor()
-        try:
-            if mediatype == 'movie':
-                c.execute("SELECT tmdb_id, rating FROM simkl_ratings WHERE media_type='movie' ORDER BY rated_at DESC")
-            else:
-                c.execute("SELECT tmdb_id, rating FROM simkl_ratings WHERE media_type IN ('show','episode') ORDER BY rated_at DESC")
-            rows = c.fetchall()
-        except:
-            rows = []
-        conn.close()
-        items = [{'tmdb_id': r[0], 'title': '', 'rating': r[1]} for r in rows]
-
-    if not items:
-        _empty('[No ratings found]')
-        _end()
-        return
-
-    start = (page - 1) * limit
-    page_items = items[start:start + limit]
-
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, _get_cached_details
-    fake_items = [{'id': i['tmdb_id'], 'media_type': mediatype} for i in page_items]
-    _prefetch_or_fill(fake_items, mediatype)
-
-    for item in page_items:
-        tmdb_id = item.get('tmdb_id')
-        if not tmdb_id:
-            continue
-        cached = _get_cached_details(tmdb_id, mediatype)
-        title = (cached or {}).get('title') or (cached or {}).get('name') or ''
-        fake_item = {'id': tmdb_id, 'title': title, 'name': title, 'overview': ''}
-        if mediatype == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True, skip_details=True)
-        if processed:
-            li = processed['li']
-            rating = item.get('rating')
-            if rating:
-                label = f'{processed.get("label", "")} [B][COLOR lime]★ {rating}/10[/COLOR][/B]'
-                li.setLabel(label)
-            _add_dir(processed['url'], li, processed['is_folder'])
-
-    if page * limit < len(items):
-        li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        li.setArt({'icon': _simkl_icon(), 'thumb': _simkl_icon(), 'poster': _simkl_icon()})
-        _add_dir(_build_url({'action': 'simkl_ratings_items', 'mediatype': mediatype, 'page': page + 1}), li, True)
     _end()
 
 def _load_calendar_data():
@@ -802,28 +666,6 @@ def _view_calendar(page=1):
         return
     _render_calendar_entries(entries, wnd)
 
-def _view_public_calendar(page=1):
-    """Public Calendar: toate intrarile CDN (tv+anime), cap 250 cele mai apropiate de azi."""
-    _ensure_globals()
-    xbmcplugin.setContent(_HANDLE, 'episodes')
-
-    wnd = _calendar_window()
-    cal_list, meta = _load_calendar_data()
-    if not cal_list:
-        _empty('[No Calendar Events]')
-        _end()
-        return
-
-    entries = _parse_calendar_episodes(cal_list, meta, wnd)
-    if len(entries) > 250:
-        entries.sort(key=lambda e: abs(e['diff']))
-        entries = entries[:250]
-    if not entries:
-        _empty('[No Calendar Events]')
-        _end()
-        return
-    _render_calendar_entries(entries, wnd)
-
 def _render_calendar_entries(entries, wnd):
     import datetime as _dt
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, calendar_localized_label
@@ -890,6 +732,7 @@ def _render_calendar_entries(entries, wnd):
     try:
         from resources.lib.tmdb_api import get_smart_season_details as _gsd
         ep_overview_map = {}
+        ep_name_map = {}
         _seen_seasons = set()
         for _e in entries:
             if _e['media_type'] == 'movie':
@@ -901,19 +744,39 @@ def _render_calendar_entries(entries, wnd):
             try:
                 _sd = _gsd(_key[0], _key[1]) or {}
                 for _ep in (_sd.get('episodes') or []):
-                    if isinstance(_ep, dict) and _ep.get('overview'):
-                        ep_overview_map[(_key[0], _key[1], int(_ep.get('episode_number') or 0))] = _ep.get('overview')
+                    if isinstance(_ep, dict):
+                        _enum = int(_ep.get('episode_number') or 0)
+                        if _ep.get('overview'):
+                            ep_overview_map[(_key[0], _key[1], _enum)] = _ep.get('overview')
+                        if _ep.get('name'):
+                            ep_name_map[(_key[0], _key[1], _enum)] = _ep.get('name')
             except Exception:
                 pass
     except Exception:
         ep_overview_map = {}
+        ep_name_map = {}
     for e in entries:
         tmdb_id = e['tmdb_id']
         is_movie = e['media_type'] == 'movie'
 
         cached = _get_cached_details(tmdb_id, 'movie' if is_movie else 'tv') or {}
         title_key = 'title' if is_movie else 'name'
-        show_title = cached.get(title_key, '') or e['show_title'] or 'Unknown Show'
+        db_title = e['show_title'] or ''
+        try:
+            from resources.lib.tmdb_api import _NON_LATIN_RE as _nl_re
+            db_latin = bool(db_title) and not _nl_re.search(db_title)
+        except Exception:
+            db_latin = bool(db_title)
+        if db_latin:
+            show_title = db_title
+        else:
+            cached_title = cached.get(title_key, '') or ''
+            try:
+                from resources.lib.tmdb_api import _NON_LATIN_RE as _nl_re2
+                cached_latin = bool(cached_title) and not _nl_re2.search(cached_title)
+            except Exception:
+                cached_latin = bool(cached_title)
+            show_title = cached_title if cached_latin else (db_title or 'Unknown Show')
         poster = ''
         fanart = ''
         pp = cached.get('poster_path', '')
@@ -945,14 +808,18 @@ def _render_calendar_entries(entries, wnd):
         if is_movie:
             movie_year = str(e['air_date'])[:4] if e['air_date'] else ''
             display_title = f'{show_title} ({movie_year})' if movie_year else show_title
-            display = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+            display = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
         else:
             ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
-            display = f'[B][COLOR mediumpurple]{show_title}[/COLOR][/B]'
+            display = f'[B][COLOR {provider_color("simkl")}]{show_title}[/COLOR][/B]'
             if ep_label:
                 display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
-            if e.get('ep_title'):
-                display += f' - [B][I][COLOR FFCCCCFF]{e["ep_title"]}[/I][/COLOR][/B]'
+            try:
+                ep_name = ep_name_map.get((str(tmdb_id), int(e.get('season') or 0), int(e.get('episode') or 0)), '') or e.get('ep_title')
+            except Exception:
+                ep_name = e.get('ep_title')
+            if ep_name:
+                display += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if date_label:
             display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
 
@@ -965,7 +832,11 @@ def _render_calendar_entries(entries, wnd):
         else:
             watched = _wp_is_epw(tmdb_id, e['season'], e['episode'])
             ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
-            info = {'mediatype': 'episode', 'title': e['ep_title'] or ep_label, 'tvshowtitle': show_title,
+            try:
+                ep_name = ep_name_map.get((str(tmdb_id), int(e.get('season') or 0), int(e.get('episode') or 0)), '') or e.get('ep_title')
+            except Exception:
+                ep_name = e.get('ep_title')
+            info = {'mediatype': 'episode', 'title': ep_name or ep_label, 'tvshowtitle': show_title,
                     'season': e['season'], 'episode': e['episode']}
         if plot:
             info['plot'] = plot
@@ -973,46 +844,20 @@ def _render_calendar_entries(entries, wnd):
         if is_movie:
             cm = _get_full_context_menu(tmdb_id, 'movie', show_title)
         else:
-            cm = _get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode'])
-            b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_show_params}")))
-            b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_season_params}")))
+            cm = calendar_context_menu(_get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode']),
+                                       'episode', tmdb_id, show_title, e['season'], e['episode'],
+                                       base_url=_BASE_URL, browse_cmd=_browse_cmd, urlencode_fn=urllib.parse.urlencode, clear_sources=True)
         if cm:
             li.addContextMenuItems(cm)
         if is_movie:
-            if diff <= 0:
-                url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': show_title}
-                is_folder = False
-            else:
-                url_params = {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'movie'}
-                is_folder = False
-        elif diff <= 0:
-            url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(e['season']),
-                          'episode': str(e['episode']), 'title': f"{show_title} S{e['season']:02d}E{e['episode']:02d}",
-                          'tv_show_title': show_title}
-            is_folder = False
+            url_params, is_folder = calendar_row_click_params('movie', tmdb_id, diff, show_title=show_title, sources_title=show_title)
         else:
-            url_params = {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title}
-            is_folder = True
-        url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
-        items_to_add.append((url, li, is_folder))
+            url_params, is_folder = calendar_row_click_params('episode', tmdb_id, diff, e['season'], e['episode'], show_title)
+        if url_params:
+            url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+            items_to_add.append((url, li, is_folder))
 
-    today_top = wnd['today_top']
-    sort_asc = wnd['sort_asc']
-    if today_top:
-        today_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') == '0']
-        other_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') != '0']
-        if sort_asc:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
-        items_to_add = today_items + other_items
-    else:
-        if sort_asc:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+    items_to_add = sort_calendar_items(items_to_add, wnd['today_top'], wnd['sort_asc'])
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
@@ -1031,7 +876,7 @@ def _view_history_menu():
             count = _hc_m if db_type == 'movie' else _hc_s
         except:
             pass
-        display = f'[B][COLOR mediumpurple]{label}[/COLOR][/B]'
+        display = f'[B][COLOR {provider_color("simkl")}]{label}[/COLOR][/B]'
         if count > 0:
             display = f'{display} [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
         li = xbmcgui.ListItem(label=display)
@@ -1054,7 +899,7 @@ def _view_history_items(mediatype, offset=0):
         _end()
         return
 
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item
+    pass  # renderer comun prin utils.process_media_item
 
     fake_items = []
     for item in items:
@@ -1079,10 +924,7 @@ def _view_history_items(mediatype, offset=0):
             'name': inner.get('title', ''),
             'overview': '',
         }
-        if mediatype == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True, skip_details=True)
+        processed = process_media_item(fake_item, mediatype)
         if processed:
             _add_dir(processed['url'], processed['li'], processed['is_folder'])
 
@@ -1117,7 +959,7 @@ def watchlist_add(tmdb_id=None, mediatype='movie', status='watching', title='', 
                     threading.Thread(target=refresh_next_episode_simkl, args=(str(tmdb_id),), daemon=True).start()
                 except: pass
             if notify:
-                _notify('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+                _notify(provider_title('simkl'),
                         f'[B][COLOR yellow]{title or tmdb_id}[/COLOR][/B] added to [B][COLOR mediumpurple]{status}[/COLOR][/B]')
             return True
     except Exception as e:
@@ -1140,7 +982,7 @@ def watchlist_remove(tmdb_id=None, mediatype='movie', status='watching', title='
                 threading.Thread(target=refresh_next_episode_simkl, args=(str(tmdb_id),), daemon=True).start()
             except: pass
             if notify:
-                _notify('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+                _notify(provider_title('simkl'),
                         f'[B][COLOR yellow]{title or tmdb_id}[/COLOR][/B] removed from [B][COLOR mediumpurple]{status}[/COLOR][/B]')
             return True
     except Exception as e:
@@ -1178,37 +1020,15 @@ def handle_simkl_action(params, handle, base_url, addon):
         _view_status_menu(params.get('status', 'plantowatch'))
     elif action == 'simkl_status_items':
         _view_status_items(params.get('status', 'plantowatch'), params.get('kind', 'tv'), int(params.get('page', '1')))
-    elif action == 'simkl_ratings_menu':
-        _view_ratings_menu()
-    elif action == 'simkl_ratings_items':
-        _view_ratings_items(params.get('mediatype', 'movie'), int(params.get('page', '1')))
     elif action == 'simkl_dropped_restore':
         from resources.lib.simkl_sync import restore_show
         _mt = 'movie' if str(params.get('mediatype', '')).lower() in ('movie', 'movies') else 'show'
         if restore_show(params.get('tmdb_id'), _mt):
-            _notify('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+            _notify(provider_title('simkl'),
                     f'[B][COLOR yellow]{params.get("title", "")}[/COLOR][/B] restored')
-        xbmc.executebuiltin('Container.Refresh')
-    elif action == 'simkl_import_dropped_trakt':
-        from resources.lib.simkl_sync import import_dropped_from_trakt
-        import_dropped_from_trakt(silent=False)
-        xbmc.executebuiltin('Container.Refresh')
-    elif action == 'simkl_import_dropped_mdblist':
-        from resources.lib.simkl_sync import import_dropped_from_mdblist
-        import_dropped_from_mdblist(silent=False)
-        xbmc.executebuiltin('Container.Refresh')
-    elif action == 'simkl_import_ratings_trakt':
-        from resources.lib.simkl_sync import import_ratings_from_trakt
-        import_ratings_from_trakt(silent=False)
-        xbmc.executebuiltin('Container.Refresh')
-    elif action == 'simkl_import_ratings_mdblist':
-        from resources.lib.simkl_sync import import_ratings_from_mdblist
-        import_ratings_from_mdblist(silent=False)
         xbmc.executebuiltin('Container.Refresh')
     elif action == 'simkl_calendar':
         _view_calendar(int(params.get('page', '1')))
-    elif action == 'simkl_public_calendar':
-        _view_public_calendar(int(params.get('page', '1')))
     elif action == 'simkl_history_menu':
         _view_history_menu()
     elif action == 'simkl_history_items':

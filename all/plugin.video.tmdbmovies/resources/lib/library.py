@@ -56,6 +56,8 @@ def _set_cached_tvshow_data(tmdb_id, data):
 TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
 MDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
+PP_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'punchplay.png')
+SIMKL_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png')
 
 # Status codes
 STATUS_OK = 0
@@ -195,6 +197,24 @@ def get_selected_mdblist_lists():
 def save_selected_mdblist_lists(list_ids):
     s = _load_lib_settings()
     s['mdblist_selected_lists'] = list_ids
+    _save_lib_settings(s)
+
+def get_selected_punchplay_lists():
+    s = _load_lib_settings()
+    return s.get('punchplay_selected_lists', [])
+
+def save_selected_punchplay_lists(list_ids):
+    s = _load_lib_settings()
+    s['punchplay_selected_lists'] = list_ids
+    _save_lib_settings(s)
+
+def get_selected_simkl_lists():
+    s = _load_lib_settings()
+    return s.get('simkl_selected_lists', [])
+
+def save_selected_simkl_lists(list_ids):
+    s = _load_lib_settings()
+    s['simkl_selected_lists'] = list_ids
     _save_lib_settings(s)
 
 # =============================================================================
@@ -796,6 +816,15 @@ def _read_provider_watched():
             c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM simkl_watched_episodes ORDER BY tmdb_id")
             watched_eps = [dict(r) for r in c.fetchall()]
             conn.close()
+        elif _prov == 'punchplay':
+            from resources.lib import punchplay_sync as _ps
+            conn = _ps.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM punchplay_watched_movies")
+            watched_movies = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM punchplay_watched_episodes ORDER BY tmdb_id")
+            watched_eps = [dict(r) for r in c.fetchall()]
+            conn.close()
         else:
             from resources.lib import trakt_sync as _ts
             conn = _ts.get_connection()
@@ -1066,7 +1095,7 @@ def _sync_kodi_watched_to_addon():
     import json as _json
     import threading
     import traceback
-    from resources.lib.watched_provider import is_mdblist, is_simkl
+    from resources.lib.watched_provider import is_mdblist, is_simkl, is_punchplay
     log('Reverse syncing Kodi watched status to addon DB...')
 
     # Ultimul sync timestamp (0 = first ever sync → skip server sync)
@@ -1088,6 +1117,11 @@ def _sync_kodi_watched_to_addon():
         provider_sync_ran = bool(get_sync_meta('last_sync'))
         if not provider_sync_ran:
             log('Reverse sync: Simkl provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
+    elif is_punchplay():
+        from resources.lib.punchplay_sync import get_sync_meta
+        provider_sync_ran = bool(get_sync_meta('last_sync'))
+        if not provider_sync_ran:
+            log('Reverse sync: PunchPlay provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
     else:
         from resources.lib.trakt_sync import get_local_last_sync
         _tl = get_local_last_sync()
@@ -1103,6 +1137,9 @@ def _sync_kodi_watched_to_addon():
         elif is_simkl():
             from resources.lib import simkl_sync as _ss
             conn = _ss.get_connection()
+        elif is_punchplay():
+            from resources.lib import punchplay_sync as _ps
+            conn = _ps.get_connection()
         else:
             from resources.lib import trakt_sync as _ts
             conn = _ts.get_connection()
@@ -1110,8 +1147,8 @@ def _sync_kodi_watched_to_addon():
     except Exception as e:
         log(f'Reverse sync connection error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
         return
-    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else ('simkl_watched_movies' if is_simkl() else 'trakt_watched_movies')
-    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else ('simkl_watched_episodes' if is_simkl() else 'trakt_watched_episodes')
+    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else ('simkl_watched_movies' if is_simkl() else ('punchplay_watched_movies' if is_punchplay() else 'trakt_watched_movies'))
+    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else ('simkl_watched_episodes' if is_simkl() else ('punchplay_watched_episodes' if is_punchplay() else 'trakt_watched_episodes'))
     trakt_movies = []
     trakt_eps = []
     try:
@@ -1219,7 +1256,7 @@ def _parse_lastplayed(lp_str):
 
 def _sync_to_server(movies, episodes):
     """Sync items to the active watched provider server (background thread)."""
-    from resources.lib.watched_provider import is_mdblist, is_simkl
+    from resources.lib.watched_provider import is_mdblist, is_simkl, is_punchplay
     if is_mdblist():
         from resources.lib.mdblist_api import MDBListAPI
         log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to MDBList...')
@@ -1258,6 +1295,25 @@ def _sync_to_server(movies, episodes):
             except Exception as e:
                 log(f'Simkl sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
         log('Simkl sync done')
+    elif is_punchplay():
+        from resources.lib.punchplay_api import PunchplayAPI
+        log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to PunchPlay...')
+        try:
+            api = PunchplayAPI()
+        except Exception as e:
+            log(f'PunchPlay API init error: {e}', xbmc.LOGWARNING)
+            return
+        for tid in movies:
+            try:
+                api.mark_watched('movie', tid)
+            except Exception as e:
+                log(f'PunchPlay sync error for movie {tid}: {e}', xbmc.LOGWARNING)
+        for tid, season, episode in episodes:
+            try:
+                api.mark_watched('episode', tid, season, episode)
+            except Exception as e:
+                log(f'PunchPlay sync error for episode {tid} S{season}E{episode}: {e}', xbmc.LOGWARNING)
+        log('PunchPlay sync done')
     else:
         from resources.lib.trakt_sync import sync_single_watched_to_trakt
         log(f'Syncing {len(movies)} movies and {len(episodes)} episodes to Trakt...')
@@ -1334,7 +1390,9 @@ def _do_sync(dest, pbg):
     tmdb_selected = get_selected_tmdb_lists()
     trakt_selected = get_selected_trakt_lists()
     mdblist_selected = get_selected_mdblist_lists()
-    all_selected = tmdb_selected + trakt_selected + mdblist_selected
+    punchplay_selected = get_selected_punchplay_lists()
+    simkl_selected = get_selected_simkl_lists()
+    all_selected = tmdb_selected + trakt_selected + mdblist_selected + punchplay_selected + simkl_selected
     if not all_selected:
         pbg.update(0, '', 'No lists selected — use Select Lists to Export first')
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
@@ -1384,6 +1442,44 @@ def _do_sync(dest, pbg):
         elif sid == '_mdb_fav_tv':
             pbg.update(pct, 'MDB Favorites TV', '')
             _export_mdblist_favorites(dest, pbg, 'MDB Favorites TV', 'tv')
+        # PunchPlay built-in
+        elif sid == '_pp_wl_movies':
+            pbg.update(pct, 'PunchPlay Watchlist Movies', '')
+            _export_punchplay_watchlist_movies(dest, pbg, 'PunchPlay Watchlist Movies')
+        elif sid == '_pp_wl_tv':
+            pbg.update(pct, 'PunchPlay Watchlist TV', '')
+            _export_punchplay_watchlist_tv(dest, pbg, 'PunchPlay Watchlist TV')
+        elif sid == '_pp_fav_movies':
+            pbg.update(pct, 'PunchPlay Favorites Movies', '')
+            _export_punchplay_favorites_movies(dest, pbg, 'PunchPlay Favorites Movies')
+        elif sid == '_pp_fav_tv':
+            pbg.update(pct, 'PunchPlay Favorites TV', '')
+            _export_punchplay_favorites_tv(dest, pbg, 'PunchPlay Favorites TV')
+        elif sid == '_pp_collection':
+            pbg.update(pct, 'PunchPlay Collection', '')
+            _export_punchplay_collection(dest, pbg, 'PunchPlay Collection')
+        # Simkl built-in
+        elif sid == '_sk_wl_movies':
+            pbg.update(pct, 'Simkl Watchlist Movies', '')
+            _export_simkl_watchlist_movies(dest, pbg, 'Simkl Watchlist Movies')
+        elif sid == '_sk_wl_tv':
+            pbg.update(pct, 'Simkl Watchlist TV', '')
+            _export_simkl_watchlist_tv(dest, pbg, 'Simkl Watchlist TV')
+        # PunchPlay custom lists
+        elif sid.startswith('_pp_list_'):
+            pp_list_id = sid[len('_pp_list_'):]
+            pp_name = f'List {pp_list_id}'
+            try:
+                from resources.lib.punchplay_api import PunchplayAPI
+                _pp_data = PunchplayAPI().get_lists(limit=100) or {}
+                for _lst in _pp_data.get('items') or []:
+                    if str(_lst.get('id', '')) == pp_list_id:
+                        pp_name = _lst.get('name', pp_name)
+                        break
+            except Exception:
+                pass
+            pbg.update(pct, pp_name, '')
+            _export_punchplay_custom_list(dest, pp_list_id, pp_name, pbg, pp_name)
         # MDBList custom lists
         elif sid.startswith('_mdb_list_'):
             mdb_list_id = sid[len('_mdb_list_'):]
@@ -1814,6 +1910,209 @@ def _export_mdblist_custom_list(dest, list_id, list_name, pbg, hdg):
                     pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
     _prune_list_folder(base, _extract_tmdb_ids(items, 'mdblist'))
 
+
+def _pp_norm_media(media_type):
+    return 'movie' if str(media_type or '').lower() == 'movie' else 'tv'
+
+
+def _pp_enrich_title_year(tmdb_id, media_type):
+    mt = 'movie' if media_type == 'movie' else 'tv'
+    try:
+        from resources.lib.tmdb_api import _get_cached_details
+        d = _get_cached_details(str(tmdb_id), mt) or {}
+        title = d.get('title' if mt == 'movie' else 'name') or ''
+        year = str(d.get('release_date') or d.get('first_air_date') or '')[:4]
+        if title:
+            return title, year
+    except Exception:
+        pass
+    try:
+        from resources.lib.tmdb_api import get_tmdb_item_details
+        d = get_tmdb_item_details(str(tmdb_id), mt, lightweight=True) or {}
+        title = d.get('title' if mt == 'movie' else 'name') or ''
+        year = str(d.get('release_date') or d.get('first_air_date') or '')[:4]
+        if title:
+            return title, year
+    except Exception:
+        pass
+    return '', ''
+
+
+def _pp_export_movies(rows, base, pbg, hdg):
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        tid = str(r.get('tmdb_id') or '')
+        if not tid or tid == 'None':
+            continue
+        title = r.get('title') or ''
+        year = str(r.get('year') or '')
+        if not title:
+            title, year = _pp_enrich_title_year(tid, 'movie')
+        if tid and title:
+            result = export_movie(base, tid, title, year)
+            if result == STATUS_OK:
+                pbg.update(-1, hdg, f'Added: {title} ({year})')
+            elif result == STATUS_SKIP:
+                pbg.update(-1, hdg, f'Already in library: {title} ({year})')
+
+
+def _pp_export_shows(tids, base, pbg, hdg):
+    for tid in tids or []:
+        tid = str(tid or '')
+        if not tid or tid == 'None':
+            continue
+        try:
+            show_data = get_tvshow_seasons_episodes(tid)
+        except Exception:
+            continue
+        if not show_data or len(show_data) != 3:
+            continue
+        stitle, syear, seasons = show_data
+        if tid and stitle and seasons:
+            result = export_tvshow(base, tid, stitle, syear, seasons)
+            if result == STATUS_OK:
+                pbg.update(-1, hdg, f'Updated: {stitle} ({syear})')
+            elif result == STATUS_SKIP:
+                pbg.update(-1, hdg, f'Already in library: {stitle} ({syear})')
+
+
+def _pp_split(rows):
+    movies, shows = [], []
+    for r in rows or []:
+        if not isinstance(r, dict):
+            continue
+        (movies if _pp_norm_media(r.get('media_type')) == 'movie' else shows).append(r)
+    return movies, shows
+
+
+def _export_punchplay_watchlist_movies(dest, pbg, hdg):
+    base = os.path.join(dest, 'PunchPlay Lists', 'PunchPlay Watchlist Movies').replace('\\', '/')
+    try:
+        from resources.lib.punchplay_sync import get_watchlist_local
+        rows = [r for r in (get_watchlist_local() or []) if _pp_norm_media(r.get('media_type')) == 'movie']
+    except Exception:
+        rows = []
+    _pp_export_movies(rows, base, pbg, hdg)
+    _prune_list_folder(base, _extract_tmdb_ids(rows, None))
+
+
+def _export_punchplay_watchlist_tv(dest, pbg, hdg):
+    base = os.path.join(dest, 'PunchPlay Lists', 'PunchPlay Watchlist TV').replace('\\', '/')
+    try:
+        from resources.lib.punchplay_sync import get_watchlist_local
+        tids = [str(r.get('tmdb_id') or '') for r in (get_watchlist_local() or [])
+                if _pp_norm_media(r.get('media_type')) != 'movie']
+    except Exception:
+        tids = []
+    _pp_export_shows(tids, base, pbg, hdg)
+    _prune_list_folder(base, set(tids))
+
+
+def _export_punchplay_favorites_movies(dest, pbg, hdg):
+    base = os.path.join(dest, 'PunchPlay Lists', 'PunchPlay Favorites Movies').replace('\\', '/')
+    try:
+        from resources.lib.punchplay_sync import get_connection, DB_PATH
+        import os as _os
+        rows = []
+        if _os.path.exists(DB_PATH):
+            conn = get_connection()
+            for r in conn.execute("SELECT tmdb_id, media_type, title FROM punchplay_favourites WHERE media_type='movie'").fetchall():
+                rows.append({'tmdb_id': str(r[0]), 'title': r[2] or '', 'year': '', 'media_type': 'movie'})
+            conn.close()
+    except Exception:
+        rows = []
+    _pp_export_movies(rows, base, pbg, hdg)
+    _prune_list_folder(base, _extract_tmdb_ids(rows, None))
+
+
+def _export_punchplay_favorites_tv(dest, pbg, hdg):
+    base = os.path.join(dest, 'PunchPlay Lists', 'PunchPlay Favorites TV').replace('\\', '/')
+    try:
+        from resources.lib.punchplay_sync import get_connection, DB_PATH
+        import os as _os
+        tids = []
+        if _os.path.exists(DB_PATH):
+            conn = get_connection()
+            for r in conn.execute("SELECT tmdb_id FROM punchplay_favourites WHERE media_type IN ('tv','show','anime')").fetchall():
+                tids.append(str(r[0]))
+            conn.close()
+    except Exception:
+        tids = []
+    _pp_export_shows(tids, base, pbg, hdg)
+    _prune_list_folder(base, set(tids))
+
+
+def _export_punchplay_collection(dest, pbg, hdg):
+    base = os.path.join(dest, 'PunchPlay Lists', 'PunchPlay Collection').replace('\\', '/')
+    try:
+        from resources.lib.punchplay_sync import get_collection_local
+        rows = get_collection_local() or []
+    except Exception:
+        rows = []
+    movies, shows = _pp_split(rows)
+    _pp_export_movies(movies, base, pbg, hdg)
+    _pp_export_shows([r.get('tmdb_id') for r in shows], base, pbg, hdg)
+    _prune_list_folder(base, _extract_tmdb_ids(rows, None))
+
+
+def _export_punchplay_custom_list(dest, list_id, list_name, pbg, hdg):
+    try:
+        from resources.lib.punchplay import _fetch_all_list_items
+        rows = _fetch_all_list_items(list_id) or []
+    except Exception:
+        rows = []
+    safe_name = _validify_filename(list_name)
+    base = os.path.join(dest, 'PunchPlay Lists', safe_name).replace('\\', '/')
+    movies, shows = _pp_split(rows)
+    _pp_export_movies(movies, base, pbg, hdg)
+    _pp_export_shows([r.get('tmdb_id') for r in shows], base, pbg, hdg)
+    _prune_list_folder(base, _extract_tmdb_ids(rows, None))
+
+# =============================================================================
+# SIMKL EXPORT (mirror simkl_watchlist: plantowatch / watching)
+# =============================================================================
+def _sk_status_rows(status, media):
+    try:
+        from resources.lib.simkl_sync import get_watchlist_local
+        rows = []
+        for r in (get_watchlist_local(status) or []):
+            if not isinstance(r, dict):
+                continue
+            mt = str(r.get('media_type') or '').lower()
+            if media == 'movie' and mt != 'movie':
+                continue
+            if media != 'movie' and mt not in ('tv', 'show', 'anime'):
+                continue
+            tid = str(r.get('tmdb_id') or '')
+            if not tid or tid == 'None':
+                continue
+            rows.append({'tmdb_id': tid, 'title': r.get('title') or '', 'year': str(r.get('year') or ''),
+                         'media_type': 'movie' if media == 'movie' else 'tv'})
+        return rows
+    except Exception:
+        return []
+
+
+def _export_simkl_watchlist_movies(dest, pbg, hdg):
+    base = os.path.join(dest, 'Simkl Lists', 'Simkl Watchlist Movies').replace('\\', '/')
+    rows = _sk_status_rows('plantowatch', 'movie') + _sk_status_rows('watching', 'movie')
+    _pp_export_movies(rows, base, pbg, hdg)
+    _prune_list_folder(base, _extract_tmdb_ids(rows, None))
+
+
+def _export_simkl_watchlist_tv(dest, pbg, hdg):
+    base = os.path.join(dest, 'Simkl Lists', 'Simkl Watchlist TV').replace('\\', '/')
+    rows = _sk_status_rows('plantowatch', 'show') + _sk_status_rows('watching', 'show')
+    seen, tids = set(), []
+    for r in rows:
+        tid = str(r.get('tmdb_id') or '')
+        if tid and tid != 'None' and tid not in seen:
+            seen.add(tid)
+            tids.append(tid)
+    _pp_export_shows(tids, base, pbg, hdg)
+    _prune_list_folder(base, set(tids))
+
 # =============================================================================
 # LIBRARY CHECK / REMOVE (for dynamic context menu)
 # =============================================================================
@@ -1942,6 +2241,32 @@ _MDB_BUILTIN_MAP = {
     '_mdb_fav_tv': ('favorites', 'show'),
 }
 
+PP_BUILTIN_LISTS = [
+    ('_pp_wl_movies', 'PunchPlay Watchlist Movies', 0),
+    ('_pp_wl_tv', 'PunchPlay Watchlist TV', 0),
+    ('_pp_fav_movies', 'PunchPlay Favorites Movies', 0),
+    ('_pp_fav_tv', 'PunchPlay Favorites TV', 0),
+    ('_pp_collection', 'PunchPlay Collection', 0),
+]
+
+_PP_BUILTIN_MAP = {
+    '_pp_wl_movies': ('watchlist', 'movie'),
+    '_pp_wl_tv': ('watchlist', 'show'),
+    '_pp_fav_movies': ('favorites', 'movie'),
+    '_pp_fav_tv': ('favorites', 'show'),
+    '_pp_collection': ('collection', 'mixed'),
+}
+
+SIMKL_BUILTIN_LISTS = [
+    ('_sk_wl_movies', 'Simkl Watchlist Movies', 0),
+    ('_sk_wl_tv', 'Simkl Watchlist TV', 0),
+]
+
+_SIMKL_BUILTIN_MAP = {
+    '_sk_wl_movies': ('watchlist', 'movie'),
+    '_sk_wl_tv': ('watchlist', 'show'),
+}
+
 
 def _tmdb_builtin_count(ltype, media_type):
     """Nr. titluri pentru listele built-in TMDb (watchlist/favorites).
@@ -2027,6 +2352,53 @@ def _mdblist_builtin_count(ltype, media_type):
     except Exception:
         return 0
 
+def _pp_builtin_count(ltype, media_type):
+    """Nr. titluri pentru listele built-in PunchPlay, din mirror-ul local.
+    watchlist -> punchplay_watchlist; favorites -> punchplay_favourites;
+    collection -> punchplay_collection (mixt, fara split pe media)."""
+    if ltype == 'watchlist':
+        table, col = 'punchplay_watchlist', 'media_type'
+    elif ltype == 'favorites':
+        table, col = 'punchplay_favourites', 'media_type'
+    else:
+        table, col = 'punchplay_collection', 'media_type'
+    try:
+        from resources.lib.punchplay_sync import get_connection, DB_PATH
+        import os
+        if not os.path.exists(DB_PATH):
+            return 0
+        conn = get_connection()
+        if ltype == 'collection' or media_type == 'mixed':
+            n = int(conn.execute("SELECT COUNT(*) FROM %s" % table).fetchone()[0] or 0)
+        elif media_type == 'movie':
+            n = int(conn.execute("SELECT COUNT(*) FROM %s WHERE %s='movie'" % (table, col)).fetchone()[0] or 0)
+        else:
+            n = int(conn.execute("SELECT COUNT(*) FROM %s WHERE %s IN ('tv','show','anime')" % (table, col)).fetchone()[0] or 0)
+        conn.close()
+        return n
+    except Exception:
+        return 0
+
+def _simkl_builtin_count(ltype, media_type):
+    """Nr. titluri pentru listele Simkl, din mirror-ul local simkl_watchlist.
+    Watchlist = statusurile plantowatch + watching (completed e history)."""
+    try:
+        from resources.lib.simkl_sync import get_connection, DB_PATH
+        import os
+        if not os.path.exists(DB_PATH):
+            return 0
+        conn = get_connection()
+        if media_type == 'movie':
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM simkl_watchlist WHERE status IN ('plantowatch','watching') AND media_type='movie'").fetchone()[0] or 0)
+        else:
+            n = int(conn.execute(
+                "SELECT COUNT(*) FROM simkl_watchlist WHERE status IN ('plantowatch','watching') AND media_type IN ('tv','show','anime')").fetchone()[0] or 0)
+        conn.close()
+        return n
+    except Exception:
+        return 0
+
 def select_tmdb_lists_dialog():
     lists = get_tmdb_account_lists()
     trakt_lists = _get_trakt_user_lists()
@@ -2034,6 +2406,12 @@ def select_tmdb_lists_dialog():
     tmdb_selected = set(get_selected_tmdb_lists())
     trakt_selected = set(get_selected_trakt_lists())
     mdblist_selected = set(get_selected_mdblist_lists())
+    punchplay_selected = set(get_selected_punchplay_lists())
+    simkl_selected = set(get_selected_simkl_lists())
+    try:
+        simkl_selected = {s for s in simkl_selected if s in _SIMKL_BUILTIN_MAP}
+    except Exception:
+        pass
 
     def _build_separator(label, color='FF00CED1'):
         li = xbmcgui.ListItem(f"[B][COLOR {color}]───── {label} ─────[/COLOR][/B]")
@@ -2140,6 +2518,84 @@ def select_tmdb_lists_dialog():
             items.append(li)
             item_data.append(None)
 
+        # ── PunchPlay section ──
+        items.append(_build_separator('PunchPlay', 'FFFF6600'))
+        item_data.append(None)
+
+        pp_authed = False
+        pp_lists = []
+        try:
+            from resources.lib.punchplay_api import PunchplayAPI
+            pp_authed = PunchplayAPI().is_authenticated()
+            if pp_authed:
+                data = PunchplayAPI().get_lists(limit=100) or {}
+                for lst in data.get('items') or []:
+                    if not isinstance(lst, dict) or lst.get('isWatchlist') or lst.get('isDynamicList'):
+                        continue
+                    try:
+                        lid = int(lst.get('id') or 0)
+                    except:
+                        continue
+                    if lid:
+                        pp_lists.append({'id': lid, 'name': lst.get('name') or f'List {lid}',
+                                         'item_count': int(lst.get('itemCount') or 0)})
+        except Exception:
+            pass
+
+        if pp_authed:
+            for sid, label, _ in PP_BUILTIN_LISTS:
+                styled = f"[B]{label}[/B]" if sid not in punchplay_selected else f"[B][COLOR FFFF6600]{label}[/COLOR][/B]"
+                li = xbmcgui.ListItem(styled)
+                _m = _PP_BUILTIN_MAP.get(sid)
+                if _m:
+                    li.setLabel2(f"[B][COLOR yellow]{_pp_builtin_count(_m[0], _m[1])}[/COLOR][/B] items")
+                li.setArt({'thumb': PP_ICON, 'icon': PP_ICON, 'poster': PP_ICON})
+                items.append(li)
+                item_data.append((sid, 'punchplay'))
+
+            for lst in pp_lists:
+                lid = str(lst.get('id', ''))
+                name = lst.get('name', f'List {lid}')
+                sid = f'_pp_list_{lid}'
+                styled = f"[B]{name}[/B]" if sid not in punchplay_selected else f"[B][COLOR FFFF6600]{name}[/COLOR][/B]"
+                li = xbmcgui.ListItem(styled)
+                li.setLabel2(f"[B][COLOR yellow]{lst.get('item_count', 0)}[/COLOR][/B] items")
+                li.setArt({'thumb': PP_ICON, 'icon': PP_ICON, 'poster': PP_ICON})
+                items.append(li)
+                item_data.append((sid, 'punchplay'))
+        else:
+            li = xbmcgui.ListItem("[B][COLOR gray]Connect PunchPlay first (Settings -> Accounts)[/COLOR][/B]")
+            li.setLabel2('')
+            items.append(li)
+            item_data.append(None)
+
+        # ── Simkl section ──
+        items.append(_build_separator('Simkl', 'mediumpurple'))
+        item_data.append(None)
+
+        sk_authed = False
+        try:
+            from resources.lib.simkl_api import SIMKLAPI
+            sk_authed = SIMKLAPI().is_authenticated()
+        except Exception:
+            pass
+
+        if sk_authed:
+            for sid, label, _ in SIMKL_BUILTIN_LISTS:
+                styled = f"[B]{label}[/B]" if sid not in simkl_selected else f"[B][COLOR mediumpurple]{label}[/COLOR][/B]"
+                li = xbmcgui.ListItem(styled)
+                _m = _SIMKL_BUILTIN_MAP.get(sid)
+                if _m:
+                    li.setLabel2(f"[B][COLOR yellow]{_simkl_builtin_count(_m[0], _m[1])}[/COLOR][/B] items")
+                li.setArt({'thumb': SIMKL_ICON, 'icon': SIMKL_ICON, 'poster': SIMKL_ICON})
+                items.append(li)
+                item_data.append((sid, 'simkl'))
+        else:
+            li = xbmcgui.ListItem("[B][COLOR gray]Connect Simkl first (Settings -> Accounts)[/COLOR][/B]")
+            li.setLabel2('')
+            items.append(li)
+            item_data.append(None)
+
         return items, item_data
 
     dialog = xbmcgui.Dialog()
@@ -2164,6 +2620,16 @@ def select_tmdb_lists_dialog():
                 mdblist_selected.discard(sid)
             else:
                 mdblist_selected.add(sid)
+        elif source == 'punchplay':
+            if sid in punchplay_selected:
+                punchplay_selected.discard(sid)
+            else:
+                punchplay_selected.add(sid)
+        elif source == 'simkl':
+            if sid in simkl_selected:
+                simkl_selected.discard(sid)
+            else:
+                simkl_selected.add(sid)
         else:
             if sid in trakt_selected:
                 trakt_selected.discard(sid)
@@ -2174,9 +2640,11 @@ def select_tmdb_lists_dialog():
     s['tmdb_selected_lists'] = list(tmdb_selected)
     s['trakt_selected_lists'] = list(trakt_selected)
     s['mdblist_selected_lists'] = list(mdblist_selected)
+    s['punchplay_selected_lists'] = list(punchplay_selected)
+    s['simkl_selected_lists'] = list(simkl_selected)
     _save_lib_settings(s)
 
-    total = len(tmdb_selected) + len(trakt_selected) + len(mdblist_selected)
+    total = len(tmdb_selected) + len(trakt_selected) + len(mdblist_selected) + len(punchplay_selected) + len(simkl_selected)
     if total:
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                        f'[B][COLOR yellow]{total} list(s)[/COLOR][/B] selected',

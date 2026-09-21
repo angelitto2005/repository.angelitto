@@ -16,10 +16,10 @@ import xbmc
 import xbmcgui
 import xbmc
 
-from resources.lib.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE
+from resources.lib.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE, provider_title, provider_icon
 
 DB_PATH = os.path.join(ADDON_DATA_DIR, 'mdblist_sync.db')
-MDBLIST_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
+MDBLIST_ICON = provider_icon('mdblist')
 
 _MONITOR = None
 def _abort_requested():
@@ -495,8 +495,8 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         pass
 
     if notify:
-        msg = f'[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]'
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', msg, MDBLIST_ICON, 3000, False)
+        msg = f'[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on ' + provider_title('mdblist')
+        xbmcgui.Dialog().notification(provider_title('mdblist'), msg, MDBLIST_ICON, 3000, False)
 
     if sync_mdblist:
         threading.Thread(target=_sync_single_watched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -628,9 +628,9 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except:
         pass
 
-    msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]'
+    msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on ' + provider_title('mdblist')
     if notify:
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', msg, MDBLIST_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), msg, MDBLIST_ICON, 3000, False)
 
     if sync_mdblist:
         threading.Thread(target=_sync_single_unwatched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -671,6 +671,11 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
 
     def _trigger_ui_refresh():
         try:
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
             import xbmc
             import xbmcgui
             import time
@@ -828,7 +833,7 @@ def sync_full_library(silent=False, force=False):
     sync_lock = window.getProperty(SYNC_LOCK_KEY)
     if sync_lock == 'true':
         if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Sync already in progress', MDBLIST_ICON, 2000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), 'Sync already in progress', MDBLIST_ICON, 2000, False)
         return
 
     window.setProperty(SYNC_LOCK_KEY, 'true')
@@ -978,7 +983,7 @@ def sync_full_library(silent=False, force=False):
             except: pass
 
             if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Sync complete!', MDBLIST_ICON, 3000, False)
+                xbmcgui.Dialog().notification(provider_title('mdblist'), 'Sync complete!', MDBLIST_ICON, 3000, False)
             xbmc.log('[MDBList SYNC] === SYNC COMPLETE ===', xbmc.LOGINFO)
         except Exception as e:
             xbmc.log(f'[MDBList] Sync error: {e}', xbmc.LOGERROR)
@@ -1640,6 +1645,19 @@ def drop_show(tmdb_id, title=''):
         from resources.lib.mdblist_api import MDBListAPI
         if MDBListAPI().mark_dropped(tmdb_id):
             drop_add_local(tmdb_id, title)
+            try:
+                conn = get_connection()
+                c = conn.cursor()
+                _db_exec_retry(c, "DELETE FROM mdblist_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+                _db_commit_retry(conn)
+                conn.close()
+            except:
+                pass
+            try:
+                from resources.lib.cache import clear_all_fast_cache
+                clear_all_fast_cache()
+            except:
+                pass
             return True
     except Exception as e:
         xbmc.log(f'[MDBList] drop_show error: {e}', xbmc.LOGERROR)
@@ -1654,6 +1672,10 @@ def restore_show(tmdb_id):
         if MDBListAPI().unmark_dropped(tmdb_id):
             drop_remove_local(tmdb_id)
             clear_cached('dropped')
+            try:
+                threading.Thread(target=refresh_next_episode_mdblist, args=(str(tmdb_id),), daemon=True).start()
+            except:
+                pass
             return True
     except Exception as e:
         xbmc.log(f'[MDBList] restore_show error: {e}', xbmc.LOGERROR)
@@ -1677,95 +1699,6 @@ def get_dropped_local():
     finally:
         conn.close()
     return [{'tmdb_id': r[0], 'dropped_at': r[1], 'title': r[2] or ''} for r in rows]
-
-def import_dropped_from_trakt(silent=False):
-    """Importa (copy) dropped-urile din Trakt (trakt_hidden_shows) in MDBList.
-    Returneaza (imported, skipped)."""
-    try:
-        init_database()
-    except Exception as e:
-        xbmc.log(f'[MDBList] import init_database error: {e}', xbmc.LOGERROR)
-    try:
-        from resources.lib import trakt_sync
-        if not os.path.exists(trakt_sync.DB_PATH):
-            if not silent:
-                xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Connect Trakt first (no Trakt sync data found)', MDBLIST_ICON, 3000, False)
-            return 0, 0
-        tconn = trakt_sync.get_connection()
-        try:
-            trows = tconn.execute("SELECT tmdb_id FROM trakt_hidden_shows").fetchall()
-        finally:
-            tconn.close()
-        trakt_ids = [str(r[0]) for r in trows if r[0]]
-    except Exception as e:
-        xbmc.log(f'[MDBList] import_dropped_from_trakt read error: {e}', xbmc.LOGERROR)
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Could not read Trakt dropped list', MDBLIST_ICON, 3000, False)
-        return 0, 0
-
-    if not trakt_ids:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'No dropped shows found on Trakt', MDBLIST_ICON, 3000, False)
-        return 0, 0
-
-    existing = set()
-    if os.path.exists(DB_PATH):
-        conn = get_connection()
-        try:
-            for r in conn.execute("SELECT tmdb_id FROM mdblist_dropped").fetchall():
-                existing.add(str(r[0]))
-        finally:
-            conn.close()
-
-    pending = [tid for tid in trakt_ids if tid not in existing]
-
-    if not pending:
-        if not silent:
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Nothing to import - all dropped shows already on MDBList', MDBLIST_ICON, 3000, False)
-        return 0, len(trakt_ids)
-
-    from resources.lib.mdblist_api import MDBListAPI
-    api = MDBListAPI()
-
-    p_dialog = None
-    if not silent:
-        p_dialog = xbmcgui.DialogProgressBG()
-        p_dialog.create('[B][COLOR lightskyblue]MDBList Import[/COLOR][/B]', f'Importing dropped: 0 / {len(pending)}')
-
-    imported = 0
-    try:
-        for i, tid in enumerate(pending):
-            if _abort_requested():
-                break
-            if p_dialog:
-                p_dialog.update(int((i + 1) * 100 / len(pending)),
-                                '[B][COLOR lightskyblue]MDBList Import[/COLOR][/B]',
-                                f'Importing dropped: {i + 1} / {len(pending)}')
-            try:
-                if api.mark_dropped(tid):
-                    drop_add_local(tid)
-                    imported += 1
-            except Exception as e:
-                xbmc.log(f'[MDBList] import dropped {tid} error: {e}', xbmc.LOGERROR)
-            if _abort_requested():
-                break
-            xbmc.sleep(1000)
-    finally:
-        if p_dialog:
-            p_dialog.close()
-
-    # Re-pull de pe server: umple titlurile reale (importul salveaza doar tmdb_id)
-    if imported > 0 and not _abort_requested():
-        try:
-            _sync_dropped(api)
-        except Exception as e:
-            xbmc.log(f'[MDBList] import dropped re-pull error: {e}', xbmc.LOGERROR)
-
-    skipped = len(pending) - imported
-    if not silent:
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-                                      f'Dropped imported: [B][COLOR FF6AFB92]{imported}[/COLOR][/B], failed: {skipped}', MDBLIST_ICON, 4000, False)
-    return imported, skipped
 
 def get_watched_movie_count():
     if not os.path.exists(DB_PATH):

@@ -19,9 +19,9 @@ import xbmc
 import xbmcgui
 import requests
 
-from resources.lib.config import SIMKL_API_URL, SIMKL_CLIENT_ID, ADDON, ADDON_PATH
+from resources.lib.config import SIMKL_API_URL, SIMKL_CLIENT_ID, ADDON, ADDON_PATH, provider_title, provider_icon, provider_color
 
-SIMKL_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png')
+SIMKL_ICON = provider_icon('simkl')
 
 APP_NAME = 'TMDbMovies'
 APP_VERSION = '1.0'
@@ -477,7 +477,7 @@ def simkl_auth():
     client_id = SIMKL_CLIENT_ID
     if not client_id:
         xbmcgui.Dialog().ok(
-            '[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+            provider_title('simkl'),
             'No Simkl Client ID configured.',
             'Go to [B]simkl.com/settings/developer/[/B] and register an app.',
             'Then set [B]SIMKL_CLIENT_ID[/B] in [B]config.py[/B].'
@@ -487,7 +487,7 @@ def simkl_auth():
     api = SIMKLAPI()
     pin_data = api.auth_get_pin()
     if not pin_data or pin_data.get('result') != 'OK':
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('simkl'),
                                        'Failed to get PIN. Check log.',
                                        SIMKL_ICON, 5000, False)
         return
@@ -565,7 +565,7 @@ def simkl_auth():
             pass
         status = f'Connected: {username}' if username else 'Connected'
         ADDON.setSetting('simkl_status', status)
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('simkl'),
                                        f'Connected as [B][COLOR red]{username}[/COLOR][/B]' if username else 'Connected!',
                                        SIMKL_ICON, 4000, False)
         threading.Thread(target=_sync_full_library_background, daemon=True).start()
@@ -573,13 +573,13 @@ def simkl_auth():
         return
 
     if _result.get('denied'):
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('simkl'),
                                        'Authorization expired. Try again.',
                                        SIMKL_ICON, 4000, False)
         return
 
     if dialog.expired:
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('simkl'),
                                        'Authorization expired. Try again.',
                                        SIMKL_ICON, 4000, False)
 
@@ -590,7 +590,7 @@ def _sync_full_library_background():
 
 
 def simkl_revoke():
-    if not xbmcgui.Dialog().yesno("[B][COLOR mediumpurple]Disconnect Simkl[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR mediumpurple]Simkl[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno(provider_title('simkl', name='Disconnect Simkl'), f"Are you sure you want to disconnect from [B][COLOR {provider_color('simkl')}]Simkl[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     from resources.lib import simkl_sync
     api = SIMKLAPI()
@@ -598,12 +598,17 @@ def simkl_revoke():
         api.revoke_token()
     ADDON.setSetting('simkl_status', 'Disconnected')
     try:
+        from resources.lib.watched_provider import ensure_active_provider
+        ensure_active_provider()
+    except:
+        pass
+    try:
         simkl_sync.clear_all_local_data()
     except:
         pass
     from resources.lib.watched_provider import _invalidate_fast_cache
     _invalidate_fast_cache()
-    xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+    xbmcgui.Dialog().notification(provider_title('simkl'),
                                    'Disconnected.',
                                    SIMKL_ICON, 3000, False)
     xbmc.executebuiltin('Container.Refresh')
@@ -611,7 +616,7 @@ def simkl_revoke():
 
 def prompt_simkl_rating(tmdb_id, content_type, season, episode, title):
     if season is not None or episode is not None:
-        xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('simkl'),
                                        'Simkl has no season/episode ratings.',
                                        SIMKL_ICON, 4000, False)
         return

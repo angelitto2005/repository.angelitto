@@ -18,9 +18,9 @@ from resources.lib.config import (
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
     TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy, calendar_localized_label,
-    get_plot_language_code
+    get_plot_language_code, provider_color, provider_icon, provider_title
 )
-from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point
+from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
 from resources.lib import menus
 from resources.lib import trakt_sync
@@ -32,8 +32,8 @@ VIDEO_LANGS = "en,null,xx,ro,hi,ta,te,ml,kn,bn,pa,gu,mr,ur,or,as,es,fr,de,it,ru,
 
 SEARCH_HISTORY_FILE = os.path.join(ADDON.getAddonInfo('profile'), 'search_history.json')
 ADDON_PATH = ADDON.getAddonInfo('path')
-TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
-TMDB_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
+TRAKT_ICON = provider_icon('trakt')
+TMDB_ICON = provider_icon('tmdb')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
@@ -1283,6 +1283,20 @@ def build_tvshow_list(params):
 
 def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False, year='', season=None, episode=None, imdb_id='', ep_name='', premiered=''):
     cm = []
+    # --- SELECT ACTION: daca randul e redirectionat catre Extended Info (setarea
+    # select_ext_info), actiunea veche a selectului (Play / Browse Seasons) se muta
+    # in meniul contextual, ca la POV/Redlight - nu se pierde nimic.
+    if select_ext_info_params(content_type, tmdb_id, season=season, episode=episode, tv_name=title, title=title):
+        if content_type == 'movie':
+            _swap_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year})
+            cm.append(('[B][COLOR FF6AFB92]Play Movie[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+        elif content_type == 'episode' and season is not None and episode is not None:
+            _swap_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name or title, 'tv_show_title': title})
+            cm.append(('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+        elif content_type in ('tv', 'show', 'tvshow'):
+            _swap_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title})
+            cm.append(('[B][COLOR cyan]Browse Seasons[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+    # ------------------------------------------------------------------
     # info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
     # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
     
@@ -1324,6 +1338,13 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if episode: simkl_params_dict['episode'] = episode
     if ADDON.getSetting('show_cm_simkl') != 'false':
         cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(simkl_params_dict)})"))
+
+    # --- PUNCHPLAY: ---
+    pp_params_dict = {'mode': 'punchplay_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
+    if season: pp_params_dict['season'] = season
+    if episode: pp_params_dict['episode'] = episode
+    if ADDON.getSetting('show_cm_punchplay') != 'false':
+        cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(pp_params_dict)})"))
 
     # --- ALL PROVIDERS (batch pe TMDb + Trakt + MDBList — toggle in Settings) ---
     if ADDON.getSetting('all_providers_menu') == 'true':
@@ -1533,7 +1554,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     # --- MODIFICARE: Trimitem imdb_id in context menu ---
     cm = _get_full_context_menu(tmdb_id, 'movie', title, is_in_favorites_view, year=year, imdb_id=imdb_id)
     # ----------------------------------------------------
-    url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
+    url_params = select_ext_info_params('movie', tmdb_id) or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
     
     li = xbmcgui.ListItem(display_title)
     
@@ -1668,7 +1689,8 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     # --- MODIFICARE: Trimitem parametrul year catre _get_full_context_menu ---
     cm = _get_full_context_menu(tmdb_id, 'tv', title, is_in_favorites_view, year=year, imdb_id=imdb_id)
     # -------------------------------------------------------------------------
-    url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title}
+    _sel_info = select_ext_info_params('tv', tmdb_id)
+    url_params = _sel_info or {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title}
     
     li = xbmcgui.ListItem(display_name)
     
@@ -1691,7 +1713,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
         return {
             'url': f"{sys.argv[0]}?{urlencode(url_params)}",
             'li': li,
-            'is_folder': True,
+            'is_folder': not _sel_info,
             'info': info,
             'art': art,  # ACUM TRIMIT TOATE ART-URILE INCLUZAND LOGO!
             'cm_items': cm,
@@ -1699,7 +1721,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
         }
     # ----------------------------------------
 
-    xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, True)
+    xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, not _sel_info)
 
 
 # Optimized get_watched_status_tvshow
@@ -1744,6 +1766,26 @@ def get_watched_status_tvshow(tmdb_id):
                     total_eps = fresh_total
             except:
                 pass
+
+    if not (total_eps and watched_count >= total_eps):
+        try:
+            _mod = watched_provider.get_source_module()
+            _chk = getattr(_mod, 'is_fully_watched_show', None) if _mod else None
+            if callable(_chk) and bool(_chk(str_id)):
+                _t = total_eps or watched_count
+                if not _t:
+                    try:
+                        fresh = get_tmdb_item_details(str_id, 'tv', lightweight=True, skip_localization=True)
+                        _t = int((fresh or {}).get('number_of_episodes') or 0)
+                        if _t:
+                            trakt_sync.set_tv_meta_to_db(str_id, _t)
+                            TV_META_CACHE[str_id] = _t
+                    except:
+                        pass
+                if _t:
+                    return {'watched': _t, 'total': _t}
+        except:
+            pass
 
     return {'watched': watched_count, 'total': total_eps}
 # --------------------------------------------------------------------
@@ -1888,7 +1930,7 @@ def tmdb_auth():
                 'username': username
             })
             ADDON.setSetting('tmdb_status', f"Connected: {username}")
-            dialog.notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
+            dialog.notification(provider_title('tmdb', name='TMDB'), f"Connected: [B][COLOR FFF70D1A]{username}[/COLOR][/B]", TMDB_ICON, 3000, False)
             
             # ----------------------------------------------------------------------------------------------------
             # ADAUGAT: Actualizare automata a listelor (inclusiv seriale v4)
@@ -1942,7 +1984,7 @@ def tmdb_auth_v4():
 
 def tmdb_logout():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]Disconnect TMDb[/COLOR][/B]", "Are you sure you want to disconnect your [B][COLOR FF00CED1]TMDb[/COLOR][/B] account?"):
+    if not xbmcgui.Dialog().yesno(provider_title('tmdb', name='Disconnect TMDb'), f"Are you sure you want to disconnect from [B][COLOR {provider_color('tmdb')}]TMDb[/COLOR][/B]?"):
         return
     # --- END PROTECTIE ---
 
@@ -1964,7 +2006,7 @@ def tmdb_logout():
 
     ADDON.setSetting('tmdb_status', "Disconnected")
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "User Disconnected", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "User Disconnected", TMDB_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 def tmdb_auth_request(path, method='GET', data=None, params=None, v4=False):
@@ -2064,7 +2106,7 @@ def save_tmdb_lists_cache(data):
 def clear_tmdb_lists_cache(params=None):
     if xbmcvfs.exists(TMDB_LISTS_CACHE_FILE):
         xbmcvfs.delete(TMDB_LISTS_CACHE_FILE)
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "List cache cleared", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "List cache cleared", TMDB_ICON, 3000, False)
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -2136,7 +2178,7 @@ def tmdb_account_info():
     """Afiseaza informatii despre contul TMDb + contorizarea listelor din mirror-ul local."""
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDB[/COLOR][/B]', 'Not connected', TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), 'Not connected', TMDB_ICON, 3000, False)
         return
 
     def label(text):
@@ -2242,7 +2284,7 @@ def tmdb_my_lists():
 
     add_directory("[B][COLOR FF00CED1]TMDB Account[/COLOR][/B]", {'mode': 'tmdb_account_info'}, icon='DefaultUser.png', thumb='DefaultUser.png', folder=False)
     add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B][COLOR FF00CED1]My Calendar[/COLOR][/B]", {'mode': 'tmdb_calendar_my'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FF00CED1]TMDB [COLOR yellow]My Calendar[/COLOR][/B]", {'mode': 'tmdb_calendar_my'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]", {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Recommendations[/COLOR][/B]", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
@@ -2617,7 +2659,7 @@ def _render_tmdb_calendar_entries(entries, wnd):
         if is_movie:
             movie_year = str(e['air_date'])[:4] if e['air_date'] else ''
             display_title = f'{show_title} ({movie_year})' if movie_year else show_title
-            display = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+            display = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
         else:
             ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
             display = f'[B][COLOR FF00CED1]{show_title}[/COLOR][/B]'
@@ -2645,45 +2687,19 @@ def _render_tmdb_calendar_entries(entries, wnd):
         if is_movie:
             cm = _get_full_context_menu(tmdb_id, 'movie', show_title)
         else:
-            cm = _get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode'])
-            b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
-            b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
+            cm = calendar_context_menu(_get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode']),
+                                       'episode', tmdb_id, show_title, e['season'], e['episode'],
+                                       base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
         if cm:
             li.addContextMenuItems(cm)
         if is_movie:
-            if diff <= 0:
-                params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': show_title}
-                is_folder = False
-            else:
-                params = {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'movie'}
-                is_folder = False
-        elif diff <= 0:
-            params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(e['season']),
-                      'episode': str(e['episode']), 'title': f"{show_title} S{e['season']:02d}E{e['episode']:02d}",
-                      'tv_show_title': show_title}
-            is_folder = False
+            params, is_folder = calendar_row_click_params('movie', tmdb_id, diff, show_title=show_title, sources_title=show_title)
         else:
-            params = {'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(e['season']), 'tv_show_title': show_title}
-            is_folder = True
-        items_to_add.append((f"{sys.argv[0]}?{urlencode(params)}", li, is_folder))
+            params, is_folder = calendar_row_click_params('episode', tmdb_id, diff, e['season'], e['episode'], show_title)
+        if params:
+            items_to_add.append((f"{sys.argv[0]}?{urlencode(params)}", li, is_folder))
 
-    today_top = wnd['today_top']
-    sort_asc = wnd['sort_asc']
-    if today_top:
-        today_items = [x for x in items_to_add if x[1].getProperty('cal_diff') == '0']
-        other_items = [x for x in items_to_add if x[1].getProperty('cal_diff') != '0']
-        if sort_asc:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
-        items_to_add = today_items + other_items
-    else:
-        if sort_asc:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+    items_to_add = sort_calendar_items(items_to_add, wnd['today_top'], wnd['sort_asc'])
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
@@ -2949,7 +2965,7 @@ def tmdb_favorites(params):
 def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
     m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
     # v4 NU are POST pentru watchlist (404). Endpoint-ul corect e v3:
@@ -2963,7 +2979,7 @@ def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
         d_poster = details.get('poster_path', '')
         d_overview = details.get('overview', '')
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                           f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
                                           TMDB_ICON, 3000, False)
         
@@ -3006,7 +3022,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id, notify=True):
         details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
         d_title = details.get('title') or details.get('name', 'Unknown')
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                           f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Watchlist[/COLOR][/B]",
                                           TMDB_ICON, 3000, False)
         
@@ -3042,7 +3058,7 @@ def remove_from_tmdb_watchlist(content_type, tmdb_id, notify=True):
 def add_to_tmdb_favorites(content_type, tmdb_id, notify=True):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", TMDB_ICON, 3000, False)
         return False
 
     m_type = 'tv' if content_type in ('tv', 'tvshow', 'episode', 'season', 'show') else 'movie'
@@ -3058,7 +3074,7 @@ def add_to_tmdb_favorites(content_type, tmdb_id, notify=True):
         d_poster = details.get('poster_path', '')
         d_overview = details.get('overview', '')
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                           f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
                                           TMDB_ICON, 3000, False)
         
@@ -3094,7 +3110,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id, notify=True):
         details = get_tmdb_item_details(str(tmdb_id), content_type) or {}
         d_title = details.get('title') or details.get('name', 'Unknown')
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                           f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]Favorites[/COLOR][/B]",
                                           TMDB_ICON, 3000, False)
         
@@ -3120,7 +3136,7 @@ def remove_from_tmdb_favorites(content_type, tmdb_id, notify=True):
 def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
     session = get_tmdb_session()
     if not session: 
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", TMDB_ICON, 3000, False)
         return False
 
     success = False
@@ -3146,7 +3162,7 @@ def add_to_tmdb_list(list_id, tmdb_id, content_type='movie'):
             details = get_tmdb_item_details(str(tmdb_id), media_type_normalized) or {}
             d_title = details.get('title') or details.get('name', 'Unknown')
         except: pass
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                       f"[B][COLOR yellow]{d_title}[/COLOR][/B] added to [B][COLOR FF00CED1]{list_name}[/COLOR][/B]",
                                       TMDB_ICON, 3000, False)
         success = True
@@ -3290,7 +3306,7 @@ def remove_from_tmdb_list(list_id, tmdb_id, content_type='movie'):
             d_title = details.get('title') or details.get('name', 'Unknown')
         except:
             d_title = ''
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]",
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'),
                                       f"[B][COLOR yellow]{d_title}[/COLOR][/B] removed from [B][COLOR FF00CED1]{list_name}[/COLOR][/B]",
                                       TMDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
@@ -3317,7 +3333,7 @@ def get_tmdb_user_lists():
 def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return
 
     options = []
@@ -3338,8 +3354,8 @@ def show_tmdb_context_menu(tmdb_id, content_type, title='', season=None, episode
     options.append(('Remove from [B][COLOR FF00CED1]My Lists[/COLOR][/B]', 'remove_from_list'))
 
     if str(content_type).lower() != 'season':
-        options.append(('Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B]', 'rate_item'))
-        options.append(('Remove rating on [B][COLOR FF00CED1]TMDb[/COLOR][/B]', 'remove_rating'))
+        options.append(('Rate on ' + provider_title('tmdb'), 'rate_item'))
+        options.append(('Remove rating on ' + provider_title('tmdb'), 'remove_rating'))
 
     dialog = xbmcgui.Dialog()
     display_options = [opt[0] for opt in options]
@@ -3379,12 +3395,12 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
     import xbmc
     import os
     from resources.lib.config import ADDON
-    
-    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    from resources.lib.config import provider_icon as _prov_icon
+    MDB_ICON = _prov_icon('mdblist')
     
     from resources.lib import mdblist
     if not mdblist.is_authenticated():
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Add your [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key in Settings!", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), "Add your " + provider_title('mdblist') + " API Key in Settings!", MDB_ICON, 3000, False)
         return
 
     if not title:
@@ -3410,24 +3426,24 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
 
     options = []
     if in_watchlist:
-        options.append(('Remove from [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_remove'))
+        options.append(('Remove from [B][COLOR lightskyblue]Watchlist[/COLOR][/B]', 'mdblist_watchlist_remove'))
     else:
-        options.append(('Add to [B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_add'))
-    
+        options.append(('Add to [B][COLOR lightskyblue]Watchlist[/COLOR][/B]', 'mdblist_watchlist_add'))
+
     from resources.lib.mdblist_sync import is_in_collection
     _in_collection = is_in_collection(tmdb_id)
     if _in_collection:
-        options.append(('Remove from [B][COLOR lightskyblue]MDB Favorites[/COLOR][/B]', 'mdblist_remove_collection'))
+        options.append(('Remove from [B][COLOR lightskyblue]Favorites[/COLOR][/B]', 'mdblist_remove_collection'))
     else:
-        options.append(('Add to [B][COLOR lightskyblue]MDB Favorites[/COLOR][/B]', 'mdblist_add_collection'))
+        options.append(('Add to [B][COLOR lightskyblue]Favorites[/COLOR][/B]', 'mdblist_add_collection'))
 
     if str(content_type).lower() not in ('movie', 'movies'):
         _mdb_dropped = True
     else:
         _mdb_dropped = False
 
-    options.append(('Add to [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_add_to_list'))
-    options.append(('Remove from [B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_remove_from_list'))
+    options.append(('Add to [B][COLOR lightskyblue]My Lists[/COLOR][/B]', 'mdblist_add_to_list'))
+    options.append(('Remove from [B][COLOR lightskyblue]My Lists[/COLOR][/B]', 'mdblist_remove_from_list'))
 
     if _mdb_dropped:
         from resources.lib.mdblist_sync import is_dropped
@@ -3437,16 +3453,18 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'mdblist_mark_dropped'))
 
     if content_type != 'season':
-        options.append(('Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_rating'))
-        options.append(('Remove rating on [B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'mdblist_remove_rating'))
+        options.append(('Rate on ' + provider_title('mdblist'), 'mdblist_rating'))
+        options.append(('Remove rating on ' + provider_title('mdblist'), 'mdblist_remove_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul MDBList — cross-provider) ---
-    from resources.lib.mdblist_sync import is_movie_watched as _mdb_is_mw, is_episode_watched as _mdb_is_ep, get_watched_episodes_count as _mdb_cnt
+    from resources.lib.mdblist_sync import is_movie_watched as _mdb_is_mw, is_episode_watched as _mdb_is_ep, get_watched_episodes_count as _mdb_cnt, get_watched_season_episodes_count as _mdb_season_cnt
     if str(content_type).lower() in ('movie', 'movies'):
         _mdb_is_w = _mdb_is_mw(tmdb_id)
     elif content_type in ('tv', 'show'):
         _mdb_is_w = _mdb_cnt(tmdb_id) > 0
     elif content_type == 'episode' and season is not None and episode is not None:
         _mdb_is_w = _mdb_is_ep(tmdb_id, season, episode)
+    elif content_type == 'season' and season is not None:
+        _mdb_is_w = is_season_fully_watched(tmdb_id, season, _mdb_season_cnt)
     else:
         _mdb_is_w = False
     if _mdb_is_w:
@@ -3483,7 +3501,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
     elif action == 'mdblist_remove_rating':
         from resources.lib.mdblist_api import MDBListAPI
         if MDBListAPI().remove_rating(content_type, tmdb_id, season, episode) is not None:
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Rating removed", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), "Rating removed", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_mark_watched':
@@ -3496,7 +3514,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         if _mdb_api.mark_dropped(tmdb_id):
             from resources.lib.mdblist_sync import drop_add_local
             drop_add_local(tmdb_id, title)
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_unmark_dropped':
@@ -3504,7 +3522,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
             from resources.lib.mdblist_sync import drop_remove_local, clear_cached
             drop_remove_local(tmdb_id)
             clear_cached('dropped')
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_add_collection':
@@ -3515,7 +3533,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         _mc.commit()
         _mc.close()
         _mdb_clear_cache('collection')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR lightskyblue]Favorites[/COLOR][/B]", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR lightskyblue]Favorites[/COLOR][/B]", MDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
     elif action == 'mdblist_remove_collection':
         _mdb_api.remove_from_collection(content_type, tmdb_id)
@@ -3525,7 +3543,7 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         _mc.commit()
         _mc.close()
         _mdb_clear_cache('collection')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR lightskyblue]Favorites[/COLOR][/B]", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR lightskyblue]Favorites[/COLOR][/B]", MDB_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
 
 
@@ -3534,12 +3552,12 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
     import xbmc
     import os
     from resources.lib.config import ADDON
-
-    SIMKL_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+    from resources.lib.config import provider_icon as _prov_icon
+    SIMKL_ICON = _prov_icon('simkl')
 
     from resources.lib import simkl
     if not simkl.is_authenticated():
-        xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Connect [B][COLOR mediumpurple]Simkl[/COLOR][/B] in Settings!", SIMKL_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('simkl'), "Connect " + provider_title('simkl') + " in Settings!", SIMKL_ICON, 3000, False)
         return
 
     if not title:
@@ -3587,17 +3605,19 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
 
     _is_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
     if content_type != 'season' and not _is_ep:
-        options.append(('Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_rating'))
-        options.append(('Remove rating on [B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'simkl_remove_rating'))
+        options.append(('Rate on ' + provider_title('simkl'), 'simkl_rating'))
+        options.append(('Remove rating on ' + provider_title('simkl'), 'simkl_remove_rating'))
 
     # Mark Watched/Unwatched (Dinamic, pe serverul Simkl — cross-provider)
-    from resources.lib.simkl_sync import is_movie_watched as _sk_is_mw, is_episode_watched as _sk_is_ep, get_watched_episodes_count as _sk_cnt
+    from resources.lib.simkl_sync import is_movie_watched as _sk_is_mw, is_episode_watched as _sk_is_ep, get_watched_episodes_count as _sk_cnt, get_watched_season_episodes_count as _sk_season_cnt
     if str(content_type).lower() in ('movie', 'movies'):
         _sk_is_w = _sk_is_mw(tmdb_id)
     elif content_type in ('tv', 'show'):
         _sk_is_w = _sk_cnt(tmdb_id) > 0
     elif content_type == 'episode' and season is not None and episode is not None:
         _sk_is_w = _sk_is_ep(tmdb_id, season, episode)
+    elif content_type == 'season' and season is not None:
+        _sk_is_w = is_season_fully_watched(tmdb_id, season, _sk_season_cnt)
     else:
         _sk_is_w = False
     if _sk_is_w:
@@ -3639,7 +3659,7 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
     elif action == 'simkl_remove_rating':
         from resources.lib.simkl_api import SIMKLAPI
         if SIMKLAPI().remove_rating(content_type, tmdb_id, season, episode) is not None:
-            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", "Rating removed", SIMKL_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('simkl'), "Rating removed", SIMKL_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'simkl_mark_watched':
@@ -3652,16 +3672,378 @@ def show_simkl_context_menu(tmdb_id, imdb_id, content_type, title='', season=Non
         from resources.lib.simkl_sync import drop_show as _sk_drop
         _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
         if _sk_drop(tmdb_id, title, _mt):
-            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('simkl'), f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
     elif action == 'simkl_unmark_dropped':
         from resources.lib.simkl_sync import restore_show as _sk_restore
         _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
         if _sk_restore(tmdb_id, _mt):
-            xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('simkl'), f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", SIMKL_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
+
+
+def show_punchplay_context_menu(tmdb_id, imdb_id, content_type, title='', season=None, episode=None):
+    import xbmcgui
+    import xbmc
+    import os
+    from resources.lib.config import ADDON, PUNCHPLAY_COLOR
+
+    PUNCHPLAY_ICON = provider_icon('punchplay')
+
+    from resources.lib import punchplay
+    if not punchplay.is_authenticated():
+        xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]", f"Connect [B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B] in Settings!", PUNCHPLAY_ICON, 3000, False)
+        return
+
+    if not title:
+        try:
+            from resources.lib.trakt_sync import get_tmdb_item_details_from_db
+            details = get_tmdb_item_details_from_db(tmdb_id, 'tv' if str(content_type).lower() not in ('movie', 'movies') else 'movie') or {}
+            title = details.get('title') or details.get('name', 'Title')
+        except:
+            title = 'Title'
+
+    options = []
+
+    _is_movie = str(content_type).lower() in ('movie', 'movies')
+    from resources.lib.punchplay_sync import get_watchlist_local
+    _wl = get_watchlist_local()
+    _wl_entry = None
+    for _w in _wl:
+        if str(_w.get('tmdb_id', '')) == str(tmdb_id):
+            _wl_entry = _w
+            break
+    if _wl_entry:
+        options.append((f'Remove from [B][COLOR {PUNCHPLAY_COLOR}]Watchlist[/COLOR][/B]', 'punchplay_watchlist_remove'))
+    else:
+        options.append((f'Add to [B][COLOR {PUNCHPLAY_COLOR}]Watchlist[/COLOR][/B]', 'punchplay_watchlist_add'))
+
+    if _is_movie or str(content_type).lower() in ('tv', 'tvshow', 'show', 'shows', 'series', 'episode', 'season'):
+        from resources.lib.punchplay_sync import is_favourite as _pp_is_fav
+        try:
+            _fav = _pp_is_fav(tmdb_id)
+        except:
+            _fav = False
+        if _fav:
+            options.append((f'Remove from [B][COLOR {PUNCHPLAY_COLOR}]Favourites[/COLOR][/B]', 'punchplay_favourite_remove'))
+        else:
+            options.append((f'Add to [B][COLOR {PUNCHPLAY_COLOR}]Favourites[/COLOR][/B]', 'punchplay_favourite_add'))
+
+    if _is_movie or str(content_type).lower() in ('tv', 'tvshow', 'show', 'shows', 'series', 'episode', 'season'):
+        from resources.lib.punchplay_sync import is_in_collection as _pp_is_coll
+        try:
+            _coll = _pp_is_coll(tmdb_id)
+        except:
+            _coll = False
+        if _coll:
+            options.append((f'Remove from [B][COLOR {PUNCHPLAY_COLOR}]Collection[/COLOR][/B]', 'punchplay_collection_remove'))
+        else:
+            options.append((f'Add to [B][COLOR {PUNCHPLAY_COLOR}]Collection[/COLOR][/B]', 'punchplay_collection_add'))
+
+    options.append((f'Add to [B][COLOR {PUNCHPLAY_COLOR}]My Lists[/COLOR][/B]', 'punchplay_add_to_list'))
+    options.append((f'Remove from [B][COLOR {PUNCHPLAY_COLOR}]My Lists[/COLOR][/B]', 'punchplay_remove_from_list'))
+
+    _drop_lbl = 'Drop Movie' if _is_movie else 'Drop Show'
+    _restore_lbl = 'Restore Dropped Movie' if _is_movie else 'Restore Dropped Show'
+    from resources.lib.punchplay_sync import is_dropped
+    if is_dropped(tmdb_id):
+        options.append(('[B][COLOR FF6AFB92]%s[/COLOR][/B]' % _restore_lbl, 'punchplay_unmark_dropped'))
+    else:
+        options.append(('[B][COLOR FFE41B17]%s[/COLOR][/B]' % _drop_lbl, 'punchplay_mark_dropped'))
+
+    _is_ep = season is not None and episode is not None and str(content_type).lower() not in ('movie', 'movies')
+    if content_type != 'season':
+        options.append((f'Rate on [B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]', 'punchplay_rating'))
+        options.append((f'Remove rating on [B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]', 'punchplay_remove_rating'))
+
+    from resources.lib.punchplay_sync import is_movie_watched as _pp_is_mw, is_episode_watched as _pp_is_ep, get_watched_episodes_count as _pp_cnt, get_watched_season_episodes_count as _pp_season_cnt
+    if str(content_type).lower() in ('movie', 'movies'):
+        _pp_is_w = _pp_is_mw(tmdb_id)
+    elif content_type in ('tv', 'show'):
+        _pp_is_w = _pp_cnt(tmdb_id) > 0
+    elif content_type == 'episode' and season is not None and episode is not None:
+        _pp_is_w = _pp_is_ep(tmdb_id, season, episode)
+    elif content_type == 'season' and season is not None:
+        _pp_is_w = is_season_fully_watched(tmdb_id, season, _pp_season_cnt)
+    else:
+        _pp_is_w = False
+    if _pp_is_w:
+        options.append((f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {PUNCHPLAY_COLOR}](PunchPlay)[/COLOR][/B]', 'punchplay_mark_unwatched'))
+    else:
+        options.append((f'[B][COLOR FF6AFB92]Mark Watched [COLOR {PUNCHPLAY_COLOR}](PunchPlay)[/COLOR][/B]', 'punchplay_mark_watched'))
+
+    dialog = xbmcgui.Dialog()
+    ret = dialog.contextmenu([opt[0] for opt in options])
+
+    if ret < 0:
+        return
+
+    action = options[ret][1]
+
+    if action == 'punchplay_watchlist_add':
+        if punchplay.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_watchlist_remove':
+        if punchplay.watchlist_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_rating':
+        from resources.lib.punchplay_api import prompt_punchplay_rating
+        prompt_punchplay_rating(tmdb_id, content_type, season, episode, title)
+    elif action == 'punchplay_remove_rating':
+        from resources.lib.punchplay_api import PunchplayAPI
+        if PunchplayAPI().remove_rating(content_type, tmdb_id, season, episode) is not None:
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]", "Rating removed", PUNCHPLAY_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_mark_watched':
+        from resources.lib.punchplay_sync import mark_as_watched_internal as _pp_mark
+        _pp_mark(tmdb_id, content_type, season, episode, sync_punchplay=True, refresh_ui=True)
+    elif action == 'punchplay_mark_unwatched':
+        from resources.lib.punchplay_sync import mark_as_unwatched_internal as _pp_unmark
+        _pp_unmark(tmdb_id, content_type, season, episode, sync_punchplay=True, refresh_ui=True)
+    elif action == 'punchplay_mark_dropped':
+        from resources.lib.punchplay_sync import drop_show as _pp_drop
+        _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
+        if _pp_drop(tmdb_id, title, _mt):
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", PUNCHPLAY_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_unmark_dropped':
+        from resources.lib.punchplay_sync import restore_show as _pp_restore
+        _mt = 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
+        if _pp_restore(tmdb_id, _mt):
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", PUNCHPLAY_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_favourite_add':
+        if punchplay.favourite_add(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_favourite_remove':
+        if punchplay.favourite_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_collection_add':
+        if punchplay.collection_add(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_collection_remove':
+        if punchplay.collection_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title):
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    elif action == 'punchplay_add_to_list':
+        show_punchplay_add_to_list_dialog(tmdb_id, content_type, title)
+    elif action == 'punchplay_remove_from_list':
+        show_punchplay_remove_from_list_dialog(tmdb_id, content_type, title)
+
+
+def _punchplay_ordinary_lists():
+    rows = []
+    try:
+        from resources.lib.punchplay_api import PunchplayAPI
+        api = PunchplayAPI()
+        if not api.is_authenticated():
+            return rows
+        cursor = None
+        for _ in range(10):
+            data = api.get_lists(cursor=cursor, limit=100) or {}
+            for lst in data.get('items') or []:
+                if not isinstance(lst, dict) or lst.get('isWatchlist') or lst.get('isDynamicList'):
+                    continue
+                try:
+                    lid = int(lst.get('id') or 0)
+                except:
+                    continue
+                if lid:
+                    rows.append({'id': lid, 'name': lst.get('name') or f'List {lid}',
+                                 'item_count': int(lst.get('itemCount') or 0)})
+            cursor = data.get('nextCursor')
+            if not cursor:
+                break
+    except:
+        pass
+    return rows
+
+
+def _punchplay_lists_with_posters(tmdb_id=None):
+    rows = []
+    try:
+        from resources.lib.punchplay_api import PunchplayAPI
+        from resources.lib.config import IMG_BASE
+        api = PunchplayAPI()
+        for lst in _punchplay_ordinary_lists():
+            poster = ''
+            has_item = False
+            try:
+                items = None
+                try:
+                    _d = api.get_list(lst['id']) or {}
+                    items = _d.get('items') or None
+                except:
+                    items = None
+                if not items:
+                    try:
+                        _p = api.get_list_items(lst['id'], offset=0, limit=200) or {}
+                        items = _p.get('items') or []
+                    except:
+                        items = []
+                for it in items or []:
+                    if not isinstance(it, dict):
+                        continue
+                    try:
+                        if tmdb_id is not None and int(it.get('tmdbId') or 0) == int(tmdb_id):
+                            has_item = True
+                    except:
+                        pass
+                if items:
+                    _stamped = [it for it in items if isinstance(it, dict) and (it.get('addedAt') or it.get('added_at'))]
+                    if _stamped:
+                        _last = max(_stamped, key=lambda it: str(it.get('addedAt') or it.get('added_at')))
+                    else:
+                        _last = items[0]
+                    _pp = _last.get('posterPath') if isinstance(_last, dict) else ''
+                    if _pp:
+                        poster = _pp if str(_pp).startswith('http') else IMG_BASE + str(_pp)
+            except:
+                pass
+            try:
+                n_items = len(items or [])
+            except:
+                n_items = 0
+            rows.append({'id': lst['id'], 'name': lst['name'], 'item_count': max(lst['item_count'], n_items),
+                         'poster': poster, 'has_item': has_item})
+    except:
+        pass
+    try:
+        from resources.lib.utils import sort_personal_list
+        rows = sort_personal_list(rows) or rows
+    except:
+        pass
+    return rows
+
+
+def _punchplay_list_kind(content_type):
+    return 'movie' if str(content_type).lower() in ('movie', 'movies') else 'show'
+
+
+def show_punchplay_add_to_list_dialog(tmdb_id, content_type, title=''):
+    from resources.lib.config import PUNCHPLAY_COLOR
+    PUNCHPLAY_ICON = provider_icon('punchplay')
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    lists = _punchplay_lists_with_posters()
+    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    if not lists:
+        xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
+                                       'You have no lists (create one on the site first)', PUNCHPLAY_ICON, 3000, False)
+        return
+    display_items = []
+    for lst in lists:
+        li = xbmcgui.ListItem(f"[B][COLOR {PUNCHPLAY_COLOR}]{lst['name']}[/COLOR][/B]")
+        li.setLabel2(f"[B][COLOR yellow]{lst['item_count']}[/COLOR][/B] items")
+        poster = lst['poster'] or PUNCHPLAY_ICON
+        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
+        display_items.append(li)
+    idx = xbmcgui.Dialog().select(provider_title('punchplay') + ': Add to List', display_items, useDetails=True)
+    if idx is None or idx < 0 or idx >= len(lists):
+        return
+    try:
+        from resources.lib.punchplay_api import PunchplayAPI
+        res = PunchplayAPI().add_list_item(lists[idx]['id'], _punchplay_list_kind(content_type), tmdb_id, title=title or f'tmdb:{tmdb_id}')
+        if res is not None:
+            try:
+                from resources.lib.punchplay import invalidate_list_cache
+                invalidate_list_cache(lists[idx]['id'])
+            except:
+                pass
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
+                                           f'[B][COLOR lime]{title or tmdb_id}[/COLOR][/B] added to [B][COLOR yellow]{lists[idx]["name"]}[/COLOR][/B]',
+                                           PUNCHPLAY_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    except Exception as e:
+        xbmc.log(f'[PUNCHPLAY] add to list error: {e}', xbmc.LOGERROR)
+
+
+def show_punchplay_remove_from_list_dialog(tmdb_id, content_type, title=''):
+    from resources.lib.config import PUNCHPLAY_COLOR
+    PUNCHPLAY_ICON = provider_icon('punchplay')
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    lists = [l for l in _punchplay_lists_with_posters(tmdb_id) if l['has_item']]
+    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    if not lists:
+        xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
+                                       'Not in any list', PUNCHPLAY_ICON, 3000, False)
+        return
+    display_items = []
+    for lst in lists:
+        li = xbmcgui.ListItem(f"[B][COLOR {PUNCHPLAY_COLOR}]{lst['name']}[/COLOR][/B]")
+        li.setLabel2(f"[B][COLOR yellow]{lst['item_count']}[/COLOR][/B] items")
+        poster = lst['poster'] or PUNCHPLAY_ICON
+        li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
+        display_items.append(li)
+    idx = xbmcgui.Dialog().select('Remove from List', display_items, useDetails=True)
+    if idx is None or idx < 0 or idx >= len(lists):
+        return
+    try:
+        from resources.lib.punchplay_api import PunchplayAPI
+        api = PunchplayAPI()
+        item_id = None
+        try:
+            _d = api.get_list(lists[idx]['id']) or {}
+            for it in _d.get('items') or []:
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    if int(it.get('tmdbId') or 0) == int(tmdb_id):
+                        item_id = it.get('id')
+                        break
+                except:
+                    continue
+        except:
+            pass
+        if item_id is None:
+            offset = 0
+            for _ in range(5):
+                data = api.get_list_items(lists[idx]['id'], offset=offset, limit=200) or {}
+                items = data.get('items') or []
+                if not items:
+                    break
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    try:
+                        if int(it.get('tmdbId') or 0) == int(tmdb_id):
+                            item_id = it.get('id')
+                            break
+                    except:
+                        continue
+                if item_id is not None:
+                    break
+                offset += len(items)
+                if data.get('nextOffset') is None:
+                    break
+        if item_id is None:
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
+                                           f'[B][COLOR yellow]{title or tmdb_id}[/COLOR][/B] is not in [B]{lists[idx]["name"]}[/B]',
+                                           PUNCHPLAY_ICON, 3000, False)
+            return
+        if api.remove_list_item(lists[idx]['id'], item_id) is not None:
+            try:
+                from resources.lib.punchplay import invalidate_list_cache
+                invalidate_list_cache(lists[idx]['id'])
+            except:
+                pass
+            xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
+                                           f'[B][COLOR lime]{title or tmdb_id}[/COLOR][/B] removed from [B][COLOR yellow]{lists[idx]["name"]}[/COLOR][/B]',
+                                           PUNCHPLAY_ICON, 3000, False)
+            xbmc.sleep(1000)
+            xbmc.executebuiltin("Container.Refresh")
+    except Exception as e:
+        xbmc.log(f'[PUNCHPLAY] remove from list error: {e}', xbmc.LOGERROR)
 
 
 _ALL_PROV_COLORS = ('pink', 'lightskyblue', 'FF00CED1')  # legacy (3 culori)
@@ -3671,13 +4053,15 @@ _PROVIDER_COLORS = {
     'mdblist': 'lightskyblue',
     'tmdb': 'FF00CED1',
     'simkl': 'mediumpurple',
+    'punchplay': 'FFFF6600',
 }
 
 _PROVIDER_LABELS = {
-    'trakt': '[B][COLOR pink]Trakt[/COLOR][/B]',
-    'mdblist': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
-    'tmdb': '[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
-    'simkl': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+    'trakt': provider_title('trakt'),
+    'mdblist': provider_title('mdblist'),
+    'tmdb': provider_title('tmdb'),
+    'simkl': provider_title('simkl'),
+    'punchplay': provider_title('punchplay'),
 }
 
 
@@ -3699,7 +4083,7 @@ def _allprov_colored(word, splits, provs=None):
     return out
 
 
-_ALL_PROV_ORDER = ('trakt', 'mdblist', 'tmdb', 'simkl')  # aceeasi ordine ca _PROVIDER_COLORS
+_ALL_PROV_ORDER = ('trakt', 'mdblist', 'tmdb', 'simkl', 'punchplay')  # aceeasi ordine ca _PROVIDER_COLORS
 
 def _allprov_names(which):
     """Numele providerilor in ordinea culorilor din cuvant (Trakt, MDBList, TMDb),
@@ -3732,6 +4116,7 @@ _POSTWATCH_ICONS = {
     'tmdb': 'tmdb.png',
     'mdblist': 'mdblist.png',
     'simkl': 'simkl.png',
+    'punchplay': 'punchplay.png',
 }
 
 _POSTWATCH_LABELS = {
@@ -3739,6 +4124,7 @@ _POSTWATCH_LABELS = {
     'mdblist': 'MDBLIST',
     'tmdb': 'TMDB',
     'simkl': 'SIMKL',
+    'punchplay': 'PUNCHPLAY',
 }
 
 
@@ -3765,6 +4151,12 @@ def _connected_rating_providers():
         from resources.lib import simkl
         if simkl.is_authenticated():
             connected.append('simkl')
+    except Exception:
+        pass
+    try:
+        from resources.lib import punchplay
+        if punchplay.is_authenticated():
+            connected.append('punchplay')
     except Exception:
         pass
     return connected
@@ -3811,6 +4203,18 @@ def rate_on_providers(tmdb_id, content_type, season, episode, val, providers):
     except Exception:
         pass
     try:
+        if 'punchplay' in providers:
+            from resources.lib.punchplay_api import PunchplayAPI
+            api = PunchplayAPI()
+            if val > 0:
+                if api.rate_item(content_type, tmdb_id, val, season, episode) is not None:
+                    done.append('punchplay')
+            else:
+                if api.remove_rating(content_type, tmdb_id, season, episode) is not None:
+                    done.append('punchplay')
+    except Exception:
+        pass
+    try:
         # Guard TMDb: ratingul de SHOW scoate serialul din watchlist -> skip.
         # 'tv' + season + episode = EPISOD (playback-ul trimite type='tv') -> permis.
         _ct = str(content_type).lower()
@@ -3842,7 +4246,7 @@ def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, ti
     except Exception:
         mode = '0'
     if mode not in ('1', '2'):
-        from resources.lib.watched_provider import is_mdblist, is_simkl
+        from resources.lib.watched_provider import is_mdblist, is_simkl, is_punchplay
         if is_mdblist():
             from resources.lib.mdblist_api import prompt_mdblist_rating
             prompt_mdblist_rating(tmdb_id, content_type, season, episode, title)
@@ -3850,6 +4254,9 @@ def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, ti
             if season is None and episode is None:
                 from resources.lib.simkl_api import prompt_simkl_rating
                 prompt_simkl_rating(tmdb_id, content_type, season, episode, title)
+        elif is_punchplay():
+            from resources.lib.punchplay_api import prompt_punchplay_rating
+            prompt_punchplay_rating(tmdb_id, content_type, season, episode, title)
         else:
             from resources.lib import trakt_api
             trakt_api._prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
@@ -3863,6 +4270,7 @@ def prompt_postwatch_rating(tmdb_id, content_type, season=None, episode=None, ti
             'mdblist': 'rating_postwatch_mdblist',
             'simkl': 'rating_postwatch_simkl',
             'tmdb': 'rating_postwatch_tmdb',
+            'punchplay': 'rating_postwatch_punchplay',
         }
         targets = []
         for prov in connected:
@@ -3929,6 +4337,12 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
             connected.append('simkl')
     except Exception:
         pass
+    try:
+        from resources.lib import punchplay
+        if punchplay.is_authenticated():
+            connected.append('punchplay')
+    except Exception:
+        pass
 
     if not connected:
         xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
@@ -3936,17 +4350,17 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                                        xbmcgui.NOTIFICATION_WARNING)
         return
 
-    wl = _allprov_colored('Watchlist', (2, 3, 2, 2), ('trakt', 'mdblist', 'tmdb', 'simkl'))
-    fav = _allprov_colored('Favorite', (3, 2, 3), ('trakt', 'mdblist', 'tmdb'))
-    wch = _allprov_colored('Watched', (3, 2, 2), ('trakt', 'mdblist', 'simkl'))
-    uwch = _allprov_colored('Unwatched', (3, 3, 3), ('trakt', 'mdblist', 'simkl'))
+    wl = _allprov_colored('Watchlist', (2, 2, 2, 2, 1), ('trakt', 'mdblist', 'tmdb', 'simkl', 'punchplay'))
+    fav = _allprov_colored('Favorite', (2, 2, 2, 1, 1), ('trakt', 'mdblist', 'tmdb', 'simkl', 'punchplay'))
+    wch = _allprov_colored('Watched', (2, 2, 1, 1, 1), ('trakt', 'mdblist', 'tmdb', 'simkl', 'punchplay'))
+    uwch = _allprov_colored('Unwatched', (2, 2, 2, 2, 1), ('trakt', 'mdblist', 'tmdb', 'simkl', 'punchplay'))
     _no_simkl_rate = str(content_type).lower() not in ('movie', 'movies') and (season is not None or episode is not None)
     if _no_simkl_rate:
         rate = _allprov_colored('Rate it', (2, 2, 3), ('trakt', 'tmdb', 'mdblist'))
         rmrate = _allprov_colored('rating', (1, 1, 4), ('trakt', 'tmdb', 'mdblist'))
     else:
-        rate = _allprov_colored('Rate it', (2, 2, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl'))
-        rmrate = _allprov_colored('rating', (1, 1, 1, 3), ('trakt', 'tmdb', 'mdblist', 'simkl'))
+        rate = _allprov_colored('Rate it', (2, 1, 1, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl', 'punchplay'))
+        rmrate = _allprov_colored('rating', (1, 1, 1, 2, 1), ('trakt', 'tmdb', 'mdblist', 'simkl', 'punchplay'))
 
     options = [
         (f'[B]Add to {wl}[/B]', 'wl_add'),
@@ -4004,6 +4418,17 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                         done.append('simkl')
         except Exception:
             pass
+        try:
+            if 'punchplay' in connected:
+                from resources.lib import punchplay
+                if action == 'wl_add':
+                    if punchplay.watchlist_add(tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
+                        done.append('punchplay')
+                else:
+                    if punchplay.watchlist_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
+                        done.append('punchplay')
+        except Exception:
+            pass
         verb = 'added to' if action == 'wl_add' else 'removed from'
         if done:
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
@@ -4049,6 +4474,17 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                         done.append('mdblist')
         except Exception:
             pass
+        try:
+            if 'punchplay' in connected:
+                from resources.lib import punchplay
+                if action == 'fav_add':
+                    if punchplay.favourite_add(tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
+                        done.append('punchplay')
+                else:
+                    if punchplay.favourite_remove(tmdb_id=tmdb_id, mediatype=content_type, title=title, notify=False):
+                        done.append('punchplay')
+        except Exception:
+            pass
         verb = 'added to' if action == 'fav_add' else 'removed from'
         if done:
             xbmcgui.Dialog().notification('[B][COLOR yellow]All Providers[/COLOR][/B]',
@@ -4077,6 +4513,8 @@ def show_all_providers_context_menu(tmdb_id, imdb_id, content_type, title='', se
                            _os.path.join(_media_dir, 'mdblist.png')]
             if 'simkl' in rate_targets:
                 _rate_icons.append(_os.path.join(_media_dir, 'simkl.png'))
+            if 'punchplay' in rate_targets:
+                _rate_icons.append(_os.path.join(_media_dir, 'punchplay.png'))
             val = show_rating_window(tmdb_id, content_type, season, episode, title or '',
                                      _os.path.join(_media_dir, 'trakt.png'),
                                      'RATE ON ALL PROVIDERS',
@@ -4101,8 +4539,8 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
     import xbmc
     import os
     from resources.lib.config import ADDON
-    
-    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    from resources.lib.config import provider_icon as _prov_icon
+    MDB_ICON = _prov_icon('mdblist')
 
     if not title:
         try:
@@ -4118,7 +4556,7 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
     xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     
     if not all_lists:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no personal lists on the site.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no personal lists on the site.", MDB_ICON, 3000, False)
         return
 
     # --- FILTRARE LISTE STATICE ---
@@ -4129,7 +4567,7 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         static_lists.append(lst)
 
     if not static_lists:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no STATIC lists to add to.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no STATIC lists to add to.", MDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -4139,13 +4577,13 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
         display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B] ({count} iteme)")
 
     dialog = xbmcgui.Dialog()
-    ret = dialog.select("Add to [B][COLOR lightskyblue]MDBList[/COLOR][/B] List", display_items)
+    ret = dialog.select("Add to " + provider_title('mdblist') + " List", display_items)
 
     if ret >= 0:
         selected_list = static_lists[ret]
         list_id = selected_list.get('id')
         if mdblist.list_add(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -4155,8 +4593,8 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     import xbmc
     import os
     from resources.lib.config import ADDON
-    
-    MDB_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    from resources.lib.config import provider_icon as _prov_icon
+    MDB_ICON = _prov_icon('mdblist')
 
     if not title:
         try:
@@ -4172,7 +4610,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     
     if not user_lists:
         xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "You have no personal lists on the site.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no personal lists on the site.", MDB_ICON, 3000, False)
         return
 
     # --- FILTRARE LISTE STATICE ---
@@ -4206,7 +4644,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
     xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
     
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", "Title is NOT in any personal STATIC list.", MDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('mdblist'), "Title is NOT in any personal STATIC list.", MDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -4215,13 +4653,13 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
         display_items.append(f"[B][COLOR lightskyblue]{name}[/COLOR][/B]")
 
     dialog = xbmcgui.Dialog()
-    ret = dialog.select("Remove from [B][COLOR lightskyblue]MDBList[/COLOR][/B] List", display_items)
+    ret = dialog.select("Remove from " + provider_title('mdblist') + " List", display_items)
 
     if ret >= 0:
         selected_list = lists_with_item[ret]
         list_id = selected_list.get('id')
         if mdblist.list_remove(list_id, imdb_id=imdb_id, tmdb_id=tmdb_id, mediatype=content_type):
-            xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]", f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('mdblist'), f"[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]{selected_list.get('name')}[/COLOR][/B]", MDB_ICON, 3000, False)
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -4229,7 +4667,7 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
 def show_tmdb_add_to_list_dialog(tmdb_id, content_type):
     lists = trakt_sync.get_tmdb_custom_lists_from_db() 
     if not lists:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "You have no lists", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "You have no lists", TMDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -4241,7 +4679,7 @@ def show_tmdb_add_to_list_dialog(tmdb_id, content_type):
         li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
         display_items.append(li)
 
-    ret = xbmcgui.Dialog().select("[B][COLOR FF00CED1]TMDB[/COLOR][/B]: Add to List", display_items, useDetails=True)
+    ret = xbmcgui.Dialog().select(provider_title('tmdb', name='TMDB') + ": Add to List", display_items, useDetails=True)
     if ret >= 0:
         add_to_tmdb_list(lists[ret]['list_id'], tmdb_id, content_type)
 
@@ -4258,7 +4696,7 @@ def show_tmdb_remove_from_list_dialog(tmdb_id, content_type):
             lists_with_item.append(lst)
 
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not in any list", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not in any list", TMDB_ICON, 3000, False)
         return
 
     display_items = []
@@ -4549,6 +4987,9 @@ def show_details(tmdb_id, content_type):
         if ADDON.getSetting('show_cm_simkl') != 'false':
             simkl_params = urlencode({'mode': 'simkl_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
             cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{simkl_params})"))
+        if ADDON.getSetting('show_cm_punchplay') != 'false':
+            pp_params = urlencode({'mode': 'punchplay_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
+            cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{pp_params})"))
         # --- ALL PROVIDERS (batch — toggle in Settings) ---
         if ADDON.getSetting('all_providers_menu') == 'true':
             allp_params = urlencode({'mode': 'all_providers_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
@@ -4684,6 +5125,10 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     from resources.lib import trakt_api
     import datetime
     today = datetime.date.today()
+    try:
+        hide_unaired = ADDON.getSetting('hide_unaired_episodes') == 'true'
+    except:
+        hide_unaired = False
 
     show_status = show_details.get('status', '') if show_details else ''
     total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
@@ -4716,6 +5161,14 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         # --- LOGICA CULOARE ROSIE EPISOD (INJECTATA) ---
         display_label = name
         ep_air_date = ep.get('air_date', '')
+        if hide_unaired:
+            try:
+                _parts = str(ep_air_date).split('-')
+                _ad = datetime.date(int(_parts[0]), int(_parts[1]), int(_parts[2]))
+                if _ad > today:
+                    continue
+            except:
+                continue
         if ep_air_date:
             try:
                 parts = str(ep_air_date).split('-')
@@ -4819,7 +5272,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         clear_ep_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': f"{tv_show_title} S{season_num}E{ep_num}"})
         cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
         
-        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
+        url_params = select_ext_info_params('episode', tmdb_id, season_num, ep_num, tv_show_title, ep.get('name', '')) or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
         
         if resume_percent > 0 and resume_percent < 90 and duration > 0:
             resume_seconds = int((resume_percent / 100.0) * duration)
@@ -4879,7 +5332,7 @@ def show_info_dialog(params):
     # Folosim direct creierul central care ne aduce din prima tot (inclusiv RO)
     data = get_tmdb_item_details(tmdb_id, content_type)
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Load error", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Load error", xbmcgui.NOTIFICATION_ERROR)
         return
 
     title = data.get('title') or data.get('name', 'Unknown')
@@ -5870,13 +6323,13 @@ def build_actor_search_result(query, page=1):
 
 def tmdb_edit_list(params):
     list_id = params.get('list_id')
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Feature in development", TMDB_ICON, 3000, False)
+    xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Feature in development", TMDB_ICON, 3000, False)
 
 
 def create_tmdb_list():
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return None
 
     dialog = xbmcgui.Dialog()
@@ -5893,12 +6346,12 @@ def create_tmdb_list():
 
     list_id = (result or {}).get('list_id')
     if result and list_id:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List created: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), f"List created: [B][COLOR yellow]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
         trakt_sync.sync_tmdb_only(silent=True) 
         xbmc.executebuiltin("Container.Refresh")
         return list_id
     else:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Error creating list", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Error creating list", xbmcgui.NOTIFICATION_ERROR)
     return None
 
 
@@ -5926,12 +6379,12 @@ def delete_tmdb_list(list_id):
     result = tmdb_auth_request(f"/list/{list_id}", method='DELETE', v4=False)
 
     if result is not None:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List deleted: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), f"List deleted: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
         trakt_sync.sync_tmdb_only(silent=True) 
         xbmc.executebuiltin("Container.Refresh")
         return True
 
-    xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Delete error", xbmcgui.NOTIFICATION_ERROR)
+    xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Delete error", xbmcgui.NOTIFICATION_ERROR)
     return False
 
 
@@ -5959,7 +6412,7 @@ def clear_tmdb_list(list_id):
     result = tmdb_auth_request(f"/list/{list_id}/clear", method='POST', params={'confirm': 'true'}, v4=False)
 
     if result is not None:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", f"List cleared: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), f"List cleared: [B][COLOR FF00CED1]{list_name}[/COLOR][/B]", TMDB_ICON, 3000, False)
         trakt_sync.sync_tmdb_only(silent=True) 
         xbmc.executebuiltin("Container.Refresh")
         return True
@@ -5974,7 +6427,7 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
     if content_type == 'season' and not episode:
         # TMDb NU are endpoint de rating pentru sezon (verificat live: 404).
         # Aici s-ar rata SHOW-ul parinte -> TMDb il scoate din watchlist.
-        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('tmdb'),
                                        'TMDb has no season rating - skipped (would rate the show and remove it from watchlist)',
                                        TMDB_ICON, 4000, False)
         return False
@@ -6008,7 +6461,7 @@ def rate_tmdb_item_silent(tmdb_id, content_type, rating_value, season=None, epis
 def rate_tmdb_item(tmdb_id, content_type, season=None, episode=None, title=''):
     session = get_tmdb_session()
     if not session:
-        xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return False
     
     from resources.lib import trakt_api
@@ -6074,7 +6527,7 @@ def delete_tmdb_rating(tmdb_id, content_type, notify=True):
 
     if result is not None:
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDB[/COLOR][/B]", "Rating deleted", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Rating deleted", TMDB_ICON, 3000, False)
         return True
 
     return False
@@ -6089,7 +6542,7 @@ def remove_tmdb_rating(tmdb_id, content_type, season=None, episode=None, notify=
         return delete_tmdb_rating(tmdb_id, content_type, notify=notify)
     if res is not None:
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", "Rating removed", TMDB_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('tmdb'), "Rating removed", TMDB_ICON, 3000, False)
         return True
     return False
 
@@ -6413,6 +6866,7 @@ def in_progress_movies(params):
     """Afiseaza filmele cu resume point + PLOT + METADATA COMPLETE."""
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
+    from resources.lib.utils import skip_ext_info_in_progress as _skip_ip
     
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'player.png')
     except: icon = 'DefaultIcon.png'
@@ -6442,6 +6896,16 @@ def in_progress_movies(params):
         year = str(item.get('year', ''))
         
         details = get_tmdb_item_details(tmdb_id, 'movie')
+        
+        # FIX "()": randurile vechi scrise de sync cu title/year gol -> fallback pe detaliile TMDb
+        if details:
+            if not title or title == 'Unknown':
+                title = details.get('title') or title
+            if not year:
+                try:
+                    year = str(details.get('release_date') or '')[:4]
+                except:
+                    year = ''
         
         plot = item.get('overview', '')
         poster_path_api = ''
@@ -6526,7 +6990,11 @@ def in_progress_movies(params):
         from resources.lib.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
         cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
 
-        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
+        if _skip_ip():
+            url_params = None
+        else:
+            url_params = select_ext_info_params('movie', tmdb_id)
+        url_params = url_params or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         
         from resources.lib.watched_provider import get_watched_counts as _get_wc
         is_watched_this = _get_wc(tmdb_id, 'movie') > 0
@@ -6571,15 +7039,20 @@ def in_progress_tvshows(params):
     # === CITIM SETAREA INAINTE DE CACHE ===
     try: show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except: show_future = False
+    try: hide_unaired = ADDON.getSetting('hide_unaired_episodes') == 'true'
+    except: hide_unaired = False
 
     from resources.lib.watched_provider import _get_provider_raw as _get_prov
     use_mdblist = _get_prov() == 'mdblist'
     use_simkl = _get_prov() == 'simkl'
+    use_punchplay = _get_prov() == 'punchplay'
+
+    from resources.lib.utils import skip_ext_info_in_progress as _skip_ip
 
     # === 1. FAST CACHE CHECK (RAM) ===
     # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
-    LABEL_VERSION = "4"
-    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{show_future}_{LABEL_VERSION}"
+    LABEL_VERSION = "5"
+    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{use_punchplay}_{show_future}_{hide_unaired}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -6596,6 +7069,9 @@ def in_progress_tvshows(params):
     elif use_simkl:
         from resources.lib.simkl_sync import get_in_progress_tvshows_from_db as _sk_ip
         raw_items = _sk_ip()
+    elif use_punchplay:
+        from resources.lib.punchplay_sync import get_in_progress_tvshows_from_db as _pp_ip
+        raw_items = _pp_ip()
     else:
         raw_items = trakt_sync.get_next_episodes_from_db()
 
@@ -6606,6 +7082,9 @@ def in_progress_tvshows(params):
         elif use_simkl:
             add_directory("[COLOR cyan]No TV shows in progress. Sync Simkl.[/COLOR]",
                           {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_punchplay:
+            add_directory("[COLOR cyan]No TV shows in progress. Sync PunchPlay.[/COLOR]",
+                          {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No TV shows in progress. Sync Trakt.[/COLOR]",
                           {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
@@ -6641,6 +7120,18 @@ def in_progress_tvshows(params):
                     continue 
             except:
                 # Esec parsare data (probabil TBA) -> Ascundem
+                continue
+
+        if hide_unaired:
+            air_date_str = item.get('air_date', '')
+            if not air_date_str:
+                continue
+            try:
+                parts = str(air_date_str).split('T')[0].split('-')
+                air_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+                if air_date > today:
+                    continue
+            except:
                 continue
                 
         valid_shows.append(item)
@@ -6743,7 +7234,8 @@ def in_progress_tvshows(params):
 
         watched_info_dict = {'watched': curr_watched, 'total': curr_total}
         cm  = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
-        url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
+        _sel_info = None if _skip_ip() else select_ext_info_params('tv', tmdb_id)
+        url_params = _sel_info or {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
 
         air_date_str = item.get('air_date', '')
@@ -6765,11 +7257,11 @@ def in_progress_tvshows(params):
         set_metadata(li, info, unique_ids={'tmdb': tmdb_id, 'imdb': imdb_id}, watched_info=watched_info_dict)
         if cm: li.addContextMenuItems(cm)
 
-        items_to_add.append((url, li, True))
+        items_to_add.append((url, li, not _sel_info))
         cache_list.append({
             'label'      : label,
             'url'        : url,
-            'is_folder'  : True,
+            'is_folder'  : not _sel_info,
             'art'        : art,
             'info'       : info,
             'cm'         : cm,
@@ -6800,8 +7292,10 @@ def in_progress_episodes(params):
     from resources.lib.watched_provider import _get_provider_raw as _get_prov
     use_mdblist = _get_prov() == 'mdblist'
     use_simkl = _get_prov() == 'simkl'
+    use_punchplay = _get_prov() == 'punchplay'
+    from resources.lib.utils import skip_ext_info_in_progress as _skip_ip
 
-    cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}"
+    cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}_{use_punchplay}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -6817,6 +7311,8 @@ def in_progress_episodes(params):
             add_directory("[COLOR cyan]No episodes paused midway. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif use_simkl:
             add_directory("[COLOR cyan]No episodes paused midway. Sync Simkl.[/COLOR]", {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_punchplay:
+            add_directory("[COLOR cyan]No episodes paused midway. Sync PunchPlay.[/COLOR]", {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7001,19 +7497,22 @@ def in_progress_episodes(params):
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
+        # --- SELECT ACTION: rindul e redirectionat catre Extended Info -> Play in CM ---
+        if select_ext_info_params('episode', tmdb_id, season, episode, show_name, ep_name):
+            cm.insert(0, ('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)})"))
+        # -------------------------------------------------------------------------
         if ADDON.getSetting('show_cm_my_plays') != 'false':
             cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
         
-        b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': show_name})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
+        cm = calendar_context_menu(cm, 'episode', tmdb_id, show_name, season=season, episode=episode,
+                                   base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode,
+                                   clear_sources=True)
         
-        b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': show_name})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
-        
-        clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': f"{show_name} S{season:02d}E{episode:02d}"})
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
-        
-        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name, 'tv_show_title': show_name}
+        if _skip_ip():
+            url_params = None
+        else:
+            url_params = select_ext_info_params('episode', tmdb_id, season, episode, show_name, ep_name)
+        url_params = url_params or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name, 'tv_show_title': show_name}
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         
@@ -7107,7 +7606,8 @@ def get_next_episodes(params=None):
     use_tmdb = bool(params and params.get('use_tmdb') == 'true')
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
-    show_color = 'FF00CED1' if use_tmdb else ('lightskyblue' if use_mdblist else ('mediumpurple' if use_simkl else 'pink'))
+    use_punchplay = not use_tmdb and _get_prov() == 'punchplay'
+    show_color = 'FF00CED1' if use_tmdb else provider_color('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt')))
     if use_tmdb:
         raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
     elif use_mdblist:
@@ -7119,6 +7619,12 @@ def get_next_episodes(params=None):
     elif use_simkl:
         from resources.lib.simkl_sync import get_next_episodes_from_db as _sk_next
         raw_items = _sk_next()
+        for _it in raw_items:
+            _it.setdefault('overview', '')
+            _it.setdefault('poster', '')
+    elif use_punchplay:
+        from resources.lib.punchplay_sync import get_next_episodes_from_db as _pp_next
+        raw_items = _pp_next()
         for _it in raw_items:
             _it.setdefault('overview', '')
             _it.setdefault('poster', '')
@@ -7135,7 +7641,7 @@ def get_next_episodes(params=None):
         try:
             from resources.lib.watched_provider import _get_provider_raw as _get_prov_raw
             _prov = _get_prov_raw()
-            _drop_tbl = {'trakt': 'trakt_hidden_shows', 'mdblist': 'mdblist_dropped', 'simkl': 'simkl_dropped'}.get(_prov)
+            _drop_tbl = {'trakt': 'trakt_hidden_shows', 'mdblist': 'mdblist_dropped', 'simkl': 'simkl_dropped', 'punchplay': 'punchplay_dropped'}.get(_prov)
             if _drop_tbl:
                 from resources.lib.watched_provider import get_source_module as _get_src_mod
                 _conn = _get_src_mod().get_connection()
@@ -7151,7 +7657,7 @@ def get_next_episodes(params=None):
                         log(f"[UP NEXT] TMDB Up Next filtered out {_removed} dropped/hidden shows ({_prov}).")
         except Exception as e:
             log(f"[UP NEXT] TMDB Up Next error filtering dropped: {e}", xbmc.LOGERROR)
-    elif not use_mdblist and not use_simkl:
+    elif not use_mdblist and not use_simkl and not use_punchplay:
         try:
             conn = trakt_sync.get_connection()
             c = conn.cursor()
@@ -7206,6 +7712,7 @@ def get_next_episodes(params=None):
         show_future = ADDON.getSetting('upnext_show_future') == 'true'
     except:
         show_future = False
+    from resources.lib.utils import skip_ext_info_upnext as _skip_un
 
     # 4. SEPARAREA EPISOADELOR PE CATEGORII
     available_now = []
@@ -7291,6 +7798,8 @@ def get_next_episodes(params=None):
             add_directory("[COLOR gray]No new episodes (Run 'MDBList Sync')[/COLOR]", {'mode': 'mdblist_sync'}, folder=False)
         elif use_simkl:
             add_directory("[COLOR gray]No new episodes (Run 'Simkl Sync')[/COLOR]", {'mode': 'simkl_sync'}, folder=False)
+        elif use_punchplay:
+            add_directory("[COLOR gray]No new episodes (Run 'PunchPlay Sync')[/COLOR]", {'mode': 'punchplay_sync'}, folder=False)
         else:
             add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7302,7 +7811,7 @@ def get_next_episodes(params=None):
         _show_unstarted_cache = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
     except:
         _show_unstarted_cache = True
-    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else 'trakt'))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}"
+    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else ('punchplay' if use_punchplay else 'trakt')))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -7564,7 +8073,11 @@ def get_next_episodes(params=None):
             label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
         # --------------------------------------------------
 
-        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
+        if _skip_un():
+            url_params = None
+        else:
+            url_params = select_ext_info_params('episode', tmdb_id, it['season'], it['episode'], it['show_title'], it['ep_title'])
+        url_params = url_params or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(it['season']), 'episode': str(it['episode']), 'title': it['ep_title'], 'tv_show_title': it['show_title']}
 
         cm = _get_full_context_menu(
             tmdb_id, 
@@ -7575,27 +8088,10 @@ def get_next_episodes(params=None):
             episode=it['episode']  
         )
         
-        # --- INCEPUT ADAUGARE BROWSE OPTIONS ---
-        # Browse Show (Afiseaza sezoanele)
-        b_show_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': it['show_title']})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
-        
-        # Browse Season (Afiseaza episoadele din sezonul curent)
-        b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(it['season']), 'tv_show_title': it['show_title']})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
-        # --- SFARSIT ADAUGARE BROWSE OPTIONS ----
-        
-        # --- INCEPUT ADAUGARE NOUA: Clear Sources Cache pentru Up Next ---
-        clear_p_params = urlencode({
-            'mode': 'clear_sources_context', 
-            'tmdb_id': tmdb_id, 
-            'type': 'tv', 
-            'season': str(it['season']), 
-            'episode': str(it['episode']),
-            'title': f"{it['show_title']} S{it['season']:02d}E{it['episode']:02d}"
-        })
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
-        # --- SFARSIT ADAUGARE NOUA ---
+        # --- Browse Show / Browse Season / Clear sources cache (helper comun) ---
+        cm = calendar_context_menu(cm, 'episode', tmdb_id, it['show_title'], season=it['season'], episode=it['episode'],
+                                   base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode,
+                                   clear_sources=True)
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
         li = xbmcgui.ListItem(label)

@@ -1,3 +1,34 @@
+1.1.293
+PunchPlay
+- PunchPlay is now a fully implemented provider: library sync with watched status, Up Next/In Progress, drop/restore, ratings, watchlist, favourites, collection, lists, calendars and library export.
+- Added My Lists (private/public/dynamic), Collection, Favourites and Public Lists (Movies/TV Shows/Anime catalogs).
+- Added Library export for Watchlist, Favorites, Collection and fixed personal lists.
+- Lists render instantly with background metadata loading and short-lived row caching.
+- Fixed Collection counts, mixed Movie/TV rows, list posters (last added item) and local Collection syncing.
+- Up Next support with instant drop/restore, including Mark Unwatched on fully watched seasons.
+- Fixed resume data for In Progress Movies.
+
+Library & Providers
+- Added Simkl Watchlist export (Movies/TV, Watching + Plan to Watch).
+- Improved Library sync resilience (failed TMDb lookups no longer abort the run).
+- Unified provider identity (colors/icons/titles) across Trakt, MDBList, Simkl, PunchPlay and TMDb; no more hard-coded literals.
+- Provider menu parity: Favourites/Collection/My Lists on episodes, Mark Unwatched on fully watched seasons.
+
+Calendar
+- Trakt episodes airing today/tomorrow show the local air time (9pm style).
+- Clear Sources Cache on all provider calendars.
+- Unified sorting, date formatting, click handling and context menus across all providers.
+- Unaired episodes open Extended Info directly; selector changes apply instantly.
+
+Sources
+- New SHOW PACKS ONLY filter for TV results (Fenom-style season and complete-series detection).
+- Fixed HDR/Dolby Vision exclusion
+
+Navigation & Settings
+- Implemented Open Extended Info when selecting (Movies/TV Shows/Episodes selector): click opens the Extended Info page, the previous action moves to the context menu.
+- Skip In Progress and Skip Up Next options under Open Extended Info when selecting.
+- Shared context menus on Up Next and In Progress Episodes.
+
 1.1.292
 - Search splash now shows only rows for enabled groups (AIO / HTTP / P2P) - disabled groups are hidden instead of showing 0 results.
 - Personal lists (watchlist, favorites, collection, custom) can now be ordered Original or A-Z via Settings > General > Personal lists order, applied globally before pagination.

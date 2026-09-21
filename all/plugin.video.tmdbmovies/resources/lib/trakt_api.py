@@ -16,24 +16,28 @@ from concurrent.futures import ThreadPoolExecutor
 try:
     from resources.lib.config import (
         TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
-        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date
+        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date, utc_to_local_time,
+        provider_color, provider_icon, provider_title
     )
 except ImportError:
     from resources.lib.config import (
         TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
-        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy
+        HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy,
+        provider_color, provider_title, provider_icon
     )
     def utc_to_local_date(iso_ts):
         try:
             return str(iso_ts).split('T')[0]
         except:
             return ''
-from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list
+    def utc_to_local_time(iso_ts):
+        return ''
+from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, is_season_fully_watched
 from resources.lib.cache import cache_object, MainCache
 
 from resources.lib import trakt_sync
 from resources.lib.config import PAGE_LIMIT # Importam limita de 21
-from resources.lib.tmdb_api import prefetch_metadata_parallel, _process_movie_item, _process_tv_item, add_directory
+from resources.lib.tmdb_api import prefetch_metadata_parallel, add_directory
 
 try:
     from resources.lib.config import TRAKT_CLIENT_SECRET
@@ -42,7 +46,7 @@ except ImportError:
 
 LANG = get_language()
 ADDON_PATH = ADDON.getAddonInfo('path')
-TRAKT_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+TRAKT_ICON = provider_icon('trakt')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
 _token_lock = threading.Lock()
@@ -130,7 +134,7 @@ def _notify_reauth_needed():
         _last_notify_time = now
         try:
             xbmcgui.Dialog().notification(
-                "[B][COLOR pink]Trakt[/COLOR][/B]",
+                provider_title('trakt'),
                 "Session expired! Re-authenticate in Settings.",
                 TRAKT_ICON, 5000, False
             )
@@ -311,7 +315,7 @@ def trakt_auth():
         expires_in = data['expires_in']
     except:
         xbmcgui.Dialog().notification(
-            "[B][COLOR pink]Trakt[/COLOR][/B]",
+            provider_title('trakt'),
             "Connection error",
             xbmcgui.NOTIFICATION_ERROR
         )
@@ -389,7 +393,7 @@ def trakt_auth():
         log(f"[TRAKT] Authenticated! Token expires in ~{exp // 3600}h. "
             f"Auto-refresh active.")
         xbmcgui.Dialog().notification(
-            "[B][COLOR pink]Trakt[/COLOR][/B]",
+            provider_title('trakt'),
             "Connected successfully!",
             TRAKT_ICON, 3000, False
         )
@@ -409,7 +413,7 @@ def trakt_auth():
 
 def trakt_revoke():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR pink]Disconnect Trakt[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR pink]Trakt[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno(provider_title('trakt', name='Disconnect Trakt'), f"Are you sure you want to disconnect from [B][COLOR {provider_color('trakt')}]Trakt[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
 
@@ -441,7 +445,13 @@ def trakt_revoke():
     # --- SFARSIT MODIFICARE ---
 
     ADDON.setSetting('trakt_status', "Disconnected")
-    xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Disconnected.", TRAKT_ICON, 3000, False)
+    xbmcgui.Dialog().notification(provider_title('trakt'), "Disconnected.", TRAKT_ICON, 3000, False)
+
+    try:
+        from resources.lib.watched_provider import ensure_active_provider
+        ensure_active_provider()
+    except:
+        pass
     
     # Curatam si memoria RAM ca sa dispara imediat din meniuri
     from resources.lib.cache import clear_all_fast_cache
@@ -518,7 +528,7 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
                 except: err_desc = ''
                 log(f"[TRAKT] 420 Account Limit Exceeded on {endpoint}: {err_desc}", xbmc.LOGWARNING)
                 xbmcgui.Dialog().notification(
-                    "[B][COLOR pink]Trakt[/COLOR][/B]",
+                    provider_title('trakt'),
                     f"[B][COLOR red]No more space:[/COLOR][/B] Watchlist/List is FULL! "
                     f"[B][COLOR red]Item NOT added.[/COLOR][/B]",
                     TRAKT_ICON, 5000, False)
@@ -735,7 +745,7 @@ def add_to_trakt_watchlist(tmdb_id, media_type, notify=True):
         except: pass
         
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         # Up Next neinceput (watchlist tv) la coada
         if db_type == 'show':
             try:
@@ -791,7 +801,7 @@ def remove_from_trakt_watchlist(tmdb_id, media_type, notify=True):
         except: pass
         
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Watchlist[/COLOR][/B]", TRAKT_ICON, 3000, False)
         if db_type == 'show':
             try:
                 import threading
@@ -845,7 +855,7 @@ def add_to_trakt_favorites(tmdb_id, media_type, notify=True):
             conn.close()
         except: pass
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         xbmc.executebuiltin("Container.Refresh")
         return True
     return False
@@ -882,7 +892,7 @@ def remove_from_trakt_favorites(tmdb_id, media_type, notify=True):
             conn.close()
         except: pass
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR pink]Favorites[/COLOR][/B]", TRAKT_ICON, 3000, False)
         return True
     return False
 
@@ -1617,7 +1627,7 @@ def hide_show_from_progress(tmdb_id):
     # --------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — [B][COLOR FFE41B17]Drop Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1661,7 +1671,7 @@ def unhide_show_from_progress(tmdb_id):
     # ------------------------------------------------------------------------------
     
     if r1 or r2 or r3:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{_item_title(tmdb_id, 'tv')}[/COLOR][/B] — Restore [B][COLOR FF6AFB92]Dropped Show[/COLOR][/B]", TRAKT_ICON, 3000, False)
         from resources.lib import trakt_sync
         try:
             conn = trakt_sync.get_connection()
@@ -1683,7 +1693,7 @@ def unhide_show_from_progress(tmdb_id):
 def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episode=None):
     token = get_trakt_token()
     if not token:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Not connected", xbmcgui.NOTIFICATION_WARNING)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
         return
 
     options =[]
@@ -1712,8 +1722,8 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
             options.append(('[B][COLOR FFE41B17]Drop Show[/COLOR][/B]', 'hide_progress'))
         
     if content_type != 'season':
-        options.append(('Rate on [B][COLOR pink]Trakt[/COLOR][/B]', 'add_rating'))
-        options.append(('Remove rating on [B][COLOR pink]Trakt[/COLOR][/B]', 'remove_rating'))
+        options.append(('Rate on ' + provider_title('trakt'), 'add_rating'))
+        options.append(('Remove rating on ' + provider_title('trakt'), 'remove_rating'))
     # --- Mark Watched/Unwatched (Dinamic, pe serverul Trakt — cross-provider) ---
     if content_type == 'movie':
         _trak_is_w = trakt_sync.is_movie_watched(tmdb_id)
@@ -1721,6 +1731,8 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
         _trak_is_w = trakt_sync.get_episode_watched_count(tmdb_id) > 0
     elif content_type == 'episode' and season is not None and episode is not None:
         _trak_is_w = trakt_sync.is_episode_watched(tmdb_id, season, episode)
+    elif content_type == 'season' and season is not None:
+        _trak_is_w = is_season_fully_watched(tmdb_id, season, trakt_sync.get_episode_watched_count)
     else:
         _trak_is_w = False
     if _trak_is_w:
@@ -1756,7 +1768,7 @@ def show_trakt_context_menu(tmdb_id, content_type, title='', season=None, episod
 def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
     lists = get_trakt_user_lists()
     if not lists:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no lists created", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "You have no lists created", TRAKT_ICON, 3000, False)
         return
 
     poster_map = {}
@@ -1783,7 +1795,7 @@ def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
         li.setArt({'thumb': poster, 'icon': poster, 'poster': poster})
         display_items.append(li)
 
-    ret = xbmcgui.Dialog().select("[B][COLOR pink]Trakt[/COLOR][/B]: Add to List", display_items, useDetails=True)
+    ret = xbmcgui.Dialog().select(provider_title('trakt') + ": Add to List", display_items, useDetails=True)
 
     if ret >= 0:
         selected_list = lists[ret]
@@ -1792,7 +1804,7 @@ def show_trakt_add_to_list_dialog(tmdb_id, content_type, title=''):
         
         if list_slug:
             if add_to_trakt_list(list_slug, tmdb_id, content_type):
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
+                xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] added to [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
 
 def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
     lists = get_trakt_user_lists()
@@ -1817,7 +1829,7 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
             lists_with_item.append(lst)
 
     if not lists_with_item:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Not in any list", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "Not in any list", TRAKT_ICON, 3000, False)
         return
 
     display_items = []
@@ -1842,7 +1854,7 @@ def show_trakt_remove_from_list_dialog(tmdb_id, content_type, title=''):
         
         if list_slug:
             if remove_from_trakt_list(list_slug, tmdb_id, content_type):
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
+                xbmcgui.Dialog().notification(provider_title('trakt'), f"[B][COLOR lime]{title}[/COLOR][/B] removed from [B][COLOR yellow]{list_name}[/COLOR][/B]", TRAKT_ICON, 3000, False)
 
 
 class TraktRatingWindow(xbmcgui.WindowXMLDialog):
@@ -1934,29 +1946,38 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
         token = get_trakt_token()
         if not token: return
         service_label = "RATE ON TRAKT"
-        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png')
+        service_icon = provider_icon('trakt')
     elif service == 'mdblist':
         from resources.lib.mdblist_api import MDBListAPI
         if not MDBListAPI().is_authenticated():
-            xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+            xbmcgui.Dialog().notification(provider_title('mdblist'),
                                            'MDBList is not connected.',
                                            xbmcgui.NOTIFICATION_ERROR, 3000, False)
             return
         service_label = "RATE ON MDBLIST"
-        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
+        service_icon = provider_icon('mdblist')
     elif service == 'simkl':
         from resources.lib.simkl_api import SIMKLAPI
         if not SIMKLAPI().is_authenticated():
-            xbmcgui.Dialog().notification('[B][COLOR mediumpurple]Simkl[/COLOR][/B]',
+            xbmcgui.Dialog().notification(provider_title('simkl'),
                                            'Simkl is not connected.',
                                            xbmcgui.NOTIFICATION_ERROR, 3000, False)
             return
         service_label = "RATE ON SIMKL"
-        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png')
+        service_icon = provider_icon('simkl')
+    elif service == 'punchplay':
+        from resources.lib.punchplay_api import PunchplayAPI
+        if not PunchplayAPI().is_authenticated():
+            xbmcgui.Dialog().notification(provider_title('punchplay'),
+                                           'PunchPlay is not connected.',
+                                           xbmcgui.NOTIFICATION_ERROR, 3000, False)
+            return
+        service_label = "RATE ON PUNCHPLAY"
+        service_icon = provider_icon('punchplay')
     else:
         # TMDb
         service_label = "RATE ON TMDB"
-        service_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
+        service_icon = provider_icon('tmdb')
         from resources.lib.tmdb_api import is_in_tmdb_watchlist
         _ct = str(content_type).lower()
         _tmdb_warn = _ct in ('movie', 'movies', 'tv', 'show', 'shows', 'series') and not (season and episode)
@@ -1966,7 +1987,7 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             except:
                 _tmdb_warn = False
         if _tmdb_warn:
-            if not xbmcgui.Dialog().yesno("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rating [B][COLOR yellow]{title or 'this item'}[/COLOR][/B] will remove it from your [B][COLOR FF00CED1]TMDb Watchlist[/COLOR][/B].\nContinue?"):
+            if not xbmcgui.Dialog().yesno(provider_title('tmdb'), f"Rating [B][COLOR yellow]{title or 'this item'}[/COLOR][/B] will remove it from your [B][COLOR FF00CED1]TMDb Watchlist[/COLOR][/B].\nContinue?"):
                 return
     
     val_10 = show_rating_window(tmdb_id, content_type, season, episode, title, service_icon, service_label)
@@ -1984,18 +2005,18 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             res = trakt_api_request("/sync/ratings", method='POST', data=data)
             if res is not None:
                 stars = val_final / 2.0
-                xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", f"Rated [B][COLOR lime]{stars} Stars[/COLOR][/B]", service_icon, 3000, False)
+                xbmcgui.Dialog().notification(provider_title('trakt'), f"Rated [B][COLOR lime]{stars} Stars[/COLOR][/B]", service_icon, 3000, False)
         elif service == 'mdblist':
             from resources.lib.mdblist_api import MDBListAPI
             api = MDBListAPI()
             res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
             if res is not None:
-                xbmcgui.Dialog().notification("[B][COLOR lightskyblue]MDBList[/COLOR][/B]",
+                xbmcgui.Dialog().notification(provider_title('mdblist'),
                                                f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         elif service == 'simkl':
             if season is not None or episode is not None:
-                xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]",
+                xbmcgui.Dialog().notification(provider_title('simkl'),
                                                "Simkl has no season/episode ratings.",
                                                service_icon, 4000, False)
                 return
@@ -2003,14 +2024,22 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
             api = SIMKLAPI()
             res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
             if res is not None:
-                xbmcgui.Dialog().notification("[B][COLOR mediumpurple]Simkl[/COLOR][/B]",
+                xbmcgui.Dialog().notification(provider_title('simkl'),
+                                               f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
+                                               service_icon, 3000, False)
+        elif service == 'punchplay':
+            from resources.lib.punchplay_api import PunchplayAPI
+            api = PunchplayAPI()
+            res = api.rate_item(content_type, tmdb_id, val_10, season, episode)
+            if res is not None:
+                xbmcgui.Dialog().notification(provider_title('punchplay'),
                                                f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]",
                                                service_icon, 3000, False)
         else:
             # TMDb - Ramane 1-10
             from resources.lib.tmdb_api import rate_tmdb_item_silent
             if rate_tmdb_item_silent(tmdb_id, content_type, val_10, season, episode):
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb[/COLOR][/B]", f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
+                xbmcgui.Dialog().notification(provider_title('tmdb'), f"Rated [B][COLOR lime]{val_10}/10[/COLOR][/B]", service_icon, 3000, False)
 
 def rate_trakt_item(tmdb_id, content_type, season=None, episode=None, title=''):
     _prompt_trakt_rating(tmdb_id, content_type, season, episode, title)
@@ -2021,7 +2050,7 @@ def remove_trakt_rating(tmdb_id, content_type, season=None, episode=None, notify
     res = trakt_api_request('/sync/ratings/remove', method='POST', data=payload)
     if res is not None:
         if notify:
-            xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "Rating removed", TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), "Rating removed", TRAKT_ICON, 3000, False)
         return True
     return False
 
@@ -2129,10 +2158,7 @@ def trakt_discovery_list(params):
     cache_list = []
     items_to_add = []
     for processed_item in fake_items:
-        if media_type == 'movies':
-            processed = _process_movie_item(processed_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(processed_item, return_data=True, skip_details=True)
+        processed = process_media_item(processed_item, media_type)
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -2216,7 +2242,7 @@ def trakt_liked_lists(params=None):
     data = get_liked_lists()
     
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no liked lists", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "You have no liked lists", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -2262,7 +2288,7 @@ def trakt_search_list(params=None):
     data = trakt_api_request("/search/list", params={'query': query, 'limit': PAGE_LIMIT, 'page': page})
     
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "No list found", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "No list found", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
     
@@ -2304,7 +2330,7 @@ def trakt_search_list(params=None):
 
 def trakt_list_content(params):
     """Afiseaza liste Trakt Discovery (trending, popular, etc.) din SQL CU POSTERE."""
-    from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, IMG_BASE
+    from resources.lib.tmdb_api import add_directory, IMG_BASE
     from resources.lib import trakt_sync
     from resources.lib.config import PAGE_LIMIT
     from resources.lib.utils import paginate_list
@@ -2386,10 +2412,7 @@ def trakt_list_content(params):
     for processed_item in fake_items:
         if not processed_item.get('id'):
             continue
-        if media_type == 'movies':
-            processed = _process_movie_item(processed_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(processed_item, return_data=True, skip_details=True)
+        processed = process_media_item(processed_item, media_type)
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -2426,10 +2449,10 @@ def trakt_list_items(params):
     """Afiseaza continutul listelor Trakt (RAM Cache + Batch Rendering)."""
     from resources.lib.tmdb_api import (
         render_from_fast_cache, get_fast_cache, set_fast_cache, 
-        prefetch_metadata_parallel, _process_movie_item, _process_tv_item, get_tmdb_item_details,
+        prefetch_metadata_parallel, get_tmdb_item_details,
         _get_cached_details
     )
-    from resources.lib.utils import paginate_list, sort_personal_list, personal_lists_sort_az
+    from resources.lib.utils import paginate_list, sort_personal_list, personal_lists_sort_az, process_media_item
     from resources.lib import trakt_sync
     import xbmcplugin
 
@@ -2607,11 +2630,7 @@ def trakt_list_items(params):
             }
 
         # Procesare finala
-        processed = None
-        if current_media_type == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True, skip_details=True)
+        processed = process_media_item(fake_item, current_media_type)
 
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -2829,11 +2848,12 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
     cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
 
     if media_type == 'movie':
-        url_params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
+        url_params = select_ext_info_params('movie', tmdb_id) or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
         is_folder = False
     else:
-        url_params = {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title}
-        is_folder = True
+        _sel_info = select_ext_info_params('tv', tmdb_id)
+        url_params = _sel_info or {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title}
+        is_folder = not _sel_info
 
     add_directory(
         f"{title} ({year})" if year else title, 
@@ -2883,7 +2903,7 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
 
 def trakt_favorites_list(params):
     """Afiseaza Favoritele Trakt cu paginare si threading."""
-    from resources.lib.tmdb_api import add_directory, _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import add_directory, prefetch_metadata_parallel
     from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache
     from resources.lib.utils import paginate_list, sort_personal_list, personal_lists_sort_az
     
@@ -2921,10 +2941,7 @@ def trakt_favorites_list(params):
             'release_date': f"{item['year']}-01-01" if item['year'] else ''
         }
 
-        if m_type == 'movies':
-            processed = _process_movie_item(p_item, return_data=True, skip_details=True)
-        else:
-            processed = _process_tv_item(p_item, return_data=True, skip_details=True)
+        processed = process_media_item(p_item, m_type)
         if processed:
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
@@ -2956,7 +2973,7 @@ def trakt_favorites_list(params):
 
 def trakt_dropped_shows_list(params):
     """Afiseaza serialele abandonate (Dropped/Hidden) cu paginare si caching."""
-    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, prefetch_metadata_parallel, _process_tv_item, add_directory
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, prefetch_metadata_parallel, add_directory
     from resources.lib.utils import paginate_list
     from resources.lib import trakt_sync
     import xbmcplugin
@@ -2982,7 +2999,7 @@ def trakt_dropped_shows_list(params):
         data = []
 
     if not data:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", "You have no hidden shows (Dropped).", TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), "You have no hidden shows (Dropped).", TRAKT_ICON, 3000, False)
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
@@ -2991,25 +3008,29 @@ def trakt_dropped_shows_list(params):
     # Prefetch metadate (va trage numele, posterele, etc. de pe TMDb)
     prefetch_metadata_parallel(paginated_items, 'tv')
 
+    try:
+        _hconn = trakt_sync.get_connection()
+        _hcur = _hconn.cursor()
+        _hcur.execute("SELECT tmdb_id, title FROM trakt_hidden_shows")
+        _hidden_titles = {str(r[0]): (r[1] or '') for r in _hcur.fetchall()}
+        _hconn.close()
+    except:
+        try:
+            _hconn.close()
+        except:
+            pass
+        _hidden_titles = {}
+
     items_to_add = []
     cache_list = []
-
-    # Importam functia necesara din tmdb_api pentru a o putea folosi
-    from resources.lib.tmdb_api import get_tmdb_item_details
 
     for item in paginated_items:
         tmdb_id = item.get('id')
         if not tmdb_id: 
             continue
-            
-        # Extragem detaliile complete (aduse instantaneu din cache de prefetcher-ul de mai sus)
-        details = get_tmdb_item_details(tmdb_id, 'tv')
-        
-        # Fallback de siguranta in caz ca API-ul TMDb da eroare
-        if not details:
-            details = item
-            
-        processed = _process_tv_item(details, return_data=True, skip_details=True)
+        _mirror_title = _hidden_titles.get(str(tmdb_id), '') or 'Unknown'
+        fake_item = {'id': tmdb_id, 'name': _mirror_title, 'title': _mirror_title, 'overview': ''}
+        processed = process_media_item(fake_item, 'tv')
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
             cache_list.append(processed)
@@ -3195,6 +3216,7 @@ def _view_trakt_my_calendar():
             if dedup in seen_ids: continue
             seen_ids.add(dedup)
             air_date = utc_to_local_date(item.get('first_aired', '') or '')
+            air_time = utc_to_local_time(item.get('first_aired', '') or '')
             show_img = show.get('images') or {}
             if not isinstance(show_img, dict): show_img = {}
             poster_obj = show_img.get('poster') or {}
@@ -3203,7 +3225,7 @@ def _view_trakt_my_calendar():
             if not isinstance(backdrop_obj, dict): backdrop_obj = {}
             raw_items.append({
                 'media_type': 'tv', 'tmdb_id': tmdb_id, 'title': show.get('title', '') or 'Unknown',
-                'air_date': air_date, 'plot': episode.get('overview', '') or show.get('overview', '') or '',
+                'air_date': air_date, 'air_time': air_time, 'plot': episode.get('overview', '') or show.get('overview', '') or '',
                 'poster': poster_obj.get('medium', '') or '',
                 'backdrop': backdrop_obj.get('full', '') or '',
                 'season': s_num, 'episode': ep_num, 'ep_title': episode.get('title', '') or ''
@@ -3241,23 +3263,7 @@ def _view_trakt_my_calendar():
         except Exception:
             pass
 
-    def _format_cal_date(raw_date):
-        if not raw_date:
-            return '', 'white', 999
-        try:
-            parts = str(raw_date).split('T')[0].split('-')
-            d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
-            diff = (d - today).days
-            ds = f'{parts[0]}-{parts[1]}-{parts[2]}'
-            if diff == -1 or diff <= -2:
-                color = 'FF00FA9A'
-            elif diff == 0:
-                color = 'white'
-            else:
-                color = 'yellow'
-            return calendar_localized_label(diff, ds), color, diff
-        except Exception:
-            return str(raw_date)[:10], 'white', 999
+    _format_cal_date = lambda raw_date: format_calendar_date(raw_date, today)
 
     items_to_add = []
     for it in raw_items:
@@ -3287,7 +3293,7 @@ def _view_trakt_my_calendar():
         if it['media_type'] == 'movie':
             movie_year = str(it['air_date'])[:4] if it['air_date'] else ''
             display_title = f'{it["title"]} ({movie_year})' if movie_year else it['title']
-            label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+            label = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
             if cal_date:
                 if cal_date in ('Astazi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
@@ -3310,22 +3316,22 @@ def _view_trakt_my_calendar():
             li.setArt(art)
             cm = _get_full_context_menu(it['tmdb_id'], 'movie', it['title'], year=movie_year)
             if cm: li.addContextMenuItems(cm)
-            if diff <= 0:
-                url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'movie', 'title': it['title']}
-            else:
-                url_params = {'mode': 'extended_info', 'tmdb_id': it['tmdb_id'], 'type': 'movie'}
-            url = f"{sys.argv[0]}?{urlencode(url_params)}"
-            items_to_add.append((url, li, False))
+            url_params, _is_folder = calendar_row_click_params('movie', it['tmdb_id'], diff, show_title=it['title'], sources_title=it['title'])
+            if url_params:
+                url = f"{sys.argv[0]}?{urlencode(url_params)}"
+                items_to_add.append((url, li, _is_folder))
         else:
             ep_title = it['ep_title']
             if not ep_title or ep_title.strip().upper() in ('TBA', 'TBD', 'TO BE ANNOUNCED'):
                 ep_title = ep_title_map.get((it['tmdb_id'], it['season'], it['episode']), '') or ep_title
-            label = f'[B][COLOR pink]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
+            label = f'[B][COLOR {provider_color("trakt")}]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
             if ep_title:
                 label += f' - [B][I][COLOR FFCCCCFF]{ep_title}[/I][/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Astazi', 'Maine'):
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                if diff in (0, 1):
+                    _air_t = it.get('air_time', '') or ''
+                    _air_suffix = f' • {_air_t}' if _air_t else ''
+                    label += f' [COLOR {date_color}] • [B]{cal_date}{_air_suffix}[/B][/COLOR]'
                 else:
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
             li = xbmcgui.ListItem(label=label)
@@ -3342,40 +3348,16 @@ def _view_trakt_my_calendar():
             if poster_url: art['poster'] = poster_url
             if fanart_url: art['fanart'] = fanart_url
             li.setArt(art)
-            cm = _get_full_context_menu(it['tmdb_id'], 'episode', it['title'], season=it['season'], episode=it['episode'])
-            b_show_params = urlencode({'mode': 'details', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'title': it['title']})
-            cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_show_params}")))
-            b_season_params = urlencode({'mode': 'episodes', 'tmdb_id': it['tmdb_id'], 'season': str(it['season']), 'tv_show_title': it['title']})
-            cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{sys.argv[0]}?{b_season_params}")))
-            clear_p_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': it['tmdb_id'], 'type': 'tv',
-                                        'season': str(it['season']), 'episode': str(it['episode']),
-                                        'title': f"{it['title']} S{it['season']:02d}E{it['episode']:02d}"})
-            cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_p_params})"))
+            cm = calendar_context_menu(_get_full_context_menu(it['tmdb_id'], 'episode', it['title'], season=it['season'], episode=it['episode']),
+                                       'episode', it['tmdb_id'], it['title'], it['season'], it['episode'],
+                                       base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
             if cm: li.addContextMenuItems(cm)
-            if diff <= 0:
-                url_params = {'mode': 'sources', 'tmdb_id': it['tmdb_id'], 'type': 'tv', 'season': str(it['season']),
-                              'episode': str(it['episode']), 'title': f'{it["title"]} S{it["season"]:02d}E{it["episode"]:02d}',
-                              'tv_show_title': it['title']}
-                is_folder = False
-            else:
-                url_params = {'mode': 'episodes', 'tmdb_id': it['tmdb_id'], 'season': str(it['season']), 'tv_show_title': it['title']}
-                is_folder = True
-            url = f"{sys.argv[0]}?{urlencode(url_params)}"
-            items_to_add.append((url, li, is_folder))
+            url_params, is_folder = calendar_row_click_params('episode', it['tmdb_id'], diff, it['season'], it['episode'], it['title'])
+            if url_params:
+                url = f"{sys.argv[0]}?{urlencode(url_params)}"
+                items_to_add.append((url, li, is_folder))
 
-    if today_top:
-        today_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') == '0']
-        other_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') != '0']
-        if sort_asc:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
-        items_to_add = today_items + other_items
-    else:
-        if sort_asc:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+    items_to_add = sort_calendar_items(items_to_add, today_top, sort_asc)
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
@@ -3390,7 +3372,7 @@ def trakt_calendar_menu(params):
     tv_icon = os.path.join(icons_path, 'tv.png')
     movies_icon = os.path.join(icons_path, 'movies.png')
     calendar_items = [
-        {'name': 'My Calendar', 'icon': trakt_icon, 'calendar_type': 'my_combined', 'days': '30'},
+        {'name': '[B][COLOR yellow]My Calendar[/COLOR][/B]', 'icon': trakt_icon, 'calendar_type': 'my_combined', 'days': '30'},
         {'name': 'TV Episodes Airing This Week', 'icon': tv_icon, 'calendar_type': 'all/shows', 'days': '7'},
         {'name': 'My TV Episodes Airing This Week', 'icon': trakt_icon, 'calendar_type': 'my/shows', 'days': '7'},
         {'name': 'New Show Premieres', 'icon': tv_icon, 'calendar_type': 'all/shows/new', 'days': '30'},
@@ -3407,7 +3389,7 @@ def trakt_calendar_menu(params):
 
 
 def trakt_calendar(params):
-    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, _process_movie_item, add_directory, get_tmdb_item_details, TMDbmovies_ICON, prefetch_metadata_parallel, get_smart_season_details
+    from resources.lib.tmdb_api import render_from_fast_cache, get_fast_cache, set_fast_cache, add_directory, get_tmdb_item_details, TMDbmovies_ICON, prefetch_metadata_parallel, get_smart_season_details
     from resources.lib.config import PAGE_LIMIT, calendar_localized_label
     import datetime
 
@@ -3505,7 +3487,7 @@ def trakt_calendar(params):
     for item in paginated_items:
         try:
             if is_movie:
-                processed = _process_movie_item(item, return_data=True, skip_details=False)
+                processed = process_media_item(item, 'movie', skip_details=False)
                 if processed:
                     items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
                     cache_list.append(processed)
@@ -3572,7 +3554,8 @@ def trakt_calendar(params):
             if details and details.get('mpaa'):
                 info['mpaa'] = details['mpaa']
 
-            url_params = {'mode': 'details', 'tmdb_id': tv_id, 'type': 'tv', 'title': show_title}
+            _sel_info = select_ext_info_params('tv', tv_id)
+            url_params = _sel_info or {'mode': 'details', 'tmdb_id': tv_id, 'type': 'tv', 'title': show_title}
             url = f"{sys.argv[0]}?{urlencode(url_params)}"
             li = xbmcgui.ListItem(display_label)
             li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
@@ -3594,9 +3577,9 @@ def trakt_calendar(params):
             except:
                 pass
 
-            items_to_add.append((url, li, True))
+            items_to_add.append((url, li, not _sel_info))
             cache_list.append({
-                'url': url, 'li': li, 'is_folder': True,
+                'url': url, 'li': li, 'is_folder': not _sel_info,
                 'info': info, 'art': {'icon': poster, 'thumb': poster, 'poster': poster},
                 'cm_items': [], 'label': display_label
             })
@@ -3650,7 +3633,7 @@ def trakt_account_info():
     try:
         settings_data = trakt_api_request('/users/settings')
         if not settings_data or 'user' not in settings_data:
-            xbmcgui.Dialog().notification('[B][COLOR pink]Trakt[/COLOR][/B]', 'Failed to load account info', TRAKT_ICON, 3000, False)
+            xbmcgui.Dialog().notification(provider_title('trakt'), 'Failed to load account info', TRAKT_ICON, 3000, False)
             return
         user = settings_data['user']
         account = settings_data.get('account', {})
@@ -3797,4 +3780,4 @@ def trakt_account_info():
         xbmcgui.Dialog().textviewer('[B][COLOR pink]TRAKT ACCOUNT INFO[/COLOR][/B]', text)
     except Exception as e:
         log(f"[TRAKT] Account info error: {e}", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification('[B][COLOR pink]Trakt[/COLOR][/B]', f'Error: {e}', TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), f'Error: {e}', TRAKT_ICON, 3000, False)

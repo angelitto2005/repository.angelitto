@@ -11,7 +11,7 @@ import requests
 import urllib.parse
 from urllib.parse import urlparse
 import json
-from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON
+from resources.lib.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON, kodi_abort_requested
 from resources.lib.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group
 from resources.lib.tmdb_api import set_metadata
@@ -1487,9 +1487,37 @@ class TMDbPlayer(xbmc.Player):
         self.watched_marked = True
         # Nu facem nimic aici - monitorul se ocupa
 
-    def _send_trakt_scrobble(self, action, progress):
+    def onPlayBackPaused(self):
         try:
-            dispatch_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress)
+            curr = self.getTime()
+            total = self.getTotalTime()
+        except:
+            curr, total = 0, 0
+        try:
+            progress = (curr / total) * 100 if total > 0 else 0
+        except:
+            progress = 0
+        log(f"[PLAYER-CLASS] onPlayBackPaused at {progress:.1f}%")
+        self._send_trakt_scrobble('pause', progress, duration_seconds=total, position_seconds=curr)
+
+    def onPlayBackResumed(self):
+        try:
+            curr = self.getTime()
+            total = self.getTotalTime()
+        except:
+            curr, total = 0, 0
+        try:
+            progress = (curr / total) * 100 if total > 0 else 0
+        except:
+            progress = 0
+        log(f"[PLAYER-CLASS] onPlayBackResumed at {progress:.1f}%")
+        self._send_trakt_scrobble('resume', progress, duration_seconds=total, position_seconds=curr)
+
+    def _send_trakt_scrobble(self, action, progress, duration_seconds=0, position_seconds=0, watched=None, watched_threshold=None):
+        try:
+            dispatch_scrobble(action, self.tmdb_id, self.content_type, self.season, self.episode, progress,
+                              duration_seconds=duration_seconds, position_seconds=position_seconds,
+                              watched=watched, watched_threshold=watched_threshold)
         except: 
             pass
 
@@ -1798,7 +1826,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             threading.Thread(target=_warmup_next_season, args=(player_instance,), daemon=True).start()
                     
                     if abs(progress - player_instance.last_progress_sent) >= player_instance.scrobble_threshold:
-                        player_instance._send_trakt_scrobble('scrobble', progress)
+                        player_instance._send_trakt_scrobble('scrobble', progress, duration_seconds=total, position_seconds=curr)
                         player_instance.last_progress_sent = progress
                         
             except Exception as e:
@@ -1913,7 +1941,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.season, player_instance.episode, 
                     100, player_instance.title, player_instance.year
                 )
-                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), daemon=True)
+                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position, 'watched': True, 'watched_threshold': 0.85}, daemon=True)
                 _stop_net_thread.start()
                 stop_net_threads.append(_stop_net_thread)
                 
@@ -1932,7 +1960,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.title, player_instance.year
                 )
                 
-                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', last_known_progress), daemon=True)
+                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', last_known_progress), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position}, daemon=True)
                 _stop_net_thread.start()
                 stop_net_threads.append(_stop_net_thread)
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
@@ -1959,13 +1987,13 @@ def start_playback_monitor(player_instance, dialog=None):
                         # Pastram resume-ul vechi valid - nu-l stergem!
                         log(f"[PLAYER-MONITOR] Watched <3min, dar exista resume vechi valid ({int(old_resume_seconds)}s). Il PASTRAM!")
                         old_pct = (old_resume_seconds / last_known_total * 100) if last_known_total > 0 else 0
-                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', old_pct), daemon=True)
+                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', old_pct), kwargs={'duration_seconds': last_known_total, 'position_seconds': old_resume_seconds}, daemon=True)
                         _stop_net_thread.start()
                         stop_net_threads.append(_stop_net_thread)
                     else:
                         # Nu exista resume valid sau era si el sub 3 min -> stergem tot
                         log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
-                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 0), daemon=True)
+                        _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 0), kwargs={'watched': False}, daemon=True)
                         _stop_net_thread.start()
                         stop_net_threads.append(_stop_net_thread)
                         conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
@@ -2069,6 +2097,64 @@ def start_playback_monitor(player_instance, dialog=None):
             if time.time() - _last_upnext_refresh > 10:
                 xbmc.executebuiltin('Container.Refresh')
                 log("[PLAYER-MONITOR] Container refreshed")
+            # PLASA DE SIGURANTA (5s): refresh-ul de mai sus poate cadea in
+            # milisecunda in care fereastra media se initializeaza (log real:
+            # Container.Refresh 24.262 vs Window Init MyVideoNav 24.261) - daca
+            # Kodi nu are inca containerul activ, lista ramine nereimprospatata
+            # (sau corupta) pina reintri in ea. La 5s toate scrierile s-au
+            # terminat (daemoni Up Next, widget UpdateLibrary), deci re-citirea
+            # prinde datele finale. Garzi: sintem in ACEEASI lista a addonului
+            # (Container.FolderPath neschimbat - nu lovim ce navigheaza userul
+            # intre timp), containerul nu se incarca deja (Container.IsUpdating)
+            # si niciun daemon n-a refresh-uit intre timp (stamp proaspat).
+            # Asteptarea e pe bucati de 250ms cu verificare de abort Kodi:
+            # altfel, la inchiderea Kodi, invokerul asteapta threadul 5s si il
+            # ucide ("script didn't stop in 5 seconds").
+            _folder_at_stop = ''
+            try:
+                _folder_at_stop = xbmc.getInfoLabel('Container.FolderPath') or ''
+            except Exception:
+                _folder_at_stop = ''
+
+            def _safety_refresh():
+                try:
+                    _waited = 0.0
+                    while _waited < 5.0:
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(250)
+                        _waited += 0.25
+                    try:
+                        if 'tmdbmovies' not in (xbmc.getInfoLabel('Container.PluginName') or '').lower():
+                            return
+                    except Exception:
+                        return
+                    if _folder_at_stop:
+                        try:
+                            if (xbmc.getInfoLabel('Container.FolderPath') or '') != _folder_at_stop:
+                                return
+                        except Exception:
+                            return
+                    try:
+                        _s = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
+                    except Exception:
+                        _s = 0.0
+                    if time.time() - _s < 2.0:
+                        return
+                    for _ in range(20):
+                        try:
+                            if not xbmc.getCondVisibility('Container.IsUpdating'):
+                                break
+                        except Exception:
+                            return
+                        xbmc.sleep(100)
+                    else:
+                        return
+                    xbmc.executebuiltin('Container.Refresh')
+                    log("[PLAYER-MONITOR] Container refreshed (safety pass)")
+                except Exception:
+                    pass
+            threading.Thread(target=_safety_refresh, daemon=True).start()
             # Refresh widget-uri de pe Home (UpdateLibrary): Container.Refresh nu
             # atinge widget-urile din skin (Next Episodes / In Progress). UpdateLibrary
             # emite VideoLibrary.OnUpdate -> toate widget-urile se re-randa in ~5s.

@@ -316,7 +316,9 @@ def filter_streams_for_display(streams):
                 full_text += ' ' + str(stream['info'].get('releaseGroup', '')).lower()
 
             has_hdr, has_dv = _hdr_dv_flags(full_text)
-            if (exclude_dv and has_dv) or (exclude_hdr and has_hdr):
+            if exclude_hdr and (has_hdr or has_dv):
+                continue
+            if exclude_dv and has_dv and not has_hdr:
                 continue
                 
         filtered.append(stream)
@@ -4234,7 +4236,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     for initial, service in DEBRID_INITIALS.items():
         if f'[{initial}' in name_upper:
             debrid_service = service
-            is_cached = re.search(r'\[%s(?:\+|\u26a1\ufe0f?|\U0001f329\ufe0f?)\]' % initial, name_upper) is not None
+            is_cached = re.search(r'\[%s\s*(?:\+|\u26a1\ufe0f?|\U0001f329\ufe0f?)\s*\]' % initial, name_upper) is not None
             break
     if debrid_service and not is_cached and provider_id == 'torz' and '⚡️' in raw_name:
         is_cached = True

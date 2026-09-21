@@ -9,7 +9,7 @@ import json
 import time
 import zlib
 try:
-    from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, utc_to_local_date
+    from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, utc_to_local_date, provider_title, provider_icon
 except ImportError:
     from resources.lib.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE
     def utc_to_local_date(iso_ts):
@@ -60,7 +60,7 @@ def _initialize_tables_on_connection(conn):
                  (tmdb_id TEXT PRIMARY KEY, show_title TEXT, season INTEGER, episode INTEGER, 
                   ep_title TEXT, overview TEXT, last_watched_at TEXT, poster TEXT, air_date TEXT, 
                   watched_count INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS trakt_hidden_shows (tmdb_id TEXT PRIMARY KEY)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS trakt_hidden_shows (tmdb_id TEXT PRIMARY KEY, title TEXT DEFAULT '')''')
     c.execute('''CREATE TABLE IF NOT EXISTS trakt_favorites 
                  (media_type TEXT, tmdb_id TEXT, title TEXT, year TEXT, poster TEXT, overview TEXT, rank INTEGER, UNIQUE(media_type, tmdb_id))''')
     
@@ -96,6 +96,8 @@ def _initialize_tables_on_connection(conn):
     try: c.execute("ALTER TABLE tmdb_account_lists ADD COLUMN first_air_date TEXT")
     except: pass
     try: c.execute("ALTER TABLE trakt_next_episodes ADD COLUMN watched_count INTEGER DEFAULT 0")
+    except: pass
+    try: c.execute("ALTER TABLE trakt_hidden_shows ADD COLUMN title TEXT DEFAULT ''")
     except: pass
     try: c.execute("UPDATE trakt_next_episodes SET watched_count=(SELECT COUNT(*) FROM trakt_watched_episodes WHERE trakt_watched_episodes.tmdb_id=trakt_next_episodes.tmdb_id) WHERE watched_count IS NULL OR watched_count=0")
     except: pass
@@ -2527,7 +2529,7 @@ def _get_hidden_show_ids():
     """
     from resources.lib import trakt_api
     
-    hidden = {'tmdb': set(), 'trakt': set(), 'imdb': set(), 'tvdb': set()}
+    hidden = {'tmdb': set(), 'trakt': set(), 'imdb': set(), 'tvdb': set(), 'titles': {}}
     
     for section in ('calendar', 'progress_watched', 'dropped'):
         try:
@@ -2542,11 +2544,21 @@ def _get_hidden_show_ids():
                     break
                     
                 for item in result:
-                    ids = item.get('show', {}).get('ids', {})
+                    show = item.get('show', {}) or {}
+                    ids = show.get('ids', {})
                     for key in hidden:
+                        if key == 'titles':
+                            continue
                         val = ids.get(key)
                         if val:
                             hidden[key].add(str(val))
+                    try:
+                        _tid = str(ids.get('tmdb') or '')
+                        _t = str(show.get('title') or '')
+                        if _tid and _t and _tid not in hidden['titles']:
+                            hidden['titles'][_tid] = _t
+                    except:
+                        pass
                             
                 # Daca primim sub 100, inseamna ca asta e ultima pagina
                 if len(result) < 100:
@@ -2568,9 +2580,9 @@ def _sync_hidden_shows(c):
     """Sincronizeaza serialele ascunse in DB local pentru filtrare ultra-rapida."""
     hidden_ids = _get_hidden_show_ids()
     c.execute("DELETE FROM trakt_hidden_shows")
-    rows = [(tid,) for tid in hidden_ids['tmdb'] if tid]
+    rows = [(tid, hidden_ids.get('titles', {}).get(tid, '')) for tid in hidden_ids['tmdb'] if tid]
     if rows:
-        c.executemany("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)", rows)
+        c.executemany("INSERT OR REPLACE INTO trakt_hidden_shows (tmdb_id, title) VALUES (?,?)", rows)
         log(f"[TRAKT SYNC] Saved {len(rows)} hidden shows in local database.")
 
 
@@ -2925,7 +2937,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     from resources.lib.config import IMG_BASE, BACKDROP_BASE, ADDON
     import threading
 
-    TRAKT_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+    TRAKT_ICON = provider_icon('trakt')
     tid = str(tmdb_id)
     conn = get_connection()
     c = conn.cursor()
@@ -3050,8 +3062,8 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
 
     # 3. NOTIFICARE SI REFRESH UP NEXT
     if notify:
-        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on [B][COLOR pink]Trakt[/COLOR][/B]"
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
+        msg = f"[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on " + provider_title('trakt')
+        xbmcgui.Dialog().notification(provider_title('trakt'), msg, TRAKT_ICON, 3000, False)
     
     if sync_trakt:
         threading.Thread(target=sync_single_watched_to_trakt, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -3081,7 +3093,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     import threading
     from resources.lib.config import ADDON
     
-    TRAKT_ICON = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'trakt.png')
+    TRAKT_ICON = provider_icon('trakt')
     tid = str(tmdb_id)
     conn = get_connection()
     c = conn.cursor()
@@ -3148,9 +3160,9 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         except: pass
 
     # 4. NOTIFICARE SI SYNC TRAKT
-    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on [B][COLOR pink]Trakt[/COLOR][/B]"
+    msg = f"[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on " + provider_title('trakt')
     if notify:
-        xbmcgui.Dialog().notification("[B][COLOR pink]Trakt[/COLOR][/B]", msg, TRAKT_ICON, 3000, False)
+        xbmcgui.Dialog().notification(provider_title('trakt'), msg, TRAKT_ICON, 3000, False)
 
     if sync_trakt:
         threading.Thread(target=sync_single_unwatched_to_trakt, args=(tmdb_id, content_type, season, episode), daemon=True).start()
@@ -3464,7 +3476,8 @@ def sync_tmdb_up_next(c):
             prov = _get_provider_raw()
             prov_tbl = {'trakt': 'trakt_next_episodes',
                         'mdblist': 'mdblist_next_episodes',
-                        'simkl': 'simkl_next_episodes'}.get(prov)
+                        'simkl': 'simkl_next_episodes',
+                        'punchplay': 'punchplay_next_episodes'}.get(prov)
             if prov_tbl:
                 pconn = get_source_module().get_connection()
                 pcur = pconn.cursor()
@@ -3649,7 +3662,8 @@ def refresh_next_episode_tmdb(tmdb_id):
                 prov = _get_provider_raw()
                 prov_tbl = {'trakt': 'trakt_next_episodes',
                             'mdblist': 'mdblist_next_episodes',
-                            'simkl': 'simkl_next_episodes'}.get(prov)
+                            'simkl': 'simkl_next_episodes',
+                            'punchplay': 'punchplay_next_episodes'}.get(prov)
                 if prov_tbl:
                     import time
                     for _ in range(6):

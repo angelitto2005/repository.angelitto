@@ -15,7 +15,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from resources.lib.config import MDBLIST_API_URL, MDBLIST_CLIENT_ID, ADDON, ADDON_PATH
+from resources.lib.config import MDBLIST_API_URL, MDBLIST_CLIENT_ID, ADDON, ADDON_PATH, provider_title, provider_color
 
 MDBLIST_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png')
 
@@ -573,7 +573,7 @@ def mdblist_auth():
     client_id = MDBLIST_CLIENT_ID
     if not client_id:
         xbmcgui.Dialog().ok(
-            '[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+            provider_title('mdblist'),
             'No MDBList Client ID configured.',
             'Go to [B]mdblist.com/developer/[/B] and register an app.',
             'Then set [B]MDBLIST_CLIENT_ID[/B] in [B]config.py[/B].'
@@ -583,7 +583,7 @@ def mdblist_auth():
     api = MDBListAPI()
     device_data = api.auth_get_device_code()
     if not device_data:
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('mdblist'),
                                        'Failed to get device code. Check log.',
                                        MDBLIST_ICON, 5000, False)
         return
@@ -671,7 +671,7 @@ def mdblist_auth():
         status = f'Connected: {username}' if username else 'Connected'
         ADDON.setSetting('mdblist_status', status)
 
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('mdblist'),
                                        f'Connected as [B][COLOR red]{username}[/COLOR][/B]' if username else 'Connected!',
                                        MDBLIST_ICON, 4000, False)
 
@@ -680,13 +680,13 @@ def mdblist_auth():
         return
 
     if _result.get('denied'):
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('mdblist'),
                                        f'Authorization {_result["denied"].replace("_", " ")}.',
                                        MDBLIST_ICON, 4000, False)
         return
 
     if dialog.expired:
-        xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+        xbmcgui.Dialog().notification(provider_title('mdblist'),
                                        'Authorization expired. Try again.',
                                        MDBLIST_ICON, 4000, False)
 
@@ -698,7 +698,7 @@ def sync_full_library_background():
 
 def mdblist_revoke():
     # --- START PROTECTIE DECONECTARE ACCIDENTALA ---
-    if not xbmcgui.Dialog().yesno("[B][COLOR lightskyblue]Disconnect MDBList[/COLOR][/B]", "Are you sure you want to disconnect from [B][COLOR lightskyblue]MDBList[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
+    if not xbmcgui.Dialog().yesno(provider_title('mdblist', name='Disconnect MDBList'), f"Are you sure you want to disconnect from [B][COLOR {provider_color('mdblist')}]MDBList[/COLOR][/B]?\n[COLOR gray]Synced data will be deleted for security.[/COLOR]"):
         return
     # --- END PROTECTIE ---
 
@@ -707,7 +707,12 @@ def mdblist_revoke():
     ADDON.setSetting('mdblist_status', 'Disconnected')
     ADDON.setSetting('mdblist_username', '')
     ADDON.setSetting('mdblist_api', '')
-    xbmcgui.Dialog().notification('[B][COLOR lightskyblue]MDBList[/COLOR][/B]',
+    xbmcgui.Dialog().notification(provider_title('mdblist'),
                                    'Disconnected.',
                                    MDBLIST_ICON, 3000, False)
+    try:
+        from resources.lib.watched_provider import ensure_active_provider
+        ensure_active_provider()
+    except:
+        pass
     xbmc.executebuiltin('Container.Refresh')

@@ -219,6 +219,258 @@ def sort_personal_list(items):
     except:
         return items
 
+def is_season_fully_watched(tmdb_id, season, count_fn):
+    try:
+        s_num = int(season)
+    except:
+        return False
+    try:
+        from resources.lib.tmdb_api import get_tmdb_item_details
+        details = get_tmdb_item_details(str(tmdb_id), 'tv', lightweight=True) or {}
+        ep_count = 0
+        for s in details.get('seasons', []) or []:
+            try:
+                if int(s.get('season_number', -1)) == s_num:
+                    ep_count = int(s.get('episode_count', 0) or 0)
+                    break
+            except:
+                continue
+        if ep_count <= 0:
+            return False
+        return int(count_fn(str(tmdb_id), s_num) or 0) >= ep_count
+    except:
+        return False
+
+# =============================================================================
+# SELECT ACTION (setarea select_ext_info)
+# Randul selectat poate deschide Extended InfoMod in loc de play/navigare.
+# Valorile setarii (index -> tipuri de rand acoperite):
+#   0 None | 1 Movies | 2 TV Shows | 3 Episodes
+#   4 Movies + TV Shows | 5 Movies + Episodes | 6 Movies + TV Shows + Episodes
+# Pe randul de EPISOD, "Episodes" are prioritate (pagina episodului); daca e
+# bifat doar "TV Shows", randul de episod deschide pagina SERIALULUI,
+# ambele comportamente din aceeasi setare.
+# =============================================================================
+_SELECT_EXT_INFO_MAP = {
+    '0': (),
+    '1': ('movie',),
+    '2': ('tv',),
+    '3': ('episode',),
+    '4': ('movie', 'tv'),
+    '5': ('movie', 'episode'),
+    '6': ('movie', 'tv', 'episode'),
+}
+
+def select_info_actions():
+    """Tipurile de rand pentru care selectul deschide Extended Info (set gol = None)."""
+    try:
+        return _SELECT_EXT_INFO_MAP.get(str(ADDON.getSetting('select_ext_info') or '0'), ())
+    except:
+        return ()
+
+def skip_ext_info_in_progress():
+    """Skip In Progress: la ON, rindurile din In Progress (Movies / TV Shows / Episodes)
+    isi pastreaza comportamentul normal (surse / browser serial), ignorind redirectul
+    spre Extended Info din setarea select_ext_info (stil Redlight)."""
+    try:
+        return ADDON.getSetting('select_skip_inprogress') == 'true'
+    except:
+        return False
+
+def skip_ext_info_upnext():
+    """Skip Up Next: la ON, rindurile din Up Next deschid direct sursele,
+    ignorind redirectul spre Extended Info."""
+    try:
+        return ADDON.getSetting('select_skip_upnext') == 'true'
+    except:
+        return False
+
+def select_ext_info_params(content_type, tmdb_id, season=None, episode=None, tv_name='', title=''):
+    """Params pentru mode=extended_info daca setarea cere pentru acest tip de rand,
+    altfel None (randul isi pastreaza comportamentul normal).
+    content_type: 'movie' | 'tv'/'show' | 'episode'.
+    """
+    try:
+        if not tmdb_id:
+            return None
+        acts = select_info_actions()
+        if not acts:
+            return None
+        if content_type == 'episode':
+            if 'episode' not in acts and 'tv' not in acts:
+                return None
+            params = {'mode': 'extended_info', 'tmdb_id': str(tmdb_id), 'type': 'tv'}
+            show_title = tv_name or title or ''
+            if show_title:
+                params['tv_name'] = show_title
+            if 'episode' in acts and season is not None and episode is not None:
+                # Pagina episodului (EpisodeInfo)
+                params['season'] = str(season)
+                params['episode'] = str(episode)
+            # altfel: doar pagina serialului (stil POV)
+            return params
+        if content_type in ('tv', 'show', 'tvshow'):
+            if 'tv' not in acts:
+                return None
+            return {'mode': 'extended_info', 'tmdb_id': str(tmdb_id), 'type': 'tv'}
+        if content_type == 'movie':
+            if 'movie' not in acts:
+                return None
+            return {'mode': 'extended_info', 'tmdb_id': str(tmdb_id), 'type': 'movie'}
+        return None
+    except:
+        return None
+
+# =============================================================================
+# CALENDAR ROW CLICK (helper comun TMDb / Trakt / MDBList / Simkl / PunchPlay)
+# Regula de click pe un rand din orice calendar, intr-un singur loc:
+#   Filme:    azi/lansate (diff <= 0) -> Extended Info daca selectorul acopera
+#             Movies, altfel cautarea/surse. Nelansate -> Extended Info pe film.
+#   Episoade: azi/lansate -> Extended Info (episod sau serial, dupa selector),
+#             altfel surse. Nelansate -> MEREU Extended Info direct (pagina
+#             episodului; pagina serialului doar daca selectorul cere doar TV
+#             Shows), identic cu filmele nelansate - niciodata lista de sezon.
+# Returneaza (params_dict, is_folder).
+# =============================================================================
+def calendar_row_click_params(content_type, tmdb_id, diff, season=None, episode=None,
+                              show_title='', sources_title=''):
+    try:
+        tmdb_id = str(tmdb_id)
+        if content_type == 'movie':
+            if diff <= 0:
+                params = select_ext_info_params('movie', tmdb_id)
+                if not params:
+                    params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie',
+                              'title': sources_title or show_title}
+                return params, False
+            return {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'movie'}, False
+        # --- episod ---
+        season = int(season or 0)
+        episode = int(episode or 0)
+        ep_label = 'S%02dE%02d' % (season, episode)
+        if diff <= 0:
+            params = select_ext_info_params('episode', tmdb_id, season, episode, show_title)
+            if not params:
+                params = {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv',
+                          'season': str(season), 'episode': str(episode),
+                          'title': '%s %s' % (show_title, ep_label),
+                          'tv_show_title': show_title}
+            return params, False
+        params = select_ext_info_params('episode', tmdb_id, season, episode, show_title)
+        if not params:
+            # Nelansat, selector off: mereu Extended Info direct pe EPISOD (ca la filme nelansate)
+            params = {'mode': 'extended_info', 'tmdb_id': tmdb_id, 'type': 'tv',
+                      'season': str(season), 'episode': str(episode), 'tv_name': show_title}
+        return params, False
+    except Exception:
+        # Fallback defensiv: surse direct (comportament sigur)
+        try:
+            if content_type == 'movie':
+                return {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'movie',
+                        'title': sources_title or show_title}, False
+            return {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'tv',
+                    'season': str(int(season or 0)), 'episode': str(int(episode or 0)),
+                    'title': sources_title or show_title,
+                    'tv_show_title': show_title}, False
+        except Exception:
+            return None, False
+
+def _cal_diff_int(item):
+    try:
+        return int(item[1].getProperty('cal_diff') or 999)
+    except:
+        return 999
+
+def sort_calendar_items(items_to_add, today_top=True, sort_asc=True):
+    """Sortare comuna calendarelor (TMDb / Trakt / MDBList / Simkl / PunchPlay):
+    azi primele (optional), apoi dupa cal_diff crescator/descrescator.
+    items_to_add: lista de tuple (url, li, is_folder). Returneaza lista sortata."""
+    try:
+        items = list(items_to_add or [])
+        if today_top:
+            today_items = [x for x in items if (x[1].getProperty('cal_diff') or '') == '0']
+            other_items = [x for x in items if (x[1].getProperty('cal_diff') or '') != '0']
+            other_items.sort(key=_cal_diff_int, reverse=not sort_asc)
+            return today_items + other_items
+        items.sort(key=_cal_diff_int, reverse=not sort_asc)
+        return items
+    except Exception:
+        return list(items_to_add or [])
+
+def format_calendar_date(raw_date, today=None):
+    """Helper comun de dată pentru calendare (Trakt / MDBList / etc.):
+    returnează (label_localizat, culoare, diff_zile).
+    - diff <= -1 (trecut): verde FF00FA9A, 0 (azi): alb, viitor: galben;
+    - label prin config.calendar_localized_label (RO/EN + format dată);
+    - raw_date gol -> ('', 'white', 999); data invalidă -> data brută, alb, 999."""
+    try:
+        import datetime as _dt
+        from resources.lib.config import calendar_localized_label as _cal_label
+        if not raw_date:
+            return '', 'white', 999
+        if today is None:
+            today = _dt.date.today()
+        parts = str(raw_date).split('T')[0].split('-')
+        d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
+        diff = (d - today).days
+        ds = '%s-%s-%s' % (parts[0], parts[1], parts[2])
+        if diff == -1 or diff <= -2:
+            color = 'FF00FA9A'
+        elif diff == 0:
+            color = 'white'
+        else:
+            color = 'yellow'
+        return _cal_label(diff, ds), color, diff
+    except Exception:
+        try:
+            return str(raw_date)[:10], 'white', 999
+        except Exception:
+            return '', 'white', 999
+
+def process_media_item(item, kind, return_data=True, skip_details=True):
+    """Delegatie catre SINGURUL renderer de randuri film/serial (tmdb_api._process_movie_item
+    / _process_tv_item), folosit de toti providerii (Trakt / MDBList / Simkl / PunchPlay).
+    kind: 'movie'/'movies' (sau True) -> film; 'tv'/'tvshows'/'show'/'' (sau False) -> serial.
+    Returneaza dict-ul procesat al renderer-ului (url/li/is_folder/...) sau None."""
+    try:
+        from resources.lib import tmdb_api
+        if isinstance(kind, bool):
+            is_movie = kind
+        else:
+            is_movie = str(kind).strip().lower() in ('movie', 'movies', 'film')
+        if is_movie:
+            return tmdb_api._process_movie_item(item, return_data=return_data, skip_details=skip_details)
+        return tmdb_api._process_tv_item(item, return_data=return_data, skip_details=skip_details)
+    except Exception:
+        return None
+
+def calendar_context_menu(base_cm, content_type, tmdb_id, show_title, season=None, episode=None,
+                          base_url='', browse_cmd=None, urlencode_fn=None, clear_sources=True):
+    """Meniul contextual comun al unui rand de calendar: Browse Show / Browse Season
+    (+ Clear sources cache) pe randurile de EPISOD. Returneaza o lista noua cu
+    cm-ul de baza + intrarile comune. base_url = sys.argv[0] sau _BASE_URL al modulului."""
+    try:
+        cm = list(base_cm or [])
+        if content_type != 'episode':
+            return cm
+        enc = urlencode_fn or urlencode
+        bcmd = browse_cmd or (lambda url: 'Container.Update(%s)' % url)
+        season = int(season or 0)
+        episode = int(episode or 0)
+        tid = str(tmdb_id)
+        b_show_params = enc({'mode': 'details', 'tmdb_id': tid, 'type': 'tv', 'title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', bcmd(f"{base_url}?{b_show_params}")))
+        b_season_params = enc({'mode': 'episodes', 'tmdb_id': tid, 'season': str(season), 'tv_show_title': show_title})
+        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', bcmd(f"{base_url}?{b_season_params}")))
+        if clear_sources:
+            clear_p_params = enc({'mode': 'clear_sources_context', 'tmdb_id': tid, 'type': 'tv',
+                                  'season': str(season), 'episode': str(episode),
+                                  'title': f"{show_title} S{season:02d}E{episode:02d}"})
+            cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({base_url}?{clear_p_params})"))
+        return cm
+    except Exception:
+        return list(base_cm or [])
+
 def extract_details(raw_title, raw_name):
     from resources.lib.utils import clean_text
     import re

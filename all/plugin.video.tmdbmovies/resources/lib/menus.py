@@ -2,6 +2,8 @@ import os
 import xbmcgui
 import xbmcaddon
 
+from resources.lib.config import provider_title
+
 _ADDON = xbmcaddon.Addon()
 _ADDON_PATH = _ADDON.getAddonInfo('path')
 
@@ -30,9 +32,10 @@ def _count(label, count):
 root_list = [
     {'name': '[B][COLOR FF00CED1]Movies[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'movies_menu'},
     {'name': '[B][COLOR FF00CED1]TV Shows[/COLOR][/B]', 'iconImage': 'tv.png', 'mode': 'tv_menu'},
-    {'name': '[B][COLOR pink]Trakt[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
-    {'name': '[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
-    {'name': '[B][COLOR mediumpurple]Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_menu'},
+    {'name': provider_title('trakt'), 'iconImage': 'trakt.png', 'mode': 'trakt_main_menu'},
+    {'name': provider_title('mdblist'), 'iconImage': 'mdblist.png', 'mode': 'mdblist_menu'},
+    {'name': provider_title('simkl'), 'iconImage': 'simkl.png', 'mode': 'simkl_menu'},
+    {'name': provider_title('punchplay'), 'iconImage': 'punchplay.png', 'mode': 'punchplay_menu'},
     {'name': '[B][COLOR FF00CED1]My TMDB Lists[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'tmdb_my_lists'},
     {'name': '[B][COLOR FFCCCCFF]Bollywood[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'hindi_movies_menu'},
     {'name': '[B][COLOR yellow]Romania[/COLOR][/B]', 'iconImage': 'movies.png', 'mode': 'romania_menu'},
@@ -49,6 +52,7 @@ _ROOT_MENU_SETTINGS = {
     'trakt_main_menu': 'show_menu_trakt',
     'mdblist_menu': 'show_menu_mdblist',
     'simkl_menu': 'show_menu_simkl',
+    'punchplay_menu': 'show_menu_punchplay',
     'tmdb_my_lists': 'show_menu_tmdb_lists',
     'hindi_movies_menu': 'show_menu_bollywood',
     'romania_menu': 'show_menu_romania',
@@ -88,7 +92,7 @@ movie_list = [
     {'name': 'Most Voted', 'iconImage': 'most_voted.png', 'mode': 'list_most_voted', 'media_type': 'movie'},
     {'name': 'Genres', 'iconImage': 'genres.png', 'mode': 'navigator_genres', 'menu_type': 'movie'},
     {'name': 'Release Years', 'iconImage': 'calender.png', 'mode': 'navigator_years', 'menu_type': 'movie'},
-    {'name': 'In Progress', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
+    {'name': 'In Progress Movies', 'iconImage': 'player.png', 'mode': 'in_progress_movies', 'action': 'noop'}
 ]
 
 # Meniul TV Shows

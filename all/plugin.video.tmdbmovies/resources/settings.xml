@@ -13,14 +13,19 @@
 		<setting id="auto_scrape_next_episode" type="bool" label="[B][COLOR FFCCCCFF]Auto-Play [COLOR FF33CCFF]Next Episode[/COLOR][/B]" default="true" />		
 		<setting id="skip_intro.enable" type="bool" label="[B][COLOR FFCCCCFF]Show [COLOR FFFF4444]Skip Intro[COLOR FFCCCCFF] dialog[/COLOR][/B]" default="true"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Show future episodes (over 7 days / TBA)" default="false"/>
-        <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="true"/>
-        <setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
+        <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="false"/>
+        <setting id="hide_unaired_episodes" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Hide unaired episodes" default="false"/>
+		<setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="flatten_single_season" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Flatten single-season shows" default="false"/>
         <setting id="date_format" type="enum" label="Date format" values="European (13.09.2026)|US (09/13/2026)" default="0"/>
         <setting id="timezone_override" type="enum" label="Timezone for air dates" values="Auto (device)|-12|-11|-10|-09|-08|-07|-06|-05|-04|-03|-02|-01|+00|+01|+02|+03|+04|+05|+06|+07|+08|+09|+10|+11|+12|+13|+14" default="0"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
 		<setting id="skin_type" type="enum" label="Skin Compatibility (Fix Art/Thumbnails)" values="[B][COLOR FF6AFB92]Estuary (Standard)[/COLOR][/B]|[B][COLOR FF6AFB92]Arctic Fuse 3 (Modern)[/COLOR][/B]" default="0"/>
 		<setting id="show_motto_genre" type="bool" label="Show Motto + Genre above description" default="true"/>
+		<setting type="lsep" label="Select Action"/>
+		<setting id="select_ext_info" type="enum" label="[B][COLOR FF33CCFF]Open Extended Info[/COLOR][/B] when selecting" values="None|Movies|TV Shows|Episodes|Movies + TV Shows|Movies + Episodes|Movies + TV Shows + Episodes" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
+		<setting id="select_skip_inprogress" type="bool" label="  [B][COLOR FFFDBD01]Skip In Progress[/COLOR][/B] (Movies / TV Shows / Episodes: deschide direct sursele)" default="false" visible="!eq(-1,0)" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
+		<setting id="select_skip_upnext" type="bool" label="  [B][COLOR FFFDBD01]Skip Up Next[/COLOR][/B] (deschide direct sursele)" default="false" visible="!eq(-2,0)" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
 		
 		<setting type="lsep" label="AutoPlay [COLOR gray]Windows[/COLOR] vs [COLOR gray]Android[/COLOR]"/>
 		<setting id="auto_play" type="bool" label="Auto-play the most recommended source." default="false"/>
@@ -51,6 +56,7 @@
         <setting id="show_menu_trakt" type="bool" label="Show [B][COLOR pink]Trakt[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_mdblist" type="bool" label="Show [B][COLOR lightskyblue]MDBList[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_simkl" type="bool" label="Show [B][COLOR mediumpurple]Simkl[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_punchplay" type="bool" label="Show [B][COLOR FFFF6600]PunchPlay[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_tmdb_lists" type="bool" label="Show [B][COLOR FF00CED1]My TMDB Lists[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_bollywood" type="bool" label="Show [B][COLOR FFCCCCFF]Bollywood[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_romania" type="bool" label="Show [B][COLOR yellow]Romania[/COLOR][/B] in main menu" default="true"/>
@@ -61,7 +67,8 @@
         <setting id="show_cm_tmdb" type="bool" label="Show [B][COLOR FF00CED1]My TMDB[/COLOR][/B] in context menu" default="true"/>
         <setting id="show_cm_mdblist" type="bool" label="Show [B][COLOR lightskyblue]My MDBList[/COLOR][/B] in context menu" default="true"/>
         <setting id="show_cm_simkl" type="bool" label="Show [B][COLOR mediumpurple]My Simkl[/COLOR][/B] in context menu" default="true"/>
-        <setting id="all_providers_menu" type="bool" label="Show [B][COLOR pink]All [/COLOR][COLOR FF00CED1]Pro[/COLOR][COLOR lightskyblue]vid[/COLOR][COLOR mediumpurple]ers[/COLOR][/B] in context menu (batch: TMDb + Trakt + MDBList + Simkl)" default="false"/>
+        <setting id="show_cm_punchplay" type="bool" label="Show [B][COLOR FFFF6600]My PunchPlay[/COLOR][/B] in context menu" default="true"/>
+        <setting id="all_providers_menu" type="bool" label="Show [B][COLOR pink]All [/COLOR][COLOR FF00CED1]Pro[/COLOR][COLOR lightskyblue]vid[/COLOR][COLOR mediumpurple]ers[/COLOR][/B] in context menu (batch: TMDb + Trakt + MDBList + Simkl + PunchPlay)" default="false"/>
         <setting id="show_cm_youtube" type="bool" label="Show [B][COLOR FFF70D1A]Search Youtube[/COLOR][/B] in context menu" default="true"/>
         <setting id="youtube_autoplay" type="bool" label="   └─ [B][COLOR FFF70D1A]Youtube Autoplay[/COLOR][/B] (keep playing suggested videos)" default="false"/>
         <setting id="show_cm_my_plays" type="bool" label="Show [B][COLOR FFFF69B4]My Plays[/COLOR][/B] in context menu" default="true"/>
@@ -119,8 +126,8 @@
         <setting id="use_fshdnet" type="bool" label="   └─ Enable [B][COLOR FF00FA9A]FSHDnet[/COLOR][/B]" default="true" visible="eq(-21,true)"/>
 		
         <setting type="lsep" label="Exclusions"/>
-		<setting id="exclude_dv" type="bool" label="Exclude [B][COLOR FFFFCC00]Dolby Vision[/COLOR][/B] (also DV+ HDR hybrids)" default="false"/>
-		<setting id="exclude_hdr" type="bool" label="Exclude [B][COLOR FF00FA9A]HDR[/COLOR][/B] (also HDR + DV hybrids)" default="false"/>
+		<setting id="exclude_dv" type="bool" label="Exclude [B][COLOR FFFFCC00]Dolby Vision[/COLOR][/B] (DV-only files, keeps HDR + hybrids)" default="false"/>
+		<setting id="exclude_hdr" type="bool" label="Exclude [B][COLOR FF00FA9A]HDR[/COLOR][/B] (all HDR/DV/hybrid files)" default="false"/>
 		<setting id="exclude_4k" type="bool" label="Exclude [B][COLOR FFFF00FF]4K / 2160p[/COLOR][/B]" default="false"/>
 		<setting id="exclude_1080p" type="bool" label="Exclude [B][COLOR FFDAA520]1080p[/COLOR][/B]" default="false"/>
 		<setting id="exclude_720p" type="bool" label="Exclude [B][COLOR FF9932CC]720p[/COLOR][/B]" default="false"/>
@@ -355,13 +362,14 @@
     <!-- 7. ACCOUNTS -->
     <category label="Accounts">
         <setting type="lsep" label="Watched Status Provider"/>
-        <setting id="watched_status_provider" type="enum" label="[B]Provider[/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
+        <setting id="watched_status_provider" type="enum" label="[B][COLOR yellow]Active Provider[/COLOR][/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
 
 		<setting type="lsep" label="Watched"/>
 		<setting id="watched_mark_mode" type="enum" label="[B]Mark as watched on[/B]" values="Active provider|All providers|Custom selection" default="0"/>
 		<setting id="watched_mark_trakt" type="bool" label="  └─ Mark watched on [B][COLOR pink]Trakt[/COLOR][/B]" default="true" visible="eq(-1,2)"/>
 		<setting id="watched_mark_mdblist" type="bool" label="  └─ Mark watched on [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="true" visible="eq(-2,2)"/>
 		<setting id="watched_mark_simkl" type="bool" label="  └─ Mark watched on [B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="true" visible="eq(-3,2)"/>
+		<setting id="watched_mark_punchplay" type="bool" label="  └─ Mark watched on [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]" default="true" visible="eq(-4,2)"/>
         
         <setting type="lsep" label="Trakt Account"/>
         <setting label="[B][COLOR pink]Connect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
@@ -391,6 +399,16 @@
         <setting label="[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=simkl_auth)"/>
         <setting label="[B][COLOR red]Disconnect Simkl[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=simkl_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="simkl_status" enable="false"/>
+
+        <setting type="lsep" label="PunchPlay Account"/>
+        <setting id="punchplay_access_token" type="text" option="hidden" default="" visible="false"/>
+        <setting id="punchplay_refresh_token" type="text" option="hidden" default="" visible="false"/>
+        <setting id="punchplay_token_expiry" type="text" option="hidden" default="" visible="false"/>
+        <setting id="punchplay_username" type="text" option="hidden" default="" visible="false"/>
+        <setting id="punchplay_client_id" type="text" option="hidden" label="PunchPlay Client ID (override)" default="" visible="false"/>
+        <setting label="[B][COLOR FFFF6600]Connect PunchPlay[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=punchplay_auth)"/>
+        <setting label="[B][COLOR red]Disconnect PunchPlay[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=punchplay_revoke)"/>
+        <setting label="Status:" type="text" default="Disconnected" id="punchplay_status" enable="false"/>
 		
         <setting type="lsep" label="[B][COLOR FF33CCFF]TMDb[/COLOR][/B]/[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR mediumpurple]Simkl[/COLOR][/B] - [B][COLOR FFCCCCFF]CALENDAR[/COLOR][/B]"/>
         <setting id="mdblist_cal_previous_days" type="enum" label="Past (days)" values="0|1|3|7|14|30" default="3"/>
@@ -406,8 +424,8 @@
 
         <setting type="lsep" label="[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR FF00CED1]TMDb[/COLOR]/[COLOR mediumpurple]Simkl[/COLOR][/B] - [B][COLOR FFCCCCFF]IMPORT[/COLOR][/B]"/>
         <setting id="import_what" type="enum" label="1. What to import" values="Watchlist Movies|Watchlist TV Shows|History|Ratings|Dropped TV Shows" default="0"/>
-        <setting id="import_dir_12" type="enum" label="2. Direction" values="[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]" default="0" visible="eq(-1,0)|eq(-1,1)"/>
-        <setting id="import_dir_6" type="enum" label="2. Direction" values="[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]" default="0" visible="eq(-2,2)|eq(-2,3)|eq(-2,4)"/>
+        <setting id="import_dir_12" type="enum" label="2. Direction" values="[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR FF00CED1]TMDb[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR FF00CED1]TMDb[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="0" visible="eq(-1,0)|eq(-1,1)"/>
+        <setting id="import_dir_6" type="enum" label="2. Direction" values="[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B] -> [B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B] -> [B][COLOR mediumpurple]Simkl[/COLOR][/B]" default="0" visible="eq(-2,2)|eq(-2,3)|eq(-2,4)"/>
         <setting label="[B][COLOR FF6AFB92]Run Import[/COLOR][/B]" type="action" option="close" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=run_import)"/>
 
 		<setting type="lsep" label="Rating"/>
@@ -418,6 +436,7 @@
 		<setting id="rating_postwatch_mdblist" type="bool" label="  └─ Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
 		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies only)" default="true" visible="eq(-3,2)"/>
 		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching" default="true" visible="eq(-4,2)"/>
+		<setting id="rating_postwatch_punchplay" type="bool" label="  └─ Rate on [B][COLOR FFFF6600]PunchPlay[/COLOR][/B] after watching" default="true" visible="eq(-5,2)"/>
 
 		<setting type="lsep" label="Developer Options (optional)"/>
 		<setting id="trakt_client_id" type="text" label="Custom Trakt Client ID (leave empty for default)" default=""/>

@@ -13,7 +13,8 @@ import xbmc
 import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
-from resources.lib.config import ADDON as PROXIED_ADDON
+from resources.lib.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item
 
 MDBLIST_ACTIONS = {
     'mdblist_settings',
@@ -37,7 +38,6 @@ MDBLIST_ACTIONS = {
     'mdblist_account',
     'mdblist_create_list',
     'mdblist_delete_list',
-    'mdblist_import_dropped',
 }
 
 BASE_URL_API = 'https://api.mdblist.com/'
@@ -57,8 +57,7 @@ def _ensure_globals():
         except: _HANDLE = -1
 
 def _mdb_icon():
-    _ensure_globals()
-    return os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+    return provider_icon('mdblist')
 
 def _build_url(query):
     _ensure_globals()
@@ -109,7 +108,7 @@ def _get(path, params=None):
     if not key:
         api = _oauth_api()
         if api is None:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings!', xbmcgui.NOTIFICATION_WARNING)
+            _notify(provider_title('mdblist'), 'Add ' + provider_title('mdblist') + ' API Key or authenticate via OAuth in Settings!', xbmcgui.NOTIFICATION_WARNING)
             return None
         return api._get(path, params=params)
         
@@ -135,7 +134,7 @@ def _post(path, payload):
     if not key:
         api = _oauth_api()
         if api is None:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
+            _notify(provider_title('mdblist'), 'Add ' + provider_title('mdblist') + ' API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
             return None
         return api._post(path, data=payload)
 
@@ -161,7 +160,7 @@ def _delete(path):
     if not key:
         api = _oauth_api()
         if api is None:
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Add [B][COLOR lightskyblue]MDBList[/COLOR][/B] API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
+            _notify(provider_title('mdblist'), 'Add ' + provider_title('mdblist') + ' API Key or authenticate via OAuth in Settings to save!', xbmcgui.NOTIFICATION_WARNING)
             return None
         return api._delete(path)
 
@@ -346,11 +345,11 @@ def watchlist_add(imdb_id=None, tmdb_id=None, mediatype='movie', title='', notif
             if notify:
                 if added > 0:
                     if title:
-                        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                        _notify(provider_title('mdblist'), f'[B][COLOR yellow]{title}[/COLOR][/B] added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
                     else:
-                        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                        _notify(provider_title('mdblist'), 'Added to [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
                 else:
-                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                    _notify(provider_title('mdblist'), 'Already in [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
     return False
 
@@ -374,13 +373,13 @@ def watchlist_remove(imdb_id=None, tmdb_id=None, mediatype='movie', title='', no
                     except: pass
             if notify:
                 if title:
-                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                    _notify(provider_title('mdblist'), f'[B][COLOR yellow]{title}[/COLOR][/B] removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
                 else:
-                    _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
+                    _notify(provider_title('mdblist'), 'Removed from [B][COLOR FF6AFB92]MDB Watchlist[/COLOR][/B].')
             return True
         else:
             if notify:
-                _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Item not found.')
+                _notify(provider_title('mdblist'), 'Item not found.')
     return False
 
 def list_add(list_id, imdb_id=None, tmdb_id=None, mediatype='movie'):
@@ -441,18 +440,59 @@ def _view_menu():
     except Exception:
         dropped_count = 0
 
+    wl_count = 0
+    fav_count = 0
+    hist_count = 0
+    try:
+        from resources.lib.mdblist_sync import get_connection, DB_PATH
+        import os
+        if os.path.exists(DB_PATH):
+            conn = get_connection()
+            try:
+                c = conn.cursor()
+                try:
+                    c.execute("SELECT COUNT(*) FROM mdblist_watchlist")
+                    wl_count = c.fetchone()[0] or 0
+                except Exception:
+                    pass
+                try:
+                    c.execute("SELECT COUNT(*) FROM mdblist_collection")
+                    fav_count = c.fetchone()[0] or 0
+                except Exception:
+                    pass
+                try:
+                    c.execute("SELECT COUNT(*) FROM mdblist_watched_movies")
+                    hist_m = c.fetchone()[0] or 0
+                except Exception:
+                    hist_m = 0
+                try:
+                    c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM mdblist_watched_episodes")
+                    hist_s = c.fetchone()[0] or 0
+                except Exception:
+                    hist_s = 0
+                hist_count = hist_m + hist_s
+            finally:
+                conn.close()
+    except Exception:
+        pass
+
+    def _counted(label, count):
+        if count > 0:
+            return f'{label} [B][COLOR FFFDBD01]({count})[/COLOR][/B]'
+        return label
+
     sections = [
         ('[B][COLOR lightskyblue]MDB Account[/COLOR][/B]', 'mdblist_account', 'DefaultUser.png', False),
         ('[B][COLOR lightskyblue]MDB [COLOR yellow]Up Next[/COLOR][/B]', 'mdblist_upnext', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', 'mdblist_watchlist_menu', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Favorites[/COLOR][/B]', 'mdblist_collection_menu', m_icon, True),
+        (_counted('[B][COLOR lightskyblue]MDB Watchlist[/COLOR][/B]', wl_count), 'mdblist_watchlist_menu', m_icon, True),
+        (_counted('[B][COLOR lightskyblue]MDB Favorites[/COLOR][/B]', fav_count), 'mdblist_collection_menu', m_icon, True),
         ('[B][COLOR lightskyblue]My MDBLists[/COLOR][/B]', 'mdblist_my', m_icon, True),
         ('[B][COLOR lightskyblue]Popular MDB Lists[/COLOR][/B]', 'mdblist_popular', m_icon, True),
         ('[B][COLOR lightskyblue]Liked Lists[/COLOR][/B]', 'mdblist_liked', m_icon, True),
         ('[B][COLOR lightskyblue]Search Lists[/COLOR][/B]', 'mdblist_search', m_icon, True),
         ('[B][COLOR FFE41B17]MDB Dropped Shows[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % dropped_count, 'mdblist_dropped', m_icon, True),
-        ('[B][COLOR FFFF6600]MDB Calendar[/COLOR][/B]', 'mdblist_calendar', m_icon, True),
-        ('[B][COLOR lightskyblue]MDB Watched History[/COLOR][/B]', 'mdblist_history_menu', m_icon, True),
+        ('[B][COLOR lightskyblue]MDB [COLOR yellow]My Calendar[/COLOR][/B]', 'mdblist_calendar', m_icon, True),
+        (_counted('[B][COLOR lightskyblue]MDB Watched History[/COLOR][/B]', hist_count), 'mdblist_history_menu', m_icon, True),
     ]
     
     for label, action, icon, is_folder in sections:
@@ -525,20 +565,20 @@ def _view_create_list():
         return
     result = create_mdbl_list(name)
     if result is not None:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', f'List [B][COLOR FF6AFB92]{name}[/COLOR][/B] created.')
+        _notify(provider_title('mdblist'), f'List [B][COLOR FF6AFB92]{name}[/COLOR][/B] created.')
         xbmc.sleep(1000)
         xbmc.executebuiltin("Container.Refresh")
     else:
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Could not create list.', xbmcgui.NOTIFICATION_ERROR)
+        _notify(provider_title('mdblist'), 'Could not create list.', xbmcgui.NOTIFICATION_ERROR)
 
 def _view_delete_list(list_id):
     _ensure_globals()
     if not list_id:
         return
     dialog = xbmcgui.Dialog()
-    if dialog.yesno('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Delete this list permanently?', 'This cannot be undone!'):
+    if dialog.yesno(provider_title('mdblist'), 'Delete this list permanently?', 'This cannot be undone!'):
         if delete_mdbl_list(list_id):
-            _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'List deleted.')
+            _notify(provider_title('mdblist'), 'List deleted.')
             xbmc.sleep(1000)
             xbmc.executebuiltin("Container.Refresh")
 
@@ -546,7 +586,7 @@ def _view_account():
     _ensure_globals()
     data = fetch_account_info()
     if not data or not isinstance(data, dict):
-        _notify('[B][COLOR lightskyblue]MDBList[/COLOR][/B]', 'Could not fetch account info.', xbmcgui.NOTIFICATION_ERROR)
+        _notify(provider_title('mdblist'), 'Could not fetch account info.', xbmcgui.NOTIFICATION_ERROR)
         return
     try:
         username = data.get('username') or data.get('name') or 'Unknown'
@@ -717,7 +757,7 @@ def _view_liked(offset=0):
 def _view_search(query=None):
     _ensure_globals()
     if not query: 
-        query = xbmcgui.Dialog().input('Search [B][COLOR lightskyblue]MDBList[/COLOR][/B]', type=xbmcgui.INPUT_ALPHANUM)
+        query = xbmcgui.Dialog().input('Search ' + provider_title('mdblist'), type=xbmcgui.INPUT_ALPHANUM)
         
     if not query:
         # HERE IS THE FIX: We tell Kodi that the action was cancelled
@@ -741,7 +781,7 @@ def _view_list_contents(list_id, page=1, list_type=''):
         _end()
         return
 
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
     
     fake_items = []
     for item in items:
@@ -769,11 +809,7 @@ def _view_list_contents(list_id, page=1, list_type=''):
             'poster_path': item.get('poster_url', '').replace('https://image.tmdb.org/t/p/w500', '') if item.get('poster_url') else ''
         }
         
-        if k_type == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True)
-            
+        processed = process_media_item(fake_item, k_type)
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
@@ -831,7 +867,7 @@ def _view_watchlist_items(mediatype, page=1):
         _end()
         return
 
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
     from resources.lib.utils import sort_personal_list
 
     all_items = sort_personal_list(all_items)
@@ -858,11 +894,7 @@ def _view_watchlist_items(mediatype, page=1):
             'overview': item.get('overview', '')
         }
         
-        if mediatype == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True)
-            
+        processed = process_media_item(fake_item, mediatype)
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
@@ -931,7 +963,7 @@ def _view_collection_items(mediatype, page=1):
         _end()
         return
     
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
     from resources.lib.utils import sort_personal_list
 
     items_list = sort_personal_list(items_list)
@@ -957,11 +989,7 @@ def _view_collection_items(mediatype, page=1):
         
         fake_item = {'id': tmdb_id, 'title': obj.get('title'), 'name': obj.get('title'), 'overview': obj.get('overview', '')}
         
-        if mediatype == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True)
-            
+        processed = process_media_item(fake_item, mediatype)
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
@@ -986,11 +1014,6 @@ def _view_dropped(page=1):
     from resources.lib.mdblist_sync import get_dropped_local
     dropped = get_dropped_local()
 
-    if _setting('trakt_access_token'):
-        li = xbmcgui.ListItem(label='[B][COLOR lightskyblue]Import Dropped from Trakt[/COLOR][/B]')
-        li.setArt({'icon': _mdb_icon(), 'thumb': _mdb_icon(), 'poster': _mdb_icon()})
-        _add_dir(_build_url({'action': 'mdblist_import_dropped'}), li, False)
-
     if not dropped:
         _empty('[No Dropped Shows]')
         _end()
@@ -998,7 +1021,7 @@ def _view_dropped(page=1):
     
     items_list = [{'tmdb_id': d['tmdb_id'], 'title': d['title']} for d in dropped]
     
-    from resources.lib.tmdb_api import _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
 
     start = (page - 1) * limit
     page_items = items_list[start:start + limit]
@@ -1013,7 +1036,7 @@ def _view_dropped(page=1):
             continue
         
         fake_item = {'id': tmdb_id, 'title': d.get('title', ''), 'name': d.get('title', ''), 'overview': ''}
-        processed = _process_tv_item(fake_item, return_data=True)
+        processed = process_media_item(fake_item, 'tv')
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
@@ -1153,23 +1176,8 @@ def _view_calendar(page=1):
             return url.replace('/w200/', '/w500/')
         return url
 
-    def _format_cal_date(raw_date):
-        if not raw_date:
-            return '', 'white', 999
-        try:
-            parts = str(raw_date).split('T')[0].split('-')
-            d = _dt.date(int(parts[0]), int(parts[1]), int(parts[2]))
-            diff = (d - today).days
-            ds = f'{parts[0]}-{parts[1]}-{parts[2]}'
-            if diff == -1 or diff <= -2:
-                color = 'FF00FA9A'
-            elif diff == 0:
-                color = 'white'
-            else:
-                color = 'yellow'
-            return calendar_localized_label(diff, ds), color, diff
-        except Exception:
-            return str(raw_date)[:10], 'white', 999
+    _format_cal_date = lambda raw_date: format_calendar_date(raw_date, today)
+    prov_color = provider_color('mdblist')
 
     items_to_add = []
     for item in page_items:
@@ -1181,7 +1189,7 @@ def _view_calendar(page=1):
             movie_year = str(air_date)[:4] if air_date else ''
             display_title = f'{movie_title} ({movie_year})' if movie_year else movie_title
             cal_date, date_color, diff = _format_cal_date(air_date)
-            label = f'[B][COLOR FFFF6600]{display_title}[/COLOR][/B]'
+            label = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
             if cal_date:
                 if cal_date in ('Astazi', 'Maine'):
                     label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
@@ -1218,12 +1226,10 @@ def _view_calendar(page=1):
             li.setArt(art)
             cm = _get_full_context_menu(str(tmdb_id), 'movie', movie_title, year=movie_year)
             if cm: li.addContextMenuItems(cm)
-            if diff <= 0:
-                url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'movie', 'title': movie_title}
-            else:
-                url_params = {'mode': 'extended_info', 'tmdb_id': str(tmdb_id), 'type': 'movie'}
-            url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
-            items_to_add.append((url, li, False))
+            url_params, _is_folder = calendar_row_click_params('movie', str(tmdb_id), diff, show_title=movie_title, sources_title=movie_title)
+            if url_params:
+                url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+                items_to_add.append((url, li, _is_folder))
             continue
 
         tmdb_id = item.get('show_tmdb', '')
@@ -1250,7 +1256,7 @@ def _view_calendar(page=1):
         air_date = item.get('start', item.get('date', item.get('air_date', '')))
         cal_date, date_color, diff = _format_cal_date(air_date)
         
-        label = f'[B][COLOR lightskyblue]{show_title}[/COLOR][/B] - [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
+        label = f'[B][COLOR {prov_color}]{show_title}[/COLOR][/B] - [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
         if ep_name:
             label += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if cal_date:
@@ -1284,41 +1290,17 @@ def _view_calendar(page=1):
         if backdrop_rel:
             art['fanart'] = f"{BACKDROP_BASE}{backdrop_rel}"
         li.setArt(art)
-        cm = _get_full_context_menu(str(tmdb_id), 'episode', show_title, season=s_num, episode=ep_num)
-        b_show_params = urllib.parse.urlencode({'mode': 'details', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Show[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_show_params}")))
-        b_season_params = urllib.parse.urlencode({'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title})
-        cm.append(('[B][COLOR cyan]Browse Season[/COLOR][/B]', _browse_cmd(f"{_BASE_URL}?{b_season_params}")))
-        clear_p_params = urllib.parse.urlencode({'mode': 'clear_sources_context', 'tmdb_id': str(tmdb_id), 'type': 'tv',
-                                                  'season': str(s_num), 'episode': str(ep_num),
-                                                  'title': f"{show_title} S{s_num:02d}E{ep_num:02d}"})
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({_BASE_URL}?{clear_p_params})"))
+        cm = calendar_context_menu(_get_full_context_menu(str(tmdb_id), 'episode', show_title, season=s_num, episode=ep_num),
+                                   'episode', str(tmdb_id), show_title, s_num, ep_num,
+                                   base_url=_BASE_URL, browse_cmd=_browse_cmd, urlencode_fn=urllib.parse.urlencode, clear_sources=True)
         if cm: li.addContextMenuItems(cm)
         
-        if diff <= 0:
-            url_params = {'mode': 'sources', 'tmdb_id': str(tmdb_id), 'type': 'tv', 'season': str(s_num),
-                          'episode': str(ep_num), 'title': f"{show_title} S{s_num:02d}E{ep_num:02d}",
-                          'tv_show_title': show_title}
-            is_folder = False
-        else:
-            url_params = {'mode': 'episodes', 'tmdb_id': str(tmdb_id), 'season': str(s_num), 'tv_show_title': show_title}
-            is_folder = True
-        url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
-        items_to_add.append((url, li, is_folder))
+        url_params, is_folder = calendar_row_click_params('episode', str(tmdb_id), diff, s_num, ep_num, show_title)
+        if url_params:
+            url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+            items_to_add.append((url, li, is_folder))
 
-    if today_top:
-        today_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') == '0']
-        other_items = [(u, li, f) for u, li, f in items_to_add if li.getProperty('cal_diff') != '0']
-        if sort_asc:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            other_items.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
-        items_to_add = today_items + other_items
-    else:
-        if sort_asc:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0))
-        else:
-            items_to_add.sort(key=lambda x: int(x[1].getProperty('cal_diff') or 0), reverse=True)
+    items_to_add = sort_calendar_items(items_to_add, today_top, sort_asc)
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
@@ -1480,7 +1462,7 @@ def _view_history_items(mediatype, offset=0, cursor=None):
         _end()
         return
 
-    from resources.lib.tmdb_api import _process_movie_item, _process_tv_item, prefetch_metadata_parallel
+    from resources.lib.tmdb_api import prefetch_metadata_parallel
 
     fake_items = []
     for item in items:
@@ -1507,11 +1489,7 @@ def _view_history_items(mediatype, offset=0, cursor=None):
             'overview': '',
         }
 
-        if mediatype == 'movie':
-            processed = _process_movie_item(fake_item, return_data=True)
-        else:
-            processed = _process_tv_item(fake_item, return_data=True)
-
+        processed = process_media_item(fake_item, mediatype)
         if processed:
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
@@ -1568,10 +1546,4 @@ def handle_mdblist_action(params, handle, base_url, addon):
     elif action == 'mdblist_account': _view_account()
     elif action == 'mdblist_create_list': _view_create_list()
     elif action == 'mdblist_delete_list': _view_delete_list(params.get('list_id'))
-    elif action == 'mdblist_import_dropped':
-        from resources.lib.mdblist_sync import import_dropped_from_trakt
-        imported, _ = import_dropped_from_trakt(silent=False)
-        if imported > 0:
-            xbmc.sleep(1000)
-            xbmc.executebuiltin("Container.Refresh")
 
