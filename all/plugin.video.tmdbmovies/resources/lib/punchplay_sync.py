@@ -269,6 +269,35 @@ def get_watched_episodes_count(tmdb_id, season=None):
     except:
         return 0
 
+def get_watched_counts_map(tmdb_ids):
+    """Count per serial, dintr-o SINGURA conexiune: {tmdb_id: watched_count}.
+
+    Up Next randa zeci de seriale si deschidea o conexiune (cu PRAGMA-uri) per rind.
+    None = citirea a esuat (apelantul cade pe varianta per serial).
+    """
+    out = {}
+    try:
+        _ensure_db()
+        ids = tuple({str(t) for t in (tmdb_ids or []) if str(t)})
+        if not ids:
+            return out
+        marks = ','.join(['?'] * len(ids))
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id, COUNT(*) FROM punchplay_watched_episodes "
+                  "WHERE season > 0 AND episode > 0 AND tmdb_id IN (%s) GROUP BY tmdb_id" % marks, ids)
+        for r in c.fetchall():
+            try:
+                out[str(r[0])] = int(r[1] or 0)
+            except:
+                continue
+        try: conn.close()
+        except: pass
+        return out
+    except:
+        return None
+
+
 def get_watched_season_episodes_count(tmdb_id, season):
     return get_watched_episodes_count(tmdb_id, season)
 
@@ -442,8 +471,9 @@ def drop_show(tmdb_id, title='', media_type='show'):
         except:
             pass
         try:
-            from resources.lib.cache import clear_all_fast_cache
-            clear_all_fast_cache()
+            # Doar listele: drop-ul schimba continutul listelor, nu metadatele.
+            from resources.lib.cache import clear_list_fast_cache
+            clear_list_fast_cache()
         except:
             pass
         return res is not None
@@ -603,16 +633,16 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
     if notify:
         msg = f'[B][COLOR yellow]{title_val}[/COLOR][/B] marked watched on ' + provider_title('punchplay')
         xbmcgui.Dialog().notification(provider_title('punchplay'), msg, PUNCHPLAY_ICON, 3000, False)
-    if sync_punchplay:
-        threading.Thread(target=_sync_single_watched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
+    if sync_punchplay:            threading.Thread(target=_sync_single_watched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
     if content_type in ('tv', 'show', 'season', 'episode') or season is not None:
         try:
             threading.Thread(target=refresh_next_episode_punchplay, args=(tmdb_id,), daemon=True).start()
         except:
             pass
-    from resources.lib.cache import clear_all_fast_cache
+    # Doar listele (metadatele serialelor rămân valide dupa un mark watched).
+    from resources.lib.cache import clear_list_fast_cache
     try:
-        clear_all_fast_cache()
+        clear_list_fast_cache()
     except:
         pass
     if refresh_ui:
@@ -668,8 +698,12 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         elif season is not None and episode is not None:
             c.execute("DELETE FROM punchplay_watched_episodes WHERE tmdb_id=? AND season=? AND episode=?",
                       (tid, int(season), int(episode)))
+            # Un episod nevizionat => serialul nu mai e "vizionat complet".
+            c.execute("DELETE FROM punchplay_fully_watched_shows WHERE tmdb_id=?", (tid,))
         elif season is not None:
             c.execute("DELETE FROM punchplay_watched_episodes WHERE tmdb_id=? AND season=?", (tid, int(season)))
+            # Serialul nu mai e "vizionat complet" daca scoatem episoade din el.
+            c.execute("DELETE FROM punchplay_fully_watched_shows WHERE tmdb_id=?", (tid,))
         elif content_type in ('tv', 'show'):
             c.execute("DELETE FROM punchplay_watched_episodes WHERE tmdb_id=?", (tid,))
             c.execute("DELETE FROM punchplay_fully_watched_shows WHERE tmdb_id=?", (tid,))
@@ -686,16 +720,16 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     if notify:
         msg = f'[B][COLOR yellow]{title_display}[/COLOR][/B] marked unwatched on ' + provider_title('punchplay')
         xbmcgui.Dialog().notification(provider_title('punchplay'), msg, PUNCHPLAY_ICON, 3000, False)
-    if sync_punchplay:
-        threading.Thread(target=_sync_single_unwatched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
+    if sync_punchplay:            threading.Thread(target=_sync_single_unwatched, args=(tmdb_id, content_type, season, episode), daemon=True).start()
     if content_type in ('tv', 'show', 'season', 'episode') or season is not None:
         try:
             threading.Thread(target=refresh_next_episode_punchplay, args=(tmdb_id,), daemon=True).start()
         except:
             pass
-    from resources.lib.cache import clear_all_fast_cache
+    # Doar listele (metadatele serialelor rămân valide dupa un mark unwatched).
+    from resources.lib.cache import clear_list_fast_cache
     try:
-        clear_all_fast_cache()
+        clear_list_fast_cache()
     except:
         pass
     if refresh_ui:
@@ -723,8 +757,9 @@ def refresh_next_episode_punchplay(tmdb_id, ignore_hidden=False):
     def _local_trigger():
         try:
             try:
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
+                # Up Next s-a schimbat local -> doar listele se invalideaza.
+                from resources.lib.cache import clear_list_fast_cache
+                clear_list_fast_cache()
             except:
                 pass
             import xbmc
@@ -1352,6 +1387,7 @@ def _sync_up_next(api, c):
         return 0
     now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     rows = []
+    deferred = []
     for it in data:
         if not isinstance(it, dict):
             continue
@@ -1363,10 +1399,9 @@ def _sync_up_next(api, c):
             continue
         watched = int(it.get('totalEpisodesWatched') or 0)
         avail = int(it.get('totalEpisodesAvailable') or 0)
-        if avail > 0 and watched >= avail:
-            continue
         ns = it.get('nextSeason')
         ne = it.get('nextEpisode')
+        _server_next = ns is not None and ne is not None
         ep_title = it.get('nextEpisodeTitle') or ''
         air_date = ''
         if ns is None or ne is None:
@@ -1381,7 +1416,11 @@ def _sync_up_next(api, c):
             raw = nta.get('airDate') or nta.get('air_date') or ''
             if raw:
                 air_date = str(raw).split('T')[0]
-        if ns is None or ne is None:
+        if ns is None or ne is None or (avail > 0 and watched >= avail and not _server_next):
+            deferred.append({'tid': str(tmdb_id), 'watched': watched, 'avail': avail,
+                             'last': str(it.get('lastWatchedAt') or now_str),
+                             'srv_title': str(it.get('title') or ''),
+                             'ep_title': str(ep_title or ''), 'air_date': str(air_date or '')})
             continue
         try:
             ns, ne = int(ns), int(ne)
@@ -1389,6 +1428,52 @@ def _sync_up_next(api, c):
             continue
         rows.append((str(tmdb_id), str(it.get('title') or ''), ns, ne, str(ep_title or ''),
                      str(air_date or ''), watched, avail, str(it.get('lastWatchedAt') or now_str)))
+    if deferred:
+        try:
+            from resources.lib.tmdb_api import get_tmdb_item_details as _gtd2
+            import concurrent.futures as _cf2
+
+            def _fut(d):
+                try:
+                    sd = _gtd2(d['tid'], 'tv', lightweight=True) or {}
+                    nta = sd.get('next_episode_to_air') or {}
+                    s = nta.get('season_number')
+                    e = nta.get('episode_number')
+                    if s is None or e is None:
+                        return None
+                    return (d, int(s), int(e), str(nta.get('name') or ''),
+                            str(nta.get('air_date') or '').split('T')[0],
+                            str(sd.get('name') or ''))
+                except:
+                    return None
+
+            with _cf2.ThreadPoolExecutor(max_workers=5) as _ex2:
+                for _r in _ex2.map(_fut, deferred):
+                    if not _r:
+                        continue
+                    d, s, e, nm, ad, snm = _r
+                    rows.append((d['tid'], d['srv_title'] or snm or 'Unknown Show', s, e,
+                                 d['ep_title'] or nm, d['air_date'] or ad,
+                                 d['watched'], d['avail'], d['last']))
+        except:
+            pass
+    try:
+        import re as _re
+        _bad = [r for r in rows if _re.match(r'^tmdb:\d+$', str(r[1] or '').strip())]
+        if _bad:
+            from resources.lib.tmdb_api import get_tmdb_item_details as _gtd
+            import concurrent.futures as _cf
+            def _nm(tid):
+                try:
+                    d = _gtd(str(tid), 'tv', lightweight=True) or {}
+                    return str(d.get('name') or '').strip()
+                except:
+                    return ''
+            with _cf.ThreadPoolExecutor(max_workers=5) as _ex:
+                _names = {t: n for t, n in _ex.map(lambda r: (r[0], _nm(r[0])), _bad)}
+            rows = [(r[0], _names.get(r[0]) or r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]) for r in rows]
+    except:
+        pass
     try:
         have = {r[0] for r in rows}
         for w in get_watchlist_local() or []:
@@ -1483,7 +1568,7 @@ def _precache_up_next(items):
         pass
 
 _CAL_PREV = [0, 1, 3, 7, 14, 30]
-_CAL_FUT = [7, 14, 21, 30, 60, 90]
+_CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
 
 def _calendar_months():
     try:

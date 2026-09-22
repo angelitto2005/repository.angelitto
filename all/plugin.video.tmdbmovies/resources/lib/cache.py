@@ -197,6 +197,22 @@ def set_fast_cache(key, items):
         window.setProperty(f"tmdbmovies_fast_{actual_key}", json.dumps(cache_obj))
     except: pass
 
+def clear_list_fast_cache():
+    """Invalideaza DOAR listele (fast cache), pastrind cache-ul RAM de metadate.
+
+    Watched status nu schimba metadatele (titluri/ploturi/sezoane/imagini), dar
+    clear_all_fast_cache() bumpa si versiunea de metadate -> dupa FIECARE episod
+    vazut, listele se re-construiau cu toate cererile TMDb de la zero (secunde
+    bune de spinner la revenirea in Up Next). Aici listele se re-build din DB,
+    iar metadatele rămân instant din cache.
+    """
+    try:
+        import xbmcgui
+        window = xbmcgui.Window(10000)
+        window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
+    except: pass
+
+
 def clear_all_fast_cache():
     try:
         import xbmcgui

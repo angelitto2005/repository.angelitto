@@ -17,6 +17,7 @@
         <setting id="hide_unaired_episodes" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Hide unaired episodes" default="false"/>
 		<setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="flatten_single_season" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Flatten single-season shows" default="false"/>
+		<setting id="show_air_time" type="bool" label="[B][COLOR FF33CCFF]Show air time[/COLOR][/B] in row titles (requires Trakt connection)" default="false"/>
         <setting id="date_format" type="enum" label="Date format" values="European (13.09.2026)|US (09/13/2026)" default="0"/>
         <setting id="timezone_override" type="enum" label="Timezone for air dates" values="Auto (device)|-12|-11|-10|-09|-08|-07|-06|-05|-04|-03|-02|-01|+00|+01|+02|+03|+04|+05|+06|+07|+08|+09|+10|+11|+12|+13|+14" default="0"/>
         <setting id="episodes_art" type="enum" label="Episode Images (Icon + Background)" values="Thumb + Fanart (Hibrid)|Thumb + Thumb|Poster + Fanart|Poster + Thumb" default="0"/>
@@ -26,7 +27,7 @@
 		<setting id="select_ext_info" type="enum" label="[B][COLOR FF33CCFF]Open Extended Info[/COLOR][/B] when selecting" values="None|Movies|TV Shows|Episodes|Movies + TV Shows|Movies + Episodes|Movies + TV Shows + Episodes" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
 		<setting id="select_skip_inprogress" type="bool" label="  [B][COLOR FFFDBD01]Skip In Progress[/COLOR][/B] (Movies / TV Shows / Episodes: deschide direct sursele)" default="false" visible="!eq(-1,0)" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
 		<setting id="select_skip_upnext" type="bool" label="  [B][COLOR FFFDBD01]Skip Up Next[/COLOR][/B] (deschide direct sursele)" default="false" visible="!eq(-2,0)" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_cache)"/>
-		
+				
 		<setting type="lsep" label="AutoPlay [COLOR gray]Windows[/COLOR] vs [COLOR gray]Android[/COLOR]"/>
 		<setting id="auto_play" type="bool" label="Auto-play the most recommended source." default="false"/>
         <setting id="autoplay_profile" type="enum" label="System and Quality" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
@@ -412,7 +413,7 @@
 		
         <setting type="lsep" label="[B][COLOR FF33CCFF]TMDb[/COLOR][/B]/[B][COLOR pink]Trakt[/COLOR]/[COLOR lightskyblue]MDBList[/COLOR]/[COLOR mediumpurple]Simkl[/COLOR]/[COLOR FFFF6600]PunchPlay[/COLOR][/B] - [B][COLOR FFCCCCFF]CALENDAR[/COLOR][/B]"/>
         <setting id="mdblist_cal_previous_days" type="enum" label="Past (days)" values="0|1|3|7|14|30" default="3"/>
-        <setting id="mdblist_cal_future_days" type="enum" label="Upcoming (days)" values="7|14|21|30|60|90" default="0"/>
+        <setting id="mdblist_cal_future_days" type="enum" label="Upcoming (days)" values="0|7|14|21|30|60|90" default="1"/>
         <setting id="mdblist_cal_sort_order" type="enum" label="Sort order" values="Ascending|Descending" default="0"/>
         <setting id="mdblist_cal_today_top" type="bool" label="Show today's on top" default="true"/>
 

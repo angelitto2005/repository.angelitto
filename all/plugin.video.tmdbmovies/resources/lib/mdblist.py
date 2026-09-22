@@ -1054,7 +1054,7 @@ def _view_dropped(page=1):
 # MDBLIST CALENDAR
 # ==================================================================
 _CAL_PREV = [0, 1, 3, 7, 14, 30]
-_CAL_FUT  = [7, 14, 21, 30, 60, 90]
+_CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
 
 def _calendar_settings():
     prev = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 0)]

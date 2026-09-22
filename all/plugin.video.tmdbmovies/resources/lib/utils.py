@@ -241,6 +241,336 @@ def is_season_fully_watched(tmdb_id, season, count_fn):
     except:
         return False
 
+_AIR_TIME_TTL = 7 * 24 * 3600          # ora cunoscuta: valabila 7 zile
+_AIR_TIME_NEG_TTL = 6 * 3600           # "nu exista (inca) ora": reincercam dupa 6h
+_AIR_TIME_FALLBACK_MAX = 10            # cereri per-episod (Trakt, secvential) per deschidere
+
+# Tokenul care tine locul orei de difuzare in label-urile salvate in fast cache.
+# Lista se salveaza MEREU in fast cache (deschiderile urmatoare ramin instant), iar
+# ora reala e pusa la randare (live si din cache) din cache-ul sqlite. Asa o lista
+# nu mai rămâne "degradata" fara ore dupa ce cache-ul de ore se umple (Sweetpea),
+# fara sa fie nevoie de re-prefetch la fiecare deschidere.
+AIR_TIME_TOKEN = '[[AT]]'
+
+
+def _air_time_cache_table():
+    try:
+        from resources.lib import trakt_sync as _ts
+        import sqlite3
+        conn = sqlite3.connect(_ts.DB_PATH, timeout=10)
+        conn.execute("CREATE TABLE IF NOT EXISTS trakt_airtime_cache "
+                     "(tmdb_id TEXT, season INTEGER, episode INTEGER, first_aired TEXT, saved_at REAL, "
+                     "UNIQUE(tmdb_id, season, episode))")
+        conn.commit()
+        return conn
+    except:
+        return None
+
+def _air_time_rows_fresh(rows, now=None):
+    """Randurile inca valide din trakt_airtime_cache: {(tmdb_id, season, episode): first_aired}.
+
+    TTL separat pe tip de rand: ora cunoscuta = 7 zile, 'nu exista (inca) ora' = 6h
+    (negative cache, ca sa nu reincercam aceleasi episoade la fiecare deschidere).
+    """
+    now = time.time() if now is None else now
+    fresh = {}
+    for r in rows or []:
+        try:
+            first_aired = str(r[3] or '')
+            saved = float(r[4] or 0)
+            ttl = _AIR_TIME_TTL if first_aired else _AIR_TIME_NEG_TTL
+            if now - saved < ttl:
+                fresh[(str(r[0]), int(r[1]), int(r[2]))] = first_aired
+        except:
+            continue
+    return fresh
+
+
+def get_episode_air_times_map(keys):
+    """Orele locale pentru mai multe episoade, dintr-o SINGURA conexiune sqlite.
+
+    keys = iterable de (tmdb_id, season, episode); returneaza
+    {(tmdb_id, season, episode): ora_locala} doar pentru orele valide.
+    """
+    out = {}
+    try:
+        wanted = set()
+        for k in keys or []:
+            try:
+                wanted.add((str(k[0]), int(k[1]), int(k[2])))
+            except:
+                continue
+        if not wanted:
+            return out
+        conn = _air_time_cache_table()
+        if conn is None:
+            return None   # citirea a esuat: apelantul poate cadea pe varianta per episod
+        try:
+            ids = tuple({t for (t, _s, _e) in wanted})
+            marks = ','.join(['?'] * len(ids))
+            rows = conn.execute(
+                "SELECT tmdb_id, season, episode, first_aired, saved_at FROM trakt_airtime_cache "
+                "WHERE tmdb_id IN (%s)" % marks, ids).fetchall()
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
+        now = time.time()
+        from resources.lib.config import utc_to_local_time
+        for r in rows:
+            try:
+                key = (str(r[0]), int(r[1]), int(r[2]))
+                if key not in wanted or not r[3]:
+                    continue
+                if now - float(r[4] or 0) >= _AIR_TIME_TTL:
+                    continue
+                _at = utc_to_local_time(str(r[3])) or ''
+                if _at:
+                    out[key] = _at
+            except:
+                continue
+    except:
+        return None
+    return out
+
+
+def prefetch_air_times(items, days=120):
+    """Umple cache-ul sqlite cu orele de difuzare Trakt (bulk + fallback per episod).
+
+    Returneaza True daca toate orele care SE POT afisa sint in cache, False daca mai
+    lipsesc si None daca optiunea e oprita / nu exista conexiune Trakt (nimic de facut).
+    Esecurile nu mai sint mute: bulk-ul cazut si listele incomplete ajung in kodi.log.
+    """
+    try:
+        if ADDON.getSetting('show_air_time') != 'true':
+            return None
+    except:
+        return None
+    try:
+        import datetime as _dt
+        import time as _tm
+        from resources.lib import trakt_api as _ta
+        try:
+            if not _ta.get_trakt_token():
+                return None
+        except:
+            return None
+        today = _dt.date.today()
+        want = []
+        # need_time: ora se afiseaza doar la episoadele viitoare (sau fara data);
+        # pentru episoadele deja difuzate nu facem nicio cerere per episod.
+        need_time = {}
+        names = {}
+        for it in items or []:
+            try:
+                key = (str(it.get('tmdb_id') or ''), int(it.get('season') or 0), int(it.get('episode') or 0))
+            except:
+                continue
+            if not key[0] or key[0] == 'None' or key[1] <= 0 or key[2] <= 0:
+                continue
+            want.append(key)
+            # Numele serialului doar pentru log (altfel ramine doar tmdb_id).
+            try:
+                names[key] = str(it.get('show_title') or it.get('name') or it.get('title') or '') or key[0]
+            except:
+                names[key] = key[0]
+            try:
+                _p = str(it.get('air_date') or '').split('T')[0].split('-')
+                need_time[key] = _dt.date(int(_p[0]), int(_p[1]), int(_p[2])) >= today
+            except:
+                need_time[key] = True
+        want = list(dict.fromkeys(want))
+        if not want:
+            return None
+        try:
+            conn = _air_time_cache_table()
+            known_times = {}
+            missing = list(want)
+            if conn is not None:
+                try:
+                    rows = conn.execute("SELECT tmdb_id, season, episode, first_aired, saved_at FROM trakt_airtime_cache").fetchall()
+                    known_times = _air_time_rows_fresh(rows, _tm.time())
+                    missing = [w for w in want if w not in known_times]
+                except:
+                    known_times = {}
+            # Ce mai lipseste si ce se poate afisa. Randurile "negative"
+            # (first_aired gol, valabile 6h) inseamna doar "verificat recent", nu
+            # "avem ora" — deci verdictul le trateaza separat, mai jos.
+            _needed = [w for w in want if need_time.get(w)]
+            _pn = [w for w in missing if need_time.get(w)]
+            have = set(k for k, v in known_times.items() if v)
+            found = {}
+            bulk_ok = False
+            attempted = 0
+
+            if _needed and _pn:
+                # 1. BULK: calendarul Trakt "my shows". Un esec aici nu mai e mut:
+                #    fara log nu se putea sti de ce lista iese fara ore.
+                try:
+                    cal = _ta.get_trakt_calendar_shows(start_date=today.strftime('%Y-%m-%d'), days=days) or []
+                    bulk_ok = isinstance(cal, list) and len(cal) > 0
+                    if not bulk_ok:
+                        log("[AIRTIME] bulk calendar returned nothing (calendar 'my shows' gol sau cererea a esuat).", xbmc.LOGWARNING)
+                    for entry in cal:
+                        if not isinstance(entry, dict):
+                            continue
+                        show = entry.get('show', {}) or {}
+                        ids = show.get('ids', {}) or {}
+                        ep = entry.get('episode', {}) or {}
+                        fa = entry.get('first_aired', '') or ep.get('first_aired', '') or ''
+                        if not fa:
+                            continue
+                        try:
+                            found[(str(ids.get('tmdb', '')), int(ep.get('season') or 0), int(ep.get('number') or 0))] = str(fa)
+                        except:
+                            continue
+                except Exception as _bulk_err:
+                    log(f"[AIRTIME] bulk calendar failed: {_bulk_err}", xbmc.LOGWARNING)
+
+                # 2. FALLBACK per episod (secvential, plafonat): doar pentru ce
+                #    lipseste si se poate afisa (episod viitor / fara data).
+                #    Rezultatul gol se memoreaza si el (negative cache 6h), altfel
+                #    aceleasi episoade erau reincercate la fiecare deschidere.
+                try:
+                    for (t, s, e) in _pn:
+                        if attempted >= _AIR_TIME_FALLBACK_MAX:
+                            break
+                        fa = found.get((t, s, e))
+                        if not fa:
+                            try:
+                                from resources.lib.tmdb_api import get_trakt_id as _get_tid
+                                tids = _get_tid(None, t, 'show')
+                                epd = _ta.trakt_api_request(f"/shows/{tids}/seasons/{s}/episodes/{e}", params={'extended': 'full'}) if tids else None
+                                if isinstance(epd, dict) and epd.get('first_aired'):
+                                    fa = str(epd.get('first_aired'))
+                            except:
+                                fa = ''
+                        attempted += 1
+                        found[(t, s, e)] = fa or ''
+                except:
+                    pass
+
+                # 3. Scriem o singura data tot ce am aflat (bulk + fallback,
+                #    inclusiv negativele) intr-o singura conexiune.
+                try:
+                    if conn is not None:
+                        for (t, s, e) in _pn:
+                            if (t, s, e) not in found:
+                                continue
+                            conn.execute("INSERT OR REPLACE INTO trakt_airtime_cache (tmdb_id, season, episode, first_aired, saved_at) VALUES (?,?,?,?,?)",
+                                         (t, s, e, found[(t, s, e)], _tm.time()))
+                        conn.commit()
+                except:
+                    pass
+            try:
+                if conn is not None:
+                    conn.close()
+            except:
+                pass
+
+            # 4. Verdict: complete = toate orele care SE POT afisa sint in cache.
+            #    Se calculeaza MEREU, chiar si cind nu a fost nimic de cerut
+            #    (negative cache activa nu inseamna ca avem orele).
+            try:
+                have |= set(k for k, v in found.items() if v)
+                unresolved = [w for w in _needed if w not in have]
+                _worked = bool(_needed and _pn)   # s-a incercat ceva in acest pas?
+                _bulk = 'ok' if bulk_ok else ('fail' if _worked else 'n/a')
+                if unresolved:
+                    _sample = ', '.join(
+                        f"{names.get((t, s, e)) or t} S{int(s):02d}E{int(e):02d}" for (t, s, e) in unresolved[:5])
+                    _msg = (f"[AIRTIME] incomplete: {len(_needed) - len(unresolved)}/{len(_needed)} ore cunoscute "
+                            f"(bulk={_bulk}, fallback={attempted}, lipsa: {_sample})")
+                    if _worked:
+                        # Diagnostic real: am cerut si tot nu avem ora (Trakt nu are
+                        # ora pentru episod / calendar cazut).
+                        log(_msg + " - Trakt nu are ora sau calendarul nu a răspuns.", xbmc.LOGWARNING)
+                    else:
+                        # Nimic de reincercat acum (negative cache): doar informativ.
+                        log(_msg + " - nimic de reincercat acum (negative cache).")
+                    return False
+                log(f"[AIRTIME] complete: {len(_needed)} ore cunoscute (bulk={_bulk}, fallback={attempted})")
+                return True
+            except:
+                pass
+        except Exception as _pf_err:
+            log(f"[AIRTIME] prefetch failed: {_pf_err}", xbmc.LOGWARNING)
+    except:
+        pass
+    return False
+
+def get_episode_air_time(tmdb_id, season, episode):
+    try:
+        if ADDON.getSetting('show_air_time') != 'true':
+            return ''
+    except:
+        return ''
+    try:
+        import time as _tm
+        conn = _air_time_cache_table()
+        if conn is None:
+            return ''
+        try:
+            r = conn.execute("SELECT first_aired, saved_at FROM trakt_airtime_cache WHERE tmdb_id=? AND season=? AND episode=?",
+                             (str(tmdb_id), int(season), int(episode))).fetchone()
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
+        if not r or not r[0]:
+            return ''
+        try:
+            if _tm.time() - float(r[1] or 0) >= _AIR_TIME_TTL:
+                return ''
+        except:
+            pass
+        from resources.lib.config import utc_to_local_time
+        return utc_to_local_time(str(r[0])) or ''
+    except:
+        return ''
+
+
+def apply_air_time(label, at):
+    """Pune ora reala in locul AIR_TIME_TOKEN (sau scoate tokenul daca nu avem ora)."""
+    try:
+        if not label or AIR_TIME_TOKEN not in label:
+            return label
+        return label.replace(AIR_TIME_TOKEN, f' • {at}' if at else '')
+    except:
+        return label
+
+
+def apply_air_times_to_cache_items(items):
+    """Randare din fast cache: inlocuieste tokenul de ora cu ora reala din sqlite.
+
+    Asa lista cache-uita se auto-vindeca de indata ce cache-ul de ore se umple,
+    fara sa fie nevoie de re-prefetch (si fara sa salvam liste cu ore lipsa).
+    """
+    try:
+        keys = []
+        for it in items or []:
+            ak = it.get('air_key') if isinstance(it, dict) else None
+            if ak and AIR_TIME_TOKEN in str(it.get('label') or ''):
+                keys.append((ak[0], ak[1], ak[2]))
+        if not keys:
+            return items
+        at_map = get_episode_air_times_map(keys) or {}
+        for it in items:
+            lab = it.get('label') if isinstance(it, dict) else None
+            if not lab or AIR_TIME_TOKEN not in lab:
+                continue
+            ak = it.get('air_key') or []
+            try:
+                at = at_map.get((str(ak[0]), int(ak[1]), int(ak[2])), '')
+            except:
+                at = ''
+            it['label'] = apply_air_time(lab, at)
+        return items
+    except:
+        return items
+
 # =============================================================================
 # SELECT ACTION (setarea select_ext_info)
 # Randul selectat poate deschide Extended InfoMod in loc de play/navigare.

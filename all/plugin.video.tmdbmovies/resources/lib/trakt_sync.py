@@ -1765,6 +1765,34 @@ def get_tv_meta_from_db(tmdb_id):
     conn.close()
     return row['total_episodes'] if row else 0
 
+def get_tv_meta_map(tmdb_ids):
+    """total_episodes per serial, dintr-o SINGURA conexiune: {tmdb_id: total}.
+
+    None = citirea a esuat (apelantul cade pe varianta per serial).
+    """
+    out = {}
+    try:
+        ids = tuple({str(t) for t in (tmdb_ids or []) if str(t)})
+        if not ids:
+            return out
+        if not os.path.exists(DB_PATH):
+            return out
+        marks = ','.join(['?'] * len(ids))
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id, total_episodes FROM tv_meta WHERE tmdb_id IN (%s)" % marks, ids)
+        for row in c.fetchall():
+            try:
+                out[str(row['tmdb_id'])] = int(row['total_episodes'] or 0)
+            except:
+                continue
+        try: conn.close()
+        except: pass
+        return out
+    except:
+        return None
+
+
 def set_tv_meta_to_db(tmdb_id, total_episodes):
     conn = get_connection()
     c = conn.cursor()
@@ -2329,6 +2357,49 @@ def get_local_playback_progress_batch(tmdb_id, content_type, season):
         pass
     return result
 
+def get_local_playback_progress_map(keys):
+    """Progres local (resume) pentru mai multe episoade, dintr-o SINGURA conexiune.
+
+    keys = iterable de (tmdb_id, season, episode); returneaza
+    {(tmdb_id, season, episode): progress}. Intoarce None daca citirea a esuat
+    (apelantul poate cadea inapoi pe citirea per episod); {} = pur si simplu
+    nu exista progres salvat.
+
+    Up Next / In Progress randau cite un rind per serial si deschideau 4-5
+    conexiuni sqlite per rind (fiecare cu PRAGMA-uri) -> secunde bune de spinner.
+    """
+    try:
+        want = set()
+        for k in keys or []:
+            try:
+                want.add((str(k[0]), int(k[1]), int(k[2])))
+            except:
+                continue
+        if not want:
+            return {}
+        if not os.path.exists(DB_PATH):
+            return {}
+        ids = tuple({t for (t, _s, _e) in want})
+        marks = ','.join(['?'] * len(ids))
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id, season, episode, progress FROM playback_progress "
+                  "WHERE media_type='episode' AND tmdb_id IN (%s)" % marks, ids)
+        result = {}
+        for row in c.fetchall():
+            try:
+                key = (str(row['tmdb_id']), int(row['season'] or 0), int(row['episode'] or 0))
+            except:
+                continue
+            if key in want:
+                result[key] = float(row['progress'] or 0)
+        try: conn.close()
+        except: pass
+        return result
+    except:
+        return None
+
+
 def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
     """
     Salveaza sau sterge progresul local.
@@ -2373,9 +2444,10 @@ def update_local_playback_progress(tmdb_id, content_type, season, episode, progr
         except: pass
         
         # --- MODIFICARE: CURATAM RAM CACHE ---
-        # Daca progresul s-a schimbat, cache-ul RAM nu mai e valabil
-        from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache()
+        # Progresul schimba doar LISTELE (resume/Up Next); metadatele serialelor
+        # nu depind de progres, iar pastrarea lor face re-randarea instant.
+        from resources.lib.cache import clear_list_fast_cache
+        clear_list_fast_cache()
         # -------------------------------------
         
     except Exception as e:
@@ -2847,6 +2919,19 @@ def get_tmdb_next_episodes_from_db():
         init_database()
         return []
 
+def get_tmdb_next_overview(tmdb_id, season, episode):
+    try:
+        conn = get_connection()
+        c = conn.cursor()
+        r = c.execute("SELECT overview FROM tmdb_next_episodes WHERE tmdb_id=? AND season=? AND episode=?",
+                      (str(tmdb_id), int(season), int(episode))).fetchone()
+        conn.close()
+        if r and r[0]:
+            return r[0]
+    except:
+        pass
+    return ''
+
 def get_trakt_favorites_from_db(media_type):
     if not os.path.exists(DB_PATH): 
         init_database()
@@ -3082,8 +3167,9 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         except: pass
     # --- END KODI LIBRARY HACK ---
     
-    from resources.lib.cache import clear_all_fast_cache
-    clear_all_fast_cache()
+    # Doar listele: metadatele serialelor rămân valide dupa un mark watched.
+    from resources.lib.cache import clear_list_fast_cache
+    clear_list_fast_cache()
     
     if refresh_ui:
         xbmc.executebuiltin("Container.Refresh")
@@ -3174,8 +3260,9 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     # --- END KODI LIBRARY HACK ---
 
-    from resources.lib.cache import clear_all_fast_cache
-    clear_all_fast_cache()
+    # Doar listele: metadatele serialelor rămân valide dupa un mark unwatched.
+    from resources.lib.cache import clear_list_fast_cache
+    clear_list_fast_cache()
 
     if refresh_ui:
         xbmc.executebuiltin("Container.Refresh")
@@ -3231,8 +3318,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                     pass
                 try: conn.close()
                 except: pass
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
+                from resources.lib.cache import clear_list_fast_cache
+                clear_list_fast_cache()
                 _trigger_ui_refresh()
                 return
         
@@ -3518,6 +3605,23 @@ def sync_tmdb_up_next(c):
                     show_map[tid] = data
         log(f"[TMDB SYNC] Up Next show_details: {len(show_map)}/{len(all_tids)} in {time.time() - t_show_start:.1f}s (10 workers, lightweight, localized)")
 
+        en_names = {}
+        if pool_ids:
+            def _fetch_en(tid):
+                try:
+                    d = tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=True) or {}
+                    return tid, d.get('name') or ''
+                except:
+                    return tid, ''
+            with ThreadPoolExecutor(max_workers=10) as ex:
+                for f in as_completed({ex.submit(_fetch_en, tid): tid for tid in pool_ids}):
+                    try:
+                        tid, nm = f.result()
+                        if nm:
+                            en_names[tid] = nm
+                    except:
+                        pass
+
         pending = []
         for row in wl_rows:
             tid = str(row['tmdb_id'])
@@ -3554,7 +3658,7 @@ def sync_tmdb_up_next(c):
                 continue
             pending.append({
                 'tid': tid,
-                'show_title': show_details.get('name', 'Unknown Show'),
+                'show_title': en_names.get(tid) or show_details.get('name', 'Unknown Show'),
                 'poster': get_poster_from_db(tid, 'show') or show_details.get('poster_path', ''),
                 'overview': '',
                 'w': w,
@@ -3632,7 +3736,18 @@ def sync_tmdb_up_next(c):
         log(f"[TMDB SYNC] sync_tmdb_up_next error: {e}", xbmc.LOGERROR)
 
 
-def refresh_next_episode_tmdb(tmdb_id):
+def _notify_tmdb_upnext_changed():
+    """Randul tmdb_next_episodes s-a schimbat -> listele din fast cache se invalideaza
+    si UI-ul se reimprospateaza (daca nu e un dialog binge/autoplay deschis si daca
+    listele nu s-au reimprospatat chiar acum). Asa lista "TMDb UP Next" nu ramane cu
+    episodul vechi cand marchezi un episod vazut/nevizut, in sync cu Up Next provider."""
+    try:
+        from resources.lib.watched_provider import _upnext_ui_sync
+        _upnext_ui_sync(preserve_binge=True)
+    except Exception:
+        pass
+
+def refresh_next_episode_tmdb(tmdb_id, _attempt=1, _max_attempts=3):
     import datetime
     from resources.lib.watched_provider import get_watched_episodes_set, _get_provider_raw, get_source_module
     from resources.lib import tmdb_api
@@ -3641,6 +3756,18 @@ def refresh_next_episode_tmdb(tmdb_id):
         tid = str(tmdb_id)
         show_details = tmdb_api.get_tmdb_item_details(tid, 'tv')
         if not show_details:
+            # Esec tranzitoriu (retea/lock API). Programam o re-incercare in loc sa
+            # lasam rindul TMDB Up Next blocat pe episodul vechi (bug: mark pe lista
+            # de sezon -> ultimul mark raminea fara rescriere).
+            if _attempt < _max_attempts:
+                import threading
+                import time as _t
+                _delay = 3.0 * _attempt
+                threading.Timer(_delay, refresh_next_episode_tmdb,
+                                args=(tmdb_id,), kwargs={'_attempt': _attempt + 1, '_max_attempts': _max_attempts}).start()
+                log(f"[TMDB SYNC] Up Next details unavailable for tmdb_id={tid}, retry #{_attempt + 1} in {_delay:.0f}s", xbmc.LOGWARNING)
+            else:
+                log(f"[TMDB SYNC] Up Next refresh skipped after {_attempt} attempts (details unavailable) for tmdb_id={tid}", xbmc.LOGWARNING)
             return
         show_title = show_details.get('name', 'Unknown Show')
 
@@ -3686,6 +3813,7 @@ def refresh_next_episode_tmdb(tmdb_id):
                 pass
             try: conn.close()
             except: pass
+            _notify_tmdb_upnext_changed()
             return
 
         w = get_watched_episodes_set(tid)
@@ -3705,6 +3833,7 @@ def refresh_next_episode_tmdb(tmdb_id):
                 pass
             try: conn.close()
             except: pass
+            _notify_tmdb_upnext_changed()
             return
 
         ep_title, ep_overview, air_date = _tmdb_ep_meta(tid, next_ep['season'], next_ep['number'])
@@ -3721,6 +3850,7 @@ def refresh_next_episode_tmdb(tmdb_id):
         try: conn.close()
         except: pass
         log(f"[TMDB SYNC] Up Next refreshed {show_title} -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
+        _notify_tmdb_upnext_changed()
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
@@ -3743,7 +3873,6 @@ def refresh_next_episode_tmdb(tmdb_id):
             pass
     except Exception as e:
         log(f"[TMDB SYNC] refresh_next_episode_tmdb error: {e}", xbmc.LOGERROR)
-
 
 # =============================================================================
 # SALTS IMPLEMENTATION: NATIVE KODI LIBRARY JSON-RPC SYNC

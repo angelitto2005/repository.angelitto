@@ -1,3 +1,22 @@
+1.1.294
+PunchPlay
+- Single-episode "Mark Unwatched" deletes only that episode (no more season/show wipe); show-wide unwatch clears all episodes.
+- "Mark Watched" on season/show now reaches PunchPlay (episodes expanded from TMDb).
+- Unwatching an episode/season clears the local "fully watched" flag.
+Calendar
+- Upcoming days setting now offers 0 (past + today only); check day settings after update (positions shifted by one).
+Up Next
+- TMDb Up Next now updates together with the provider list on watched/unwatched marks; no stale episode left in the TMDB row.
+- Episode plots fall back to the stored TMDB overview when TMDb has no data.
+- TMDB pool shows use English titles.
+- PunchPlay: no more "tmdb:" placeholder titles; shows the server marks complete are kept even when TMDb announces future episodes.
+- Up Next / In Progress open fast: list always cached, air time applied at render.
+- Air time lookups cached (known 7d, empty 6h, aired episodes never re-queried).
+- Returning from the player no longer rebuilds Up Next from scratch; rebuild phases logged as [UP NEXT].
+- Row building ~3x faster via bulk SQLite reads.
+- One build at a time: parallel render requests share the fast cache (fixes empty Up Next page).
+- No refresh while a modal dialog (binge/autoplay) is open or the list is already updating.
+
 1.1.293
 PunchPlay
 - PunchPlay is now a fully implemented provider: library sync with watched status, Up Next/In Progress, drop/restore, ratings, watchlist, favourites, collection, lists, calendars and library export.
@@ -15,6 +34,7 @@ Library & Providers
 - Provider menu parity: Favourites/Collection/My Lists on episodes, Mark Unwatched on fully watched seasons.
 
 Calendar
+- Upcoming days setting now offers 0 (past + today only).
 - Trakt episodes airing today/tomorrow show the local air time (9pm style).
 - Clear Sources Cache on all provider calendars.
 - Unified sorting, date formatting, click handling and context menus across all providers.
@@ -26,6 +46,7 @@ Sources
 
 Navigation & Settings
 - Implemented Open Extended Info when selecting (Movies/TV Shows/Episodes selector): click opens the Extended Info page, the previous action moves to the context menu.
+- New Show air time option (requires Trakt): unaired episodes show the local air time in Up Next, In Progress Shows, episode lists and the Trakt calendar.
 - Skip In Progress and Skip Up Next options under Open Extended Info when selecting.
 - Shared context menus on Up Next and In Progress Episodes.
 

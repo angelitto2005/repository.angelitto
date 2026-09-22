@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import re
 import json
 import time
 import threading
@@ -8,6 +9,23 @@ import uuid
 import xbmc
 import xbmcgui
 import requests
+
+_TMDB_TITLE_RE = re.compile(r'^tmdb:\d+$')
+
+def resolve_pp_title(tmdb_id, media_type, title=''):
+    t = str(title or '').strip()
+    if t and not _TMDB_TITLE_RE.match(t):
+        return t
+    try:
+        from resources.lib.tmdb_api import get_tmdb_item_details
+        mt = 'movie' if str(media_type).lower() == 'movie' else 'tv'
+        d = get_tmdb_item_details(str(tmdb_id), mt, lightweight=True) or {}
+        t2 = str(d.get('title') or d.get('name') or '').strip()
+        if t2 and not _TMDB_TITLE_RE.match(t2):
+            return t2
+    except:
+        pass
+    return ''
 
 from resources.lib import config as _pp_config
 from resources.lib.config import PUNCHPLAY_API_URL, PUNCHPLAY_CLIENT_ID, PUNCHPLAY_COLOR, ADDON, ADDON_PATH, provider_title, provider_icon
@@ -465,7 +483,11 @@ class PunchplayAPI:
         return self._get('me/history', params=params)
 
     def log_movie(self, tmdb_id, title='', year=0, watched_at=None):
-        body = {'title': title or f'tmdb:{tmdb_id}', 'watchedAt': watched_at or _now_utc_iso()}
+        title = resolve_pp_title(tmdb_id, 'movie', title)
+        if not title:
+            xbmc.log('[PUNCHPLAY] log_movie skipped, no title resolvable', xbmc.LOGWARNING)
+            return None
+        body = {'title': title, 'watchedAt': watched_at or _now_utc_iso()}
         if year:
             body['year'] = int(year)
         return self._post(f'title/movie/{tmdb_id}/history', data=body)
@@ -474,7 +496,11 @@ class PunchplayAPI:
         return self._delete(f'title/movie/{tmdb_id}/history')
 
     def log_episodes(self, tmdb_id, season, episodes, title='', year=0, watched_at=None, allow_rewatches=False):
-        body = {'title': title or f'tmdb:{tmdb_id}',
+        title = resolve_pp_title(tmdb_id, 'show', title)
+        if not title:
+            xbmc.log('[PUNCHPLAY] log_episodes skipped, no title resolvable', xbmc.LOGWARNING)
+            return None
+        body = {'title': title,
                 'watchedAt': watched_at or _now_utc_iso(),
                 'episodes': episodes}
         if year:
@@ -599,7 +625,11 @@ class PunchplayAPI:
         return self._delete(f'lists/{list_id}')
 
     def add_list_item(self, list_id, kind, tmdb_id, title=''):
-        body = {'kind': kind, 'sourceId': int(tmdb_id), 'title': title or f'tmdb:{tmdb_id}'}
+        title = resolve_pp_title(tmdb_id, kind, title)
+        if not title:
+            xbmc.log('[PUNCHPLAY] add_list_item skipped, no title resolvable', xbmc.LOGWARNING)
+            return None
+        body = {'kind': kind, 'sourceId': int(tmdb_id), 'title': title}
         return self._post(f'lists/{list_id}/items', data=body)
 
     def remove_list_item(self, list_id, item_id):
@@ -630,7 +660,11 @@ class PunchplayAPI:
         return self._get('me/collection', params=params)
 
     def add_collection(self, kind, tmdb_id, title='', year=0, fmt='digital'):
-        body = {'kind': kind, 'sourceId': int(tmdb_id), 'title': title or f'tmdb:{tmdb_id}', 'format': fmt or 'digital'}
+        title = resolve_pp_title(tmdb_id, kind, title)
+        if not title:
+            xbmc.log('[PUNCHPLAY] add_collection skipped, no title resolvable', xbmc.LOGWARNING)
+            return None
+        body = {'kind': kind, 'sourceId': int(tmdb_id), 'title': title, 'format': fmt or 'digital'}
         if year:
             body['year'] = int(year)
         return self._post('collection', data=body)
@@ -656,14 +690,16 @@ class PunchplayAPI:
     def playback(self, action, media_type, tmdb_id, title='', year=0, season=None, episode=None,
                  episode_title='', progress=0.0, duration_seconds=0, position_seconds=0,
                  watched=None, watched_threshold=None, session_id='', event_id=''):
+        title = resolve_pp_title(tmdb_id, media_type, title)
         body = {
             'event_id': event_id or f'tmdbmovies-{uuid.uuid4().hex[:12]}',
             'event_created_at': int(time.time() * 1000),
             'media_type': 'movie' if str(media_type).lower() == 'movie' else 'episode',
-            'title': title or f'tmdb:{tmdb_id}',
             'tmdb_id': int(tmdb_id),
             'playback_session_id': session_id or f'tmdbmovies-{tmdb_id}',
         }
+        if title:
+            body['title'] = title
         if year:
             body['year'] = int(year)
         if season is not None:
@@ -893,9 +929,12 @@ class PunchplayAPI:
 
     def watchlist_add(self, media_type, tmdb_id, title=''):
         kind = 'show' if str(media_type).lower() in ('show', 'tv', 'episode', 'season') else 'movie'
-        return self.bulk_watchlist([{'client_item_id': f'tmdbmovies-wa-{kind}-{tmdb_id}',
-                                     'kind': kind, 'tmdb_id': int(tmdb_id),
-                                     'title': title or f'tmdb:{tmdb_id}'}])
+        title = resolve_pp_title(tmdb_id, kind, title)
+        item = {'client_item_id': f'tmdbmovies-wa-{kind}-{tmdb_id}',
+                'kind': kind, 'tmdb_id': int(tmdb_id)}
+        if title:
+            item['title'] = title
+        return self.bulk_watchlist([item])
 
     def watchlist_remove(self, media_type, tmdb_id):
         kind = 'show' if str(media_type).lower() in ('show', 'tv', 'episode', 'season') else 'movie'
@@ -919,20 +958,177 @@ class PunchplayAPI:
                 return None
         return out
 
+    @staticmethod
+    def _tmdb_season_episodes(tmdb_id, seasons=None):
+        """Lista [(season, episode)] pentru sezoanele cerute, din TMDb.
+        seasons=None -> toate sezoanele (inclusiv speciale 0). Intoarce [] la eroare."""
+        out = []
+        try:
+            from resources.lib.tmdb_api import get_tmdb_item_details
+            d = get_tmdb_item_details(str(tmdb_id), 'tv') or {}
+        except Exception as e:
+            xbmc.log(f'[PUNCHPLAY] tmdb episodes lookup error for tmdb={tmdb_id}: {e}', xbmc.LOGERROR)
+            return out
+        wanted = None
+        if seasons is not None:
+            try:
+                wanted = {int(s) for s in seasons}
+            except (TypeError, ValueError):
+                return out
+        for s in d.get('seasons') or []:
+            try:
+                s_num = int(s.get('season_number'))
+                ep_count = int(s.get('episode_count') or 0)
+            except (TypeError, ValueError):
+                continue
+            if s_num < 0 or ep_count <= 0:
+                continue
+            if wanted is not None and s_num not in wanted:
+                continue
+            for e_num in range(1, ep_count + 1):
+                out.append((s_num, e_num))
+        return out
+
     def mark_watched(self, media_type, tmdb_id, season=None, episode=None, watched_at=None, title='', year=0):
         mt = str(media_type).lower()
         if mt == 'movie':
             return self.log_movie(tmdb_id, title=title, year=year, watched_at=watched_at)
-        eps = []
         if season is not None and episode is not None:
             eps = [{'episodeNumber': int(episode)}]
-        return self.log_episodes(tmdb_id, int(season or 0), eps, title=title, year=year, watched_at=watched_at)
+            return self.log_episodes(tmdb_id, int(season), eps, title=title, year=year, watched_at=watched_at)
+        # Sezon intreg sau serial intreg: endpoint-ul de sezon NU accepta o lista
+        # goala de episoade ("episodes": [] nu inregistreaza nimic pe server),
+        # deci expandam episoadele din TMDb si logam per sezon, in bucati de max 100.
+        wanted = None
+        if season is not None and str(season) != '':
+            wanted = [season]
+        pairs = self._tmdb_season_episodes(tmdb_id, wanted)
+        if not pairs:
+            xbmc.log(f'[PUNCHPLAY] mark_watched: no episodes to log for tmdb={tmdb_id} season={season} (TMDb empty or unavailable)', xbmc.LOGWARNING)
+            return None
+        out = None
+        cur_season = None
+        eps = []
+
+        def _flush(s_num, eps_list):
+            for i in range(0, len(eps_list), 100):
+                return self.log_episodes(tmdb_id, s_num, eps_list[i:i + 100], title=title, year=year, watched_at=watched_at)
+            return None
+
+        for s_num, e_num in pairs:
+            if cur_season is None or s_num != cur_season:
+                if eps:
+                    out = _flush(cur_season, eps)
+                cur_season = s_num
+                eps = []
+            eps.append({'episodeNumber': int(e_num)})
+        if eps:
+            out = _flush(cur_season, eps)
+        return out
+
+    def _find_history_episode_entries(self, tmdb_id, season, episode):
+        """Cauta in me/history TOATE entry-urile unui episod (rewatch-uri incluse).
+        Intoarce lista de id-uri (poate fi goala)."""
+        found = []
+        cursor = None
+        try:
+            tmdb_id = int(tmdb_id)
+            season, episode = int(season or 0), int(episode or 0)
+        except (TypeError, ValueError):
+            return found
+        for _page in range(40):
+            params = {'limit': 100}
+            if cursor:
+                params['cursor'] = cursor
+            try:
+                data = self._get('me/history', params=params)
+            except Exception as e:
+                xbmc.log(f'[PUNCHPLAY] history read error (unwatched lookup): {e}', xbmc.LOGERROR)
+                return found
+            if not isinstance(data, dict):
+                return found
+            items = data.get('items') or []
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    if str(it.get('type') or '').lower() != 'episode':
+                        continue
+                    if int(it.get('tmdbId') or it.get('showTmdbId') or 0) != tmdb_id:
+                        continue
+                    if int(it.get('season') or 0) == season and int(it.get('episode') or 0) == episode:
+                        if it.get('id') is not None:
+                            found.append(it.get('id'))
+                except (TypeError, ValueError):
+                    continue
+            cursor = data.get('nextCursor')
+            if not cursor or not items:
+                break
+        return found
+
+    def _delete_show_history_entries(self, tmdb_id):
+        """Sterge din istoric TOATE entry-urile de episoade ale serialului (unwatch pe tot serialul)."""
+        deleted = 0
+        cursor = None
+        try:
+            tmdb_id = int(tmdb_id)
+        except (TypeError, ValueError):
+            return {'deleted': 0}
+        for _page in range(60):
+            params = {'limit': 100}
+            if cursor:
+                params['cursor'] = cursor
+            try:
+                data = self._get('me/history', params=params)
+            except Exception as e:
+                xbmc.log(f'[PUNCHPLAY] history read error (show unwatch): {e}', xbmc.LOGERROR)
+                break
+            if not isinstance(data, dict):
+                break
+            items = data.get('items') or []
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    if str(it.get('type') or '').lower() != 'episode':
+                        continue
+                    if int(it.get('tmdbId') or it.get('showTmdbId') or 0) != tmdb_id:
+                        continue
+                    hid = it.get('id')
+                    if hid is None:
+                        continue
+                    self.delete_history_entry(hid)
+                    deleted += 1
+                except Exception as e:
+                    xbmc.log(f'[PUNCHPLAY] delete history entry error: {e}', xbmc.LOGERROR)
+            cursor = data.get('nextCursor')
+            if not cursor or not items:
+                break
+        return {'deleted': deleted}
 
     def mark_unwatched(self, media_type, tmdb_id, season=None, episode=None):
         mt = str(media_type).lower()
         if mt == 'movie':
             return self.clear_movie(tmdb_id)
-        return self.clear_episodes(tmdb_id, int(season or 0))
+        if episode is not None and str(episode) != '':
+            # Un singur episod: stergem DOAR entry-urile lui din istoric.
+            # ATENTIE: DELETE title/show/{id}/season/{N}/watch curata TOT sezonul,
+            # deci nu-l folosim niciodata pentru unwatch per episod.
+            ids = self._find_history_episode_entries(tmdb_id, season, episode)
+            if not ids:
+                xbmc.log(f'[PUNCHPLAY] unwatched episode: no history entry found for tmdb={tmdb_id} S{season}E{episode} (nothing deleted)', xbmc.LOGWARNING)
+                return None
+            for hid in ids:
+                try:
+                    self.delete_history_entry(hid)
+                except Exception as e:
+                    xbmc.log(f'[PUNCHPLAY] delete history entry {hid} error: {e}', xbmc.LOGERROR)
+            return {'deleted': len(ids)}
+        if season is not None and str(season) != '':
+            # Unwatch pe tot sezonul (intentie explicita) -> endpoint-ul de sezon e corect aici.
+            return self.clear_episodes(tmdb_id, int(season))
+        # Unwatch pe tot serialul -> stergem toate entry-urile de episoade ale serialului.
+        return self._delete_show_history_entries(tmdb_id)
 
 
 def punchplay_auth():

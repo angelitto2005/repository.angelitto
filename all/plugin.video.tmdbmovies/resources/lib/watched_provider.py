@@ -23,10 +23,15 @@ def clear_cache():
     pass
 
 def _invalidate_fast_cache():
-    """Invalideaza fast cache-ul RAM (listele re-build din DB cu watched status proaspat)."""
+    """Invalideaza listele din fast cache (RAM) dupa o schimbare de watched status.
+
+    Doar LISTELE: metadatele (titluri/ploturi/sezoane) nu se schimba cind marchezi
+    un episod vazut, iar pastrarea lor face refresh-ul de Up Next instant in loc
+    de re-constructie completa din TMDb (rotita de ~5s la revenirea din player).
+    """
     try:
-        from resources.lib.cache import clear_all_fast_cache
-        clear_all_fast_cache()
+        from resources.lib.cache import clear_list_fast_cache
+        clear_list_fast_cache()
     except:
         pass
 
@@ -317,6 +322,7 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
     for t in workers:
         t.join(30)
     _refresh_tmdb_up_next(tmdb_id)
+    _verify_tmdb_upnext_heal(tmdb_id)
     _invalidate_fast_cache()
     ordered_done = [p for p in _WATCHED_MARK_PROVIDERS if p in done]
     if notify:
@@ -402,11 +408,12 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         else:
             from resources.lib.punchplay_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_punchplay=sync_provider, refresh_ui=do_refresh)
-        if async_tmdb:
-            import threading
-            threading.Thread(target=_refresh_tmdb_up_next, args=(tmdb_id,), daemon=True).start()
-        else:
-            _refresh_tmdb_up_next(tmdb_id)
+        _refresh_tmdb_up_next(tmdb_id)
+        _verify_tmdb_upnext_heal(tmdb_id)
+        # Randul TMDB Up Next (sursa listei "TMDb UP Next") trebuie rescris INTOTDEAUNA
+        # in acest flux, nu async: async lasa lista TMDB cu episodul vechi daca UI-ul
+        # s-a randat inaintea thread-ului (fara refresh ulterior).
+        _upnext_ui_sync(preserve_binge=(not do_refresh))
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
         return
@@ -431,6 +438,8 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
             from resources.lib.punchplay_sync import mark_as_unwatched_internal
             mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_punchplay=sync_provider, refresh_ui=do_refresh)
         _refresh_tmdb_up_next(tmdb_id)
+        _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_ui_sync(preserve_binge=True)
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
         return
@@ -545,6 +554,27 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     _invalidate_fast_cache()
     refresh_ui()
 
+def get_watched_counts_map(tmdb_ids):
+    """Count-uri pe mai multe seriale, dintr-o singura conexiune (per provider activ).
+
+    None = providerul nu are varianta bulk / citirea a esuat -> apelantul foloseste
+    numararea per serial (comportamentul de dinainte).
+    """
+    try:
+        prov = _get_provider_raw()
+        if prov == 'punchplay':
+            from resources.lib.punchplay_sync import get_watched_counts_map as _m
+        elif prov == 'mdblist':
+            from resources.lib.mdblist_sync import get_watched_counts_map as _m
+        elif prov == 'simkl':
+            from resources.lib.simkl_sync import get_watched_counts_map as _m
+        else:
+            return None
+        return _m(tmdb_ids)
+    except:
+        return None
+
+
 def is_movie_watched(tmdb_id):
     return get_source_module().is_movie_watched(tmdb_id)
 
@@ -636,6 +666,106 @@ def _refresh_tmdb_up_next(tmdb_id):
         if os.path.exists(TMDB_V4_TOKEN_FILE):
             from resources.lib.trakt_sync import refresh_next_episode_tmdb
             refresh_next_episode_tmdb(tmdb_id)
+    except Exception:
+        pass
+
+
+def _verify_tmdb_upnext_heal(tmdb_id):
+    """Verifica ca rindul TMDB Up Next pentru tmdb_id corespunde deja vizionate
+    locale ale providerului activ; daca nu (ex: rescrierea a esuat tranzitoriu in
+    urma cu 0.2-3s), re-run refresh_next_episode_tmdb. Rulata sincron, cu 3
+    re-verificari la 500ms — rindul TMDb provine dintr-un SQLite separat.
+    """
+    try:
+        from resources.lib.config import TMDB_V4_TOKEN_FILE
+        if not os.path.exists(TMDB_V4_TOKEN_FILE):
+            return
+        import time as _t
+        for _i in range(3):
+            _t.sleep(0.5)
+            try:
+                from resources.lib import trakt_sync as _ts
+                pconn = _ts.get_connection()
+                pcur = pconn.cursor()
+                pcur.execute("SELECT season, episode FROM tmdb_next_episodes WHERE tmdb_id=?", (str(tmdb_id),))
+                row = pcur.fetchone()
+                pconn.close()
+            except Exception:
+                return
+            if row is None or row[0] is None or row[1] is None:
+                return
+            try:
+                pseason, pep = int(row[0]), int(row[1])
+            except Exception:
+                return
+            # Referinta = rindul providerului activ (aceeasi sursa ca listele
+            # Up Next dinamice). Daca exista si difera de rindul TMDB, oferim
+            # prilejul de heal (TMDB scris de alt thread poate ramine in urma).
+            ref = None
+            try:
+                mod = get_source_module()
+                prov = _get_provider_raw()
+                p_tbl = {'trakt': 'trakt_next_episodes', 'mdblist': 'mdblist_next_episodes',
+                         'simkl': 'simkl_next_episodes', 'punchplay': 'punchplay_next_episodes'}[prov]
+                mconn = mod.get_connection()
+                mcur = mconn.cursor()
+                mcur.execute("SELECT season, episode FROM %s WHERE tmdb_id=?" % p_tbl, (str(tmdb_id),))
+                mrow = mcur.fetchone()
+                mconn.close()
+                if mrow and mrow[0] is not None and mrow[1] is not None:
+                    ref = (int(mrow[0]), int(mrow[1]))
+            except Exception:
+                ref = None
+            w = get_watched_episodes_set(tmdb_id)
+            wset = w.get('set') or set()
+            tmdb_pair = (pseason, pep)
+            tmdb_is_ok = tmdb_pair not in wset
+            ref_is_ok = (ref is None) or (ref not in wset)
+            same = (ref is None) or (ref == tmdb_pair)
+            if tmdb_is_ok and ref_is_ok and same:
+                return  # totul consistent
+            # Rindul TMDB e in urma (expus un episod vazut sau diferit de provider).
+            try:
+                from resources.lib.trakt_sync import refresh_next_episode_tmdb
+                refresh_next_episode_tmdb(tmdb_id)
+            except Exception:
+                pass
+            return
+    except Exception:
+        pass
+
+
+def _upnext_ui_sync(preserve_binge=True):
+    """Dupa rescrierea randurilor Up Next (provider + TMDB): invalideaza listele din
+    fast cache si da Container.Refresh, ca AMBELE liste Up Next (colorata dinamica
+    si TMDB) sa arate noul episod la urmatoarea randare.
+
+    preserve_binge=True pastreaza comportamentul din player: nu suprascriem un
+    dialog binge/autoplay deschis si nu dam refresh daca listele s-au reimprospatat
+    chiar acum (evitam randarile in paralel care lasau pagina goala).
+    """
+    import time as _time
+    try:
+        from resources.lib.cache import clear_list_fast_cache
+        clear_list_fast_cache()
+    except Exception:
+        pass
+    try:
+        import xbmcgui
+        try:
+            _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
+        except Exception:
+            _binge_since = 0.0
+        if preserve_binge and _binge_since > 0 and (_time.time() - _binge_since) < 120:
+            return
+        try:
+            _last = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
+        except Exception:
+            _last = 0.0
+        if _time.time() - _last < 1.5:
+            return
+        refresh_ui()
+        xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(_time.time()))
     except Exception:
         pass
 

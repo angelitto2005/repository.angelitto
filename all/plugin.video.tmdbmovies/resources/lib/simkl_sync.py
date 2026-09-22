@@ -545,6 +545,37 @@ def get_watched_episodes_count(tmdb_id):
 def count_watched_episodes_raw(tmdb_id):
     return get_watched_episodes_count(tmdb_id)
 
+
+def get_watched_counts_map(tmdb_ids):
+    """Count per serial, dintr-o SINGURA conexiune: {tmdb_id: watched_count}.
+
+    Exclude randurile marker (season=0, episode=0), ca get_watched_episodes_count.
+    None = citirea a esuat (apelantul cade pe varianta per serial).
+    """
+    out = {}
+    try:
+        _ensure_db()
+        if not os.path.exists(DB_PATH):
+            return out
+        ids = tuple({str(t) for t in (tmdb_ids or []) if str(t)})
+        if not ids:
+            return out
+        marks = ','.join(['?'] * len(ids))
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("SELECT tmdb_id, COUNT(*) FROM simkl_watched_episodes "
+                  "WHERE season > 0 AND episode > 0 AND tmdb_id IN (%s) GROUP BY tmdb_id" % marks, ids)
+        for r in c.fetchall():
+            try:
+                out[str(r[0])] = int(r[1] or 0)
+            except:
+                continue
+        try: conn.close()
+        except: pass
+        return out
+    except:
+        return None
+
 def get_watched_season_episodes_count(tmdb_id, season):
     _ensure_db()
     if not os.path.exists(DB_PATH):
@@ -669,9 +700,10 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         except:
             pass
 
-    from resources.lib.cache import clear_all_fast_cache
+    # Doar listele (metadatele serialelor rămân valide dupa un mark watched).
+    from resources.lib.cache import clear_list_fast_cache
     try:
-        clear_all_fast_cache()
+        clear_list_fast_cache()
     except:
         pass
 
@@ -781,9 +813,10 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
         except:
             pass
 
-    from resources.lib.cache import clear_all_fast_cache
+    # Doar listele (metadatele serialelor rămân valide dupa un mark unwatched).
+    from resources.lib.cache import clear_list_fast_cache
     try:
-        clear_all_fast_cache()
+        clear_list_fast_cache()
     except:
         pass
 
@@ -818,8 +851,9 @@ def refresh_next_episode_simkl(tmdb_id, ignore_hidden=False):
     def _trigger_ui_refresh():
         try:
             try:
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
+                # Up Next s-a schimbat local -> doar listele se invalideaza.
+                from resources.lib.cache import clear_list_fast_cache
+                clear_list_fast_cache()
             except:
                 pass
             import xbmc
@@ -1850,8 +1884,9 @@ def drop_show(tmdb_id, title='', media_type='show'):
             except:
                 pass
             try:
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
+                # Doar listele (un singur serial scos din Up Next).
+                from resources.lib.cache import clear_list_fast_cache
+                clear_list_fast_cache()
             except:
                 pass
             return True

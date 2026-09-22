@@ -741,7 +741,7 @@ def _view_upnext():
 def _calendar_window():
     import datetime as _dt
     _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT = [7, 14, 21, 30, 60, 90]
+    _CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
     try:
         prev_days = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 3)]
     except:

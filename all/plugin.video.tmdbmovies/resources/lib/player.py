@@ -2094,9 +2094,21 @@ def start_playback_monitor(player_instance, dialog=None):
                 _last_upnext_refresh = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
             except:
                 pass
-            if time.time() - _last_upnext_refresh > 10:
+            # Nu reimprospatam peste un dialog modal (binge/autoplay) sau peste un
+            # container care se incarca deja: doua randari ale aceleiasi liste in
+            # paralel lasa containerul GOL (sau crash in GUI). Cazul il preia
+            # safety pass-ul de mai jos, cind userul a inchis dialogul.
+            _refresh_ok = True
+            try:
+                if xbmc.getCondVisibility('System.HasModalDialog') or xbmc.getCondVisibility('Container.IsUpdating'):
+                    _refresh_ok = False
+            except:
+                _refresh_ok = True
+            if _refresh_ok and time.time() - _last_upnext_refresh > 10:
                 xbmc.executebuiltin('Container.Refresh')
                 log("[PLAYER-MONITOR] Container refreshed")
+            elif not _refresh_ok:
+                log("[PLAYER-MONITOR] Container refresh amanat (dialog modal / container ocupat) - preia safety pass")
             # PLASA DE SIGURANTA (5s): refresh-ul de mai sus poate cadea in
             # milisecunda in care fereastra media se initializeaza (log real:
             # Container.Refresh 24.262 vs Window Init MyVideoNav 24.261) - daca
@@ -2141,6 +2153,12 @@ def start_playback_monitor(player_instance, dialog=None):
                         _s = 0.0
                     if time.time() - _s < 2.0:
                         return
+                    try:
+                        if xbmc.getCondVisibility('System.HasModalDialog'):
+                            log("[PLAYER-MONITOR] Safety refresh amanat (dialog modal deschis)")
+                            return
+                    except Exception:
+                        pass
                     for _ in range(20):
                         try:
                             if not xbmc.getCondVisibility('Container.IsUpdating'):

@@ -3106,7 +3106,7 @@ def _view_trakt_my_calendar():
     xbmcplugin.setContent(HANDLE, 'episodes')
 
     _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT  = [7, 14, 21, 30, 60, 90]
+    _CAL_FUT  = [0, 7, 14, 21, 30, 60, 90]
     try:
         prev_days = _CAL_PREV[int(ADDON.getSetting('mdblist_cal_previous_days') or 0)]
         fut_days  = _CAL_FUT[int(ADDON.getSetting('mdblist_cal_future_days') or 3)]
@@ -3402,6 +3402,11 @@ def trakt_calendar(params):
     is_movie = '/movies' in calendar_type or calendar_type.startswith('my/movies')
 
     cache_key = f"trakt_calendar_{calendar_type}_{page}"
+    try:
+        if ADDON.getSetting('show_air_time') == 'true':
+            cache_key += "_airtime"
+    except:
+        pass
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -3458,6 +3463,7 @@ def trakt_calendar(params):
                     'season_num': season_num,
                     'ep_title': ep_title,
                     'air_date': air_date,
+                    'first_aired_raw': item.get('first_aired', '') or '',
                     'title': f"{show_title} - S{season_num:02d}E{ep_num:02d} - {ep_title}",
                     'name': show_title,
                     'release_date': air_date,
@@ -3521,11 +3527,21 @@ def trakt_calendar(params):
                     ep_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
                     today = datetime.date.today()
                     diff_d = (ep_date - today).days
+                    try:
+                        _air_on = ADDON.getSetting('show_air_time') == 'true'
+                    except:
+                        _air_on = False
+                    try:
+                        from resources.lib.config import utc_to_local_time as _to_local_time
+                        _at = _to_local_time(item.get('first_aired_raw', '') or '') if _air_on else ''
+                    except:
+                        _at = ''
+                    _at_suffix = f' • {_at}' if _at else ''
                     if 0 <= diff_d <= 1:
                         label = calendar_localized_label(diff_d, '')
-                        date_label = f"[B][COLOR white]({label})[/COLOR][/B]"
+                        date_label = f"[B][COLOR white]({label}{_at_suffix})[/COLOR][/B]"
                     else:
-                        date_label = f"[B][COLOR white]({_fmt_dmy(ad)})[/COLOR][/B]"
+                        date_label = f"[B][COLOR white]({_fmt_dmy(ad)}{_at_suffix})[/COLOR][/B]"
                     if ep_date == today or ep_date == today + datetime.timedelta(days=1):
                         display_label = f"{display_label} {date_label}"
                     elif ep_date > today:
