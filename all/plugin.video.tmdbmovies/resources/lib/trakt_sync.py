@@ -3564,7 +3564,8 @@ def sync_tmdb_up_next(c):
             prov_tbl = {'trakt': 'trakt_next_episodes',
                         'mdblist': 'mdblist_next_episodes',
                         'simkl': 'simkl_next_episodes',
-                        'punchplay': 'punchplay_next_episodes'}.get(prov)
+                        'punchplay': 'punchplay_next_episodes',
+                        'local': 'local_next_episodes'}.get(prov)
             if prov_tbl:
                 pconn = get_source_module().get_connection()
                 pcur = pconn.cursor()
@@ -3572,6 +3573,20 @@ def sync_tmdb_up_next(c):
                 raw_pool = [str(r[0]) for r in pcur.fetchall()]
                 pconn.close()
                 pool_ids = [tid for tid in raw_pool if tid not in wl_ids]
+                # Pool-ul include mereu si serialele incepute pe Local (indiferent de
+                # providerul activ): altfel TMDB Up Next pierde show-urile marcate local.
+                try:
+                    from resources.lib import local_sync as _ls
+                    lconn = _ls.get_connection()
+                    lcur = lconn.cursor()
+                    lcur.execute("SELECT DISTINCT tmdb_id FROM local_next_episodes")
+                    local_pool = [str(r[0]) for r in lcur.fetchall()]
+                    lconn.close()
+                    for tid in local_pool:
+                        if tid not in wl_ids and tid not in pool_ids:
+                            pool_ids.append(tid)
+                except Exception:
+                    pass
         except Exception as e:
             log(f"[TMDB SYNC] Up Next pool extension error: {e}", xbmc.LOGERROR)
             pool_ids = []

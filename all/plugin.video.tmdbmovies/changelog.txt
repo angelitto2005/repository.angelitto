@@ -1,3 +1,6 @@
+1.1.296
+- New watched provider "Kodi (Local)": watch state lives fully offline in the addon (local_sync.db), no account and no re-auth pop-up at startup. Marks sync instantly with the native Kodi library (checkmarks appear/disappear in both places), existing Kodi playcounts are imported at Library Sync, Up Next and In Progress work from local data. Optional extra target under Accounts/Mark as watched on -> Custom selection.
+
 1.1.295
 - Fixed an error when running an import with a disconnected provider
 - PunchPlay Account page now also shows Favourites, Collection and My Lists.

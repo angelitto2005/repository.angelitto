@@ -8,7 +8,7 @@ import xbmcvfs
 import os
 import json
 from urllib.parse import parse_qsl, urlencode, quote, unquote
-from resources.lib.config import provider_title
+from resources.lib.config import provider_title, ADDON_PATH as CONFIG_ADDON_PATH
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZA
@@ -182,7 +182,7 @@ def get_providers_menu_items():
         pass
 
     if tmdb_user:
-        items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR FF00CED1]TMDB: {tmdb_user}[/COLOR][/B]', 'iconImage': 'tmdb.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect TMDB[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'tmdb_logout_action', 'folder': False})
     else:
         items.append({'name': '[B][COLOR FF00CED1]Connect TMDB[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'tmdb_auth_action', 'folder': False})
@@ -197,7 +197,7 @@ def get_providers_menu_items():
         trakt_user = raw_status.replace('Conectat: ', '').replace('Connected: ', '') or 'User'
 
     if trakt_user and trakt_user != 'Disconnected':
-        items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR pink]Trakt: {trakt_user}[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect Trakt[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'trakt_revoke_action', 'folder': False})
     else:
         items.append({'name': '[B][COLOR pink]Connect Trakt[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'trakt_auth_action', 'folder': False})
@@ -210,10 +210,10 @@ def get_providers_menu_items():
 
     if mdblist_token or mdblist_api_key:
         display_name = mdblist_username or mdblist_status_raw.replace('Connected: ', '')
-        items.append({'name': f'[B][COLOR lightskyblue]MDBList: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR lightskyblue]MDBList: {display_name}[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect MDBList[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'mdblist_revoke', 'folder': False})
     else:
-        items.append({'name': '[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]', 'iconImage': 'mdblist.png', 'mode': 'mdblist_auth', 'folder': False})
+        items.append({'name': '[B][COLOR lightskyblue]Connect MDBList[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'mdblist_auth', 'folder': False})
 
     # Simkl Status
     simkl_token = addon.getSetting('simkl_access_token')
@@ -230,10 +230,10 @@ def get_providers_menu_items():
             except:
                 pass
         display_name = simkl_username or 'Connected'
-        items.append({'name': f'[B][COLOR mediumpurple]Simkl: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR mediumpurple]Simkl: {display_name}[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect Simkl[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'simkl_revoke', 'folder': False})
     else:
-        items.append({'name': '[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]', 'iconImage': 'simkl.png', 'mode': 'simkl_auth', 'folder': False})
+        items.append({'name': '[B][COLOR mediumpurple]Connect Simkl[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'simkl_auth', 'folder': False})
 
     # PunchPlay Status
     punchplay_token = addon.getSetting('punchplay_access_token')
@@ -250,12 +250,23 @@ def get_providers_menu_items():
             except:
                 pass
         display_name = punchplay_username or 'Connected'
-        items.append({'name': f'[B][COLOR FFFF6600]PunchPlay: {display_name}[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'noop', 'folder': False})
+        items.append({'name': f'[B][COLOR FFFF6600]PunchPlay: {display_name}[/COLOR][/B]', 'iconImage': 'punchplay.png', 'mode': 'noop', 'folder': False})
         items.append({'name': '[B][COLOR FFF535AA]Disconnect PunchPlay[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'punchplay_revoke', 'folder': False})
     else:
-        items.append({'name': '[B][COLOR FFFF6600]Connect PunchPlay[/COLOR][/B]', 'iconImage': 'punchplay.png', 'mode': 'punchplay_auth', 'folder': False})
+        items.append({'name': '[B][COLOR FFFF6600]Connect PunchPlay[/COLOR][/B]', 'iconImage': 'DefaultUser.png', 'mode': 'punchplay_auth', 'folder': False})
+
+    # Kodi (Local): mereu conectat, fara cont — rand status informativ
+    items.append({'name': '[B][COLOR FFF70D1A]Kodi (Local): Connected[/COLOR][/B]', 'iconImage': 'kodi.png', 'mode': 'noop', 'folder': False})
 
     return items
+
+
+def _is_local_provider_active():
+    try:
+        from resources.lib.watched_provider import get_provider as _gp
+        return _gp() == 'local'
+    except Exception:
+        return False
 
 
 def get_settings_menu_items():
@@ -279,7 +290,7 @@ def get_settings_menu_items():
     mdblist_api_key = addon.getSetting('mdblist_api')
     simkl_token = addon.getSetting('simkl_access_token')
     punchplay_token = addon.getSetting('punchplay_access_token')
-    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token or punchplay_token:
+    if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token or punchplay_token or _is_local_provider_active():
         items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
         items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_action', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
@@ -1883,14 +1894,30 @@ def run_plugin():
 
     if mode == 'trakt_sync_action':
         from resources.lib.watched_provider import sync_full_library
-        sync_full_library(silent=False, force=True)
-        xbmc.executebuiltin("Container.Refresh")
+        import threading as _th_sync
+        def _bg_full_sync():
+            try:
+                sync_full_library(silent=False, force=True)
+            except Exception as _e:
+                xbmc.log(f'[TMDb Movies] background full sync error: {_e}', xbmc.LOGERROR)
+            xbmc.executebuiltin('Container.Refresh')
+        _th_sync.Thread(target=_bg_full_sync, daemon=True).start()
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                      'Full sync started in background...', os.path.join(CONFIG_ADDON_PATH, 'icon.png'), 2500, False)
         return
 
     if mode == 'trakt_sync_smart_action':
         from resources.lib.watched_provider import sync_full_library
-        sync_full_library(silent=False, force=False)
-        xbmc.executebuiltin("Container.Refresh")
+        import threading as _th_sync2
+        def _bg_smart_sync():
+            try:
+                sync_full_library(silent=False, force=False)
+            except Exception as _e:
+                xbmc.log(f'[TMDb Movies] background smart sync error: {_e}', xbmc.LOGERROR)
+            xbmc.executebuiltin('Container.Refresh')
+        _th_sync2.Thread(target=_bg_smart_sync, daemon=True).start()
+        xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                      'Smart sync started in background...', os.path.join(CONFIG_ADDON_PATH, 'icon.png'), 2500, False)
         return
 
     if mode == 'open_settings':
@@ -2407,31 +2434,30 @@ def run_service():
                                 elif _prov == 'punchplay':
                                     from resources.lib.punchplay_api import PunchplayAPI as _PPAPI
                                     _connected = _PPAPI().is_authenticated()
+                                elif _prov == 'local':
+                                    _connected = True  # local: mereu conectat
                                 else:
                                     _connected = bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
                                 if not _connected:
-                                    _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}.get(_prov, _prov)
-                                    _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}.get(_prov, 'yellow')
-                                    # Iconita addonului (conventia downloader/player:
-                                    # icon.png din radacina addonului), nu iconita
-                                    # generica de warning a Kodi (al 3-lea arg este
-                                    # ICONUL, xbmcgui.NOTIFICATION_WARNING nu e
-                                    # iconita, e doar constanta pentru heading).
-                                    try:
-                                        _notif_icon = os.path.join(get_addon().getAddonInfo('path'), 'icon.png')
-                                    except Exception:
-                                        _notif_icon = xbmcgui.NOTIFICATION_WARNING
+                                    _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}.get(_prov, _prov)
+                                    _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600', 'local': 'FFF70D1A'}.get(_prov, 'yellow')
+                                    # Iconita addonului din root (icon.png), cale statica
+                                    # via ADDON_PATH — fara apeluri care pot esua in
+                                    # thread-ul de service.
+                                    _notif_icon = os.path.join(CONFIG_ADDON_PATH, 'icon.png')
                                     # POARTA (nu doar informare): userul NU poate ramine pe un
                                     # provider deconectat. Ori se conecteaza (si trece verificarea),
                                     # ori setarea revine automat la providerul anterior / la primul
                                     # provider CONECTAT gasit. Back/Esc (fara alegere) = tot revert.
                                     # Inainte raminea activat un provider mort, cu o simpla notificare.
-                                    _NAMES = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}
-                                    _CLRS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}
+                                    _NAMES = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}
+                                    _CLRS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600', 'local': 'FFF70D1A'}
 
                                     def _is_conn(_p):
                                         # Verificare locala (fara retea) pe fiecare provider.
                                         try:
+                                            if _p == 'local':
+                                                return True  # local: mereu conectat
                                             if _p == 'trakt':
                                                 from resources.lib.trakt_api import get_trakt_token as _t
                                                 return bool(_t())
@@ -2486,7 +2512,7 @@ def run_service():
                                         _order = []
                                         if _can_revert:
                                             _order.append(_prev)
-                                        for _p in ('trakt', 'mdblist', 'simkl', 'punchplay'):
+                                        for _p in ('trakt', 'mdblist', 'simkl', 'punchplay', 'local'):
                                             if _p != _prov and _p not in _order:
                                                 _order.append(_p)
                                         _target = None
@@ -2496,7 +2522,7 @@ def run_service():
                                                 break
                                         if _target:
                                             try:
-                                                _idx = ('trakt', 'mdblist', 'simkl', 'punchplay').index(_target)
+                                                _idx = ('trakt', 'mdblist', 'simkl', 'punchplay', 'local').index(_target)
                                             except Exception:
                                                 _idx = 0
                                             try:
@@ -2509,13 +2535,13 @@ def run_service():
                                             self._last_provider = _target
                                             _t_name = _NAMES.get(_target, _target)
                                             xbmc.log(f'[TMDb Movies] Provider switch: reverted to {_target} ({_name} not connected).', xbmc.LOGINFO)
-                                            xbmcgui.Dialog().notification(f"[B][COLOR {_CLRS.get(_target, 'yellow')}]{_t_name}[/COLOR][/B]",
-                                                                          f'Kept [B]{_t_name}[/B] - [B]{_name}[/B] is not connected.',
+                                            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                                                          f'Kept [B][COLOR {_CLRS.get(_target, "yellow")}]{_t_name}[/COLOR][/B] - [B][COLOR {_clr}]{_name}[/COLOR][/B] is not connected.',
                                                                           _notif_icon, 5000, False)
                                         else:
                                             xbmc.log(f'[TMDb Movies] Provider switch: {_name} not connected and no other connected provider found.', xbmc.LOGWARNING)
-                                            xbmcgui.Dialog().notification(f'[B][COLOR {_clr}]{_name}[/COLOR][/B]',
-                                                                          f'No account is connected. Connect [B]{_name}[/B] in Settings!',
+                                            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                                                          f'No account is connected. Connect [B][COLOR {_clr}]{_name}[/COLOR][/B] in Settings!',
                                                                           _notif_icon, 6000, False)
                             except:
                                 pass

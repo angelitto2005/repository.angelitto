@@ -6849,7 +6849,6 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
             pass
         return data
     except Exception as e:
-        import xbmc
         xbmc.log(f"[TMDB] Fetch Error: {e}", xbmc.LOGERROR)
         return None
 
@@ -6993,6 +6992,10 @@ def in_progress_movies(params):
             add_directory("[COLOR cyan]No movies started. Sync MDBList.[/COLOR]", {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif _prov == 'simkl':
             add_directory("[COLOR cyan]No movies started. Sync Simkl.[/COLOR]", {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif _prov == 'punchplay':
+            add_directory("[COLOR cyan]No movies started. Sync PunchPlay.[/COLOR]", {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif _prov == 'local':
+            add_directory("[COLOR cyan]No movies started (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7158,6 +7161,7 @@ def in_progress_tvshows(params):
     use_mdblist = _get_prov() == 'mdblist'
     use_simkl = _get_prov() == 'simkl'
     use_punchplay = _get_prov() == 'punchplay'
+    use_local = _get_prov() == 'local'
 
     from resources.lib.utils import skip_ext_info_in_progress as _skip_ip
 
@@ -7169,7 +7173,7 @@ def in_progress_tvshows(params):
         _air_time_on = ADDON.getSetting('show_air_time') == 'true'
     except:
         _air_time_on = False
-    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{use_punchplay}_{show_future}_{hide_unaired}_{LABEL_VERSION}_{int(_air_time_on)}"
+    cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{use_punchplay}_{use_local}_{show_future}_{hide_unaired}_{LABEL_VERSION}_{int(_air_time_on)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -7187,7 +7191,10 @@ def in_progress_tvshows(params):
     except: icon = 'DefaultIcon.png'
 
     # Sursa de adevar este acum EXACT aceeasi ca la Up Next (provider-aware)
-    if use_mdblist:
+    if use_local:
+        from resources.lib.local_sync import get_in_progress_tvshows_from_db as _loc_ip
+        raw_items = _loc_ip()
+    elif use_mdblist:
         from resources.lib.mdblist_sync import get_in_progress_tvshows_from_db as _mdb_ip
         raw_items = _mdb_ip()
     elif use_simkl:
@@ -7200,7 +7207,10 @@ def in_progress_tvshows(params):
         raw_items = trakt_sync.get_next_episodes_from_db()
 
     if not raw_items:
-        if use_mdblist:
+        if use_local:
+            add_directory("[COLOR cyan]No TV shows in progress. Mark episodes watched (Kodi Local).[/COLOR]",
+                          {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_mdblist:
             add_directory("[COLOR cyan]No TV shows in progress. Sync MDBList.[/COLOR]",
                           {'mode': 'mdblist_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif use_simkl:
@@ -7464,9 +7474,10 @@ def in_progress_episodes(params):
     use_mdblist = _get_prov() == 'mdblist'
     use_simkl = _get_prov() == 'simkl'
     use_punchplay = _get_prov() == 'punchplay'
+    use_local = _get_prov() == 'local'
     from resources.lib.utils import skip_ext_info_in_progress as _skip_ip
 
-    cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}_{use_punchplay}"
+    cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}_{use_punchplay}_{use_local}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)
@@ -7484,6 +7495,8 @@ def in_progress_episodes(params):
             add_directory("[COLOR cyan]No episodes paused midway. Sync Simkl.[/COLOR]", {'mode': 'simkl_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif use_punchplay:
             add_directory("[COLOR cyan]No episodes paused midway. Sync PunchPlay.[/COLOR]", {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
+        elif use_local:
+            add_directory("[COLOR cyan]No episodes paused midway (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7775,12 +7788,19 @@ def get_next_episodes(params=None):
         from resources.lib.watched_provider import _get_provider_raw as _get_prov
         _browse_cmd = lambda url: 'Container.Update(%s)' % url
     use_tmdb = bool(params and params.get('use_tmdb') == 'true')
+    use_local = not use_tmdb and _get_prov() == 'local'
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
     use_punchplay = not use_tmdb and _get_prov() == 'punchplay'
-    show_color = 'FF00CED1' if use_tmdb else provider_color('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt')))
+    show_color = 'FF00CED1' if use_tmdb else provider_color('local' if use_local else ('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt'))))
     if use_tmdb:
         raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
+    elif use_local:
+        from resources.lib.local_sync import get_next_episodes_from_db as _loc_next
+        raw_items = _loc_next()
+        for _it in raw_items:
+            _it.setdefault('overview', '')
+            _it.setdefault('poster', '')
     elif use_mdblist:
         from resources.lib.mdblist_sync import get_next_episodes_from_db as _mdb_next
         raw_items = _mdb_next()
@@ -7987,7 +8007,8 @@ def get_next_episodes(params=None):
         _air_time_on = ADDON.getSetting('show_air_time') == 'true'
     except:
         _air_time_on = False
-    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('simkl' if use_simkl else ('mdblist' if use_mdblist else ('punchplay' if use_punchplay else 'trakt')))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}_{int(_air_time_on)}"
+    # Providerul in numele cheii: la switch (ex. Trakt -> Local) lista veche din RAM nu trebuie servita.
+    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('local' if use_local else ('simkl' if use_simkl else ('mdblist' if use_mdblist else ('punchplay' if use_punchplay else 'trakt'))))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}_{int(_air_time_on)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data)

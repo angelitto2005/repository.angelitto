@@ -16,7 +16,8 @@ def _get_provider_raw():
         idx = int(ADDON.getSetting('watched_status_provider') or '0')
     except:
         idx = 0
-    return ('trakt', 'mdblist', 'simkl', 'punchplay')[idx] if idx <= 3 else 'trakt'
+    # 'local' e la COADA (index 4) ca sa nu deplaseze indecsii salvati 0-3.
+    return ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')[idx] if idx <= 4 else 'trakt'
 
 def clear_cache():
     """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
@@ -64,19 +65,24 @@ def browse_command(url):
         pass
     return 'Container.Update(%s)' % url
 
-_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl', 'punchplay')
+_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl', 'punchplay')  # tintte ONLINE (fanout)
+# NOTE fanout: local nu e in _WATCHED_MARK_PROVIDERS (nu e tintta de retea). Cind
+# activul e local, scrierea merge pe traseul "active provider" din dispatch_mark_*;
+# cind activul e online si userul bifeaza watched_mark_local in Custom selection,
+# dispatch_mark_* adauga local explicit (util pt. migrare ulterioara spre Local).
 
 # Culorile providerilor vin din config (sursa unica de adevar); PUNCHPLAY_COLOR
 # rămâne în config pentru compatibilitate cu importurile existente.
 from resources.lib.config import PROVIDER_COLORS as _CFG_PROVIDER_COLORS, PROVIDER_ICONS as _CFG_PROVIDER_ICONS, provider_title as _cfg_provider_title
 
-_WATCHED_MARK_COLORS = {p: _CFG_PROVIDER_COLORS[p] for p in _WATCHED_MARK_PROVIDERS}
+_WATCHED_MARK_COLORS = {p: _CFG_PROVIDER_COLORS[p] for p in ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')}
 
 _WATCHED_MARK_LABELS = {
     'trakt': _cfg_provider_title('trakt'),
     'mdblist': _cfg_provider_title('mdblist'),
     'simkl': _cfg_provider_title('simkl'),
     'punchplay': _cfg_provider_title('punchplay'),
+    'local': _cfg_provider_title('local'),
 }
 
 _WATCHED_MARK_TOGGLES = {
@@ -84,11 +90,12 @@ _WATCHED_MARK_TOGGLES = {
     'mdblist': 'watched_mark_mdblist',
     'simkl': 'watched_mark_simkl',
     'punchplay': 'watched_mark_punchplay',
+    'local': 'watched_mark_local',
 }
 
 
 def _connected_mark_providers():
-    connected = []
+    connected = ['local']  # local: mereu conectat (nicio retea, zero pop-up)
     try:
         from resources.lib import trakt_api
         if trakt_api.get_trakt_token():
@@ -137,11 +144,13 @@ def _mark_targets():
     prov = _get_provider_raw()
     if prov in connected and prov not in targets:
         targets.append(prov)
-    return [p for p in _WATCHED_MARK_PROVIDERS if p in targets]
+    # Ordine stabila; 'local' poate fi in targets (scris pe traseu separat in dispatch,
+    # nu prin fanout-ul online).
+    return [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay', 'local') if p in targets]
 
 
-_PROVIDER_LABELS = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay'}
-_PROVIDER_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600'}
+_PROVIDER_LABELS = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}
+_PROVIDER_COLORS = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600', 'local': 'FFF70D1A'}
 
 
 def _run_provider_auth(prov):
@@ -165,6 +174,9 @@ def _run_provider_auth(prov):
 
 
 def ensure_active_provider(notify=True, interactive=True):
+    # Local: mereu conectat -> zero pop-up la boot. Fix-ul pentru userii fara cont.
+    if _get_provider_raw() == 'local':
+        return False
     try:
         prov = _get_provider_raw()
     except Exception:
@@ -176,6 +188,8 @@ def ensure_active_provider(notify=True, interactive=True):
     if prov in connected:
         return False
     fallback = next((p for p in _WATCHED_MARK_PROVIDERS if p in connected), None)
+    if fallback is None:
+        fallback = 'local'  # preferam ONLINE la reconnect, dar local e mereu o iesire
     if interactive:
         try:
             import xbmcgui
@@ -226,9 +240,10 @@ def ensure_active_provider(notify=True, interactive=True):
         except Exception:
             pass
     if fallback is None:
-        fallback = 'trakt'
+        fallback = 'local'  # nicio conexiune online -> local (mereu conectat)
+    _ALL_PROVS = ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')
     try:
-        ADDON.setSetting('watched_status_provider', str(_WATCHED_MARK_PROVIDERS.index(fallback)))
+        ADDON.setSetting('watched_status_provider', str(_ALL_PROVS.index(fallback)))
     except Exception:
         return False
     try:
@@ -246,7 +261,7 @@ def ensure_active_provider(notify=True, interactive=True):
                 msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, switched to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B]'
             else:
                 msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, no provider connected'
-            xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]Watched Provider[/COLOR][/B]', msg, os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
+            xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', msg, os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
         except Exception:
             pass
     return True
@@ -364,8 +379,11 @@ def is_simkl():
 def is_punchplay():
     return _get_provider_raw() == 'punchplay'
 
+def is_local():
+    return _get_provider_raw() == 'local'
+
 def get_label():
-    return ('Trakt', 'MDBList', 'Simkl', 'PunchPlay')[('trakt', 'mdblist', 'simkl', 'punchplay').index(_get_provider_raw())]
+    return {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}[_get_provider_raw()]
 
 def get_color():
     return _CFG_PROVIDER_COLORS.get(_get_provider_raw(), 'white')
@@ -374,16 +392,19 @@ def get_icon():
     return _CFG_PROVIDER_ICONS.get(_get_provider_raw()) or os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
 
 def get_status_setting():
-    return {'trakt': 'trakt_status', 'mdblist': 'mdblist_status', 'simkl': 'simkl_status', 'punchplay': 'punchplay_status'}[_get_provider_raw()]
+    # local: id dummy citit cu fallback — afisam mereu "Connected (Local)", nu un setting real.
+    return {'trakt': 'trakt_status', 'mdblist': 'mdblist_status', 'simkl': 'simkl_status', 'punchplay': 'punchplay_status', 'local': 'local_status_dummy'}.get(_get_provider_raw(), 'trakt_status')
 
 def get_access_token_setting():
-    return {'trakt': 'trakt_access_token', 'mdblist': 'mdblist_access_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_access_token'}[_get_provider_raw()]
+    return {'trakt': 'trakt_access_token', 'mdblist': 'mdblist_access_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_access_token', 'local': 'local_access_token_dummy'}.get(_get_provider_raw(), 'trakt_access_token')
 
 def get_refresh_token_setting():
-    return {'trakt': 'trakt_refresh_token', 'mdblist': 'mdblist_refresh_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_refresh_token'}[_get_provider_raw()]
+    return {'trakt': 'trakt_refresh_token', 'mdblist': 'mdblist_refresh_token', 'simkl': 'simkl_access_token', 'punchplay': 'punchplay_refresh_token', 'local': 'local_refresh_token_dummy'}.get(_get_provider_raw(), 'trakt_refresh_token')
 
 def get_source_module():
     prov = _get_provider_raw()
+    if prov == 'local':
+        return __import__('resources.lib.local_sync', fromlist=['local_sync'])
     if prov == 'punchplay':
         return __import__('resources.lib.punchplay_sync', fromlist=['punchplay_sync'])
     if prov == 'simkl':
@@ -395,8 +416,20 @@ def get_source_module():
 def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True, async_tmdb=False, skip_library_hack=False):
     targets = _mark_targets()
     prov = _get_provider_raw()
-    if targets is None or targets == [prov]:
-        if prov == 'trakt':
+    # 'local' nu e target de fanout online: il extragem si il scriem pe un traseu
+    # separat (local_sync), ca marcajele locale sa nu se piarda in modurile All/Custom.
+    # Providerul ACTIV local se scrie mereu (paritate cu fortarea activului de la _mark_targets).
+    local_pending = False
+    if targets is not None and 'local' in targets:
+        targets = [p for p in targets if p != 'local']
+        local_pending = True
+    if prov == 'local':
+        local_pending = True
+    if targets is None or (targets == [prov] and not local_pending):
+        if prov == 'local':
+            from resources.lib.local_sync import mark_as_watched_internal
+            mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_local=sync_provider, refresh_ui=do_refresh, skip_library_hack=skip_library_hack)
+        elif prov == 'trakt':
             from resources.lib.trakt_sync import mark_as_watched_internal
             mark_as_watched_internal(tmdb_id, content_type, season, episode, notify=notify, sync_trakt=sync_provider, refresh_ui=do_refresh, skip_library_hack=skip_library_hack)
         elif prov == 'mdblist':
@@ -417,15 +450,36 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
         return
+    # Fanout online: scriem si local (daca e pending), apoi providerii online.
+    if local_pending:
+        try:
+            from resources.lib.local_sync import mark_as_watched_internal as _local_mark
+            _local_mark(tmdb_id, content_type, season, episode, notify=(notify if not targets else False), sync_local=False, refresh_ui=False)
+        except Exception:
+            pass
     if not targets:
+        _refresh_tmdb_up_next(tmdb_id)
+        _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_ui_sync(preserve_binge=(not do_refresh))
+        _invalidate_fast_cache()
+        if do_refresh: refresh_ui()
         return
     mark_watched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=notify, sync_provider=sync_provider, do_refresh=do_refresh)
 
 def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sync_provider=True, do_refresh=True):
     targets = _mark_targets()
     prov = _get_provider_raw()
-    if targets is None or targets == [prov]:
-        if prov == 'trakt':
+    local_pending = False
+    if targets is not None and 'local' in targets:
+        targets = [p for p in targets if p != 'local']
+        local_pending = True
+    if prov == 'local':
+        local_pending = True
+    if targets is None or (targets == [prov] and not local_pending):
+        if prov == 'local':
+            from resources.lib.local_sync import mark_as_unwatched_internal
+            mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_local=sync_provider, refresh_ui=do_refresh)
+        elif prov == 'trakt':
             from resources.lib.trakt_sync import mark_as_unwatched_internal
             mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_trakt=sync_provider, refresh_ui=do_refresh)
         elif prov == 'mdblist':
@@ -443,12 +497,31 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
         _invalidate_fast_cache()
         if do_refresh: refresh_ui()
         return
+    if local_pending:
+        try:
+            from resources.lib.local_sync import mark_as_unwatched_internal as _local_unmark
+            _local_unmark(tmdb_id, content_type, season, episode, notify=(True if not targets else False), sync_local=False, refresh_ui=False)
+        except Exception:
+            pass
     if not targets:
+        _refresh_tmdb_up_next(tmdb_id)
+        _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_ui_sync(preserve_binge=True)
+        _invalidate_fast_cache()
+        if do_refresh: refresh_ui()
         return
     mark_unwatched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=True, sync_provider=sync_provider, do_refresh=do_refresh)
 
 def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, duration_seconds=0, position_seconds=0, watched=None, watched_threshold=None):
     prov = _get_provider_raw()
+    if prov == 'local':
+        # CAPCANĂ (plan, amendament "else → PunchPlay"): fara acest elif, scrobble-urile
+        # cu Local activ ar ajunge tăcut in API-ul PunchPlay. Local: progresul e deja
+        # scris local de player.py (tabela partajata playback_progress) — doar listele
+        # se invalideaza la stop.
+        if action == 'stop':
+            _invalidate_fast_cache()
+        return
     if prov == 'trakt':
         from resources.lib.trakt_api import send_trakt_scrobble
         send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress)
@@ -562,7 +635,10 @@ def get_watched_counts_map(tmdb_ids):
     """
     try:
         prov = _get_provider_raw()
-        if prov == 'punchplay':
+        if prov == 'local':
+            from resources.lib.local_sync import get_watched_counts_map as _m
+            return _m(tmdb_ids)
+        elif prov == 'punchplay':
             from resources.lib.punchplay_sync import get_watched_counts_map as _m
         elif prov == 'mdblist':
             from resources.lib.mdblist_sync import get_watched_counts_map as _m
@@ -584,7 +660,10 @@ def is_episode_watched(tmdb_id, season, episode):
 def get_episode_watched_count(tmdb_id):
     """Numar de episoade vizionate pentru un serial (provider-aware, int)."""
     prov = _get_provider_raw()
-    if prov == 'trakt':
+    if prov == 'local':
+        from resources.lib.local_sync import get_watched_episodes_count as _chk
+        return _chk(tmdb_id)
+    elif prov == 'trakt':
         from resources.lib.trakt_sync import get_episode_watched_count as _chk
         return _chk(tmdb_id)
     elif prov == 'mdblist':
@@ -599,7 +678,7 @@ def get_episode_watched_count(tmdb_id):
 
 def get_watched_episodes_set(tmdb_id):
     prov = _get_provider_raw()
-    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes'}[prov]
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes', 'local': 'local_watched_episodes'}[prov]
     res = {'set': set(), 'last': None, 'last_at': ''}
     try:
         mod = get_source_module()
@@ -626,7 +705,7 @@ def get_watched_episodes_set(tmdb_id):
 
 def get_watched_episodes_set_batch(tmdb_ids):
     prov = _get_provider_raw()
-    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes'}[prov]
+    tbl = {'trakt': 'trakt_watched_episodes', 'mdblist': 'mdblist_watched_episodes', 'simkl': 'simkl_watched_episodes', 'punchplay': 'punchplay_watched_episodes', 'local': 'local_watched_episodes'}[prov]
     result = {}
     ids = [str(x) for x in (tmdb_ids or []) if x]
     if not ids:
@@ -706,7 +785,8 @@ def _verify_tmdb_upnext_heal(tmdb_id):
                 mod = get_source_module()
                 prov = _get_provider_raw()
                 p_tbl = {'trakt': 'trakt_next_episodes', 'mdblist': 'mdblist_next_episodes',
-                         'simkl': 'simkl_next_episodes', 'punchplay': 'punchplay_next_episodes'}[prov]
+                         'simkl': 'simkl_next_episodes', 'punchplay': 'punchplay_next_episodes',
+                         'local': 'local_next_episodes'}[prov]
                 mconn = mod.get_connection()
                 mcur = mconn.cursor()
                 mcur.execute("SELECT season, episode FROM %s WHERE tmdb_id=?" % p_tbl, (str(tmdb_id),))
@@ -765,6 +845,11 @@ def _upnext_ui_sync(preserve_binge=True):
         if _time.time() - _last < 1.5:
             return
         refresh_ui()
+        try:
+            if not _on_home_widget():
+                widget_refresh()
+        except Exception:
+            pass
         xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(_time.time()))
     except Exception:
         pass
@@ -772,7 +857,10 @@ def _upnext_ui_sync(preserve_binge=True):
 def get_season_watched_count(tmdb_id, season):
     """Numar de episoade vizionate dintr-un sezon (provider-aware, int)."""
     prov = _get_provider_raw()
-    if prov == 'trakt':
+    if prov == 'local':
+        from resources.lib.local_sync import get_watched_season_episodes_count as _chk
+        return _chk(tmdb_id, season)
+    elif prov == 'trakt':
         from resources.lib.trakt_sync import get_episode_watched_count as _chk
         return _chk(tmdb_id, season)
     elif prov == 'mdblist':
@@ -797,10 +885,25 @@ def sync_full_library(silent=False, force=False):
     from resources.lib.simkl_sync import sync_full_library as _simkl_sync
     from resources.lib.punchplay_sync import sync_full_library as _punchplay_sync
 
-    order = [prov] + [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay') if p != prov]
+    # Local: faza ieftina (reverse-import din MyVideos) ruleaza mereu; rebuild-ul
+    # Up Next (cost TMDb per serial) doar daca local e ACTIV sau bifat in Custom.
+    try:
+        mark_mode = ADDON.getSetting('watched_mark_mode') or '0'
+    except Exception:
+        mark_mode = '0'
+    try:
+        local_toggled = ADDON.getSetting('watched_mark_local') == 'true'
+    except Exception:
+        local_toggled = False
+    local_needs_rebuild = (prov == 'local') or (mark_mode == '2' and local_toggled)
+
+    order = ['local'] + [prov] + [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay') if p != prov]
     for p in order:
         try:
-            if p == 'trakt':
+            if p == 'local':
+                from resources.lib.local_sync import sync_full_library as _local_sync
+                _local_sync(silent=silent, force=force, rebuild_upnext=local_needs_rebuild)
+            elif p == 'trakt':
                 _trakt_sync(silent=silent, force=force)
             elif p == 'mdblist':
                 _mdblist_sync(silent=silent, force=force)
@@ -816,7 +919,13 @@ def get_watched_counts(tmdb_id, content_type, season=None):
     if content_type == 'movie':
         return 1 if is_movie_watched(tmdb_id) else 0
     prov = _get_provider_raw()
-    if prov == 'trakt':
+    if prov == 'local':
+        from resources.lib.local_sync import get_watched_episodes_count, get_watched_season_episodes_count
+        if content_type == 'season' and season is not None:
+            return get_watched_season_episodes_count(tmdb_id, season)
+        else:
+            return get_watched_episodes_count(tmdb_id)
+    elif prov == 'trakt':
         from resources.lib import trakt_api
         if content_type == 'season' and season is not None:
             return trakt_api.get_watched_counts(tmdb_id, 'season', season)

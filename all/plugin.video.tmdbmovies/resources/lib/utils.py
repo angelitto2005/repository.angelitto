@@ -53,6 +53,8 @@ _WARM_IMPORT_MODULES = (
     'resources.lib.simkl',
     'resources.lib.simkl_api',
     'resources.lib.simkl_sync',
+    'resources.lib.local_sync',
+    'resources.lib.local_library',
     'resources.lib.library',
     'resources.lib.downloader',
     'resources.lib.history_import',

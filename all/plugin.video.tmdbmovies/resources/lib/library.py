@@ -769,7 +769,8 @@ def sync_library(force=False):
     
     session = get_tmdb_session()
     if not session:
-        _notify('TMDb account not connected. Go to Accounts tab.', 5000)
+        _notify('TMDb not connected - lists export skipped, syncing watched status only', 5000)
+        threading.Thread(target=_run_post_sync, daemon=True).start()
         return
     
     threading.Thread(target=_run_sync, args=(dest,), daemon=True).start()
@@ -798,7 +799,16 @@ def _read_provider_watched():
     try:
         from resources.lib.watched_provider import _get_provider_raw
         _prov = _get_provider_raw()
-        if _prov == 'mdblist':
+        if _prov == 'local':
+            from resources.lib import local_sync as _ls
+            conn = _ls.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT tmdb_id, title, year, last_watched_at FROM local_watched_movies")
+            watched_movies = [dict(r) for r in c.fetchall()]
+            c.execute("SELECT tmdb_id, season, episode, title, last_watched_at FROM local_watched_episodes ORDER BY tmdb_id")
+            watched_eps = [dict(r) for r in c.fetchall()]
+            conn.close()
+        elif _prov == 'mdblist':
             from resources.lib import mdblist_sync as _ms
             conn = _ms.get_connection()
             c = conn.cursor()
@@ -1095,7 +1105,7 @@ def _sync_kodi_watched_to_addon():
     import json as _json
     import threading
     import traceback
-    from resources.lib.watched_provider import is_mdblist, is_simkl, is_punchplay
+    from resources.lib.watched_provider import is_mdblist, is_simkl, is_punchplay, is_local
     log('Reverse syncing Kodi watched status to addon DB...')
 
     # Ultimul sync timestamp (0 = first ever sync → skip server sync)
@@ -1112,6 +1122,10 @@ def _sync_kodi_watched_to_addon():
         provider_sync_ran = bool(get_sync_meta('last_sync'))
         if not provider_sync_ran:
             log('Reverse sync: MDBList provider sync never ran — server push SKIPPED (local DB writes only)', xbmc.LOGWARNING)
+    elif is_local():
+        # Local n-are server de impins -> gate-ul "provider sync ran" nu se aplica.
+        provider_sync_ran = True
+        log('Reverse sync: provider Local (no server) — local DB writes only')
     elif is_simkl():
         from resources.lib.simkl_sync import get_sync_meta
         provider_sync_ran = bool(get_sync_meta('last_sync'))
@@ -1131,7 +1145,10 @@ def _sync_kodi_watched_to_addon():
 
     conn = None
     try:
-        if is_mdblist():
+        if is_local():
+            from resources.lib import local_sync as _lss
+            conn = _lss.get_connection()
+        elif is_mdblist():
             from resources.lib import mdblist_sync as _ms
             conn = _ms.get_connection()
         elif is_simkl():
@@ -1147,20 +1164,39 @@ def _sync_kodi_watched_to_addon():
     except Exception as e:
         log(f'Reverse sync connection error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
         return
-    w_movies_tbl = 'mdblist_watched_movies' if is_mdblist() else ('simkl_watched_movies' if is_simkl() else ('punchplay_watched_movies' if is_punchplay() else 'trakt_watched_movies'))
-    w_eps_tbl = 'mdblist_watched_episodes' if is_mdblist() else ('simkl_watched_episodes' if is_simkl() else ('punchplay_watched_episodes' if is_punchplay() else 'trakt_watched_episodes'))
+    w_movies_tbl = ('local_watched_movies' if is_local() else
+                    'mdblist_watched_movies' if is_mdblist() else ('simkl_watched_movies' if is_simkl() else ('punchplay_watched_movies' if is_punchplay() else 'trakt_watched_movies')))
+    w_eps_tbl = ('local_watched_episodes' if is_local() else
+                 'mdblist_watched_episodes' if is_mdblist() else ('simkl_watched_episodes' if is_simkl() else ('punchplay_watched_episodes' if is_punchplay() else 'trakt_watched_episodes')))
     trakt_movies = []
     trakt_eps = []
+    _resume_n = 0
+    _touched_tids = set()
+    _watched_movie_tids = set()
+    _watched_ep_keys = set()
     try:
         # ── Movies ──
         req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetMovies",
-               "params": {"properties": ["uniqueid", "title", "year", "playcount", "lastplayed"]}, "id": 1}
+               "params": {"properties": ["uniqueid", "title", "year", "playcount", "lastplayed", "resume"]}, "id": 1}
         res = _json.loads(xbmc.executeJSONRPC(_json.dumps(req)))
         for m in res.get('result', {}).get('movies', []):
-            if m.get('playcount', 0) < 1:
-                continue
             uid = m.get('uniqueid', {})
             tid = str(uid.get('tmdb', '')) or str(uid.get('default', ''))
+            if (m.get('playcount', 0) or 0) < 1:
+                if tid and is_local():
+                    _res = m.get('resume') or {}
+                    try:
+                        _pos = int(_res.get('position') or 0)
+                    except Exception:
+                        _pos = 0
+                    if _pos > 180:
+                        try:
+                            from resources.lib.trakt_sync import update_local_playback_progress as _upd_prog
+                            _upd_prog(tid, 'movie', 0, 0, 1000000 + _pos, m.get('title', ''), m.get('year', ''))
+                            _resume_n += 1
+                        except Exception:
+                            pass
+                continue
             if not tid:
                 continue
             # Check if already in provider DB before writing
@@ -1186,6 +1222,8 @@ def _sync_kodi_watched_to_addon():
                     lp_ts = _parse_lastplayed(lp)
                     if lp_ts is not None and lp_ts > last_sync:
                         trakt_movies.append(tid)
+            if is_local():
+                _watched_movie_tids.add(tid)
 
         # ── TV Episodes ──
         req = {"jsonrpc": "2.0", "method": "VideoLibrary.GetTVShows",
@@ -1227,6 +1265,38 @@ def _sync_kodi_watched_to_addon():
                         lp_ts = _parse_lastplayed(lp)
                         if lp_ts is not None and lp_ts > last_sync:
                             trakt_eps.append((tid, s_num, e_num))
+                if is_local():
+                    _touched_tids.add(tid)
+                    try:
+                        _watched_ep_keys.add((tid, int(s_num), int(e_num)))
+                    except Exception:
+                        pass
+            if is_local():
+                try:
+                    _rq2 = {"jsonrpc": "2.0", "method": "VideoLibrary.GetEpisodes",
+                           "params": {"tvshowid": sh['tvshowid'],
+                                      "properties": ["season", "episode", "title", "resume"],
+                                      "filter": {"field": "playcount", "operator": "lessthan", "value": "1"}},
+                           "id": 1}
+                    _rr2 = _json.loads(xbmc.executeJSONRPC(_json.dumps(_rq2)))
+                    for _ue in _rr2.get('result', {}).get('episodes', []):
+                        try:
+                            _rs = _ue.get('resume') or {}
+                            _pp = int(_rs.get('position') or 0)
+                        except Exception:
+                            _pp = 0
+                        if _pp > 180:
+                            try:
+                                from resources.lib.trakt_sync import update_local_playback_progress as _upd2
+                                _us = _ue.get('season', 0)
+                                _un = _ue.get('episode', 0)
+                                _upd2(tid, 'episode', _us, _un, 1000000 + _pp,
+                                      f"{sh.get('title', '')} - S{int(_us):02d}E{int(_un):02d}", '')
+                                _resume_n += 1
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
         conn.commit()
         c.execute(f"SELECT COUNT(*) FROM {w_movies_tbl}")
         mc = c.fetchone()[0]
@@ -1234,9 +1304,45 @@ def _sync_kodi_watched_to_addon():
         ec = c.fetchone()[0]
         msg = f'Reverse sync: {mc}m {ec}e in DB'
         if trakt_movies or trakt_eps:
-            msg += f', {len(trakt_movies)}m {len(trakt_eps)}e to server'
-            threading.Thread(target=_sync_to_server, args=(trakt_movies, trakt_eps), daemon=True).start()
+            if is_local():
+                # Local: nu exista server — colectarea de "new items" e doar locala
+                msg += f' (local: {len(trakt_movies)}m {len(trakt_eps)}e, no server push)'
+            else:
+                msg += f', {len(trakt_movies)}m {len(trakt_eps)}e to server'
+                threading.Thread(target=_sync_to_server, args=(trakt_movies, trakt_eps), daemon=True).start()
         log(msg)
+        if _resume_n:
+            log(f'Reverse sync: {_resume_n} Kodi resume points imported into playback progress')
+        if is_local():
+            try:
+                from resources.lib.trakt_sync import get_connection as _pconn
+                _pc2 = _pconn()
+                _cc2 = _pc2.cursor()
+                if _watched_movie_tids:
+                    _cc2.execute("DELETE FROM playback_progress WHERE media_type='movie' AND tmdb_id IN (%s)" % ','.join(['?'] * len(_watched_movie_tids)), list(_watched_movie_tids))
+                if _watched_ep_keys:
+                    _cc2.executemany("DELETE FROM playback_progress WHERE media_type='episode' AND tmdb_id=? AND season=? AND episode=?", list(_watched_ep_keys))
+                _pc2.commit()
+                _pc2.close()
+            except Exception as _e2:
+                log(f'Reverse sync stale resume cleanup error: {_e2}', xbmc.LOGWARNING)
+            try:
+                from resources.lib import local_sync as _lss2
+                for _tid in sorted(_touched_tids):
+                    try:
+                        _lss2.refresh_next_episode_local(_tid, refresh_ui=False)
+                    except Exception:
+                        continue
+                import datetime as _dt
+                _lss2.set_sync_meta('last_sync', _dt.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'))
+                try:
+                    from resources.lib.cache import clear_list_fast_cache
+                    clear_list_fast_cache()
+                except Exception:
+                    pass
+                log(f'Reverse sync: local Up Next rebuilt for {len(_touched_tids)} shows')
+            except Exception as _e3:
+                log(f'Reverse sync local Up Next rebuild error: {_e3}', xbmc.LOGWARNING)
     except Exception as e:
         log(f'Reverse sync error: {e}\n{traceback.format_exc()}', xbmc.LOGERROR)
     finally:

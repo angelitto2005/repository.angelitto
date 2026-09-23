@@ -229,6 +229,7 @@ PROVIDER_COLORS = {
     'simkl': 'mediumpurple',
     'punchplay': 'FFFF6600',
     'tmdb': 'FF00CED1',
+    'local': 'FFF70D1A',
 }
 
 PROVIDER_ICONS = {
@@ -237,6 +238,7 @@ PROVIDER_ICONS = {
     'simkl': os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png'),
     'punchplay': os.path.join(ADDON_PATH, 'resources', 'media', 'punchplay.png'),
     'tmdb': os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png'),
+    'local': os.path.join(ADDON_PATH, 'resources', 'media', 'kodi.png'),
 }
 
 PROVIDER_ALIASES = {
@@ -246,6 +248,8 @@ PROVIDER_ALIASES = {
     'simkl': 'simkl',
     'punchplay': 'punchplay',
     'tmdb': 'tmdb',
+    'local': 'local',
+    'kodi': 'local',
     'show': 'trakt',
     'shows': 'trakt',
     'tv': 'trakt',
@@ -286,6 +290,7 @@ PROVIDER_NAMES = {
     'simkl': 'Simkl',
     'punchplay': 'PunchPlay',
     'tmdb': 'TMDb',
+    'local': 'Kodi (Local)',
 }
 
 
