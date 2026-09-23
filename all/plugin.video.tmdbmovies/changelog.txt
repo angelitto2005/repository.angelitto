@@ -1,3 +1,9 @@
+1.1.295
+- Fixed an error when running an import with a disconnected provider
+- PunchPlay Account page now also shows Favourites, Collection and My Lists.
+- PunchPlay Calendar rows now carry the site category colors
+- Added Forge (Fen fork) as an external player for movies and episodes; toggle under Settings -> My Plays.
+
 1.1.294
 PunchPlay
 - Single-episode "Mark Unwatched" deletes only that episode (no more season/show wipe); show-wide unwatch clears all episodes.

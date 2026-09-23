@@ -80,6 +80,7 @@
         <setting id="use_fenlight" type="bool" label="Show [B][COLOR lightskyblue]Fen Light[/COLOR][/B]" default="true"/>
         <setting id="use_redlight" type="bool" label="Show [B][COLOR FFFF2222]Red Light[/COLOR][/B]" default="true"/>
         <setting id="use_fen" type="bool" label="Show [B][COLOR lightskyblue]Fen[/COLOR][/B]" default="true"/>
+        <setting id="use_forge" type="bool" label="Show [B][COLOR FFCD853F]Forge[/COLOR][/B]" default="true"/>
         <setting id="use_magneto" type="bool" label="Show [B][COLOR red]Magneto[/COLOR][/B]" default="true"/>
         <setting id="use_luckodi" type="bool" label="Show [B][COLOR ff00fa9a]luc_[/COLOR]Kodi[/B]" default="true"/>
         <setting id="use_umbrella" type="bool" label="Show [B][COLOR FFE41B17]Umbrella[/COLOR][/B]" default="true"/>

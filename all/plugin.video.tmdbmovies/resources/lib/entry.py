@@ -1736,8 +1736,8 @@ def run_plugin():
         return
 
     if mode == 'show_my_plays_menu':
-        from resources.lib import tmdb_api
-        tmdb_api.show_my_plays_menu(params)
+        from resources.lib import my_plays
+        my_plays.show_my_plays_menu(params)
         return
 
     if mode == 'tmdb_add_watchlist':

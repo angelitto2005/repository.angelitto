@@ -20,7 +20,7 @@ import datetime
 import xbmc
 import xbmcgui
 
-from resources.lib.config import ADDON_PATH, PROVIDER_COLORS, PROVIDER_NAMES, provider_icon
+from resources.lib.config import ADDON_PATH, PROVIDER_COLORS, PROVIDER_NAMES, provider_icon, provider_title
 
 TRAKT_ICON = provider_icon('trakt')
 MDBLIST_ICON = provider_icon('mdblist')

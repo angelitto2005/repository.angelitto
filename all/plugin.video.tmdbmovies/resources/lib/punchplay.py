@@ -184,10 +184,15 @@ def _view_account():
     ]
     if joined_fmt:
         labels.append((f'[B][COLOR {PUNCHPLAY_COLOR}]Member since: [COLOR yellow]{joined_fmt}[/COLOR][/B]', None, False))
-    if isinstance(stats, dict) and stats:
-        labels.append((f"[B][COLOR {PUNCHPLAY_COLOR}]Watched: [COLOR yellow]{stats.get('titlesWatched', 0)} titles, {stats.get('episodesWatched', 0)} episodes, {stats.get('minutesWatched', 0)} minutes[/COLOR][/B]", None, False))
     wl_m = wl_t = rat_n = drop_n = 0
-    hist_m = hist_s = 0
+    fav_m = fav_t = col_m = col_t = 0
+    hist_m = hist_s = ep_n = 0
+    watch_minutes = 0
+    if isinstance(stats, dict):
+        try:
+            watch_minutes = int(float(stats.get('minutesWatched', 0) or 0))
+        except Exception:
+            watch_minutes = 0
     try:
         from resources.lib.punchplay_sync import get_connection, DB_PATH, get_history_counts
         if os.path.exists(DB_PATH):
@@ -198,21 +203,73 @@ def _view_account():
                 wl_m = (c.fetchone() or [0])[0] or 0
                 c.execute("SELECT COUNT(*) FROM punchplay_watchlist WHERE media_type IN ('tv','show')")
                 wl_t = (c.fetchone() or [0])[0] or 0
+                c.execute("SELECT COUNT(*) FROM punchplay_favourites WHERE media_type='movie'")
+                fav_m = (c.fetchone() or [0])[0] or 0
+                c.execute("SELECT COUNT(*) FROM punchplay_favourites WHERE media_type IN ('tv','show')")
+                fav_t = (c.fetchone() or [0])[0] or 0
+                c.execute("SELECT COUNT(*) FROM punchplay_collection WHERE media_type='movie'")
+                col_m = (c.fetchone() or [0])[0] or 0
+                c.execute("SELECT COUNT(*) FROM punchplay_collection WHERE media_type IN ('tv','show')")
+                col_t = (c.fetchone() or [0])[0] or 0
                 c.execute("SELECT COUNT(*) FROM punchplay_ratings WHERE rating IS NOT NULL")
                 rat_n = (c.fetchone() or [0])[0] or 0
                 c.execute("SELECT COUNT(*) FROM punchplay_dropped")
                 drop_n = (c.fetchone() or [0])[0] or 0
+                c.execute("SELECT COUNT(*) FROM punchplay_watched_episodes")
+                ep_n = (c.fetchone() or [0])[0] or 0
             except:
                 pass
             conn.close()
             hist_m, hist_s = get_history_counts()
     except:
         pass
+    try:
+        _days, _rem = divmod(watch_minutes, 1440)
+        _hours, _mins = divmod(_rem, 60)
+        if _days > 0:
+            _dh = f'{_hours} hours' if _hours != 1 else '1 hour'
+            _dur = f'{_days} days {_dh}' if _hours else (f'{_days} days' if _days != 1 else '1 day')
+        elif _hours > 0:
+            _hh = f'{_hours} hours' if _hours != 1 else '1 hour'
+            _dur = f'{_hh} {_mins} min' if _mins else _hh
+        else:
+            _dur = f'{_mins} min'
+    except Exception:
+        _dur = ''
+    # segmente separate, fiecare cu tag-urile complet inchise (parserul Kodi
+    # afiseaza literal tag-urile cruzite/imbicate, ex. un [/B] orfan dupa hours)
+    def _yn(_n):
+        return f'[B][COLOR yellow]{_n}[/COLOR][/B]'
+
+    def _po(_s):
+        return f'[B][COLOR {PUNCHPLAY_COLOR}]{_s}[/COLOR][/B]'
+
+    _watched = (_po('Watched: ') + _yn(hist_m) + _po(' movies, ') +
+                _yn(hist_s) + _po(' tv shows, ') + _yn(ep_n) + _po(' episodes'))
+    if _dur:
+        import re as _re
+        _dbits = []
+        for _s in _re.split(r'(\d+)', _dur):
+            if not _s:
+                continue
+            _dbits.append(_yn(_s) if _s.isdigit() else _po(_s.strip()))
+        _watched += _po(', ') + ' '.join(_dbits)
+    labels.append((_watched, None, False))
     labels.append(('[B][COLOR FFFDBD01]--- Account ---[/COLOR][/B]', None, False))
     labels.append((f'  Watchlist: [B]{wl_m + wl_t}[/B] items ([B]{wl_m}[/B] Movies + [B]{wl_t}[/B] Shows)', None, False))
+    labels.append((f'  Favourites: [B]{fav_m + fav_t}[/B] items ([B]{fav_m}[/B] Movies + [B]{fav_t}[/B] Shows)', None, False))
+    labels.append((f'  Collection: [B]{col_m + col_t}[/B] items ([B]{col_m}[/B] Movies + [B]{col_t}[/B] Shows)', None, False))
+    try:
+        _lists = _fetch_my_lists()
+        _li = sum(1 for _l in _lists if _l.get('is_dynamic'))
+        if _li:
+            labels.append((f'  My Lists: [B]{len(_lists)}[/B] ([B]{len(_lists) - _li}[/B] standard + [B]{_li}[/B] dynamic)', None, False))
+        else:
+            labels.append((f'  My Lists: [B]{len(_lists)}[/B]', None, False))
+    except Exception:
+        pass
     labels.append((f'  Ratings Given: [B]{rat_n}[/B]', None, False))
     labels.append((f'  Dropped Shows: [B]{drop_n}[/B]', None, False))
-    labels.append((f'  History: [B]{hist_m}[/B] movies, [B]{hist_s}[/B] shows', None, False))
     if not is_authenticated():
         labels.append((f'[B][COLOR FF6AFB92]Connect PunchPlay[/COLOR][/B]', 'punchplay_connect', False))
     for label, action, is_folder in labels:
@@ -804,6 +861,7 @@ def _view_calendar():
                 continue
             seen.add(key)
             entries.append({'tmdb_id': str(tid), 'media_type': 'movie' if kind in ('movie', 'movie-digital') else 'tv',
+                            'kind': kind, 'tag': it.get('tag') or '',
                             'show_title': it.get('title') or '', 'season': s, 'episode': e,
                             'ep_title': ne.get('name') or '', 'air_date': str(ne.get('airDate') or ne.get('air_date') or str(day.get('date'))[:10]),
                             'diff': (d - wnd['today']).days})
@@ -879,11 +937,34 @@ def _view_calendar():
         except:
             date_label = str(en['air_date'])
         date_color = 'white' if diff == 0 else ('FF00FA9A' if diff < 0 else 'yellow')
+        # Categorii + culori ca pe site-ul PunchPlay:
+        # In Theaters = violet-300, Digital = amber-300, Anime = rose-300.
+        # Episoadele (normale / premiere / show nou) = toate acelasi emerald.
+        _pp_tag = str(en.get('tag') or '').lower()
         if is_movie:
-            display = f'[B][COLOR FFFF4444]{show_title} ({str(en["air_date"])[:4]})[/COLOR][/B]'
+            if en.get('kind') == 'movie-digital':
+                cat_color, cat_badge = 'FFFCD34D', 'Digital'
+            else:
+                cat_color, cat_badge = 'FFC4B5FD', 'In Theaters'
+        else:
+            cat_badge = ''
+            _genres = (cached.get('genres') or []) if isinstance(cached, dict) else []
+            if any(isinstance(g, dict) and g.get('id') == 16 for g in _genres):
+                cat_color, cat_badge = 'FFFDA4AF', 'Anime'
+            elif _pp_tag == 'series-premiere':
+                cat_color, cat_badge = 'FF6EE7B7', 'New Show'
+            elif _pp_tag == 'premiere':
+                cat_color, cat_badge = 'FF6EE7B7', 'Premiere'
+            else:
+                cat_color = 'FF6EE7B7'  # episod normal: acelasi emerald
+        if is_movie:
+            display = (f'[B][COLOR {cat_color}]{show_title} ({str(en["air_date"])[:4]})[/COLOR][/B]'
+                       f' [B][COLOR {cat_color}]• {cat_badge}[/COLOR][/B]')
         else:
             ep_label = f'S{en["season"]:02d}E{en["episode"]:02d}' if en['season'] else ''
-            display = f'[B][COLOR {PUNCHPLAY_COLOR}]{show_title}[/COLOR][/B]'
+            display = f'[B][COLOR {cat_color}]{show_title}[/COLOR][/B]'
+            if cat_badge:
+                display += f' [B][COLOR {cat_color}]• {cat_badge}[/COLOR][/B]'
             if ep_label:
                 display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
             try:
