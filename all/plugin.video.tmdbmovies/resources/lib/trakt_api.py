@@ -1986,7 +1986,11 @@ def _prompt_trakt_rating(tmdb_id, content_type, season, episode, title, service=
                 _tmdb_warn = bool(is_in_tmdb_watchlist(tmdb_id, content_type))
             except:
                 _tmdb_warn = False
-        if _tmdb_warn:
+        try:
+            _wl_mode = ADDON.getSetting('tmdb_rating_watchlist') or '0'
+        except Exception:
+            _wl_mode = '0'
+        if _tmdb_warn and _wl_mode != '1':
             if not xbmcgui.Dialog().yesno(provider_title('tmdb'), f"Rating [B][COLOR yellow]{title or 'this item'}[/COLOR][/B] will remove it from your [B][COLOR FF00CED1]TMDb Watchlist[/COLOR][/B].\nContinue?"):
                 return
     

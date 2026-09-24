@@ -7285,10 +7285,11 @@ def scrape_thepiratebay(imdb_id, content_type, season=None, episode=None, title_
         return None
 
 
-def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None):
+def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None, tmdb_id=None, _alt_tried=False):
     """
     Orchestreaza scanarea PARALELA (Multithreading).
     override_title/override_year: forteaza titlu/an personalizat (Scrape with Custom Values).
+    tmdb_id: permite retry cu numerotare alternativa din episode groups (ex. anime S1 TMDb = S1+S2 la scrapere).
     """
     all_streams = []
     seen_urls = set()
@@ -7658,6 +7659,62 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
 
     except Exception as e:
         log(f"[SCRAPER] Fatal error in execution loop: {e}")
+
+    if (content_type == 'tv' and season and episode and tmdb_id and not _alt_tried):
+        try:
+            _alt_on = ADDON.getSetting('anime_alt_numbering') == 'true'
+        except:
+            _alt_on = True
+        if _alt_on:
+            try:
+                from resources.lib.tmdb_api import get_episode_numbering_map
+                _map = get_episode_numbering_map(tmdb_id) or {}
+                _alt = _map.get((int(season), int(episode)))
+                if _alt and tuple(_alt) != (int(season), int(episode)):
+                    try:
+                        import xbmcgui as _xg
+                        _xg.Window(10000).clearProperty('tmdbmovies.alt_numbering')
+                    except: pass
+                    if not all_streams and not was_canceled:
+                        log(f"[SCRAPER] 0 sources for S{season}E{episode} - retrying alternate numbering S{_alt[0]}E{_alt[1]}")
+                        _retry = get_stream_data(imdb_id, content_type, _alt[0], _alt[1],
+                                                 progress_callback, target_providers,
+                                                 override_title, override_year, tmdb_id, True)
+                        if _retry and _retry[0]:
+                            try:
+                                import xbmcgui as _xg2
+                                _xg2.Window(10000).setProperty('tmdbmovies.alt_numbering',
+                                    f"{tmdb_id}:{season}:{episode}={_alt[0]}:{_alt[1]}")
+                            except: pass
+                        return _retry
+                    elif all_streams:
+                        log(f"[SCRAPER] Merging alternate numbering S{_alt[0]}E{_alt[1]} for S{season}E{episode}")
+                        _s2, _f2, _e2, _c2 = get_stream_data(imdb_id, content_type, _alt[0], _alt[1],
+                                                             progress_callback, target_providers,
+                                                             override_title, override_year, tmdb_id, True)
+                        if _s2:
+                            try:
+                                import xbmcgui as _xg3
+                                _xg3.Window(10000).setProperty('tmdbmovies.alt_numbering',
+                                    f"{tmdb_id}:{season}:{episode}={_alt[0]}:{_alt[1]}")
+                            except: pass
+                        for _item in _s2 or []:
+                            if not isinstance(_item, dict):
+                                continue
+                            _u = str(_item.get('url', '')).split('|')[0]
+                            if not _u or _u in seen_urls:
+                                continue
+                            if filter_duplicates:
+                                seen_urls.add(_u)
+                            all_streams.append(_item)
+                        for _p in (_f2 or []):
+                            if _p not in failed_providers:
+                                failed_providers.append(_p)
+                        for _p in (_e2 or []):
+                            if _p not in empty_providers:
+                                empty_providers.append(_p)
+            except Exception as e:
+                log(f"[SCRAPER] Alternate numbering retry error: {e}")
 
     log(f"[SCRAPER] Finalizat: {len(all_streams)} surse, {len(failed_providers)} erori, {len(empty_providers)} fara rezultate")
     return all_streams, failed_providers, empty_providers, was_canceled

@@ -1661,7 +1661,8 @@ def _silent_scrape_next_episode(player):
         streams, new_error, new_empty, canceled = get_stream_data(
             imdb_id, 'tv', next_s, next_e, 
             progress_callback=dummy_progress, 
-            target_providers=active_providers
+            target_providers=active_providers,
+            tmdb_id=tmdb_id
         )
         
         if streams:
@@ -2305,10 +2306,37 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     # CURATAM WINDOW PROPERTIES LA INCEPUT (FARA URME DE ALTE ADDONURI)
     # ===========================================================================
     win = xbmcgui.Window(10000)
-    
+
+    try:
+        _alt_prop = win.getProperty('tmdbmovies.alt_numbering') or ''
+        _om, _am = _alt_prop.split('=') if '=' in _alt_prop else ('', '')
+        _o = _om.split(':'); _a = _am.split(':')
+        if len(_o) == 3 and len(_a) == 2 and _o == [str(tmdb_id), str(season), str(episode)]:
+            _alt_s, _alt_e = int(_a[0]), int(_a[1])
+        else:
+            _alt_s, _alt_e = None, None
+    except:
+        _alt_s, _alt_e = None, None
+
+    if _alt_s is None and c_type == 'tv' and season and episode and tmdb_id:
+        try:
+            _alt_on2 = ADDON.getSetting('anime_alt_numbering') == 'true'
+        except:
+            _alt_on2 = True
+        if _alt_on2:
+            try:
+                from resources.lib.tmdb_api import get_episode_numbering_map as _getmap2
+                _m2 = _getmap2(tmdb_id) or {}
+                _a2 = _m2.get((int(season), int(episode)))
+                if _a2 and tuple(_a2) != (int(season), int(episode)):
+                    _alt_s, _alt_e = int(_a2[0]), int(_a2[1])
+                    log(f"[PLAYER] Alt numbering from map (cache-hit play): S{season}E{episode} -> S{_alt_s}E{_alt_e}")
+            except: pass
+
     props_to_clear = [
         'tmdb_id', 'TMDb_ID', 'tmdb', 'VideoPlayer.TMDb',
         'imdb_id', 'IMDb_ID', 'imdb', 'VideoPlayer.IMDb', 'VideoPlayer.IMDBNumber',
+        'tmdbmovies.alt_numbering',
         'tmdbmovies.release_name',
         'tmdbmovies.title', 'tmdbmovies.poster', 'tmdbmovies.plot', 'tmdbmovies.fanart', 'tmdbmovies.clearlogo',
         'tmdbmovies.total_results', 'tmdbmovies.icon', 'tmdbmovies.flag_ro', 'tmdbmovies.torrent.name',
@@ -2333,12 +2361,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         win.setProperty('IMDb', str(final_imdb_id))
         
     if season:
-        win.setProperty('season', str(season))
+        win.setProperty('season', str(_alt_s if _alt_s is not None else season))
     else:
         win.clearProperty('season')
-        
+
     if episode:
-        win.setProperty('episode', str(episode))
+        win.setProperty('episode', str(_alt_e if _alt_e is not None else episode))
     else:
         win.clearProperty('episode')
     # ===========================================================================
@@ -2880,6 +2908,14 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             li.setProperty('http-header.x-requested-with', 'NetmirrorNewTV v1.0')
         from resources.lib.tmdb_api import set_metadata
         set_metadata(li, info_tag, unique_ids)
+        try:
+            if _alt_s is not None and _alt_e is not None:
+                _tag = li.getVideoInfoTag()
+                _tag.setSeason(int(_alt_s))
+                _tag.setEpisode(int(_alt_e))
+                log(f"[PLAYER] VideoInfoTag S/E override for subtitles: S{season}E{episode} -> S{_alt_s}E{_alt_e}")
+        except Exception as _e:
+            log(f"[PLAYER] VideoInfoTag S/E override error: {_e}")
         if art: li.setArt(art)
         for k, v in properties.items(): li.setProperty(k, str(v))
         
@@ -3249,8 +3285,21 @@ def list_sources(params):
             custom_year = xbmcgui.Dialog().input("Enter custom year (optional)", defaultt=str(year))
             if custom_year: override_year = custom_year
         else:
-            custom_season = xbmcgui.Dialog().input("Season", defaultt=str(season))
-            custom_episode = xbmcgui.Dialog().input("Episode", defaultt=str(episode))
+            _alt_s, _alt_e = str(season), str(episode)
+            try:
+                _alt_on = ADDON.getSetting('anime_alt_numbering') == 'true'
+            except:
+                _alt_on = True
+            if _alt_on:
+                try:
+                    from resources.lib.tmdb_api import get_episode_numbering_map
+                    _amap = get_episode_numbering_map(tmdb_id) or {}
+                    _a = _amap.get((int(season), int(episode)))
+                    if _a and tuple(_a) != (int(season), int(episode)):
+                        _alt_s, _alt_e = str(_a[0]), str(_a[1])
+                except: pass
+            custom_season = xbmcgui.Dialog().input("Season", defaultt=_alt_s)
+            custom_episode = xbmcgui.Dialog().input("Episode", defaultt=_alt_e)
             if not custom_season or not custom_episode: return
             season = custom_season
             episode = custom_episode
@@ -3573,7 +3622,8 @@ def list_sources(params):
                     progress_callback=update_progress,
                     target_providers=final_target,
                     override_title=override_title,
-                    override_year=override_year
+                    override_year=override_year,
+                    tmdb_id=tmdb_id
                 )
                 scan_result['data'] = result
             except Exception as e:
@@ -3661,6 +3711,15 @@ def list_sources(params):
                 cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration, cur_sort_opt)
             # lista e deja sortata cu optiunea curenta — display-ul nu mai re-sorteaza
             cached_sort_opt = cur_sort_opt
+
+        try:
+            _alt_prop2 = win.getProperty('tmdbmovies.alt_numbering') or ''
+            _om2, _am2 = _alt_prop2.split('=') if '=' in _alt_prop2 else ('', '')
+            _o2 = _om2.split(':'); _a2 = _am2.split(':')
+            if len(_o2) == 3 and len(_a2) == 2 and _o2 == [str(tmdb_id), str(season), str(episode)]:
+                from resources.lib.subtitle import check_ro_subs_bg as _check_alt
+                _check_alt(imdb_id=imdb_id, tmdb_id=tmdb_id, season=int(_a2[0]), episode=int(_a2[1]))
+        except: pass
 
     if not streams:
         try: dialog.close()
@@ -4064,7 +4123,7 @@ def initiate_download(params):
 
         # Observatie: get_stream_data returneaza canceled=False daca folosim DialogProgressBG
         # deoarece acesta nu are buton de cancel explicit in interfata simpla
-        streams, error_providers, empty_providers, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers)
+        streams, error_providers, empty_providers, canceled = get_stream_data(imdb_id, c_type, season, episode, update_progress, active_providers, tmdb_id=tmdb_id)
         p_dialog.close()
         
         if canceled: return

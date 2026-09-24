@@ -2372,8 +2372,20 @@ def tmdb_my_lists():
     add_directory("[B][COLOR FF00CED1]TMDB Account[/COLOR][/B]", {'mode': 'tmdb_account_info'}, icon='DefaultUser.png', thumb='DefaultUser.png', folder=False)
     add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FF00CED1]TMDB [COLOR yellow]My Calendar[/COLOR][/B]", {'mode': 'tmdb_calendar_my'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]", {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
-    add_directory("[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]", {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    _wl_total = 0
+    _fav_total = 0
+    try:
+        _conn = trakt_sync.get_connection()
+        _c = _conn.cursor()
+        _c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='watchlist'")
+        _wl_total = _c.fetchone()[0] or 0
+        _c.execute("SELECT COUNT(*) FROM tmdb_account_lists WHERE list_type='favorite'")
+        _fav_total = _c.fetchone()[0] or 0
+        _conn.close()
+    except Exception:
+        pass
+    add_directory("[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]" % _wl_total, {'mode': 'tmdb_watchlist_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    add_directory("[B][COLOR FFCCCCFF]Favorites[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]" % _fav_total, {'mode': 'tmdb_favorites_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FFCCCCFF]Recommendations[/COLOR][/B]", {'mode': 'tmdb_recommendations_menu'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     
     add_directory("[B][COLOR FF00CED1]--- My Lists ---[/COLOR][/B]", {'mode': 'noop'}, folder=False, icon='DefaultUser.png')
@@ -5100,6 +5112,47 @@ def show_details(tmdb_id, content_type):
         t = threading.Thread(target=get_smart_season_details, args=(tmdb_id, sn), daemon=True)
         t.start()
 
+
+_EPGROUP_TTL_HOURS = 168
+
+def get_episode_numbering_map(tmdb_id):
+    try:
+        tid = str(tmdb_id or '').strip()
+        if not tid:
+            return {}
+        from resources.lib.cache import MainCache
+        _ck = f'epgroups_map_{tid}'
+        try:
+            _cached = MainCache().get(_ck)
+            if _cached is not None:
+                return {tuple(map(int, k.split(':'))): tuple(v) for k, v in _cached.items()}
+        except: pass
+        mapping = {}
+        try:
+            from resources.lib.utils import get_json
+            data = get_json(f"{BASE_URL}/tv/{tid}/episode_groups?api_key={API_KEY}") or {}
+            for grp in data.get('results', []) or []:
+                gid = grp.get('id')
+                if not gid:
+                    continue
+                det = get_json(f"{BASE_URL}/tv/episode_group/{gid}?api_key={API_KEY}") or {}
+                for g in det.get('groups', []) or []:
+                    try: gs = int(g.get('order'))
+                    except: continue
+                    for ep in g.get('episodes', []) or []:
+                        try:
+                            es = int(ep.get('season_number')); ee = int(ep.get('episode_number'))
+                            eo = int(ep.get('order')) + 1
+                        except: continue
+                        if (gs, eo) != (es, ee):
+                            mapping[(es, ee)] = (gs, eo)
+        except: pass
+        try:
+            MainCache().set(_ck, {f"{k[0]}:{k[1]}": list(v) for k, v in mapping.items()}, expiration=_EPGROUP_TTL_HOURS)
+        except: pass
+        return mapping
+    except:
+        return {}
 
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib import trakt_sync

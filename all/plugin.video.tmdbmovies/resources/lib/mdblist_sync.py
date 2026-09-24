@@ -861,6 +861,10 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
 SYNC_LOCK_KEY = 'mdblist_sync_active'
 
 def sync_full_library(silent=False, force=False):
+    """Wrapper PUBLIC MDBList (meniul providerului, caile directe). Scrie stampila
+    tmdbmovies_last_sync (fereastra glisanta 30 min) doar la rulare reala, ia
+    lock-ul propriu si ruleaza piciorul intern. Dispatcherul cheama direct
+    _mdblist_leg (fara wrapper)."""
     window = xbmcgui.Window(10000)
     sync_lock = window.getProperty(SYNC_LOCK_KEY)
     if sync_lock == 'true':
@@ -870,6 +874,8 @@ def sync_full_library(silent=False, force=False):
 
     window.setProperty(SYNC_LOCK_KEY, 'true')
 
+    _ran = False
+    _p_dialog = None
     try:
         init_database()
         from resources.lib.mdblist_api import MDBListAPI
@@ -878,121 +884,152 @@ def sync_full_library(silent=False, force=False):
         if not api.is_authenticated():
             return
 
-        p_dialog = None
         if not silent:
-            p_dialog = xbmcgui.DialogProgressBG()
-            p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', '[B][COLOR lightskyblue]Checking for changes...[/COLOR][/B]')
-
-        try:
-            xbmc.log(f'[MDBList SYNC] === STARTING {"FORCE" if force else "SMART"} SYNC ===', xbmc.LOGINFO)
-            # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute ---
-            need_watched = need_ratings = need_collection = need_dropped = need_playback = need_upnext = force
-            if force:
-                # Force = refresh complet: golim cache-urile de liste ca sa se refaca
-                clear_cached('watchlist')
-                clear_cached('collection')
-                clear_cached('dropped')
-                clear_cached('lists_user')
-                clear_cached('lists_liked')
-                clear_cached('external_user')
-                clear_cache_prefix('list_items_')
-            if not force:
-                activities = api.get_last_activities()
-                if activities and isinstance(activities, dict):
-                    cached = {}
-                    try:
-                        cached = json.loads(get_sync_meta('last_activities', '{}'))
-                    except:
-                        cached = {}
-                    def _changed(key):
-                        return (activities.get(key) or '') > (cached.get(key) or '')
-                    need_watched   = _changed('watched_at') or _changed('episode_watched_at')
-                    need_upnext    = need_watched or _changed('list_updated_at')
-                    need_playback  = _changed('paused_at') or _changed('episode_paused_at')
-                    need_ratings   = _changed('rated_at')
-                    need_collection = _changed('collected_at')
-                    need_dropped   = _changed('dropped_at')
-                    # invalidare cache liste (only daca activitatea s-a schimbat)
-                    if _changed('watchlisted_at'):
-                        clear_cached('watchlist')
-                    if _changed('collected_at'):
-                        clear_cached('collection')
-                    if _changed('list_updated_at'):
-                        clear_cached('lists_user')
-                        clear_cached('lists_liked')
-                        clear_cached('external_user')
-                        clear_cache_prefix('list_items_')
-                    if _changed('dropped_at'):
-                        clear_cached('dropped')
-                    set_sync_meta('last_activities', json.dumps(activities))
-                    # Plasa de siguranta: 1x/zi (24h) re-import mirror-ul watched+upnext
-                    # indiferent de activitati. EDIT 4 suprimau detectarea remote a
-                    # schimbarilor locale (timestamp local ridicat la now dupa push
-                    # reusit) — fara asta, daca nimeni nu marcheaza nimic pe site/extern,
-                    # baza locala n-ar mai fi re-importata deloc intre force sync-uri.
-                    try:
-                        last_import_ts = float(get_sync_meta('last_watched_import_ts', '0') or 0)
-                        if time.time() - last_import_ts >= 86400:
-                            need_watched = True
-                            need_upnext = True
-                    except Exception:
-                        pass
-                else:
-                    xbmc.log('[MDBList] Activity check failed, skipping sync', xbmc.LOGINFO)
-                    return
-
-            # --- GATING PE PROVIDER: datele interferente (watched, playback, up next,
-            # ratings) se sincronizeaza doar daca MDBList e providerul de watched status.
-            # Dropped ramane mereu activ (curatare manuala, tabele separate de
-            # trakt_hidden_shows — fara interferenta). Collection, liste si calendar
-            # raman mereu active (non-interferente). ---
             try:
-                from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
-                if not _is_mdblist_provider():
-                    need_watched = need_ratings = need_playback = need_upnext = False
-                xbmc.log(f'[MDBList SYNC] Flags: watched={need_watched} ratings={need_ratings} collection={need_collection} dropped={need_dropped} playback={need_playback} upnext={need_upnext} (provider={"mdblist" if _is_mdblist_provider() else "trakt"})', xbmc.LOGINFO)
-            except Exception as e:
-                xbmc.log(f'[MDBList] Provider gate error: {e}', xbmc.LOGERROR)
+                _p_dialog = xbmcgui.DialogProgressBG()
+                _p_dialog.create('[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', '[B][COLOR lightskyblue]Checking for changes...[/COLOR][/B]')
+            except Exception:
+                _p_dialog = None
 
-            if need_watched or need_upnext:
-                if p_dialog:
-                    p_dialog.update(25, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Watched[/COLOR][/B]')
-                _sync_watched_all(api)
-                set_sync_meta('last_watched_import_ts', str(time.time()))
-            if need_upnext:
-                if p_dialog:
-                    p_dialog.update(55, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Up Next[/COLOR][/B]')
-                _sync_up_next(api)
-                # Invalideaza fast cache-ul RAM al listei Up Next — altfel randarea
-                # get_next_episodes() se opreste la get_fast_cache() si intoarce lista
-                # veche (episoade pre-sync), fara sa citeasca DB-ul actualizat.
-                from resources.lib.cache import clear_all_fast_cache
-                clear_all_fast_cache()
-                # Pre-cache detalii (show + season) pentru intrare instanta in Up Next (paritate Trakt)
+        _ran = _mdblist_leg(silent=silent, force=force, p_dialog_external=_p_dialog, api=api)
+        if _ran:
+            xbmc.log('[MDBList SYNC] === SYNC COMPLETE ===', xbmc.LOGINFO)
+    finally:
+        # Fereastra glisanta 30 min: stampila DOAR la rulare reala.
+        if _ran:
+            try:
+                window.setProperty('tmdbmovies_last_sync', str(time.time()))
+            except Exception:
+                pass
+        window.clearProperty(SYNC_LOCK_KEY)
+
+
+def _mdblist_leg(silent=False, force=False, progress_cb=None, suppress_notifications=False, p_dialog_external=None, api=None, skip_tmdb_phase=False):
+    """Piciorul intern MDBList. Intoarce True doar daca sync-ul a rulat efectiv
+    (nu pe early-return de lock/auth/activities-fail). Faza TMDb la final doar
+    daca skip_tmdb_phase=False (dispatcherul o ruleaza deja dedicat)."""
+    p_dialog = p_dialog_external
+    if api is None:
+        from resources.lib.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+
+    def _prog(pct, message):
+        if suppress_notifications:
+            if progress_cb:
+                try: progress_cb(pct, message)
+                except Exception: pass
+        elif p_dialog:
+            try: p_dialog.update(pct, message=message)
+            except Exception: pass
+
+    try:
+        # --- SMART SYNC: compara activitatile remote cu ultimele cunoscute ---
+        need_watched = need_ratings = need_collection = need_dropped = need_playback = need_upnext = force
+        if force:
+            # Force = refresh complet: golim cache-urile de liste ca sa se refaca
+            clear_cached('watchlist')
+            clear_cached('collection')
+            clear_cached('dropped')
+            clear_cached('lists_user')
+            clear_cached('lists_liked')
+            clear_cached('external_user')
+            clear_cache_prefix('list_items_')
+        if not force:
+            activities = api.get_last_activities()
+            if activities and isinstance(activities, dict):
+                cached = {}
                 try:
-                    threading.Thread(target=_precache_up_next, daemon=True).start()
-                except Exception as e:
-                    xbmc.log(f'[MDBList] Up Next pre-cache start error: {e}', xbmc.LOGERROR)
-            if need_ratings:
-                if p_dialog:
-                    p_dialog.update(75, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Ratings[/COLOR][/B]')
-                _sync_ratings(api)
-            if need_collection:
-                if p_dialog:
-                    p_dialog.update(85, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Collection[/COLOR][/B]')
-                _sync_collection(api)
-            if need_dropped:
-                _sync_dropped(api)
-            if need_playback:
-                _sync_playback(api)
+                    cached = json.loads(get_sync_meta('last_activities', '{}'))
+                except:
+                    cached = {}
+                def _changed(key):
+                    return (activities.get(key) or '') > (cached.get(key) or '')
+                need_watched   = _changed('watched_at') or _changed('episode_watched_at')
+                need_upnext    = need_watched or _changed('list_updated_at')
+                need_playback  = _changed('paused_at') or _changed('episode_paused_at')
+                need_ratings   = _changed('rated_at')
+                need_collection = _changed('collected_at')
+                need_dropped   = _changed('dropped_at')
+                # invalidare cache liste (only daca activitatea s-a schimbat)
+                if _changed('watchlisted_at'):
+                    clear_cached('watchlist')
+                if _changed('collected_at'):
+                    clear_cached('collection')
+                if _changed('list_updated_at'):
+                    clear_cached('lists_user')
+                    clear_cached('lists_liked')
+                    clear_cached('external_user')
+                    clear_cache_prefix('list_items_')
+                if _changed('dropped_at'):
+                    clear_cached('dropped')
+                set_sync_meta('last_activities', json.dumps(activities))
+                # Plasa de siguranta: 1x/zi (24h) re-import mirror-ul watched+upnext
+                # indiferent de activitati. EDIT 4 suprimau detectarea remote a
+                # schimbarilor locale (timestamp local ridicat la now dupa push
+                # reusit) — fara asta, daca nimeni nu marcheaza nimic pe site/extern,
+                # baza locala n-ar mai fi re-importata deloc intre force sync-uri.
+                try:
+                    last_import_ts = float(get_sync_meta('last_watched_import_ts', '0') or 0)
+                    if time.time() - last_import_ts >= 86400:
+                        need_watched = True
+                        need_upnext = True
+                except Exception:
+                    pass
+            else:
+                xbmc.log('[MDBList] Activity check failed, skipping sync', xbmc.LOGINFO)
+                return
 
-            # --- CALENDAR: 24h TTL, 1 call per sync ---
-            if force or get_cached('calendar', ttl=86400) is None:
-                if p_dialog:
-                    p_dialog.update(88, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR lightskyblue]Calendar[/COLOR][/B]')
-                _sync_calendar(api)
+        # --- GATING PE PROVIDER: datele interferente (watched, playback, up next,
+        # ratings) se sincronizeaza doar daca MDBList e providerul de watched status.
+        # Dropped ramane mereu activ (curatare manuala, tabele separate de
+        # trakt_hidden_shows — fara interferenta). Collection, liste si calendar
+        # raman mereu active (non-interferente). ---
+        try:
+            from resources.lib.watched_provider import is_mdblist as _is_mdblist_provider
+            if not _is_mdblist_provider():
+                need_watched = need_ratings = need_playback = need_upnext = False
+            xbmc.log(f'[MDBList SYNC] Flags: watched={need_watched} ratings={need_ratings} collection={need_collection} dropped={need_dropped} playback={need_playback} upnext={need_upnext} (provider={"mdblist" if _is_mdblist_provider() else "trakt"})', xbmc.LOGINFO)
+        except Exception as e:
+            xbmc.log(f'[MDBList] Provider gate error: {e}', xbmc.LOGERROR)
 
-            # --- SINCRONIZARE CONT TMDB (mdblist + tmdb, paritate cu trakt + tmdb) ---
+        if need_watched or need_upnext:
+            _prog(25, 'Sync: [B][COLOR lightskyblue]Watched[/COLOR][/B]')
+            _sync_watched_all(api)
+            set_sync_meta('last_watched_import_ts', str(time.time()))
+        if need_upnext:
+            _prog(55, 'Sync: [B][COLOR lightskyblue]Up Next[/COLOR][/B]')
+            _sync_up_next(api)
+            # Invalideaza fast cache-ul RAM al listei Up Next — altfel randarea
+            # get_next_episodes() se opreste la get_fast_cache() si intoarce lista
+            # veche (episoade pre-sync), fara sa citeasca DB-ul actualizat.
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+            # Pre-cache detalii (show + season) pentru intrare instanta in Up Next (paritate Trakt)
+            try:
+                threading.Thread(target=_precache_up_next, daemon=True).start()
+            except Exception as e:
+                xbmc.log(f'[MDBList] Up Next pre-cache start error: {e}', xbmc.LOGERROR)
+        if need_ratings:
+            _prog(75, 'Sync: [B][COLOR lightskyblue]Ratings[/COLOR][/B]')
+            _sync_ratings(api)
+        if need_collection:
+            _prog(85, 'Sync: [B][COLOR lightskyblue]Collection[/COLOR][/B]')
+            _sync_collection(api)
+        if need_dropped:
+            _sync_dropped(api)
+        if need_playback:
+            _sync_playback(api)
+
+        # --- CALENDAR: 24h TTL, 1 call per sync ---
+        if force or get_cached('calendar', ttl=86400) is None:
+            _prog(88, 'Sync: [B][COLOR lightskyblue]Calendar[/COLOR][/B]')
+            _sync_calendar(api)
+
+        # --- SINCRONIZARE CONT TMDB (sarit din dispatcher: faza TMDb dedicata
+        # ruleaza deja inaintea picioarelor; skip evita dubla scanare) ---
+        if skip_tmdb_phase:
+            xbmc.log('[MDBList SYNC] TMDb phase skipped (dispatcher already ran it).', xbmc.LOGINFO)
+        else:
             try:
                 from resources.lib import trakt_sync as _ts
                 # Force nu re-sincronizeaza TMDb daca tocmai a fost sincronizat (<60s):
@@ -1000,30 +1037,48 @@ def sync_full_library(silent=False, force=False):
                 _last_tmdb = _ts.get_local_last_sync().get('tmdb_sync_ts', 0)
                 tmdb_needed = (time.time() - _last_tmdb > 1800) or (force and (time.time() - _last_tmdb > 60))
                 if tmdb_needed:
-                    if p_dialog:
-                        p_dialog.update(92, '[B][COLOR lightskyblue]MDBList Sync[/COLOR][/B]', 'Sync: [B][COLOR FF00CED1]TMDb account[/COLOR][/B]')
-                    _ts.sync_tmdb_only(silent=silent, force=tmdb_needed)
+                    _prog(92, 'Sync: [B][COLOR FF00CED1]TMDb account[/COLOR][/B]')
+                    _conn = None
+                    _ok = False
+                    try:
+                        _ts.init_database()
+                        _conn = _ts.get_connection()
+                        _c = _conn.cursor()
+                        _ok = _ts.sync_tmdb_phase(_c, force=tmdb_needed, silent=silent)
+                        _conn.commit()
+                    except Exception as _e:
+                        xbmc.log(f'[MDBList] TMDb phase error: {_e}', xbmc.LOGERROR)
+                        _ok = False
+                    finally:
+                        try:
+                            if _conn: _conn.close()
+                        except Exception: pass
+                    # tmdb_sync_ts DOAR la faza completa (anti-141)
+                    if _ok:
+                        try:
+                            _ls = _ts.get_local_last_sync()
+                            _ls['tmdb_sync_ts'] = time.time()
+                            _ts.save_local_last_sync(_ls)
+                        except Exception: pass
             except Exception as e:
                 xbmc.log(f'[MDBList] TMDb sync error: {e}', xbmc.LOGERROR)
 
-            set_sync_meta('last_sync', str(time.time()))
-            xbmc.log('[MDBList SYNC] ✓ Saved sync meta + timestamps', xbmc.LOGINFO)
+        set_sync_meta('last_sync', str(time.time()))
+        xbmc.log('[MDBList SYNC] ✓ Saved sync meta + timestamps', xbmc.LOGINFO)
 
-            try:
-                from resources.lib.utils import perform_mdblist_backup
-                perform_mdblist_backup(manual=False)
-            except: pass
+        try:
+            from resources.lib.utils import perform_mdblist_backup
+            perform_mdblist_backup(manual=False)
+        except: pass
 
-            if not silent:
-                xbmcgui.Dialog().notification(provider_title('mdblist'), 'Sync complete!', MDBLIST_ICON, 3000, False)
-            xbmc.log('[MDBList SYNC] === SYNC COMPLETE ===', xbmc.LOGINFO)
-        except Exception as e:
-            xbmc.log(f'[MDBList] Sync error: {e}', xbmc.LOGERROR)
-        finally:
-            if p_dialog:
-                p_dialog.close()
+        if not silent and not suppress_notifications:
+            xbmcgui.Dialog().notification(provider_title('mdblist'), 'Sync complete!', MDBLIST_ICON, 3000, False)
+        return True
+    except Exception as e:
+        xbmc.log(f'[MDBList] Sync error: {e}', xbmc.LOGERROR)
     finally:
-        window.clearProperty(SYNC_LOCK_KEY)
+        if p_dialog:
+            p_dialog.close()
 
 def _sync_watched_all(api):
     conn = get_connection()

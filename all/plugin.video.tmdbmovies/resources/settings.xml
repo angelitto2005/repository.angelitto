@@ -17,6 +17,7 @@
         <setting id="hide_unaired_episodes" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Hide unaired episodes" default="false"/>
 		<setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="flatten_single_season" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Flatten single-season shows" default="false"/>
+		<setting id="anime_alt_numbering" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Retry alternate episode numbering (anime splits)" default="true"/>
 		<setting id="show_air_time" type="bool" label="[B][COLOR FF33CCFF]Show air time[/COLOR][/B] in row titles (requires Trakt connection)" default="false"/>
         <setting id="date_format" type="enum" label="Date format" values="European (13.09.2026)|US (09/13/2026)" default="0"/>
         <setting id="timezone_override" type="enum" label="Timezone for air dates" values="Auto (device)|-12|-11|-10|-09|-08|-07|-06|-05|-04|-03|-02|-01|+00|+01|+02|+03|+04|+05|+06|+07|+08|+09|+10|+11|+12|+13|+14" default="0"/>
@@ -434,12 +435,13 @@
 		<setting type="lsep" label="Rating"/>
 		<setting id="trakt_rate_movies" type="bool" label="Show Rating window for Movies" default="true"/>
 		<setting id="trakt_rate_episodes" type="bool" label="Show Rating window for Episodes" default="true"/>
-		<setting id="rating_postwatch_mode" type="enum" label="[B]Post-watch rating sent to[/B]" values="Active provider|All providers|Custom selection" default="0"/>
+		<setting id="rating_postwatch_mode" type="enum" label="Post-watch rating sent to" values="Active provider|All providers|Custom selection" default="0"/>
 		<setting id="rating_postwatch_trakt" type="bool" label="  └─ Rate on [B][COLOR pink]Trakt[/COLOR][/B] after watching" default="true" visible="eq(-1,2)"/>
 		<setting id="rating_postwatch_mdblist" type="bool" label="  └─ Rate on [B][COLOR lightskyblue]MDBList[/COLOR][/B] after watching" default="true" visible="eq(-2,2)"/>
 		<setting id="rating_postwatch_simkl" type="bool" label="  └─ Rate on [B][COLOR mediumpurple]Simkl[/COLOR][/B] after watching  (Movies only)" default="true" visible="eq(-3,2)"/>
 		<setting id="rating_postwatch_tmdb" type="bool" label="  └─ Rate on [B][COLOR FF00CED1]TMDb[/COLOR][/B] after watching" default="true" visible="eq(-4,2)"/>
-		<setting id="rating_postwatch_punchplay" type="bool" label="  └─ Rate on [B][COLOR FFFF6600]PunchPlay[/COLOR][/B] after watching" default="true" visible="eq(-5,2)"/>
+ 		<setting id="rating_postwatch_punchplay" type="bool" label="  └─ Rate on [B][COLOR FFFF6600]PunchPlay[/COLOR][/B] after watching" default="true" visible="eq(-5,2)"/>
+  		<setting id="tmdb_rating_watchlist" type="enum" label="[B][COLOR FF00CED1]TMDb[/COLOR][/B] rating removes from watchlist" values="Ask every time|Remove without asking" default="0"/>
 
 		<setting type="lsep" label="Developer Options (optional)"/>
 		<setting id="trakt_client_id" type="text" label="Custom Trakt Client ID (leave empty for default)" default=""/>

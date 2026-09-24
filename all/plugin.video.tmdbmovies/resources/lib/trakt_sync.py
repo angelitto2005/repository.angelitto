@@ -259,11 +259,11 @@ def get_local_last_sync():
     """Citeste timestamp-urile locale cu logging."""
     data = read_json(LAST_SYNC_FILE)
     
-    # DEBUG: Afisam ce am citit
+    # DEBUG (doar cu debug logging): helper apelat des, altfel spam la fiecare picior.
     if data:
-        log(f"[TRAKT SYNC] Loaded local timestamps: {list(data.keys())}")
+        log(f"[TRAKT SYNC] Loaded local timestamps: {list(data.keys())}", xbmc.LOGDEBUG)
     else:
-        log(f"[TRAKT SYNC] ⚠️ No local timestamps found (file missing or empty)")
+        log(f"[TRAKT SYNC] No local timestamps found (file missing or empty)", xbmc.LOGDEBUG)
         
     return data or {}
 
@@ -272,12 +272,12 @@ def save_local_last_sync(data):
     """Salveaza timestamp-urile cu verificare."""
     write_json(LAST_SYNC_FILE, data)
     
-    # Verificam ca s-a salvat corect
+    # Verificam ca s-a salvat corect (doar cu debug logging, altfel spam).
     verify = read_json(LAST_SYNC_FILE)
     if verify and len(verify) >= len(data):
-        log(f"[TRAKT SYNC] ✓ Saved timestamps: {list(data.keys())}")
+        log(f"[TRAKT SYNC] Saved timestamps: {list(data.keys())}", xbmc.LOGDEBUG)
     else:
-        log(f"[TRAKT SYNC] ⚠️ WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
+        log(f"[TRAKT SYNC] WARNING: Save verification failed! Expected {len(data)}, got {len(verify) if verify else 0}", xbmc.LOGWARNING)
 
 _RO_SYNC_FMT = '%d-%m-%Y %H:%M'
 
@@ -399,15 +399,10 @@ def needs_sync(section, remote_activities, local_sync_data, provider=''):
         return False
 
 def sync_full_library(silent=False, force=False):
-    from resources.lib import trakt_api
-
-    try:
-        from resources.lib.utils import warm_import_modules
-        warm_import_modules()
-    except Exception:
-        pass
-
-    # --- PREVENIRE SINCRONIZARE DUBLA ---
+    """Wrapper PUBLIC Trakt (caile directe: trakt_sync_db, RunScript). Ia lock-ul
+    global si ruleaza piciorul intern. Dispatcherul din watched_provider detine
+    EXCLUSIV lock-ul si cheama direct _trakt_leg (fara wrapper — altfel piciorul
+    s-ar auto-sari pe lock contention)."""
     window = xbmcgui.Window(10000)
     _sync_lock = window.getProperty('tmdbmovies_sync_active')
     if _sync_lock == 'true':
@@ -422,6 +417,48 @@ def sync_full_library(silent=False, force=False):
 
     window.setProperty('tmdbmovies_sync_active', 'true')
     window.setProperty('tmdbmovies_sync_started', str(time.time()))
+    log("[TRAKT SYNC] === STARTING %s SYNC ===" % ("FORCE" if force else "SMART"))
+
+    try:
+        _trakt_leg(silent=silent, force=force)
+        log("[TRAKT SYNC] === SYNC COMPLETE ===")
+    finally:
+        window.clearProperty('tmdbmovies_sync_active')
+        window.clearProperty('tmdbmovies_sync_started')
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except: pass
+        try:
+            from resources.lib.mdblist_sync import clear_cache_prefix
+            clear_cache_prefix('trakt_calendar')
+        except: pass
+
+
+def _trakt_leg(silent=False, force=False, progress_cb=None, suppress_notifications=False, skip_tmdb_phase=False):
+    """Piciorul intern Trakt: corpul vechiului sync_full_library, FARA check de
+    lock global si FARA notificare proprie cind ruleaza sub dispatcherul unic
+    (suppress_notifications=True -> progresul merge prin progress_cb). Include
+    faza TMDb la final (doar daca skip_tmdb_phase=False), cu acelasi gating
+    TTL (30 min smart / 60s force-dedup)."""
+    from resources.lib import trakt_api
+
+    try:
+        from resources.lib.utils import warm_import_modules
+        warm_import_modules()
+    except Exception:
+        pass
+
+    p_dialog = None
+
+    def _prog(pct, message):
+        if suppress_notifications:
+            if progress_cb:
+                try: progress_cb(pct, message)
+                except Exception: pass
+        elif p_dialog:
+            try: p_dialog.update(pct, message=message)
+            except Exception: pass
 
     try:
         # Verificam starea ambelor servicii
@@ -434,14 +471,12 @@ def sync_full_library(silent=False, force=False):
             return
 
         init_database()
-        
-        p_dialog = None
-        if not silent:
+
+        if not silent and not suppress_notifications:
             p_dialog = xbmcgui.DialogProgressBG()
             p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking for changes...")
-        
+
         try:
-            log("[TRAKT SYNC] === STARTING SMART SYNC ===")
             conn = get_connection()
             c = conn.cursor()
             
@@ -457,11 +492,14 @@ def sync_full_library(silent=False, force=False):
                     from resources.lib.watched_provider import is_trakt as _is_trakt_provider
                     provider_trakt = _is_trakt_provider()
 
-                    # 1. WATCHED MOVIES
-                    if provider_trakt:
+                    # 1. WATCHED MOVIES (mereu la Trakt autorizat, indiferent de
+                    # providerul activ — tabelele hranesc submeniul History +
+                    # counting; bifele/Up Next citesc providerul activ, deci
+                    # fara interferenta cu datele altui provider).
+                    if provider_trakt or trakt_token:
                         should_sync_movies = force or needs_sync('movies_watched', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_watched_movies')
                         if should_sync_movies:
-                            if not silent and p_dialog: p_dialog.update(10, message="Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
+                            _prog(10, "Sync: [B][COLOR pink]Watched Movies[/COLOR][/B]")
                             _sync_watched_movies(c)
                         new_sync['movies_watched'] = activities.get('movies', {}).get('watched_at')
                         conn.commit()
@@ -469,7 +507,7 @@ def sync_full_library(silent=False, force=False):
                         # 2. WATCHED EPISODES
                         should_sync_episodes = force or needs_sync('episodes_watched', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_watched_episodes')
                         if should_sync_episodes:
-                            if not silent and p_dialog: p_dialog.update(25, message="Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
+                            _prog(25, "Sync: [B][COLOR pink]Watched Episodes[/COLOR][/B]")
                             _sync_watched_episodes(c)
                         new_sync['episodes_watched'] = activities.get('episodes', {}).get('watched_at')
                         conn.commit()
@@ -477,29 +515,29 @@ def sync_full_library(silent=False, force=False):
                     # 3. WATCHLIST
                     should_sync_watchlist = force or needs_sync('watchlist', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'trakt_lists')
                     if should_sync_watchlist:
-                        if not silent and p_dialog: p_dialog.update(40, message="Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
+                        _prog(40, "Sync: [B][COLOR pink]Watchlist[/COLOR][/B]")
                         _sync_list_content(c, 'watchlist')
                     new_sync['watchlist'] = activities.get('watchlist', {}).get('updated_at')
                     conn.commit()
 
                     # 4. FAVORITES
-                    if not silent and p_dialog: p_dialog.update(50, message="Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
+                    _prog(50, "Sync: [B][COLOR pink]Trakt Favorites[/COLOR][/B]")
                     _sync_trakt_favorites(c)
                     conn.commit()
 
                     # 5. USER LISTS
                     should_sync_lists = force or needs_sync('lists', activities, local_sync, provider='TRAKT') or is_table_empty(c, 'user_lists')
                     if should_sync_lists:
-                        if not silent and p_dialog: p_dialog.update(60, message="Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
+                        _prog(60, "Sync: [B][COLOR pink]Liste Personale[/COLOR][/B]")
                         _sync_user_lists(c, force=force)
                     new_sync['lists'] = activities.get('lists', {}).get('updated_at')
                     conn.commit()
 
                     # 6. PLAYBACK, UP NEXT (doar daca Trakt e providerul de watched status)
                     if provider_trakt:
-                        if not silent and p_dialog: p_dialog.update(70, message="Sync: [B][COLOR pink]Playback Progress[/COLOR][/B]")
+                        _prog(70, "Sync: [B][COLOR pink]Playback Progress[/COLOR][/B]")
                         _sync_playback(c); conn.commit()
-                        if not silent and p_dialog: p_dialog.update(75, message="Sync: [B][COLOR pink]Up Next[/COLOR][/B]")
+                        _prog(75, "Sync: [B][COLOR pink]Up Next[/COLOR][/B]")
                         _sync_up_next(c, trakt_token); conn.commit()
 
                     # 7. HIDDEN SHOWS (Dropped) — intotdeauna cand Trakt e autorizat,
@@ -513,44 +551,50 @@ def sync_full_library(silent=False, force=False):
             last_disc = local_sync.get('discovery_ts', 0)
             disc_empty = is_table_empty(c, 'discovery_cache') or is_table_empty(c, 'tmdb_discovery')
             if force or disc_empty or (time.time() - last_disc > 21600):
-                if not silent and p_dialog: p_dialog.update(85, message="Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
+                _prog(85, "Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
                 _sync_trakt_discovery(c)
-                if not silent and p_dialog: p_dialog.update(90, message="Sync: [B][COLOR FF00CED1]Liste TMDb[/COLOR][/B]")
+                _prog(90, "Sync: [B][COLOR FF00CED1]TMDb Discovery[/COLOR][/B]")
                 _sync_tmdb_discovery(c)
                 new_sync['discovery_ts'] = time.time()
                 conn.commit()
 
-            # --- SINCRONIZARE CONT TMDB (Rulata doar daca TMDb este activ) ---
-            if has_tmdb:
+            # --- SINCRONIZARE CONT TMDB (sarit din dispatcher: faza TMDb dedicata
+            # ruleaza deja inaintea picioarelor; skip evita dubla scanare) ---
+            if has_tmdb and not skip_tmdb_phase:
                 # Force nu re-sincronizeaza TMDb daca tocmai a fost sincronizat (<60s):
                 # in lantul dublu (provider activ + al doilea serviciu) TMDb nu se duplica.
                 _last_tmdb = local_sync.get('tmdb_sync_ts', 0)
                 tmdb_sync_needed = (time.time() - _last_tmdb > 1800) or (force and (time.time() - _last_tmdb > 60))
                 if tmdb_sync_needed:
-                    if not silent and p_dialog: p_dialog.update(95, message="Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
+                    _prog(95, "Sync: [B][COLOR FF00CED1]Cont TMDb[/COLOR][/B]")
                     try:
-                        _sync_tmdb_data(c, force=tmdb_sync_needed)
-                        new_sync['tmdb_sync_ts'] = time.time()
+                        if sync_tmdb_phase(c, force=tmdb_sync_needed, silent=silent, progress_cb=_prog):
+                            new_sync['tmdb_sync_ts'] = time.time()
+                        else:
+                            log("[TRAKT SYNC] TMDb phase incomplete (network) - tmdb_sync_ts NOT updated, next sync will retry.")
                     except: pass
                     conn.commit()
             conn.close()
             
             save_local_last_sync(new_sync)
             cleanup_database()
-            
+
             try:
                 from resources.lib.utils import perform_trakt_backup
                 perform_trakt_backup(manual=False)
             except: pass
-            
-            log("[TRAKT SYNC] === SYNC COMPLETE ===")
-            if not silent and p_dialog:
-                p_dialog.close()
+
+        except Exception as e:
+            if not suppress_notifications and not silent:
+                try:
+                    if p_dialog: p_dialog.close()
+                except Exception: pass
+                p_dialog = None
                 xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sync Complete", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
                 
         except Exception as e:
             log(f"[TRAKT SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
-            if not silent and p_dialog:
+            if p_dialog:
                 try: p_dialog.close()
                 except: pass
             try:
@@ -561,8 +605,10 @@ def sync_full_library(silent=False, force=False):
             except: pass
     
     finally:
-        window.clearProperty('tmdbmovies_sync_active')
-        window.clearProperty('tmdbmovies_sync_started')
+        # Lock-ul global e detinut de CALLER (wrapper public / dispatcher) —
+        # piciorul NU-l atinge (altfel l-ar elibera prematur dispatcherului,
+        # plus NameError: window nu exista in scope-ul piciorului).
+        # Aici doar invalidari de cache (inofensive oriunde in secventa).
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()
@@ -573,8 +619,13 @@ def sync_full_library(silent=False, force=False):
         except: pass
 
 
+# Dedicat din URMA fazei TMDb (dedup sub-60s intre apeluri cat de apropiate).
+_LAST_TMDB_PHASE = {'ts': 0.0}
+
+
 def sync_tmdb_only(silent=True, force=True):
-    """Sincronizeaza exclusiv datele contului TMDb, fara a atinge Trakt."""
+    """Sincronizeaza exclusiv datele contului TMDb, fara a atinge Trakt.
+    Gata-gated (60s dedup + TTL 30 min); foloseste faza comuna sync_tmdb_phase."""
     window = xbmcgui.Window(10000)
     if window.getProperty('tmdbmovies_sync_active') == 'true':
         log("[TMDB SYNC] A full sync is already in progress. Ignoring dedicated TMDb sync.")
@@ -584,30 +635,37 @@ def sync_tmdb_only(silent=True, force=True):
     if not session or not session.get('access_token'):
         return
 
+    # Dedup 60s: un sync la 60s distanta nu re-ia faza TMDb (paritate cu dispatcher).
+    if time.time() - _LAST_TMDB_PHASE.get('ts', 0.0) < 60:
+        log("[TMDB SYNC] TMDb phase ran <60s ago. Skipping dedicated TMDb sync.")
+        return
+
+    conn = None
     try:
         init_database()
         conn = get_connection()
         c = conn.cursor()
-        
-        # Sincronizam doar sectiunea de TMDb
-        _sync_tmdb_data(c, force=force)
-        
+
+        # Sincronizam doar sectiunea de TMDb (anti-141 inside)
+        _ok = sync_tmdb_phase(c, force=force, silent=silent)
+
         conn.commit()
         conn.close()
-        
-        # Actualizam doar timestamp-ul local pentru TMDb
-        local_sync = get_local_last_sync()
-        local_sync['tmdb_sync_ts'] = time.time()
-        save_local_last_sync(local_sync)
-        
-        log("[TMDB SYNC] TMDb sync completed separately.")
+        conn = None
+
+        # Timestamp-ul local DOAR la faza completa (anti-141)
+        if _ok:
+            local_sync = get_local_last_sync()
+            local_sync['tmdb_sync_ts'] = time.time()
+            save_local_last_sync(local_sync)
+
+        log("[TMDB SYNC] TMDb sync completed separately (complete=%s)." % _ok)
     except Exception as e:
         log(f"[TMDB SYNC] Error in dedicated TMDb sync: {e}", xbmc.LOGERROR)
         try:
-            conn.rollback()
-        except: pass
-        try:
-            conn.close()
+            if conn:
+                conn.rollback()
+                conn.close()
         except: pass
 
 
@@ -1088,61 +1146,118 @@ def _sync_tmdb_discovery(c):
     log(f"[TMDB SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
 
 
-def _sync_tmdb_data(c, force=False):
+def _fetch_tmdb_section_pages(aid, endpoint_media, resource, headers, lang, max_pages=1000):
+    """Descarca toate paginile sectiunii in memorie. Intoarce (pages, total, ok).
+    ok=False la orice esec de retea/HTTP — swap-ul in DB se face DOAR pe fetch complet."""
+    from resources.lib.config import TMDB_V4_BASE_URL
+    import requests
+    pages = []
+    total_fetched = 0
+    page = 1
+    while page <= max_pages:
+        try:
+            # v4: media type (singular) vine INAINTE: /account/{aid}/movie/watchlist
+            url = f"{TMDB_V4_BASE_URL}/account/{aid}/{endpoint_media}/{resource}"
+            r = requests.get(url, headers=headers, params={'language': lang, 'page': page, 'sort_by': 'created_at.desc'}, timeout=15)
+            if r.status_code != 200:
+                log(f"[TMDB SYNC] Page {page} of {resource} ({endpoint_media}) returned HTTP {r.status_code} - fetch INCOMPLETE.")
+                return pages, total_fetched, False
+            data = r.json()
+        except Exception as e:
+            log(f"[TMDB SYNC] Page {page} of {resource} ({endpoint_media}) failed: {e} - fetch INCOMPLETE.")
+            return pages, total_fetched, False
+        results = data.get('results', [])
+        if not results:
+            break
+        pages.append(results)
+        total_fetched += len(results)
+        if page >= data.get('total_pages', 1):
+            break
+        page += 1
+    return pages, total_fetched, True
+
+
+def sync_tmdb_phase(c, force=False, silent=True, progress_cb=None):
+    """FAZA COMUNA cont TMDb: watchlist/favorites movie+tv, liste personale,
+    recommendations, Up Next TMDb. Faza este acum COMUNA dispatcherului,
+    piciorului Trakt si sync-urilor MDBList (in loc de cod duplicat).
+
+    Intoarce True doar daca TOATE sectiunile au fost descarcate complet
+    (anti-141). Pe eșec de retea, randurile vechi raman in DB (buffer-and-swap:
+    DELETE doar inainte de INSERT-ul cu datele noi complete, niciodata inainte
+    de fetch) — callerul NU trebuie sa scrie tmdb_sync_ts pe False.
+    """
     from resources.lib.config import TMDB_V4_TOKEN_FILE, TMDB_V4_BASE_URL, LANG
     from resources.lib.utils import read_json, get_language
-    import requests
-    from concurrent.futures import ThreadPoolExecutor
 
     session = read_json(TMDB_V4_TOKEN_FILE)
     if not session or not session.get('access_token'):
         log("[TMDB SYNC] TMDb Account sync skipped: No v4 token found")
-        return
+        return False
 
     token = session['access_token']
     aid = session['account_id']
     lang = get_language()
     headers = {'Authorization': f'Bearer {token}'}
 
-# 1. WATCHLIST & FAVORITES (Oglindire exacta a site-ului)
+    all_complete = True
+
+# 1. WATCHLIST & FAVORITES (buffer-and-swap anti-141: swap doar pe fetch complet)
     endpoints = [('watchlist', 'movie', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movie', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
         try:
             # Verificam daca e cazul de sync
             c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? LIMIT 1", (ltype, db_media))
             section_is_empty = c.fetchone() is None
-            
+
             # Sincronizam TMDb daca: e force, tabelul e gol, sau au trecut 30 min de la ultimul sync TMDb
             if force or section_is_empty:
-                # Stergem local categoria respectiva
+                if progress_cb:
+                    try: progress_cb(95, f"Sync: [B][COLOR FF00CED1]TMDb {ltype} ({db_media})[/COLOR][/B]")
+                    except Exception: pass
+
+                resource = 'watchlist' if ltype == 'watchlist' else 'favorites'
+                pages, total_fetched, ok = _fetch_tmdb_section_pages(aid, endpoint_media, resource, headers, lang)
+                if not ok:
+                    # Fetch incomplet: PASTRAM randurile vechi (fara DELETE), sectiunea
+                    # se resincronizeaza la urmatorul sync. Nu marcam nimic in DB.
+                    all_complete = False
+                    log(f"[TMDB SYNC] TMDb {ltype} ({db_media}) fetch incomplete - local rows kept, will retry next sync.")
+                    continue
+
+                # Fetch complet: swap atomic (DELETE vechi + INSERT nou)
                 c.execute("DELETE FROM tmdb_account_lists WHERE list_type=? AND media_type=?", (ltype, db_media))
-                c.connection.commit() # Salvam stergerea inainte de a descarca
-                
-                # log(f"[SYNC] Fresh Fetch TMDb {ltype} ({db_media})...")
-                page = 1
-                total_fetched = 0
-                while True:
-                    # CRITIC: Folosim requests.get DIRECT, NU cache_object!
-                    # v4: media type (singular) vine INAINTE: /account/{aid}/movie/watchlist
-                    resource = 'watchlist' if ltype == 'watchlist' else 'favorites'
-                    url = f"{TMDB_V4_BASE_URL}/account/{aid}/{endpoint_media}/{resource}"
-                    r = requests.get(url, headers=headers, params={'language': lang, 'page': page, 'sort_by': 'created_at.desc'}, timeout=10)
-                    if r.status_code != 200: break
-                    
-                    data = r.json()
-                    results = data.get('results', [])
-                    if not results: break
-                    
-                    total_fetched += len(results)
-                    _sync_tmdb_account_list_single(c, ltype, db_media, results, page)
-                    if page >= data.get('total_pages', 1): break
-                    page += 1
-                
-                log(f"[TMDB SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
+                page_no = 1
+                for results in pages:
+                    _sync_tmdb_account_list_single(c, ltype, db_media, results, page_no)
+                    page_no += 1
                 c.connection.commit()
+                log(f"[TMDB SYNC] Saved {total_fetched} items in TMDb {ltype} ({db_media}).")
 # -------------------------------------------------------------
         except Exception as e:
+            all_complete = False
             log(f"[TMDB SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
+
+    # 2-4. Liste personale TMDB (paralelizate) + recommendations + Up Next TMDb
+    try:
+        _sync_tmdb_lists_and_extras(c, force=force, aid=aid, token=token, lang=lang, progress_cb=progress_cb)
+    except Exception as e:
+        all_complete = False
+        log(f"[TMDB SYNC] Error parallel tmdb lists/extras: {e}", xbmc.LOGERROR)
+    try: c.connection.commit()
+    except: pass
+
+    return all_complete
+
+
+def _sync_tmdb_lists_and_extras(c, force=False, aid=None, token=None, lang='en-US', progress_cb=None):
+    """Liste personale TMDb (paralelizate) + recommendations + Up Next TMDb.
+    Corp preluat din vechiul _sync_tmdb_data (indentatie pastrata); chemat din
+    sync_tmdb_phase. esecurile de aici marcheaza faza ca incompleta (callerul
+    nu-si scrie timestamp-ul)."""
+    from resources.lib.config import TMDB_V4_BASE_URL
+    import requests
+    headers = {'Authorization': f'Bearer {token}'}
 
 # 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:

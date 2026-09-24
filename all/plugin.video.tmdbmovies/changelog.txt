@@ -1,4 +1,13 @@
+1.1.297
+- Optional TMDb watchlist prompt when rating (ask or remove silently).
+- Unified sequential sync (auto/smart/force) with per-provider progress, silent auto-sync, rolling 30-minute window.
+- Auto alternate episode numbering for split-season anime, on/off setting in General tab.
+
 1.1.296
+- Unified sequential sync: Smart Sync, Force Sync and the automatic sync now run all connected providers in order (Local, TMDb, Trakt, MDBList, Simkl, PunchPlay) with one progress dialog colored per provider, one final notification and graceful skipping of disconnected providers; TMDb account sync runs as its own leg, no longer tied to the Trakt/MDBList tokens.
+- TMDb watchlist/favorites are fetched fully before replacing local data - a network drop mid-sync no longer truncates the local mirror (watchlist stuck at a partial count); incomplete fetches retry on the next sync.
+- Rolling 30-minute auto-sync window: any sync (automatic or manual) reschedules the next automatic sync a full 30 minutes later.
+- New "TMDb rating removes from watchlist" setting (Ask every time / Remove without asking): the watchlist-removal prompt can be skipped when rating movies/shows on TMDb. Note: TMDb enforces rated-items-out-of-watchlist server-side, so keeping a rated item in the watchlist is not possible.
 - New watched provider "Kodi (Local)": watch state lives fully offline in the addon (local_sync.db), no account and no re-auth pop-up at startup. Marks sync instantly with the native Kodi library (checkmarks appear/disappear in both places), existing Kodi playcounts are imported at Library Sync, Up Next and In Progress work from local data. Optional extra target under Accounts/Mark as watched on -> Custom selection.
 
 1.1.295

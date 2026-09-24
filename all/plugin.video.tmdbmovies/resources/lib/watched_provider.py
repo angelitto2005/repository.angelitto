@@ -873,46 +873,249 @@ def get_season_watched_count(tmdb_id, season):
         from resources.lib.punchplay_sync import get_watched_season_episodes_count as _chk
         return _chk(tmdb_id, season)
 
-def sync_full_library(silent=False, force=False):
+# =============================================================================
+# DISPATCHER SYNC SECVENTIAL UNIFICAT (Smart / Force / auto-sync 30 min)
+# =============================================================================
+_SYNC_LOCK_KEY = 'tmdbmovies_sync_active'
+_SYNC_START_STAMP_KEY = 'tmdbmovies_sync_started'
+_LAST_SYNC_STAMP_KEY = 'tmdbmovies_last_sync'
+
+_PROVIDER_SYNC_COLORS = {
+    'local': 'FFF70D1A',
+    'tmdb': 'FF00CED1',
+    'trakt': 'pink',
+    'mdblist': 'lightskyblue',
+    'simkl': 'mediumpurple',
+    'punchplay': 'FFFF6600',
+}
+
+_PROVIDER_SYNC_NAMES = {
+    'local': 'Kodi (Local)',
+    'tmdb': 'TMDb',
+    'trakt': 'Trakt',
+    'mdblist': 'MDBList',
+    'simkl': 'Simkl',
+    'punchplay': 'PunchPlay',
+}
+
+
+def _provider_connected(p):
+    """Pre-check LOCAL de token (fara retea) pentru piciorul de sync p."""
+    try:
+        if p == 'local':
+            return True
+        if p == 'tmdb':
+            from resources.lib.utils import read_json
+            from resources.lib.config import TMDB_V4_TOKEN_FILE
+            s = read_json(TMDB_V4_TOKEN_FILE)
+            return bool(s and isinstance(s, dict) and s.get('access_token'))
+        if p == 'trakt':
+            from resources.lib import trakt_api
+            return bool(trakt_api.get_trakt_token())
+        if p == 'mdblist':
+            return bool(ADDON.getSetting('mdblist_access_token') or ADDON.getSetting('mdblist_api'))
+        if p == 'simkl':
+            return bool(ADDON.getSetting('simkl_access_token'))
+        if p == 'punchplay':
+            return bool(ADDON.getSetting('punchplay_access_token'))
+    except Exception:
+        return False
+    return False
+
+
+def sync_full_library(silent=False, force=False, source='manual'):
+    """Dispatcherul UNIC de sincronizare (Smart / Force / auto-sync 30 min):
+    ruleaza secvential picioarele Local -> TMDb -> Trakt -> MDBList -> Simkl ->
+    PunchPlay, cu un singur DialogProgressBG (heading colorat cu culoarea
+    providerului scanat) si O SINGURA notificare finala.
+
+    Detine EXCLUSIV lock-ul global tmdbmovies_sync_active — picioarele se cheama
+    direct pe functiile interne (*_leg), NU prin wrapperele publice, ca sa nu
+    se auto-sare pe lock contention. Stampila tmdbmovies_last_sync (fereastra
+    glisanta 30 min) se scrie DOAR dupa achizitia lock-ului: un sync evitat
+    (alt sync in desfasurare) nu prelungeste fereastra.
+    """
+    import time as _time
+    import xbmcgui as _xg
+
+    window = _xg.Window(10000)
+    lock = window.getProperty(_SYNC_LOCK_KEY)
+    if lock == 'true':
+        started = window.getProperty(_SYNC_START_STAMP_KEY)
+        if started and (_time.time() - float(started)) < 600:
+            xbmc.log('[SYNC DISPATCH] Sync already in progress. Ignoring new request.', xbmc.LOGINFO)
+            if not silent:
+                _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                          "Syncing...",
+                                          os.path.join(ADDON_PATH, 'icon.png'))
+            return
+        xbmc.log('[SYNC DISPATCH] Stale lock detected (>10min). Clearing and proceeding.', xbmc.LOGINFO)
+
+    window.setProperty(_SYNC_LOCK_KEY, 'true')
+    window.setProperty(_SYNC_START_STAMP_KEY, str(_time.time()))
+    _t0 = _time.time()
+    _kind = 'AUTO' if source == 'auto' else ('FULL' if force else 'SMART')
+    xbmc.log('[SYNC DISPATCH] === STARTING %s SYNC ===' % _kind, xbmc.LOGINFO)
+
+    _ICON = os.path.join(ADDON_PATH, 'icon.png')
+
+    # Paritate cu dispatcherul vechi: la sync-uri vizibile validam conexiunea
+    # providerului activ (popup doar daca lipseste; early-return pentru local).
     if not silent:
         try:
             ensure_active_provider()
-        except:
+        except Exception:
             pass
-    prov = _get_provider_raw()
-    from resources.lib.trakt_sync import sync_full_library as _trakt_sync
-    from resources.lib.mdblist_sync import sync_full_library as _mdblist_sync
-    from resources.lib.simkl_sync import sync_full_library as _simkl_sync
-    from resources.lib.punchplay_sync import sync_full_library as _punchplay_sync
 
-    # Local: faza ieftina (reverse-import din MyVideos) ruleaza mereu; rebuild-ul
-    # Up Next (cost TMDb per serial) doar daca local e ACTIV sau bifat in Custom.
-    try:
-        mark_mode = ADDON.getSetting('watched_mark_mode') or '0'
-    except Exception:
-        mark_mode = '0'
-    try:
-        local_toggled = ADDON.getSetting('watched_mark_local') == 'true'
-    except Exception:
-        local_toggled = False
-    local_needs_rebuild = (prov == 'local') or (mark_mode == '2' and local_toggled)
-
-    order = ['local'] + [prov] + [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay') if p != prov]
-    for p in order:
+    # Un singur DialogProgressBG pe toata durata; heading-ul se coloreaza cu
+    # culoarea providerului scanat in acel moment.
+    p_dialog = None
+    if not silent:
         try:
-            if p == 'local':
-                from resources.lib.local_sync import sync_full_library as _local_sync
-                _local_sync(silent=silent, force=force, rebuild_upnext=local_needs_rebuild)
-            elif p == 'trakt':
-                _trakt_sync(silent=silent, force=force)
-            elif p == 'mdblist':
-                _mdblist_sync(silent=silent, force=force)
-            elif p == 'simkl':
-                _simkl_sync(silent=silent, force=force)
+            p_dialog = _xg.DialogProgressBG()
+            p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Checking for changes...")
+        except Exception:
+            p_dialog = None
+
+    def _say(pct, color, name, msg):
+        if not p_dialog:
+            return
+        try:
+            p_dialog.update(int(pct), heading="[B][COLOR %s]%s[/COLOR][/B]" % (color, name), message=msg)
+        except Exception:
+            try: p_dialog.update(int(pct), message=msg)
+            except Exception: pass
+
+    try:
+        # --- Ordinea fixa: Local -> TMDb -> Trakt -> MDBList -> Simkl -> PunchPlay ---
+        legs = ['local', 'tmdb', 'trakt', 'mdblist', 'simkl', 'punchplay']
+        prov = _get_provider_raw()
+        try:
+            mark_mode = ADDON.getSetting('watched_mark_mode') or '0'
+        except Exception:
+            mark_mode = '0'
+        try:
+            local_toggled = ADDON.getSetting('watched_mark_local') == 'true'
+        except Exception:
+            local_toggled = False
+        # Local: rebuild Up Next (cost TMDb per serial) doar daca local e ACTIV
+        # sau bifat in Custom selection (paritate cu dispatcherul vechi).
+        local_rebuild = (prov == 'local') or (mark_mode == '2' and local_toggled)
+
+        ran_any = False
+        n = len(legs)
+        for i, p in enumerate(legs):
+            base = int(100.0 * i / n)
+            span = max(1, int(100 / n))
+            color = _PROVIDER_SYNC_COLORS.get(p, 'white')
+            name = _PROVIDER_SYNC_NAMES.get(p, p)
+
+            if not _provider_connected(p):
+                xbmc.log('[SYNC DISPATCH] %s leg skipped (not connected).' % p.upper(), xbmc.LOGINFO)
+                continue
+
+            xbmc.log('[SYNC DISPATCH] --- %s leg starting ---' % p.upper(), xbmc.LOGINFO)
+
+            def _leg_cb(pct, msg, _p=p, _color=color, _name=name, _base=base, _span=span):
+                try:
+                    shown = min(99, _base + int((int(pct or 0)) * _span / 100))
+                except Exception:
+                    shown = _base
+                _say(shown, _color, _name, msg or 'Syncing...')
+
+            _say(base + 1, color, name, 'Syncing...')
+            try:
+                if p == 'local':
+                    from resources.lib.local_sync import sync_full_library as _local_sync
+                    _local_sync(silent=True, force=force, rebuild_upnext=local_rebuild, progress_cb=_leg_cb)
+                elif p == 'tmdb':
+                    from resources.lib import trakt_sync as _ts
+                    from resources.lib.utils import read_json
+                    from resources.lib.config import TMDB_V4_TOKEN_FILE
+                    _sess = read_json(TMDB_V4_TOKEN_FILE)
+                    if _sess and isinstance(_sess, dict) and _sess.get('access_token'):
+                        # Acelasi gating ca in picioarele Trakt/MDBList:
+                        # 30 min smart / 60s dedup la force.
+                        _last_tmdb = _ts.get_local_last_sync().get('tmdb_sync_ts', 0)
+                        tmdb_needed = (_time.time() - _last_tmdb > 1800) or (force and (_time.time() - _last_tmdb > 60))
+                        if tmdb_needed:
+                            conn = None
+                            _ok = False
+                            try:
+                                _ts.init_database()
+                                conn = _ts.get_connection()
+                                c = conn.cursor()
+                                _ok = _ts.sync_tmdb_phase(c, force=tmdb_needed, silent=True, progress_cb=_leg_cb)
+                                conn.commit()
+                            except Exception as _e:
+                                xbmc.log('[SYNC DISPATCH] TMDb phase error: %s' % _e, xbmc.LOGERROR)
+                                _ok = False
+                            finally:
+                                try:
+                                    if conn: conn.close()
+                                except Exception: pass
+                            # tmdb_sync_ts DOAR la faza completa (anti-141)
+                            if _ok:
+                                try:
+                                    _ls = _ts.get_local_last_sync()
+                                    _ls['tmdb_sync_ts'] = _time.time()
+                                    _ts.save_local_last_sync(_ls)
+                                except Exception: pass
+                        else:
+                            _ago_min = int((_time.time() - _last_tmdb) / 60) if _last_tmdb else -1
+                            _in_min = max(0, 30 - _ago_min) if _ago_min >= 0 else 0
+                            xbmc.log('[SYNC DISPATCH] TMDb leg skipped (last sync %d min ago, next in ~%d min).' % (_ago_min, _in_min), xbmc.LOGINFO)
+                elif p == 'trakt':
+                    from resources.lib.trakt_sync import _trakt_leg
+                    _trakt_leg(silent=True, force=force, progress_cb=_leg_cb, suppress_notifications=True, skip_tmdb_phase=True)
+                elif p == 'mdblist':
+                    from resources.lib.mdblist_sync import _mdblist_leg
+                    _mdblist_leg(silent=True, force=force, progress_cb=_leg_cb, suppress_notifications=True, skip_tmdb_phase=True)
+                elif p == 'simkl':
+                    from resources.lib.simkl_sync import _simkl_leg
+                    from resources.lib.simkl_api import SIMKLAPI
+                    _simkl_leg(api=SIMKLAPI(), is_active=(prov == 'simkl'),
+                               silent=True, force=force, progress_cb=_leg_cb, suppress_notifications=True)
+                else:
+                    from resources.lib.punchplay_sync import _punchplay_leg
+                    from resources.lib.punchplay_api import PunchplayAPI
+                    _punchplay_leg(api=PunchplayAPI(), silent=True, force=force,
+                                   progress_cb=_leg_cb, suppress_notifications=True)
+            except Exception as e:
+                xbmc.log('[SYNC DISPATCH] %s leg error: %s' % (p.upper(), e), xbmc.LOGERROR)
             else:
-                _punchplay_sync(silent=silent, force=force)
-        except Exception as e:
-            xbmc.log(f'[{p.upper()} SYNC] secondary sync error: {e}', xbmc.LOGERROR)
+                ran_any = True
+
+        # Fereastra glisanta 30 min: stampila se scrie DOAR daca sync-ul a rulat
+        # efectiv (macar un picior), cu valoarea TIMPULUI DE START — exact ca in
+        # exemplul: auto 15:00 -> manual 15:15 -> urmatorul auto la 15:45.
+        if ran_any:
+            window.setProperty(_LAST_SYNC_STAMP_KEY, str(_t0))
+
+        _say(100, 'FF00CED1', 'TMDb Movies', 'Sync complete')
+        if p_dialog:
+            try: p_dialog.close()
+            except Exception: pass
+            p_dialog = None
+        xbmc.log('[SYNC DISPATCH] === SYNC COMPLETE ===', xbmc.LOGINFO)
+        if not silent:
+            _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                      "Sync Complete",
+                                      _ICON)
+    finally:
+        if p_dialog:
+            try: p_dialog.close()
+            except Exception: pass
+        window.clearProperty(_SYNC_LOCK_KEY)
+        window.clearProperty(_SYNC_START_STAMP_KEY)
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except Exception: pass
+        try:
+            from resources.lib.mdblist_sync import clear_cache_prefix
+            clear_cache_prefix('trakt_calendar')
+        except Exception: pass
 
 def get_watched_counts(tmdb_id, content_type, season=None):
     """Provider-aware watched count: {watched: int, total: int}"""

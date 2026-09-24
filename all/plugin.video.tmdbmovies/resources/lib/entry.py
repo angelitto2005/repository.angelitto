@@ -7,6 +7,7 @@ import xbmcaddon
 import xbmcvfs
 import os
 import json
+import time
 from urllib.parse import parse_qsl, urlencode, quote, unquote
 from resources.lib.config import provider_title, ADDON_PATH as CONFIG_ADDON_PATH
 
@@ -1242,6 +1243,9 @@ def run_plugin():
             return
             
         hidden_count = 0
+        _wl_total = 0
+        _fav_total = 0
+        _hist_total = 0
         try:
             from resources.lib import trakt_sync as _ts
             if os.path.exists(_ts.DB_PATH):
@@ -1249,6 +1253,15 @@ def run_plugin():
                 _c = _conn.cursor()
                 _c.execute("SELECT COUNT(*) FROM trakt_hidden_shows")
                 hidden_count = _c.fetchone()[0] or 0
+                _c.execute("SELECT COUNT(*) FROM trakt_lists WHERE list_type='watchlist'")
+                _wl_total = _c.fetchone()[0] or 0
+                _c.execute("SELECT COUNT(*) FROM trakt_favorites")
+                _fav_total = _c.fetchone()[0] or 0
+                _c.execute("SELECT COUNT(*) FROM trakt_watched_movies")
+                _hm = _c.fetchone()[0] or 0
+                _c.execute("SELECT COUNT(DISTINCT tmdb_id) FROM trakt_watched_episodes")
+                _hs = _c.fetchone()[0] or 0
+                _hist_total = _hm + _hs
                 _conn.close()
         except Exception:
             import traceback
@@ -1257,10 +1270,10 @@ def run_plugin():
 
         items = [
             {'name': '[B][COLOR pink]Account Info[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_account_info', 'folder': False},
-            {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
-            {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
+            {'name': '[B][COLOR FFCCCCFF]Watchlist[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % _wl_total, 'iconImage': 'trakt.png', 'mode': 'trakt_watchlist_menu'},
+            {'name': '[B][COLOR FFCCCCFF]Favorites[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % _fav_total, 'iconImage': 'trakt.png', 'mode': 'trakt_favorites_menu'},
             {'name': '[B][COLOR red]Dropped Shows[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % hidden_count, 'iconImage': 'trakt.png', 'mode': 'trakt_dropped_shows'},
-            {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B]', 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
+            {'name': '[B][COLOR FFCCCCFF]History[/COLOR][/B] [B][COLOR FFFDBD01](%d)[/COLOR][/B]' % _hist_total, 'iconImage': 'trakt.png', 'mode': 'trakt_history_menu'}
         ]
         
         user_lists = trakt_sync.get_lists_from_db()
@@ -2217,52 +2230,15 @@ def _run_forced_post_update_sync():
         pass
 
     def _run_providers():
-        # Secvential: Trakt (include TMDb la final) -> MDBList -> Simkl.
-        # Unul dupa altul, fara amestec de loguri, fara dublare TMDb.
+        # Post-update: dispatcherul UNIC secvential (Local -> TMDb -> Trakt ->
+        # MDBList -> Simkl -> PunchPlay). TMDb nu mai depinde de tokenul Trakt;
+        # providerii neconectati se sara elegant; o singura notificare finala.
         try:
-            from resources.lib import trakt_sync
-            if _A.getSetting('trakt_access_token'):
-                try:
-                    trakt_sync.sync_full_library(silent=True, force=True)
-                    xbmc.log("[TMDb Movies] Trakt (incl. TMDb) post-update forced sync - Success.", xbmc.LOGINFO)
-                except Exception as e:
-                    xbmc.log(f"[TMDb Movies] Trakt post-update forced sync - Failed: {e}", xbmc.LOGERROR)
-            else:
-                # Fara Trakt: TMDb separat (daca token TMDb exista) —
-                # altfel nu avem nimic de sync-uit la acest provider.
-                try:
-                    from resources.lib.tmdb_api import get_tmdb_v4_token
-                    if bool(get_tmdb_v4_token()):
-                        trakt_sync.sync_tmdb_only(silent=True, force=True)
-                        xbmc.log("[TMDb Movies] TMDb post-update forced sync - Success.", xbmc.LOGINFO)
-                except Exception as e:
-                    xbmc.log(f"[TMDb Movies] TMDb post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+            from resources.lib.watched_provider import sync_full_library as _disp
+            _disp(silent=True, force=True)
+            xbmc.log("[TMDb Movies] Post-update forced sync (dispatcher) - Success.", xbmc.LOGINFO)
         except Exception as e:
-            xbmc.log(f"[TMDb Movies] Trakt/TMDb post-update forced sync - Failed: {e}", xbmc.LOGERROR)
-
-        if _A.getSetting('mdblist_access_token') or _A.getSetting('mdblist_api'):
-            try:
-                from resources.lib import mdblist_sync
-                mdblist_sync.sync_full_library(silent=True, force=True)
-                xbmc.log("[TMDb Movies] MDBList post-update forced sync - Success.", xbmc.LOGINFO)
-            except Exception as e:
-                xbmc.log(f"[TMDb Movies] MDBList post-update forced sync - Failed: {e}", xbmc.LOGERROR)
-
-        if _A.getSetting('simkl_access_token'):
-            try:
-                from resources.lib import simkl_sync
-                simkl_sync.sync_full_library(silent=True, force=True)
-                xbmc.log("[TMDb Movies] Simkl post-update forced sync - Success.", xbmc.LOGINFO)
-            except Exception as e:
-                xbmc.log(f"[TMDb Movies] Simkl post-update forced sync - Failed: {e}", xbmc.LOGERROR)
-
-        if _A.getSetting('punchplay_access_token'):
-            try:
-                from resources.lib import punchplay_sync
-                punchplay_sync.sync_full_library(silent=True, force=True)
-                xbmc.log("[TMDb Movies] PunchPlay post-update forced sync - Success.", xbmc.LOGINFO)
-            except Exception as e:
-                xbmc.log(f"[TMDb Movies] PunchPlay post-update forced sync - Failed: {e}", xbmc.LOGERROR)
+            xbmc.log(f"[TMDb Movies] Post-update forced sync - Failed: {e}", xbmc.LOGERROR)
 
         # Toate providerii au terminat -> UN singur widget refresh (Up Next-ul
         # alimentat si de TMDb e complet abia acum).
@@ -2707,9 +2683,18 @@ def run_service():
                 self.first_run = False
                 
             while not self.abortRequested():
-                if self.waitForAbort(1800):
+                # Fereastra GLISANTA 30 min: felii de 60s in loc de waitForAbort(1800)
+                # orb. Fiecare sync (automat SAU manual) scrie stampila tmdbmovies_last_sync
+                # la START-ul rularii reale, deci urmatorul auto-sync e mereu la 30 min de
+                # la ULTIMUL sync (manual 15:15 dupa auto 15:00 -> urmatorul auto 15:45).
+                if self.waitForAbort(60):
                     break
-                self.sync_worker()
+                try:
+                    _last_sync_stamp = float(xbmcgui.Window(10000).getProperty('tmdbmovies_last_sync') or 0)
+                except Exception:
+                    _last_sync_stamp = 0.0
+                if _last_sync_stamp and (time.time() - _last_sync_stamp >= 1800):
+                    self.sync_worker()
                 try:
                     from resources.lib.library import check_auto_sync
                     check_auto_sync()
@@ -2743,64 +2728,20 @@ def run_service():
 
         def sync_worker(self):
             try:
-                trakt_token = get_addon().getSetting('trakt_access_token')
-                if trakt_token:
-                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
+                # Dispecer UNIC secvential: Local -> TMDb -> Trakt -> MDBList -> Simkl
+                # -> PunchPlay (un singur thread, un singur ProgressBG colorat, o singura
+                # notificare finala). Inlocuieste cele 4 thread-uri paralele vechi.
+                xbmc.log("[TMDb Movies] Monitor Service Update - Starting sequential sync (all providers)...", xbmc.LOGINFO)
 
-                    def _run_trakt():
-                        try:
-                            from resources.lib import trakt_sync
-                            trakt_sync.sync_full_library(silent=True, force=self._sync_force())
-                            xbmc.log("[TMDb Movies] TraktMonitor Service Update - Success. Next Update in 30 minutes...", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
-                        except Exception as e:
-                            xbmc.log(f"[TMDb Movies] TraktMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
-                    threading.Thread(target=_run_trakt, daemon=True).start()
-                else:
-                    xbmc.log("[TMDb Movies] TraktMonitor Service Update - Aborted. No Trakt Account Active. Next Update in 30 minutes...", xbmc.LOGINFO)
-
-                # --- MDBList auto-sync (daca exista creds; gating-ul intern al sync-ului
-                # decide ce sectiuni se importa in functie de providerul de watched status) ---
-                if get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'):
-                    xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
-
-                    def _run_mdblist():
-                        try:
-                            from resources.lib.mdblist_sync import sync_full_library
-                            sync_full_library(silent=True, force=self._sync_force())
-                            xbmc.log("[TMDb Movies] MDBListMonitor Service Update - Success.", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
-                        except Exception as e:
-                            xbmc.log(f"[TMDb Movies] MDBListMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
-                    threading.Thread(target=_run_mdblist, daemon=True).start()
-
-                # --- Simkl auto-sync (daca exista token) ---
-                if get_addon().getSetting('simkl_access_token'):
-                    xbmc.log("[TMDb Movies] SimklMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
-
-                    def _run_simkl():
-                        try:
-                            from resources.lib.simkl_sync import sync_full_library
-                            sync_full_library(silent=True, force=self._sync_force())
-                            xbmc.log("[TMDb Movies] SimklMonitor Service Update - Success.", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
-                        except Exception as e:
-                            xbmc.log(f"[TMDb Movies] SimklMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
-                    threading.Thread(target=_run_simkl, daemon=True).start()
-
-                # --- PunchPlay auto-sync (daca exista token) ---
-                if get_addon().getSetting('punchplay_access_token'):
-                    xbmc.log("[TMDb Movies] PunchPlayMonitor Service Update - Starting background sync...", xbmc.LOGINFO)
-
-                    def _run_punchplay():
-                        try:
-                            from resources.lib.punchplay_sync import sync_full_library
-                            sync_full_library(silent=True, force=self._sync_force())
-                            xbmc.log("[TMDb Movies] PunchPlayMonitor Service Update - Success.", xbmc.LOGINFO)
-                            _maybe_refresh_widgets_after_sync(force=self._sync_force())
-                        except Exception as e:
-                            xbmc.log(f"[TMDb Movies] PunchPlayMonitor Service Update - Failed: {e}", xbmc.LOGERROR)
-                    threading.Thread(target=_run_punchplay, daemon=True).start()
+                def _run_all():
+                    try:
+                        from resources.lib.watched_provider import sync_full_library
+                        sync_full_library(silent=True, force=self._sync_force(), source='auto')
+                        xbmc.log("[TMDb Movies] Monitor Service Update - Success. Next check in 60s (rolling 30 min window)...", xbmc.LOGINFO)
+                        _maybe_refresh_widgets_after_sync(force=self._sync_force())
+                    except Exception as e:
+                        xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                threading.Thread(target=_run_all, daemon=True).start()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 

@@ -971,10 +971,10 @@ def _store_interaction_snapshot(items, c):
             if isinstance(_it, dict):
                 _statuses[str(_it.get('showStatus') or _it.get('show_status') or '-')] += 1
         xbmc.log(f'[PUNCHPLAY DBG] interaction items={len(items or [])} statuses={dict(_statuses)} '
-                 f'sample_keys={list((items or [{}])[0].keys()) if items else []}', xbmc.LOGINFO)
+                 f'sample_keys={list((items or [{}])[0].keys()) if items else []}', xbmc.LOGDEBUG)
         try:
             import json as _js
-            xbmc.log(f'[PUNCHPLAY DBG] first_item={_js.dumps((items or [{}])[0])[:1500]}', xbmc.LOGINFO)
+            xbmc.log(f'[PUNCHPLAY DBG] first_item={_js.dumps((items or [{}])[0])[:1500]}', xbmc.LOGDEBUG)
         except:
             pass
     except:
@@ -1066,7 +1066,7 @@ def _sync_watchlist_list(api, c, lists):
                          f'itemCount={detail.get("itemCount") if isinstance(detail, dict) else "?"} '
                          f'items_type={type((detail or {}).get("items")).__name__} '
                          f'items_len={len(_di)} '
-                         f'first_keys={list(_di[0].keys()) if _di and isinstance(_di[0], dict) else "-"}', xbmc.LOGINFO)
+                         f'first_keys={list(_di[0].keys()) if _di and isinstance(_di[0], dict) else "-"}', xbmc.LOGDEBUG)
             except:
                 pass
             if isinstance(detail, dict) and isinstance(detail.get('items'), list):
@@ -1672,12 +1672,15 @@ def _snapshot_all(api, resource, limit=500):
             break
     return items
 
-def _full_rebuild(api, c, is_active, p_dialog=None):
+def _full_rebuild(api, c, is_active, p_dialog=None, progress_cb=None):
     def _upd(pct, section):
+        msg = 'Sync: [B][COLOR %s]%s[/COLOR][/B]' % (PUNCHPLAY_COLOR, section)
+        if progress_cb:
+            try: progress_cb(pct, msg)
+            except: pass
         try:
             if p_dialog:
-                p_dialog.update(pct, provider_title('punchplay', name='PunchPlay Sync'),
-                                'Sync: [B][COLOR %s]%s[/COLOR][/B]' % (PUNCHPLAY_COLOR, section))
+                p_dialog.update(pct, provider_title('punchplay', name='PunchPlay Sync'), msg)
         except:
             pass
     try:
@@ -1752,7 +1755,32 @@ def sync_full_library(silent=False, force=False):
             xbmcgui.Dialog().notification(provider_title('punchplay'),
                                           'Sync already in progress.', PUNCHPLAY_ICON, 3000, False)
         return
+    ran = False
+    try:
+        ran = _punchplay_leg(api=api, silent=silent, force=force)
+    finally:
+        # Fereastra glisanta 30 min: stampila DOAR la rulare reala.
+        if ran:
+            try:
+                xbmcgui.Window(10000).setProperty('tmdbmovies_last_sync', str(time.time()))
+            except Exception:
+                pass
+        _release_lock()
+
+def _punchplay_leg(api, silent=False, force=False, progress_cb=None, suppress_notifications=False):
+    """Piciorul intern PunchPlay. Intoarce True doar daca sync-ul a rulat efectiv
+    (nu pe early-return de lock/auth/throttle)."""
     p_dialog = None
+
+    def _prog(pct, message):
+        if suppress_notifications:
+            if progress_cb:
+                try: progress_cb(pct, message)
+                except Exception: pass
+        elif p_dialog:
+            try: p_dialog.update(pct, message=message)
+            except Exception: pass
+
     try:
         is_active = _is_punchplay_provider()
         try:
@@ -1761,7 +1789,7 @@ def sync_full_library(silent=False, force=False):
         except:
             _prov_name = 'punchplay' if is_active else 'other'
         xbmc.log(f'[PUNCHPLAY SYNC] Starting (provider_active={is_active}, provider={_prov_name}, force={force}, silent={silent}).', xbmc.LOGINFO)
-        if not silent:
+        if not silent and not suppress_notifications:
             xbmcgui.Dialog().notification(provider_title('punchplay'),
                                            'Syncing...', PUNCHPLAY_ICON, 2000, False)
             try:
@@ -1782,8 +1810,9 @@ def sync_full_library(silent=False, force=False):
                         p_dialog.close()
                 except:
                     pass
-                return
+                return False
         _ensure_db()
+        _prog(5, 'Sync: [B][COLOR FFFF6600]Checking for changes[/COLOR][/B]')
         conn = get_connection()
         c = conn.cursor()
         need_full = force
@@ -1813,7 +1842,7 @@ def sync_full_library(silent=False, force=False):
                 else:
                     xbmc.log('[PUNCHPLAY SYNC] No changes. Skipping.', xbmc.LOGINFO)
         if need_full:
-            _full_rebuild(api, c, is_active, p_dialog)
+            _full_rebuild(api, c, is_active, p_dialog, progress_cb=_prog)
             try:
                 data = api.sync_changes(limit=1)
                 if isinstance(data, dict) and data.get('nextCursor'):
@@ -1838,7 +1867,7 @@ def sync_full_library(silent=False, force=False):
         except:
             pass
         xbmc.log('[PUNCHPLAY SYNC] Complete.', xbmc.LOGINFO)
-        if not silent:
+        if not silent and not suppress_notifications:
             try:
                 if p_dialog:
                     p_dialog.close()
@@ -1847,6 +1876,7 @@ def sync_full_library(silent=False, force=False):
             xbmcgui.Dialog().notification(provider_title('punchplay'),
                                            'Sync complete!', PUNCHPLAY_ICON, 3000, False)
             _trigger_ui_refresh()
+        return True
     except Exception as e:
         xbmc.log(f'[PUNCHPLAY SYNC] Error: {e}', xbmc.LOGERROR)
         if not silent:

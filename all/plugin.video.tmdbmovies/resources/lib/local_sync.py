@@ -600,17 +600,24 @@ def refresh_next_episode_local(tmdb_id, ignore_hidden=False, refresh_ui=True):
 # ------------------------------------------------------------------
 # SYNC FULL LIBRARY (faza locala: reverse-import + rebuild Up Next)
 # ------------------------------------------------------------------
-def sync_full_library(silent=False, force=False, rebuild_upnext=True):
+def sync_full_library(silent=False, force=False, rebuild_upnext=True, progress_cb=None):
     """Faza locala a sync-ului: reverse-import din biblioteca Kodi (playcount ->
     local_watched_*) + import progres partajat + rebuild local_next_episodes.
 
     rebuild_upnext=False sare rebuild-ul (cost TMDb per serial) — folosit de
     dispatcher cand localul nu e providerul activ (doar reverse-importul ieftin).
+    progress_cb(pct, msg) primeste etichetele de faza (culoarea Local) pentru
+    dialogul unic al dispatcherului.
     """
+    def _prog(pct, message):
+        if progress_cb:
+            try: progress_cb(pct, message)
+            except: pass
     init_database()
     try:
         from resources.lib import local_library
         n = local_library.import_kodi_watchstate()
+        _prog(50, 'Sync: [B][COLOR FFF70D1A]Library import[/COLOR][/B]')
         if not silent:
             xbmc.log(f'[LOCAL] reverse-import: {n} items updated from Kodi library', xbmc.LOGINFO)
     except Exception as e:
@@ -628,11 +635,16 @@ def sync_full_library(silent=False, force=False, rebuild_upnext=True):
         c.execute("SELECT DISTINCT tmdb_id FROM local_watched_episodes")
         tids = [str(r[0]) for r in c.fetchall()]
         conn.close()
-        for tid in tids:
+        _prog(80, 'Sync: [B][COLOR FFF70D1A]Up Next rebuild[/COLOR][/B]')
+        _total = len(tids) or 1
+        for _idx, tid in enumerate(tids):
             try:
                 refresh_next_episode_local(tid, refresh_ui=False)
             except:
                 continue
+            if _idx % 3 == 0 or _idx + 1 == _total:
+                _prog(80 + int(20 * (_idx + 1) / _total),
+                      'Sync: [B][COLOR FFF70D1A]Up Next %d/%d[/COLOR][/B]' % (_idx + 1, _total))
         set_sync_meta('last_sync', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'))
         try:
             from resources.lib.cache import clear_list_fast_cache

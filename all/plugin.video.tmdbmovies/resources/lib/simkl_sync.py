@@ -1057,10 +1057,34 @@ def sync_full_library(silent=False, force=False):
     except:
         pass
 
+    _ran = _simkl_leg(api=api, is_active=is_active, silent=silent, force=force)
+
+    # Fereastra glisanta 30 min: stampila DOAR la rulare reala.
+    if _ran:
+        try:
+            window = xbmcgui.Window(10000)
+            window.setProperty('tmdbmovies_last_sync', str(time.time()))
+        except Exception:
+            pass
+
+
+def _simkl_leg(api, is_active, silent=False, force=False, progress_cb=None, suppress_notifications=False):
+    """Piciorul intern Simkl. Intoarce True doar daca sync-ul a rulat efectiv
+    (nu pe early-return de lock/auth/throttle)."""
+    p_dialog = None
+
+    def _prog(pct, message):
+        if suppress_notifications:
+            if progress_cb:
+                try: progress_cb(pct, message)
+                except Exception: pass
+        elif p_dialog:
+            try: p_dialog.update(pct, message=message)
+            except Exception: pass
+
     try:
         xbmc.log(f'[SIMKL SYNC] Starting (provider_active={"simkl" if is_active else "other"}, force={force}, silent={silent})', xbmc.LOGINFO)
-        p_dialog = None
-        if not silent:
+        if not silent and not suppress_notifications:
             p_dialog = xbmcgui.DialogProgressBG()
             p_dialog.create('[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', '[B][COLOR mediumpurple]Checking for changes...[/COLOR][/B]')
         # Throttle 15 min (fara force)
@@ -1071,7 +1095,7 @@ def sync_full_library(silent=False, force=False):
                     xbmc.log('[SIMKL] Sync throttled (<15 min since last)', xbmc.LOGINFO)
                     if p_dialog:
                         p_dialog.close()
-                    return
+                    return False
             except:
                 pass
 
@@ -1096,8 +1120,7 @@ def sync_full_library(silent=False, force=False):
 
         if (changed or force) and is_active:
             last_date = get_sync_meta('last_sync_date', '')
-            if p_dialog:
-                p_dialog.update(30, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Watched[/COLOR][/B]')
+            _prog(30, 'Sync: [B][COLOR mediumpurple]Watched[/COLOR][/B]')
             if last_date and not force:
                 # ---- Phase 2 delta ----
                 _sync_all_items_delta(api, last_date)
@@ -1119,19 +1142,16 @@ def sync_full_library(silent=False, force=False):
             except:
                 _prov_name = 'simkl' if is_active else 'other'
             xbmc.log(f'[SIMKL SYNC] Flags: watched={is_active} upnext={is_active} ratings={is_active} playback={is_active} watchlist=True dropped=True calendar=True (provider={_prov_name})', xbmc.LOGINFO)
-            if p_dialog:
-                p_dialog.update(60, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Watchlist[/COLOR][/B]')
+            _prog(60, 'Sync: [B][COLOR mediumpurple]Watchlist[/COLOR][/B]')
             _sync_watchlist(api)
             if is_active:
-                if p_dialog:
-                    p_dialog.update(70, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Up Next[/COLOR][/B]')
+                _prog(70, 'Sync: [B][COLOR mediumpurple]Up Next[/COLOR][/B]')
                 _sync_up_next(api)
                 _sync_ratings(api)
             _sync_dropped(api)
             if is_active:
                 _sync_playback(api)
-            if p_dialog:
-                p_dialog.update(85, '[B][COLOR mediumpurple]Simkl Sync[/COLOR][/B]', 'Sync: [B][COLOR mediumpurple]Calendar[/COLOR][/B]')
+            _prog(85, 'Sync: [B][COLOR mediumpurple]Calendar[/COLOR][/B]')
             _sync_calendar(api)
         else:
             xbmc.log('[SIMKL SYNC] No activity changes - skipping user endpoints (activities gate)', xbmc.LOGINFO)
@@ -1147,9 +1167,10 @@ def sync_full_library(silent=False, force=False):
 
         if p_dialog:
             p_dialog.close()
-        if not silent:
+        if not silent and not suppress_notifications:
             xbmcgui.Dialog().notification(provider_title('simkl'), 'Sync complete!', SIMKL_ICON, 3000, False)
             _trigger_ui_refresh()
+        return True
     except Exception as e:
         xbmc.log(f'[SIMKL] sync_full_library error: {e}', xbmc.LOGERROR)
         if p_dialog:
