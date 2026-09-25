@@ -1079,7 +1079,7 @@ def _set_api_key(provider):
                 from resources.lib import realdebrid_api
                 realdebrid_api.clear_cloud_cache()
                 info = realdebrid_api.account_info()
-                _ADDON.setSetting('rd_status', 'Connected: ' + str(info.get('username') or 'User'))
+                _ADDON.setSetting('rd_status', 'Connected')
         except Exception:
             pass
         _notify('Connected to ' + ('TorBox' if provider == 'torbox' else 'Real-Debrid'))
@@ -1335,6 +1335,19 @@ def _refresh():
     xbmc.executebuiltin('Container.Refresh')
 
 
+def _migrate_status_labels():
+    try:
+        for _key_id, _st_id in (('torbox_api_key', 'torbox_status'), ('rd_api_key', 'rd_status')):
+            _key = (_ADDON.getSetting(_key_id) or '').strip()
+            _st = (_ADDON.getSetting(_st_id) or '').strip()
+            if _key and _key in _st:
+                _ADDON.setSetting(_st_id, 'Connected')
+            elif _st.startswith('Connected:'):
+                _ADDON.setSetting(_st_id, 'Connected')
+    except Exception:
+        pass
+
+
 def handle_debrid_action(params, handle, base_url, addon):
     action = params.get('mode', params.get('action', ''))
     if action not in DEBRID_ACTIONS:
@@ -1349,6 +1362,7 @@ def handle_debrid_action(params, handle, base_url, addon):
     _HANDLE = handle
     _BASE_URL = base_url
     _ADDON = addon
+    _migrate_status_labels()
     if action == 'debrid_menu':
         _view_main()
     elif action == 'debrid_torbox':

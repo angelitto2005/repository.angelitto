@@ -890,6 +890,7 @@ def _view_calendar():
     try:
         from resources.lib.tmdb_api import get_smart_season_details as _gsd
         ep_name_map = {}
+        ep_overview_map = {}
         _seen_seasons = set()
         for en in entries:
             if en['media_type'] == 'movie':
@@ -901,12 +902,18 @@ def _view_calendar():
             try:
                 _sd = _gsd(_key[0], _key[1]) or {}
                 for _ep in (_sd.get('episodes') or []):
-                    if isinstance(_ep, dict) and _ep.get('name'):
-                        ep_name_map[(_key[0], _key[1], int(_ep.get('episode_number') or 0))] = _ep.get('name')
+                    if not isinstance(_ep, dict):
+                        continue
+                    _enum = int(_ep.get('episode_number') or 0)
+                    if _ep.get('name'):
+                        ep_name_map[(_key[0], _key[1], _enum)] = _ep.get('name')
+                    if _ep.get('overview'):
+                        ep_overview_map[(_key[0], _key[1], _enum)] = _ep.get('overview')
             except Exception:
                 pass
     except Exception:
         ep_name_map = {}
+        ep_overview_map = {}
     for en in entries:
         tid = en['tmdb_id']
         is_movie = en['media_type'] == 'movie'
@@ -930,6 +937,11 @@ def _view_calendar():
         poster = f"{IMG_BASE}{cached.get('poster_path', '')}" if cached.get('poster_path') else ''
         fanart = f"{BACKDROP_BASE}{cached.get('backdrop_path', '')}" if cached.get('backdrop_path') else ''
         plot = cached.get('overview', '') or ''
+        if not is_movie:
+            try:
+                plot = ep_overview_map.get((str(tid), int(en.get('season') or 0), int(en.get('episode') or 0)), '') or plot
+            except Exception:
+                pass
         diff = en['diff']
         try:
             d = _dt.date.fromisoformat(str(en['air_date'])[:10])
