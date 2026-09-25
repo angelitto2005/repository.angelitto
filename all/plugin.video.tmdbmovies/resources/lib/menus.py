@@ -43,6 +43,7 @@ root_list = [
     {'name': '[B][COLOR FFFF69B4]My Favorites[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'favorites_menu'},
     {'name': '[B][COLOR gray]Downloads[/COLOR][/B]', 'iconImage': 'download.png', 'mode': 'downloads_menu'}, 
     {'name': '[B][COLOR FFFDBD01]Search[/COLOR][/B]', 'iconImage': 'search.png', 'mode': 'search_menu'},
+    {'name': '[B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B]', 'iconImage': 'debrid.png', 'mode': 'debrid_menu'},
     {'name': '[B][COLOR gray]Settings[/COLOR][/B]', 'iconImage': 'settings.png', 'mode': 'settings_menu'}
 ]
 
@@ -54,6 +55,7 @@ _ROOT_MENU_SETTINGS = {
     'simkl_menu': 'show_menu_simkl',
     'punchplay_menu': 'show_menu_punchplay',
     'tmdb_my_lists': 'show_menu_tmdb_lists',
+    'debrid_menu': 'show_menu_debrid',
     'hindi_movies_menu': 'show_menu_bollywood',
     'romania_menu': 'show_menu_romania',
     'actors_menu': 'show_menu_actors',

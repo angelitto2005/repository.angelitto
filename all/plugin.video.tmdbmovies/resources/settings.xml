@@ -63,6 +63,7 @@
         <setting id="show_menu_bollywood" type="bool" label="Show [B][COLOR FFCCCCFF]Bollywood[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_romania" type="bool" label="Show [B][COLOR yellow]Romania[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_actors" type="bool" label="Show [B][COLOR orange]Actors[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_debrid" type="bool" label="Show [B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B] in main menu" default="true"/>
 
         <setting type="lsep" label="Context Menu"/>
         <setting id="show_cm_trakt" type="bool" label="Show [B][COLOR pink]My Trakt[/COLOR][/B] in context menu" default="true"/>
@@ -508,5 +509,16 @@
         <setting type="lsep" label="Support"/>
         <setting label="[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=show_donate)"/>
         
+    </category>
+
+    <!-- 11. MY DEBRID CLOUD -->
+    <category label="[B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B]">
+        <setting type="lsep" label="TorBox Account"/>
+        <setting id="torbox_api_key" type="text" option="hidden" visible="false" label="TorBox API Key" default=""/>
+        <setting label="Status:" type="text" id="torbox_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Real-Debrid Account"/>
+        <setting id="rd_api_key" type="text" option="hidden" visible="false" label="Real-Debrid API Key" default=""/>
+        <setting label="Status:" type="text" id="rd_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Connect from the [B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B] directory in the main menu"/>
     </category>
 </settings>

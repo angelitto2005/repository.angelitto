@@ -164,6 +164,9 @@ def clean_text(text):
     
     return text.strip()
 
+class DebridError(Exception):
+    pass
+
 def get_json(url):
     try:
         from resources.lib.config import SESSION, get_headers

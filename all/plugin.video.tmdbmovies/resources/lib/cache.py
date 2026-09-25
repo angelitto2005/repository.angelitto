@@ -66,6 +66,12 @@ class MainCache:
             self.dbcur.execute("DELETE FROM maincache WHERE id = ?", (string,))
             self.dbcon.commit()
         except: pass
+
+    def delete_prefix(self, prefix):
+        try:
+            self.dbcur.execute("DELETE FROM maincache WHERE id GLOB ?", (prefix + '*',))
+            self.dbcon.commit()
+        except: pass
             
     def delete_all(self):
         try:

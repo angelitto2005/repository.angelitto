@@ -2184,6 +2184,11 @@ def start_playback_monitor(player_instance, dialog=None):
             except Exception as e:
                 log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
         
+        try:
+            from resources.lib import debrid as _debrid_post
+            _debrid_post.invalidate_playback_cache(getattr(player_instance, 'prev_debrid', ''))
+        except Exception:
+            pass
         threading.Thread(target=_post_playback_dialogs, daemon=True).start()
         log("[PLAYER-MONITOR] Monitor thread finished")
     

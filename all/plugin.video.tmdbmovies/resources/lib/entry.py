@@ -1693,6 +1693,19 @@ def run_plugin():
             handle_punchplay_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
     
+    from resources.lib.debrid import handle_debrid_action, DEBRID_ACTIONS
+    if mode in DEBRID_ACTIONS:
+        from resources.lib.config import ADDON
+        handle_debrid_action({'mode': mode, **params}, handle, sys.argv[0], ADDON)
+        return
+    if isinstance(mode, str) and mode.startswith('debrid_'):
+        try:
+            if int(handle) >= 0:
+                xbmcplugin.endOfDirectory(int(handle), succeeded=False)
+        except Exception:
+            pass
+        return
+
     if mode == 'trakt_context_menu':
         from resources.lib import trakt_api
         trakt_api.show_trakt_context_menu(

@@ -1,3 +1,6 @@
+1.1.298
+- New My Debrid Cloud directory in the main menu (show/hide from Settings -> Menu): TorBox and Real-Debrid. API keys are entered from the directory and validated live before being saved.
+
 1.1.297
 - Optional TMDb watchlist prompt when rating (ask or remove silently).
 - Unified sequential sync (auto/smart/force) with per-provider progress, silent auto-sync, rolling 30-minute window.
