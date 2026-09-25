@@ -399,32 +399,32 @@ def needs_sync(section, remote_activities, local_sync_data, provider=''):
         return False
 
 def sync_full_library(silent=False, force=False):
-    """Wrapper PUBLIC Trakt (caile directe: trakt_sync_db, RunScript). Ia lock-ul
-    global si ruleaza piciorul intern. Dispatcherul din watched_provider detine
-    EXCLUSIV lock-ul si cheama direct _trakt_leg (fara wrapper — altfel piciorul
-    s-ar auto-sari pe lock contention)."""
-    window = xbmcgui.Window(10000)
-    _sync_lock = window.getProperty('tmdbmovies_sync_active')
-    if _sync_lock == 'true':
-        _sync_start = window.getProperty('tmdbmovies_sync_started')
-        if _sync_start and (time.time() - float(_sync_start)) < 600:
-            log("[TRAKT SYNC] Sync already in progress. Ignoring new request.")
-            if not silent:
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
-            return
-        # Stale lock (>10 min) — previous process was killed during sync
-        log("[TRAKT SYNC] Stale lock detected (>10min). Clearing and proceeding.")
-
-    window.setProperty('tmdbmovies_sync_active', 'true')
-    window.setProperty('tmdbmovies_sync_started', str(time.time()))
+    try:
+        from resources.lib.watched_provider import _sync_lock_acquire
+        _acq, _tok = _sync_lock_acquire()
+    except Exception as e:
+        log("[TRAKT SYNC] Lock acquire failed: %s. Ignoring new request." % e)
+        return 'locked'
+    if _acq != 'acquired':
+        log("[TRAKT SYNC] Sync already in progress. Ignoring new request.")
+        if not silent:
+            xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Syncing...", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+        return 'locked'
     log("[TRAKT SYNC] === STARTING %s SYNC ===" % ("FORCE" if force else "SMART"))
 
     try:
         _trakt_leg(silent=silent, force=force)
         log("[TRAKT SYNC] === SYNC COMPLETE ===")
+        return 'ok'
+    except Exception as e:
+        log("[TRAKT SYNC] === SYNC ERROR: %s ===" % e)
+        return 'error'
     finally:
-        window.clearProperty('tmdbmovies_sync_active')
-        window.clearProperty('tmdbmovies_sync_started')
+        try:
+            from resources.lib.watched_provider import _sync_lock_release
+            _sync_lock_release(_tok)
+        except Exception:
+            pass
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()

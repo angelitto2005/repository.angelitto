@@ -9,7 +9,7 @@ import threading
 import xbmc
 import xbmcvfs
 
-from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL
+from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL, kodi_abort_requested
 
 def _get_provider_raw():
     try:
@@ -878,7 +878,108 @@ def get_season_watched_count(tmdb_id, season):
 # =============================================================================
 _SYNC_LOCK_KEY = 'tmdbmovies_sync_active'
 _SYNC_START_STAMP_KEY = 'tmdbmovies_sync_started'
+_SYNC_OWNER_KEY = 'tmdbmovies_sync_owner'
+_SYNC_ATTEMPT_KEY = 'tmdbmovies_sync_attempt'
+_SYNC_FUTURE_SKEW = 300.0
+_SYNC_STALE_AFTER = 600.0
 _LAST_SYNC_STAMP_KEY = 'tmdbmovies_last_sync'
+
+
+class _SyncLockGuard:
+    def __init__(self, token):
+        try:
+            self._token = str(token or '')
+        except Exception:
+            self._token = ''
+
+    def close(self):
+        try:
+            import xbmcgui as _xg2
+            if not self._token:
+                return
+            _w = _xg2.Window(10000)
+            if _w.getProperty(_SYNC_OWNER_KEY) == self._token:
+                _w.clearProperty(_SYNC_LOCK_KEY)
+                _w.clearProperty(_SYNC_START_STAMP_KEY)
+                _w.clearProperty(_SYNC_OWNER_KEY)
+        except Exception:
+            pass
+
+
+def _sync_lock_release(token):
+    try:
+        import xbmcgui as _xg1
+        if not token:
+            return
+        _w = _xg1.Window(10000)
+        if _w.getProperty(_SYNC_OWNER_KEY) == str(token):
+            _w.clearProperty(_SYNC_LOCK_KEY)
+            _w.clearProperty(_SYNC_START_STAMP_KEY)
+            _w.clearProperty(_SYNC_OWNER_KEY)
+    except Exception:
+        pass
+
+
+def _sync_lock_read():
+    try:
+        import xbmcgui as _xg0
+        _w = _xg0.Window(10000)
+        return _w.getProperty(_SYNC_LOCK_KEY), _w.getProperty(_SYNC_START_STAMP_KEY), _w.getProperty(_SYNC_OWNER_KEY)
+    except Exception:
+        return '', '', ''
+
+
+def _sync_lock_acquire(post_update=False, update_stamp=None):
+    import time as _t
+    import uuid as _u
+    try:
+        _now = _t.time()
+    except Exception:
+        _now = 0.0
+    _lock, _started, _owner = _sync_lock_read()
+    if _lock == 'true':
+        _ts = None
+        try:
+            _ts = float(_started) if _started else None
+        except Exception:
+            _ts = None
+        _takeover = False
+        if post_update and update_stamp is not None:
+            try:
+                _uts = float(update_stamp)
+            except Exception:
+                _uts = None
+            if _uts is not None and _ts is not None and _ts < _uts and _ts <= _now + _SYNC_FUTURE_SKEW:
+                _takeover = True
+            elif _ts is None and not _owner:
+                _takeover = True
+            if _takeover:
+                try:
+                    xbmc.log('[SYNC DISPATCH] Post-update takeover: clearing pre-update lock.', xbmc.LOGINFO)
+                except Exception:
+                    pass
+            else:
+                return 'locked', ''
+        if not _takeover and _ts is not None and (_now - _ts) < _SYNC_STALE_AFTER:
+            return 'locked', ''
+    try:
+        _token = _u.uuid4().hex
+    except Exception:
+        _token = 't%d' % int(_now)
+    try:
+        import xbmcgui as _xg0
+        _w = _xg0.Window(10000)
+        _w.setProperty(_SYNC_START_STAMP_KEY, str(_now))
+        _w.setProperty(_SYNC_OWNER_KEY, _token)
+        _w.setProperty(_SYNC_LOCK_KEY, 'true')
+    except Exception:
+        return 'locked', ''
+    try:
+        from resources.lib.config import register_shutdown_iterator
+        register_shutdown_iterator(_SyncLockGuard(_token))
+    except Exception:
+        pass
+    return 'acquired', _token
 
 _PROVIDER_SYNC_COLORS = {
     'local': 'FFF70D1A',
@@ -923,36 +1024,19 @@ def _provider_connected(p):
     return False
 
 
-def sync_full_library(silent=False, force=False, source='manual'):
-    """Dispatcherul UNIC de sincronizare (Smart / Force / auto-sync 30 min):
-    ruleaza secvential picioarele Local -> TMDb -> Trakt -> MDBList -> Simkl ->
-    PunchPlay, cu un singur DialogProgressBG (heading colorat cu culoarea
-    providerului scanat) si O SINGURA notificare finala.
-
-    Detine EXCLUSIV lock-ul global tmdbmovies_sync_active — picioarele se cheama
-    direct pe functiile interne (*_leg), NU prin wrapperele publice, ca sa nu
-    se auto-sare pe lock contention. Stampila tmdbmovies_last_sync (fereastra
-    glisanta 30 min) se scrie DOAR dupa achizitia lock-ului: un sync evitat
-    (alt sync in desfasurare) nu prelungeste fereastra.
-    """
+def sync_full_library(silent=False, force=False, source='manual', post_update=False, update_stamp=None):
     import time as _time
     import xbmcgui as _xg
 
     window = _xg.Window(10000)
-    lock = window.getProperty(_SYNC_LOCK_KEY)
-    if lock == 'true':
-        started = window.getProperty(_SYNC_START_STAMP_KEY)
-        if started and (_time.time() - float(started)) < 600:
-            xbmc.log('[SYNC DISPATCH] Sync already in progress. Ignoring new request.', xbmc.LOGINFO)
-            if not silent:
-                _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
-                                          "Syncing...",
-                                          os.path.join(ADDON_PATH, 'icon.png'))
-            return
-        xbmc.log('[SYNC DISPATCH] Stale lock detected (>10min). Clearing and proceeding.', xbmc.LOGINFO)
-
-    window.setProperty(_SYNC_LOCK_KEY, 'true')
-    window.setProperty(_SYNC_START_STAMP_KEY, str(_time.time()))
+    _acq, _own = _sync_lock_acquire(post_update=post_update, update_stamp=update_stamp)
+    if _acq != 'acquired':
+        xbmc.log('[SYNC DISPATCH] Sync already in progress. Ignoring new request.', xbmc.LOGINFO)
+        if not silent:
+            _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                      "Syncing...",
+                                      os.path.join(ADDON_PATH, 'icon.png'))
+        return 'locked'
     _t0 = _time.time()
     _kind = 'AUTO' if source == 'auto' else ('FULL' if force else 'SMART')
     xbmc.log('[SYNC DISPATCH] === STARTING %s SYNC ===' % _kind, xbmc.LOGINFO)
@@ -1002,7 +1086,10 @@ def sync_full_library(silent=False, force=False, source='manual'):
         # sau bifat in Custom selection (paritate cu dispatcherul vechi).
         local_rebuild = (prov == 'local') or (mark_mode == '2' and local_toggled)
 
-        ran_any = False
+        connected = 0
+        succeeded = 0
+        failed = 0
+        aborted = False
         n = len(legs)
         for i, p in enumerate(legs):
             base = int(100.0 * i / n)
@@ -1010,9 +1097,17 @@ def sync_full_library(silent=False, force=False, source='manual'):
             color = _PROVIDER_SYNC_COLORS.get(p, 'white')
             name = _PROVIDER_SYNC_NAMES.get(p, p)
 
+            try:
+                if kodi_abort_requested():
+                    aborted = True
+                    break
+            except Exception:
+                pass
+
             if not _provider_connected(p):
                 xbmc.log('[SYNC DISPATCH] %s leg skipped (not connected).' % p.upper(), xbmc.LOGINFO)
                 continue
+            connected += 1
 
             xbmc.log('[SYNC DISPATCH] --- %s leg starting ---' % p.upper(), xbmc.LOGINFO)
 
@@ -1083,31 +1178,56 @@ def sync_full_library(silent=False, force=False, source='manual'):
                                    progress_cb=_leg_cb, suppress_notifications=True)
             except Exception as e:
                 xbmc.log('[SYNC DISPATCH] %s leg error: %s' % (p.upper(), e), xbmc.LOGERROR)
+                failed += 1
             else:
-                ran_any = True
+                succeeded += 1
 
-        # Fereastra glisanta 30 min: stampila se scrie DOAR daca sync-ul a rulat
-        # efectiv (macar un picior), cu valoarea TIMPULUI DE START — exact ca in
-        # exemplul: auto 15:00 -> manual 15:15 -> urmatorul auto la 15:45.
-        if ran_any:
+        if aborted:
+            status = 'aborted'
+        elif succeeded >= 1:
+            status = 'ok'
+        elif connected > 0:
+            status = 'error'
+        else:
+            status = 'noop'
+
+        if status != 'aborted':
+            try:
+                window.setProperty(_SYNC_ATTEMPT_KEY, str(_t0))
+            except Exception:
+                pass
+
+        if status == 'ok':
             window.setProperty(_LAST_SYNC_STAMP_KEY, str(_t0))
-
-        _say(100, 'FF00CED1', 'TMDb Movies', 'Sync complete')
+            _say(100, 'FF00CED1', 'TMDb Movies', 'Sync complete')
+            xbmc.log('[SYNC DISPATCH] === SYNC COMPLETE (%d/%d legs ok) ===' % (succeeded, connected), xbmc.LOGINFO)
+            if not silent:
+                _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                          "Sync Complete",
+                                          _ICON)
+        elif status == 'error':
+            xbmc.log('[SYNC DISPATCH] === SYNC ERROR (%d/%d legs failed) ===' % (failed, connected), xbmc.LOGERROR)
+            if not silent:
+                _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                          "Sync errors - check log",
+                                          _ICON)
+        elif status == 'noop':
+            xbmc.log('[SYNC DISPATCH] === SYNC NOOP (no provider connected) ===', xbmc.LOGINFO)
+        else:
+            xbmc.log('[SYNC DISPATCH] === SYNC ABORTED ===', xbmc.LOGINFO)
         if p_dialog:
             try: p_dialog.close()
             except Exception: pass
             p_dialog = None
-        xbmc.log('[SYNC DISPATCH] === SYNC COMPLETE ===', xbmc.LOGINFO)
-        if not silent:
-            _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
-                                      "Sync Complete",
-                                      _ICON)
+        return status
     finally:
         if p_dialog:
             try: p_dialog.close()
             except Exception: pass
-        window.clearProperty(_SYNC_LOCK_KEY)
-        window.clearProperty(_SYNC_START_STAMP_KEY)
+        try:
+            _sync_lock_release(_own)
+        except Exception:
+            pass
         try:
             from resources.lib.cache import clear_all_fast_cache
             clear_all_fast_cache()

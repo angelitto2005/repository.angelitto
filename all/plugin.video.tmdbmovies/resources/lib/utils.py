@@ -1224,31 +1224,57 @@ def clean_settings():
     return False
 
 
+def _parse_version_tuple(v):
+    try:
+        _parts = []
+        for _x in str(v or '').strip().split('.'):
+            _num = ''
+            for _ch in _x:
+                if _ch.isdigit():
+                    _num += _ch
+                else:
+                    break
+            _parts.append(int(_num) if _num else 0)
+        return tuple(_parts) if _parts else None
+    except Exception:
+        return None
+
+
 def check_addon_update():
     """
     Checks if the addon has been updated. If so, runs maintenance.
     Called automatically on Kodi startup (from service.py).
     """
     from resources.lib.config import ADDON
-    
+
     current_version = ADDON.getAddonInfo('version')
     saved_version = ADDON.getSetting('installed_version')
-    
-    if saved_version != current_version:
-        log(f"[MAINTENANCE] Update detected: from v{saved_version} to v{current_version}. Running auto-cleanup...")
-        
-        # 1. Clean old settings from XML
-        clean_settings()
-        
-        # 2. Clear cache (to prevent conflicts with old data structures)
-        # Will NOT delete watch history, only temporary cache!
-        from resources.lib.utils import clear_cache
-        clear_cache()
-        
-        # 3. Save new version
+
+    if saved_version == current_version:
+        return False
+
+    _saved_t = _parse_version_tuple(saved_version)
+    _cur_t = _parse_version_tuple(current_version)
+    if saved_version and _saved_t is not None and _cur_t is not None and _saved_t > _cur_t:
+        log(f"[MAINTENANCE] Downgrade detected: from v{saved_version} to v{current_version}. Saving version without cache wipe.")
         ADDON.setSetting('installed_version', current_version)
-        log("[MAINTENANCE] Update and cleanup process completed successfully!")
-        return True
+        try:
+            from resources.lib.cache import clear_all_fast_cache
+            clear_all_fast_cache()
+        except Exception:
+            pass
+        return False
+
+    log(f"[MAINTENANCE] Update detected: from v{saved_version} to v{current_version}. Running auto-cleanup...")
+
+    clean_settings()
+
+    from resources.lib.utils import clear_cache
+    clear_cache()
+
+    ADDON.setSetting('installed_version', current_version)
+    log("[MAINTENANCE] Update and cleanup process completed successfully!")
+    return True
     return False
 
 

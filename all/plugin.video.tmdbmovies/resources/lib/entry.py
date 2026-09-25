@@ -2217,7 +2217,7 @@ def _deferred_plugin_refresh(delay_ms=700):
             pass
     threading.Thread(target=_run, daemon=True).start()
 
-def _run_forced_post_update_sync():
+def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
     """Rebuild complet datelor dupa update de addon, UNCONDITIONAL si IMEDIAT,
     in thread-uri daemon — NU depinde de waitForAbort(60) din run(), care pe
     Android e frecvent intrerupt de idle/background (run() iese inainte de
@@ -2248,14 +2248,21 @@ def _run_forced_post_update_sync():
         # providerii neconectati se sara elegant; o singura notificare finala.
         try:
             from resources.lib.watched_provider import sync_full_library as _disp
-            _disp(silent=True, force=True)
-            xbmc.log("[TMDb Movies] Post-update forced sync (dispatcher) - Success.", xbmc.LOGINFO)
+            _status = _disp(silent=True, force=True, post_update=True, update_stamp=t_detect)
         except Exception as e:
+            _status = 'error'
             xbmc.log(f"[TMDb Movies] Post-update forced sync - Failed: {e}", xbmc.LOGERROR)
-
-        # Toate providerii au terminat -> UN singur widget refresh (Up Next-ul
-        # alimentat si de TMDb e complet abia acum).
-        _maybe_refresh_widgets_after_sync(force=True)
+        if _status == 'ok':
+            xbmc.log("[TMDb Movies] Post-update forced sync (dispatcher) - Success.", xbmc.LOGINFO)
+            if monitor is not None:
+                try:
+                    monitor._post_update_forced_done = True
+                except Exception:
+                    pass
+            _maybe_refresh_widgets_after_sync(force=True)
+        else:
+            xbmc.log("[TMDb Movies] Post-update forced sync - SKIPPED (status=%s)." % (_status,), xbmc.LOGINFO)
+            _maybe_refresh_widgets_after_sync(force=False)
 
     threading.Thread(target=_run_providers, daemon=True).start()
 
@@ -2324,6 +2331,7 @@ def run_service():
             self.first_run = True
             self._version_changed = False
             self._post_update_forced_done = False
+            self._post_update_force_consumed = False
             self._provider_pending = False
             self._settings_pending = False
             self._last_provider = None
@@ -2334,16 +2342,12 @@ def run_service():
                 from resources.lib.utils import check_addon_update
                 if check_addon_update():
                     self._version_changed = True
-                    # Reconstruire imediata datelor (cache-urile tocmai au fost sterse
-                    # de check_addon_update) — fara dependenta de waitForAbort din
-                    # run(), care pe Android e intrerupt de idle/background.
-                    _run_forced_post_update_sync()
-                    # Forced sync-ul din __init__ deja a facut rebuild-ul complet
-                    # (force=True) pentru TOTI providerii. Primul sync din run() (first_run)
-                    # si sync-urile ulterioare trec pe SMART (force=False) ca sa nu
-                    # refaca totul dublu — _version_changed ramane True doar pentru
-                    # _delay=60s (fereastra CAddonMgr reload).
-                    self._post_update_forced_done = True
+                    try:
+                        import time as _tu
+                        _t_detect = _tu.time()
+                    except Exception:
+                        _t_detect = 0.0
+                    _run_forced_post_update_sync(_t_detect, self)
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
             try:
@@ -2685,27 +2689,29 @@ def run_service():
                 xbmc.log(f"[TMDb Movies] RAM prefetch error: {e}", xbmc.LOGINFO)
             
             if self.first_run:
-                # Dupa update de addon, _run_forced_post_update_sync() din __init__ a
-                # facut deja rebuild-ul complet (force=True) pentru TOTI providerii.
-                # Sarim sync_worker()-ul din first_run ca sa NU existe un al 2-lea sync
-                # (chiar SMART re-face Hidden shows + Up Next costisitor + timestamps).
-                # Doar cand forced sync-ul NU a rulat (update nerecunoscut? esec?) trecem
-                # la sync_worker() normal pt a nu lasa datele stale.
+                # Flag-ul se seteaza doar la finalizarea cu succes a sync-ului fortat.
+                # Daca daemonul inca ruleaza, sync_worker() loveste lock-ul si sare
+                # curat (status locked) - fara sync dublu. Daca daemonul a murit,
+                # flag-ul ramane False si first_run recupereaza cu sync normal.
                 if not getattr(self, '_post_update_forced_done', False):
                     self.sync_worker()
                 self.first_run = False
                 
             while not self.abortRequested():
                 # Fereastra GLISANTA 30 min: felii de 60s in loc de waitForAbort(1800)
-                # orb. Fiecare sync (automat SAU manual) scrie stampila tmdbmovies_last_sync
-                # la START-ul rularii reale, deci urmatorul auto-sync e mereu la 30 min de
-                # la ULTIMUL sync (manual 15:15 dupa auto 15:00 -> urmatorul auto 15:45).
+                # orb. Fiecare sync incheiat (ok/error/noop, nu aborted) scrie
+                # tmdbmovies_sync_attempt; last_sync se scrie doar pe ok.
                 if self.waitForAbort(60):
                     break
                 try:
-                    _last_sync_stamp = float(xbmcgui.Window(10000).getProperty('tmdbmovies_last_sync') or 0)
+                    _att = float(xbmcgui.Window(10000).getProperty('tmdbmovies_sync_attempt') or 0)
                 except Exception:
-                    _last_sync_stamp = 0.0
+                    _att = 0.0
+                try:
+                    _ok_ts = float(xbmcgui.Window(10000).getProperty('tmdbmovies_last_sync') or 0)
+                except Exception:
+                    _ok_ts = 0.0
+                _last_sync_stamp = max(_att, _ok_ts)
                 if _last_sync_stamp and (time.time() - _last_sync_stamp >= 1800):
                     self.sync_worker()
                 try:
@@ -2733,27 +2739,31 @@ def run_service():
                 pass
 
         def _sync_force(self):
-            # True DOAR daca update-ul a fost detectat dar forced sync-ul din __init__
-            # NU a fost deja lansat (caz rar). Dupa un update, _post_update_forced_done
-            # e True -> sync-urile din run()/sync_worker raman SMART (force=False) ca
-            # sa nu refaca rebuild-ul complet facut deja (evita sync dublu/triplu la boot).
-            return getattr(self, '_version_changed', False) and not getattr(self, '_post_update_forced_done', False)
+            if getattr(self, '_post_update_forced_done', False):
+                return False
+            if getattr(self, '_post_update_force_consumed', False):
+                return False
+            if getattr(self, '_version_changed', False):
+                self._post_update_force_consumed = True
+                return True
+            return False
 
         def sync_worker(self):
             try:
-                # Dispecer UNIC secvential: Local -> TMDb -> Trakt -> MDBList -> Simkl
-                # -> PunchPlay (un singur thread, un singur ProgressBG colorat, o singura
-                # notificare finala). Inlocuieste cele 4 thread-uri paralele vechi.
                 xbmc.log("[TMDb Movies] Monitor Service Update - Starting sequential sync (all providers)...", xbmc.LOGINFO)
 
                 def _run_all():
                     try:
                         from resources.lib.watched_provider import sync_full_library
-                        sync_full_library(silent=True, force=self._sync_force(), source='auto')
-                        xbmc.log("[TMDb Movies] Monitor Service Update - Success. Next check in 60s (rolling 30 min window)...", xbmc.LOGINFO)
-                        _maybe_refresh_widgets_after_sync(force=self._sync_force())
+                        _st = sync_full_library(silent=True, force=self._sync_force(), source='auto')
                     except Exception as e:
+                        _st = 'error'
                         xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
+                    if _st == 'ok':
+                        xbmc.log("[TMDb Movies] Monitor Service Update - Success. Next check in 60s (rolling 30 min window)...", xbmc.LOGINFO)
+                    else:
+                        xbmc.log("[TMDb Movies] Monitor Service Update - SKIPPED (status=%s)." % (_st,), xbmc.LOGINFO)
+                    _maybe_refresh_widgets_after_sync(force=(_st == 'ok'))
                 threading.Thread(target=_run_all, daemon=True).start()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
