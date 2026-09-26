@@ -354,7 +354,7 @@ def _add_service_dir(label, query, icon, plot=''):
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
     if plot:
         try:
-            li.setInfo('video', {'plot': plot})
+            li.getVideoInfoTag().setPlot(plot)
         except Exception:
             pass
     cm = [('Refresh', f'RunPlugin({_build_url({"mode": "debrid_refresh"})})')]
@@ -367,7 +367,7 @@ def _add_account_item(label, query, icon, plot=''):
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
     if plot:
         try:
-            li.setInfo('video', {'plot': plot})
+            li.getVideoInfoTag().setPlot(plot)
         except Exception:
             pass
     _add_dir(_build_url(query), li, False)
@@ -378,7 +378,7 @@ def _add_connect_item(label, query, icon, plot=''):
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
     if plot:
         try:
-            li.setInfo('video', {'plot': plot})
+            li.getVideoInfoTag().setPlot(plot)
         except Exception:
             pass
     _add_dir(_build_url(query), li, False)
@@ -397,7 +397,7 @@ def _add_clear_cache_item(label, mode, icon, plot=''):
     li.setArt({'icon': icon, 'thumb': icon})
     if plot:
         try:
-            li.setInfo('video', {'plot': plot})
+            li.getVideoInfoTag().setPlot(plot)
         except Exception:
             pass
     _add_dir(_build_url({'mode': mode}), li, False)
@@ -408,7 +408,7 @@ def _add_disconnect_item(label, provider, icon, plot=''):
     li.setArt({'icon': icon, 'thumb': icon})
     if plot:
         try:
-            li.setInfo('video', {'plot': plot})
+            li.getVideoInfoTag().setPlot(plot)
         except Exception:
             pass
     _add_dir(_build_url({'mode': 'debrid_disconnect', 'provider': provider}), li, False)
