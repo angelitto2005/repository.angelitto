@@ -91,7 +91,27 @@ def account_info():
 
 def user_cloud(page=1, limit=1000):
     params = {'page': int(page or 1), 'limit': int(limit or 1000)}
-    return _request('GET', 'torrents', params=params) or []
+    lim = int(limit or 1000)
+    try:
+        r = _request('GET', 'torrents', params=params, raw=True)
+    except DebridError as e:
+        if 'HTTP 204' in str(e):
+            return {'items': [], 'total': 0, 'total_pages': 0}
+        raise
+    try:
+        items = r.json()
+    except Exception:
+        items = []
+    if not isinstance(items, list):
+        items = []
+    try:
+        total = int(r.headers.get('X-Total-Count', '0'))
+    except Exception:
+        total = 0
+    total_pages = 0
+    if total > 0:
+        total_pages = max(1, int(math.ceil(total / float(lim))))
+    return {'items': items, 'total': total, 'total_pages': total_pages}
 
 
 def torrent_info(torrent_id):
@@ -106,7 +126,7 @@ def downloads(page=1, limit=50):
         r = _request('GET', 'downloads', params={'page': int(page or 1), 'limit': int(limit or 50)}, raw=True)
     except DebridError as e:
         if 'HTTP 204' in str(e):
-            return {'items': [], 'total_pages': 1}
+            return {'items': [], 'total': 0, 'total_pages': 1}
         raise
     try:
         items = r.json()
@@ -124,7 +144,7 @@ def downloads(page=1, limit=50):
         total_pages = max(1, int(math.ceil(total / float(limit))))
     elif len(items) >= limit:
         total_pages = (int(page or 1)) + 1
-    return {'items': items, 'total_pages': total_pages}
+    return {'items': items, 'total': total, 'total_pages': total_pages}
 
 
 def delete_torrent(torrent_id):

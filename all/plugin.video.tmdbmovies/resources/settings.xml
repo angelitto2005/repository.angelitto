@@ -512,7 +512,7 @@
     </category>
 
     <!-- 11. MY DEBRID CLOUD -->
-    <category label="[B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B]">
+    <category label="[B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B]">
         <setting type="lsep" label="TorBox Account"/>
         <setting id="torbox_api_key" type="text" option="hidden" visible="false" label="TorBox API Key" default=""/>
         <setting label="Status:" type="text" id="torbox_status" enable="false" default="Disconnected"/>

@@ -1,4 +1,4 @@
-1.1.300
+1.1.301
 - New My Debrid Cloud directory in the main menu (show/hide from Settings -> Menu): TorBox and Real-Debrid. API keys are entered from the directory and validated live before being saved.
 - Fix a small bug with PunchPlay calendar
 

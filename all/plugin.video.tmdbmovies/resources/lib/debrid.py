@@ -53,6 +53,10 @@ _ADDON = None
 
 _CACHE_TTL = 1800
 
+_RD_TOTAL_KEY = 'tmdbmovies_rd_total'
+_RD_TOTAL_TTL = 0.5
+_RD_TOTAL_FETCHING = False
+
 
 def _ensure_globals():
     global _ADDON, _BASE_URL, _HANDLE
@@ -196,10 +200,14 @@ def _notify(msg, icon=None, ms=3000):
     xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDb Movies'), msg, icon or _icon('debrid.png'), ms, False)
 
 
-def _count(label, count):
-    if count > 0:
-        return f'{label} [B][COLOR {_HL_COLOR}]({count})[/COLOR][/B]'
-    return label
+def _count(label, count, exact=True):
+    try:
+        n = int(count or 0)
+    except Exception:
+        n = 0
+    if n <= 0:
+        return label
+    return f'{label} [B][COLOR {_HL_COLOR}]({count}{"" if exact else "+"})[/COLOR][/B]'
 
 
 def _fmt_size(num_bytes):
@@ -311,23 +319,38 @@ def _add_inactive_row(label, icon):
     _add_dir(_build_url({'mode': 'debrid_refresh'}), li, False)
 
 
-def _add_service_dir(label, query, icon):
+def _add_service_dir(label, query, icon, plot=''):
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+    if plot:
+        try:
+            li.setInfo('video', {'plot': plot})
+        except Exception:
+            pass
     cm = [('Refresh', f'RunPlugin({_build_url({"mode": "debrid_refresh"})})')]
     li.addContextMenuItems(cm)
     _add_dir(_build_url(query), li, True)
 
 
-def _add_account_item(label, query, icon):
+def _add_account_item(label, query, icon, plot=''):
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+    if plot:
+        try:
+            li.setInfo('video', {'plot': plot})
+        except Exception:
+            pass
     _add_dir(_build_url(query), li, False)
 
 
-def _add_connect_item(label, query, icon):
+def _add_connect_item(label, query, icon, plot=''):
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+    if plot:
+        try:
+            li.setInfo('video', {'plot': plot})
+        except Exception:
+            pass
     _add_dir(_build_url(query), li, False)
 
 
@@ -339,15 +362,25 @@ def _add_refresh_item(label, icon):
     _add_dir(url, li, False)
 
 
-def _add_clear_cache_item(label, mode, icon):
+def _add_clear_cache_item(label, mode, icon, plot=''):
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': icon, 'thumb': icon})
+    if plot:
+        try:
+            li.setInfo('video', {'plot': plot})
+        except Exception:
+            pass
     _add_dir(_build_url({'mode': mode}), li, False)
 
 
-def _add_disconnect_item(label, provider, icon):
+def _add_disconnect_item(label, provider, icon, plot=''):
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': icon, 'thumb': icon})
+    if plot:
+        try:
+            li.setInfo('video', {'plot': plot})
+        except Exception:
+            pass
     _add_dir(_build_url({'mode': 'debrid_disconnect', 'provider': provider}), li, False)
 
 
@@ -359,24 +392,111 @@ def _rd_cloud_key(page, limit):
     return f"tmdbmovies_rd_cloud_p{page}_l{limit}"
 
 
+def _rd_payload(obj):
+    if isinstance(obj, dict):
+        try:
+            total = int(obj.get('total') or 0)
+        except Exception:
+            total = 0
+        try:
+            total_pages = int(obj.get('total_pages') or 0)
+        except Exception:
+            total_pages = 0
+        return (obj.get('items') or []), total, total_pages
+    return (obj or []), 0, 0
+
+
+def _rd_store_total(total):
+    if total and int(total) > 0:
+        try:
+            _cache_set(_RD_TOTAL_KEY, int(total), hours=_RD_TOTAL_TTL)
+        except Exception:
+            pass
+
+
+def _rd_total_label():
+    v = _cache_get(_RD_TOTAL_KEY)
+    if v is not None:
+        try:
+            n = int(v)
+        except Exception:
+            n = 0
+        if n > 0:
+            return str(n), True
+    return _count_rd_cloud_cached()
+
+
 def _count_rd_cloud_cached():
-    items = _cache_get(_rd_cloud_key(1, _rd_cloud_limit()))
-    if isinstance(items, list):
-        return sum(1 for it in items if isinstance(it, dict) and str(it.get('status') or '') == 'downloaded')
-    return 0
+    items, total, _tp = _rd_payload(_cache_get(_rd_cloud_key(1, _rd_cloud_limit())))
+    if total > 0:
+        return str(total), True
+    n = sum(1 for it in items if isinstance(it, dict) and str(it.get('status') or '') == 'downloaded')
+    return str(n), False
+
+
+def _maybe_refresh_rd_total_bg():
+    global _RD_TOTAL_FETCHING
+    if _RD_TOTAL_FETCHING:
+        return
+    try:
+        from resources.lib import realdebrid_api
+        if not realdebrid_api.is_authenticated():
+            return
+    except Exception:
+        return
+    if _cache_get(_RD_TOTAL_KEY) is not None:
+        return
+
+    def _run():
+        global _RD_TOTAL_FETCHING
+        try:
+            from resources.lib import realdebrid_api
+            payload = realdebrid_api.user_cloud(1, 1)
+            items, total, _tp = _rd_payload(payload)
+            if total > 0:
+                _rd_store_total(total)
+                xbmc.log('[DEBRID][RD] total=%d (background, page1=%d)' % (total, len(items)), xbmc.LOGINFO)
+            elif not items:
+                return
+            try:
+                if 'tmdbmovies' not in (xbmc.getInfoLabel('Container.PluginName') or '').lower():
+                    return
+            except Exception:
+                return
+            try:
+                if xbmc.getCondVisibility('System.HasModalDialog') or xbmc.getCondVisibility('Container.IsUpdating'):
+                    return
+            except Exception:
+                return
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            xbmc.log('[DEBRID][RD] total background fetch failed: %s' % e, xbmc.LOGWARNING)
+        finally:
+            _RD_TOTAL_FETCHING = False
+
+    _RD_TOTAL_FETCHING = True
+    try:
+        import threading
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        _RD_TOTAL_FETCHING = False
 
 
 def _view_main():
     _ensure_globals()
 
     tb_count = _count_tb_finished_cached()
-    rd_count = _count_rd_cloud_cached()
+    rd_text, rd_exact = _rd_total_label()
+    xbmc.log('[DEBRID][RD] root label count=%s exact=%s' % (rd_text, rd_exact), xbmc.LOGDEBUG)
 
     _add_service_dir(_count('[B][COLOR ' + _TB_COLOR + ']TorBox[/COLOR][/B]', tb_count),
-                     {'mode': 'debrid_torbox'}, _tb_icon())
-    _add_service_dir(_count('[B][COLOR ' + _RD_COLOR + ']Real-Debrid[/COLOR][/B]', rd_count),
-                     {'mode': 'debrid_rd'}, _rd_icon())
+                     {'mode': 'debrid_torbox'}, _tb_icon(),
+                     plot='Your TorBox cloud: torrents, usenet and web downloads, plus the AirLock view.')
+    _add_service_dir(_count('[B][COLOR ' + _RD_COLOR + ']Real-Debrid[/COLOR][/B]', rd_text, rd_exact),
+                     {'mode': 'debrid_rd'}, _rd_icon(),
+                     plot='Your Real-Debrid account: cloud storage with the torrents you added, and the history of generated download links.')
     _end()
+    _maybe_refresh_rd_total_bg()
 
 
 def _view_torbox():
@@ -385,7 +505,8 @@ def _view_torbox():
 
     if not torbox_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _TB_COLOR + ']Connect TorBox[/COLOR][/B] (enter API key)',
-                          {'mode': 'debrid_set_torbox_key'}, _tb_icon())
+                          {'mode': 'debrid_set_torbox_key'}, _tb_icon(),
+                          plot='Stores a TorBox API key on this device so the addon can read your TorBox cloud. Get the key from your TorBox account settings.')
         _end()
         return
 
@@ -401,11 +522,15 @@ def _view_torbox():
     if first_err is not None:
         _error_item(first_err, {'mode': 'debrid_tb_cloud', 'mediatype': first_mt}, _tb_icon())
 
-    _add_account_item('[B][COLOR ' + _TB_COLOR + ']TorBox Account[/COLOR][/B]', {'mode': 'debrid_tb_account'}, _tb_icon())
+    _add_account_item('[B][COLOR ' + _TB_COLOR + ']TorBox Account[/COLOR][/B]', {'mode': 'debrid_tb_account'}, _tb_icon(),
+                      plot='Your TorBox account: plan, premium expiry, days left and the AirLock storage quota for your plan.')
     if first_err is None:
-        _add_service_dir(_count('[B]TorBox Torrent[/B]', counts.get('torrents', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'torrents'}, _tb_icon())
-        _add_service_dir(_count('[B]TorBox Usenet[/B]', counts.get('usenet', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'usenet'}, _tb_icon())
-        _add_service_dir(_count('[B]TorBox WebDownload[/B]', counts.get('webdl', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'webdl'}, _tb_icon())
+        _add_service_dir(_count('[B]TorBox Torrent[/B]', counts.get('torrents', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'torrents'}, _tb_icon(),
+                         plot='Torrents stored in your TorBox cloud. The badge counts the finished ones (cached or 100% downloaded).')
+        _add_service_dir(_count('[B]TorBox Usenet[/B]', counts.get('usenet', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'usenet'}, _tb_icon(),
+                         plot='Usenet downloads stored in your TorBox cloud. The badge counts the finished ones.')
+        _add_service_dir(_count('[B]TorBox WebDownload[/B]', counts.get('webdl', 0)), {'mode': 'debrid_tb_cloud', 'mediatype': 'webdl'}, _tb_icon(),
+                         plot='Web downloads (direct HTTP links) stored in your TorBox cloud. The badge counts the finished ones.')
 
         air_count = 0
         for mt in ('torrents', 'usenet', 'webdl'):
@@ -413,10 +538,13 @@ def _view_torbox():
             if isinstance(air_items, list):
                 air_count += sum(1 for it in air_items if isinstance(it, dict) and it.get('airlocked') is True)
         _add_service_dir(_count('[B][COLOR FF00E5FF]AirLock[/COLOR][/B] (Extended Retention)', air_count),
-                         {'mode': 'debrid_tb_airlock'}, _tb_icon())
+                         {'mode': 'debrid_tb_airlock'}, _tb_icon(),
+                         plot='Items you flagged as AirLock. TorBox keeps them past the normal retention period, using the AirLock quota included in your plan.')
 
-    _add_clear_cache_item('[B][COLOR ' + _ERR_COLOR + ']Clear TorBox Cache[/COLOR][/B]', 'debrid_tb_clear_cache', _tb_icon())
-    _add_disconnect_item('[B][COLOR ' + _ERR_COLOR + ']Disconnect TorBox[/COLOR][/B]', 'torbox', _tb_icon())
+    _add_clear_cache_item('[B][COLOR ' + _ERR_COLOR + ']Clear TorBox Cache[/COLOR][/B]', 'debrid_tb_clear_cache', _tb_icon(),
+                          plot='Drops the locally cached TorBox lists. Nothing is deleted from TorBox; the next visit re-fetches them from the API.')
+    _add_disconnect_item('[B][COLOR ' + _ERR_COLOR + ']Disconnect TorBox[/COLOR][/B]', 'torbox', _tb_icon(),
+                         plot='Removes the TorBox API key stored on this device. Your cloud and account stay untouched.')
     _end()
 
 
@@ -426,20 +554,37 @@ def _view_rd():
 
     if not realdebrid_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _RD_COLOR + ']Connect Real-Debrid[/COLOR][/B] (enter API key)',
-                          {'mode': 'debrid_set_rd_key'}, _rd_icon())
+                          {'mode': 'debrid_set_rd_key'}, _rd_icon(),
+                          plot='Stores a Real-Debrid API key on this device so the addon can read your Real-Debrid cloud. Generate it in your Real-Debrid account settings.')
         _end()
         return
 
-    items, err = _cached_call(_rd_cloud_key(1, _rd_cloud_limit()), lambda: realdebrid_api.user_cloud(1, _rd_cloud_limit()))
+    payload, err = _cached_call(_rd_cloud_key(1, _rd_cloud_limit()), lambda: realdebrid_api.user_cloud(1, _rd_cloud_limit()))
     if err:
         _error_item(err, {'mode': 'debrid_rd_cloud'}, _rd_icon())
 
-    _add_account_item('[B][COLOR ' + _RD_COLOR + ']Real-Debrid Account Info[/COLOR][/B]', {'mode': 'debrid_rd_account'}, _rd_icon())
+    _add_account_item('[B][COLOR ' + _RD_COLOR + ']Real-Debrid Account Info[/COLOR][/B]', {'mode': 'debrid_rd_account'}, _rd_icon(),
+                      plot='Your Real-Debrid account: user, e-mail, plan, premium expiry, days left and fidelity points.')
     if not err:
-        _add_service_dir(_count('[B]Real-Debrid Cloud Storage[/B]', _count_rd_cloud_cached()), {'mode': 'debrid_rd_cloud'}, _rd_icon())
-        _add_service_dir('[B]Real-Debrid History[/B]', {'mode': 'debrid_rd_downloads'}, _rd_icon())
-    _add_clear_cache_item('[B][COLOR ' + _ERR_COLOR + ']Clear Real-Debrid Cache[/COLOR][/B]', 'debrid_rd_clear_cache', _rd_icon())
-    _add_disconnect_item('[B][COLOR ' + _ERR_COLOR + ']Disconnect Real-Debrid[/COLOR][/B]', 'rd', _rd_icon())
+        items, total, _tp = _rd_payload(payload)
+        _rd_store_total(total)
+        if total > 0:
+            cloud_label = _count('[B]Real-Debrid Cloud Storage[/B]', str(total), True)
+        else:
+            dl = sum(1 for it in items if isinstance(it, dict) and str(it.get('status') or '') == 'downloaded')
+            cloud_label = _count('[B]Real-Debrid Cloud Storage[/B]', str(dl), False)
+        _add_service_dir(cloud_label, {'mode': 'debrid_rd_cloud'}, _rd_icon(),
+                         plot='Torrents in your Real-Debrid cloud, newest first. The badge is the server total and counts every status shown here, not only the completed ones.')
+
+        dl_payload, _dl_err = _cached_call('tmdbmovies_rd_dl_total', lambda: realdebrid_api.downloads(1, 1))
+        _dl_items, dl_total, _dl_tp = _rd_payload(dl_payload)
+        hist_label = _count('[B]Real-Debrid History[/B]', str(dl_total) if dl_total > 0 else '', True)
+        _add_service_dir(hist_label, {'mode': 'debrid_rd_downloads'}, _rd_icon(),
+                         plot='Download links you generated on Real-Debrid (your unrestrict history), not the cloud torrents. The badge is the total Real-Debrid holds for this endpoint.')
+    _add_clear_cache_item('[B][COLOR ' + _ERR_COLOR + ']Clear Real-Debrid Cache[/COLOR][/B]', 'debrid_rd_clear_cache', _rd_icon(),
+                          plot='Drops the locally cached Real-Debrid lists. Nothing is deleted from Real-Debrid; the next visit re-fetches them from the API.')
+    _add_disconnect_item('[B][COLOR ' + _ERR_COLOR + ']Disconnect Real-Debrid[/COLOR][/B]', 'rd', _rd_icon(),
+                         plot='Removes the Real-Debrid API key stored on this device. Your cloud and account stay untouched.')
     _end()
 
 
@@ -523,15 +668,16 @@ def _add_tb_folder_row(item, mediatype):
     size = _fmt_size(item.get('size'))
     created = _fmt_dmy(item.get('created_at') or '')
     status = _tb_status(item)
-    parts = [f'[B]{status}[/B]']
+    airlocked = item.get('airlocked')
+    parts = []
+    if isinstance(airlocked, bool) and airlocked:
+        parts.append('[B][COLOR FF00E5FF]AIRLOCK[/COLOR][/B]')
+    parts.append(f'[B]{status}[/B]')
     if size:
         parts.append(size)
     if created:
         parts.append(created)
     label = ' | '.join(parts) + f' | [I]{name}[/I]'
-    airlocked = item.get('airlocked')
-    if isinstance(airlocked, bool) and airlocked:
-        label += ' | [B][COLOR FF00E5FF]AIRLOCK[/COLOR][/B]'
 
     li = xbmcgui.ListItem(label=label)
     li.setArt({'icon': _tb_icon(), 'thumb': _tb_icon(), 'poster': _tb_icon()})
@@ -739,18 +885,29 @@ def _view_rd_cloud(params):
 
     page = _page_num(params)
     limit = _rd_cloud_limit()
-    items, err = _cached_call(_rd_cloud_key(page, limit), lambda: realdebrid_api.user_cloud(page, limit))
+    payload, err = _cached_call(_rd_cloud_key(page, limit), lambda: realdebrid_api.user_cloud(page, limit))
     if err:
         _error_item(err, {'mode': 'debrid_rd_cloud', 'page': str(page)}, _rd_icon())
         _end()
         return
 
-    raw_count = len(items or [])
-    ordered = sorted((items or []),
+    items, total, total_pages = _rd_payload(payload)
+    _rd_store_total(total)
+    raw_count = len(items)
+    xbmc.log('[DEBRID][RD] cloud page %d limit %d: %d items, X-Total-Count=%s, pages=%s'
+             % (page, limit, raw_count, total or '?', total_pages or '?'), xbmc.LOGDEBUG)
+    ordered = sorted(items,
                      key=lambda it: str(it.get('added') or ''), reverse=True)
 
     if not raw_count:
-        _empty_item('Cloud is empty', _rd_icon())
+        _known, _known_exact = _rd_total_label()
+        if page > 1 and _known_exact and int(_known or 0) > 0:
+            li = xbmcgui.ListItem(label='[B][COLOR ' + _ERR_COLOR + ']Page %d is past the end (%s items total) - click to go back[/COLOR][/B]'
+                                  % (page, _known))
+            li.setArt({'icon': _rd_icon(), 'thumb': _rd_icon()})
+            _add_dir(_build_url({'mode': 'debrid_rd_cloud', 'page': '1'}), li, True)
+        else:
+            _empty_item('Cloud is empty', _rd_icon())
         _end()
         return
 
@@ -769,7 +926,11 @@ def _view_rd_cloud(params):
                 pct = 0
             _add_inactive_row(f'[B]{str(it.get("status") or "active").upper()} - {pct}%[/B] | [I]{nm}[/I]', _rd_icon())
 
-    if raw_count >= limit:
+    if total_pages > 0:
+        show_next = page < total_pages
+    else:
+        show_next = raw_count >= limit
+    if show_next:
         li = xbmcgui.ListItem(label='[B][COLOR ' + _HL_COLOR + ']Next Page >>[/COLOR][/B]')
         li.setArt({'icon': _rd_icon(), 'thumb': _rd_icon()})
         _add_dir(_build_url({'mode': 'debrid_rd_cloud', 'page': str(page + 1)}), li, True)
@@ -940,7 +1101,7 @@ def _view_rd_downloads(params):
         total_pages = int(payload.get('total_pages', 1) or 1)
     else:
         listing, total_pages = (payload or []), 1
-    xbmc.log(f'[DEBRID][RD] history page {page} limit {limit}: {len(listing or [])} items, {total_pages} pages', xbmc.LOGDEBUG)
+    xbmc.log(f'[DEBRID][RD] history page {page} limit {limit}: {len(listing or [])} items, {total_pages} pages, total={int(payload.get("total") or 0) if isinstance(payload, dict) else 0}', xbmc.LOGDEBUG)
 
     if not listing:
         _empty_item('No download history', _rd_icon())
