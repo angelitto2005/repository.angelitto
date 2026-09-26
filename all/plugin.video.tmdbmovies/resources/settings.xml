@@ -63,6 +63,7 @@
         <setting id="show_menu_bollywood" type="bool" label="Show [B][COLOR FFCCCCFF]Bollywood[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_romania" type="bool" label="Show [B][COLOR yellow]Romania[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_actors" type="bool" label="Show [B][COLOR orange]Actors[/COLOR][/B] in main menu" default="true"/>
+        <setting id="show_menu_downloads" type="bool" label="Show [B][COLOR gray]Downloads[/COLOR][/B] in main menu" default="true"/>
         <setting id="show_menu_debrid" type="bool" label="Show [B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B] in main menu" default="true"/>
 
         <setting type="lsep" label="Context Menu"/>

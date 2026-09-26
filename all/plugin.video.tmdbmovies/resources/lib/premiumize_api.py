@@ -204,6 +204,12 @@ def item_details(item_id):
     return _request('GET', 'item/details', params={'id': tid}) or {}
 
 
+def file_link(item_id):
+    """Link direct pentru un fisier din cloud (nu pentru un transfer)."""
+    link = (item_details(item_id) or {}).get('link')
+    return _norm_url(link)
+
+
 def unrestrict_src(src):
     body = _request('POST', 'transfer/directdl', data={'src': str(src or '')}) or {}
     raw = body.get('content')

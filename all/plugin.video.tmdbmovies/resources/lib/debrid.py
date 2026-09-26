@@ -27,6 +27,7 @@ DEBRID_ACTIONS = {
     'debrid_premiumize',
     'debrid_pm_cloud',
     'debrid_pm_folder',
+    'debrid_pm_storage',
     'debrid_pm_account',
     'debrid_pm_retry',
     'debrid_pm_delete_transfer',
@@ -532,7 +533,7 @@ def _view_main():
     pm_ready = _safe_count(_pm_ready_count)
     _add_service_dir(_count('[B][COLOR ' + _PM_COLOR + ']Premiumize[/COLOR][/B]', pm_ready),
                      {'mode': 'debrid_premiumize'}, _pm_icon(),
-                     plot='Your Premiumize cloud: transfers still downloading, finished files ready to play, folders to open and your account details.')
+                     plot='Your Premiumize cloud: cloud storage and your transfer history, folders to open and your account details.')
     oc_ready = _safe_count(_oc_ready_count)
     _add_service_dir(_count('[B][COLOR ' + _OC_COLOR + ']Offcloud[/COLOR][/B]', oc_ready),
                      {'mode': 'debrid_offcloud'}, _oc_icon(),
@@ -772,11 +773,13 @@ def _view_premiumize():
 
     _add_account_item('[B][COLOR ' + _PM_COLOR + ']Premiumize Account[/COLOR][/B]', {'mode': 'debrid_pm_account'}, _pm_icon(),
                       plot='Your Premiumize account: status, premium expiry, days left and how much of your cloud space is used.')
+    _add_service_dir('[B]Premiumize Cloud Storage[/B]', {'mode': 'debrid_pm_storage'}, _pm_icon(),
+                     plot='Browse your whole Premiumize cloud from the root: folders open up, files play or download straight from Premiumize.')
     if not err:
         items, total, _tp = _cloud_payload(payload)
         ready = sum(1 for it in items if isinstance(it, dict) and str(it.get('status') or '').lower() in _PM_READY)
         active = sum(1 for it in items if isinstance(it, dict) and str(it.get('status') or '').lower() not in _PM_READY)
-        _add_service_dir(_count('[B]Premiumize Transfers[/B]', ready or active, ready > 0), {'mode': 'debrid_pm_cloud'}, _pm_icon(),
+        _add_service_dir(_count('[B]Premiumize History[/B]', ready or active, ready > 0), {'mode': 'debrid_pm_cloud'}, _pm_icon(),
                          plot='Every transfer in your Premiumize account, newest first: finished files play directly, folders open up, and unfinished ones show their progress. The badge counts the ready ones.')
     _add_clear_cache_item('[B][COLOR ' + _ERR_COLOR + ']Clear Premiumize Cache[/COLOR][/B]', 'debrid_pm_clear_cache', _pm_icon(),
                           plot='Drops the locally cached Premiumize lists. Nothing is deleted from Premiumize; the next visit re-fetches them from the API.')
@@ -796,7 +799,7 @@ def _view_pm_cloud(params):
         return
     items, total, _tp = _cloud_payload(payload)
     if not items:
-        _empty_item('No transfers yet', _pm_icon())
+        _empty_item('Nothing in your Premiumize history yet', _pm_icon())
         _end()
         return
     _pm_rows(items, '')
@@ -833,6 +836,79 @@ def _view_pm_folder(params):
         _end()
         return
     _pm_rows(items, name)
+    _end()
+
+
+def _view_pm_storage(params):
+    _ensure_globals()
+    from resources.lib import premiumize_api
+
+    folder_id = str(params.get('folder_id') or '').strip()
+    name = str(params.get('name') or '')
+    try:
+        payload, err = _cached_call('tmdbmovies_pm_folder_%s' % (folder_id or 'root'),
+                                    lambda: premiumize_api.folder_list(folder_id))
+    except Exception as e:
+        payload, err = None, str(e)
+    if err or not payload:
+        if err:
+            _error_item(err, {'mode': 'debrid_premiumize'}, _pm_icon())
+        else:
+            _empty_item('Cloud folder is empty', _pm_icon())
+        _end()
+        return
+    src_items = payload.get('items') if isinstance(payload, dict) else None
+    items = []
+    for it in (src_items if isinstance(src_items, list) else []):
+        if not isinstance(it, dict):
+            continue
+        nm = str(it.get('name') or 'Unnamed')
+        if _is_junk_name(nm):
+            continue
+        is_folder = bool(it.get('is_folder'))
+        items.append({
+            'id': str(it.get('id') or ''),
+            'name': nm,
+            'status': 'finished',
+            'is_folder': is_folder,
+            'size': int(it.get('size') or 0),
+            'link': str(it.get('link') or ''),
+            'folder_id': '' if is_folder else str(it.get('id') or ''),
+        })
+    if not items:
+        _empty_item('Cloud folder is empty', _pm_icon())
+        _end()
+        return
+    # Folderele se deschid in aceeasi vedere (folder/list), fisierele se reda
+    # direct din cloud prin item/details.
+    ordered = sorted(items, key=lambda it: (not it['is_folder'], str(it.get('name') or '').lower()))
+    for idx, it in enumerate(ordered, 1):
+        nm = it['name']
+        size = _fmt_size(it.get('size'))
+        head = '%02d | [B][COLOR %s]%s[/COLOR][/B]' % (idx, _PM_COLOR, 'CLOUD')
+        if size:
+            head += ' | ' + size
+        li = xbmcgui.ListItem(label=head + ' | [I]' + nm + '[/I]')
+        li.setArt({'icon': _pm_icon(), 'thumb': _pm_icon(), 'poster': _pm_icon()})
+        plot = 'Premiumize Cloud | ' + nm
+        if size:
+            plot += ' | Size: ' + size
+        if name:
+            plot += ' | From: ' + name
+        try:
+            tag = li.getVideoInfoTag()
+            tag.setTitle(nm)
+            tag.setPlot(plot)
+        except Exception:
+            pass
+        li.addContextMenuItems([('Refresh', f'RunPlugin({_build_url({"mode": "debrid_refresh"})})')])
+        if it['is_folder']:
+            _add_dir(_build_url({'mode': 'debrid_pm_storage', 'folder_id': it['id'], 'name': nm}), li, True)
+            continue
+        cm = [('Download', f'RunPlugin({_build_url({"mode": "debrid_download", "provider": "pm", "item_id": it["id"], "name": nm, "file_name": nm})})')]
+        li.addContextMenuItems(cm)
+        _add_dir(_build_url({'mode': 'debrid_play', 'provider': 'pm', 'item_id': it['id'],
+                             'name': nm, 'file_name': nm}), li, False)
     _end()
 
 
@@ -1924,7 +2000,14 @@ def _resolve_rd_link(params):
 
 def _resolve_pm_link(params):
     from resources.lib import premiumize_api
+    # Fisier din Cloud Storage: link direct din item/details (fara transfer).
+    cloud_id = str(params.get('item_id') or '').strip()
     src = str(params.get('src') or '').strip()
+    if not src and cloud_id:
+        link = premiumize_api.file_link(cloud_id)
+        if not link:
+            raise Exception('File link not available')
+        return link
     if not src:
         raise Exception('File link not available')
     entries = premiumize_api.unrestrict_src(src)
@@ -2126,6 +2209,8 @@ def handle_debrid_action(params, handle, base_url, addon):
         _view_pm_cloud(params)
     elif action == 'debrid_pm_folder':
         _view_pm_folder(params)
+    elif action == 'debrid_pm_storage':
+        _view_pm_storage(params)
     elif action == 'debrid_pm_account':
         _view_pm_account()
     elif action == 'debrid_pm_retry':

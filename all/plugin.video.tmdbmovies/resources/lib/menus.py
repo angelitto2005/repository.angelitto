@@ -55,6 +55,7 @@ _ROOT_MENU_SETTINGS = {
     'simkl_menu': 'show_menu_simkl',
     'punchplay_menu': 'show_menu_punchplay',
     'tmdb_my_lists': 'show_menu_tmdb_lists',
+    'downloads_menu': 'show_menu_downloads',
     'debrid_menu': 'show_menu_debrid',
     'hindi_movies_menu': 'show_menu_bollywood',
     'romania_menu': 'show_menu_romania',
