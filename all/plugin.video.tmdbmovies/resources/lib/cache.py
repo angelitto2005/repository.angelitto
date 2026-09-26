@@ -167,14 +167,15 @@ def cache_object(function, string, url, json_output=True, expiration=48):
 
 # --- FAST CACHE (RAM) ---
 def get_fast_cache(key):
-    """Returns data from RAM. Language + page_limit + select action are part of the key to react instantly to setting changes."""
+    """Returns data from RAM. Language + page_limit + select action + auto_play are part of the key to react instantly to setting changes."""
     try:
         import xbmcgui
         from resources.lib.config import get_page_limit_index
         curr_lang = ADDON.getSetting('plot_language')
         curr_limit = get_page_limit_index()
         curr_select = ADDON.getSetting('select_ext_info') or '0'
-        actual_key = f"{key}_{curr_lang}_{curr_limit}_{curr_select}"
+        curr_autoplay = ADDON.getSetting('auto_play')
+        actual_key = f"{key}_{curr_lang}_{curr_limit}_{curr_select}_{curr_autoplay}"
 
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
@@ -195,7 +196,8 @@ def set_fast_cache(key, items):
         curr_lang = ADDON.getSetting('plot_language')
         curr_limit = get_page_limit_index()
         curr_select = ADDON.getSetting('select_ext_info') or '0'
-        actual_key = f"{key}_{curr_lang}_{curr_limit}_{curr_select}"
+        curr_autoplay = ADDON.getSetting('auto_play')
+        actual_key = f"{key}_{curr_lang}_{curr_limit}_{curr_select}_{curr_autoplay}"
 
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")

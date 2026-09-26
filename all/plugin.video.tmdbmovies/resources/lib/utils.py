@@ -1751,6 +1751,29 @@ def perform_mdblist_backup(manual=False):
             xbmcgui.Dialog().notification("Error", "Error creating backup.", xbmcgui.NOTIFICATION_ERROR)
 
 
+def sleep_abortable(seconds):
+    """Asteapta in felii de 1s, oprindu-se imediat daca Kodi se inchide.
+    plafon 60s; intoarce False daca s-a cerut shutdown."""
+    try:
+        left = max(0.0, min(float(seconds or 0), 60.0))
+    except Exception:
+        return False
+    from resources.lib import config as _cfg
+    while left > 0:
+        try:
+            if _cfg.kodi_abort_requested():
+                return False
+        except Exception:
+            pass
+        step = min(1.0, left)
+        time.sleep(step)
+        left -= step
+    try:
+        return not _cfg.kodi_abort_requested()
+    except Exception:
+        return True
+
+
 def make_qr(url, filename='auth_qr.png'):
     if not url:
         return None

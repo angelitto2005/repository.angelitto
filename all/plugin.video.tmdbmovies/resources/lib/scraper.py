@@ -4199,6 +4199,31 @@ def full_unquote(text):
         prev = text
     return text
 
+def _stremio_family(provider_id, addon_name, url, raw_title, raw_name):
+    """Familia reala a unui addon Stremio.
+
+    Sloturile custom1-5 (si p2p_custom1-5) au provider_id si nume arbitrare,
+    desi manifestul poate fi Torz, Meteor, Comet, Torrentio sau MediaFusion.
+    Familia se deduce din URL, din numele configurat si din semnaturile de continut.
+    """
+    pid = str(provider_id or '').lower()
+    if pid in ('torz', 'meteor', 'comet', 'torrentio', 'mediafusion'):
+        return pid
+    hay = ('%s %s %s' % (url or '', addon_name or '', pid)).lower()
+    for fam in ('torz', 'stremthru', 'meteor', 'comet', 'torrentio', 'mediafusion'):
+        if fam in hay:
+            return 'torz' if fam == 'stremthru' else fam
+    title = str(raw_title or '')
+    name = str(raw_name or '')
+    if '\U0001F50D' in title:                       # indexer StremThru
+        return 'torz'
+    if '\U0001F4EB' in name or '\U0001F4EB' in title:   # biblioteaca Meteor
+        return 'meteor'
+    if '\U0001F517' in title and ',' in title:      # lista de indexeri Meteor
+        return 'meteor'
+    return pid
+
+
 def _parse_stremio_addon_stream(s, addon_name, provider_id):
     """
     Extrage Numele Fisierului, Debrid, Indexer si Seederi.
@@ -4221,16 +4246,23 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     raw_title = (s.get('title', '') + '\n' + s.get('description', '')).strip()
     name_upper = raw_name.upper()
     url_lower = url.lower()
+    family = _stremio_family(provider_id, addon_name, url, raw_title, raw_name)
     
     # 1. Debrid & Cached Status
     is_cached = False
     debrid_service = ""
 
-    # Map debrid initials to full names (TB=torbox, RD=realdebrid, AD=alldebrid, PM=premiumize, EN=easynews)
+    # Map debrid initials to full names (TB=torbox, RD=realdebrid, AD=alldebrid, PM=premiumize, OC=offcloud, EN=easynews)
     DEBRID_INITIALS = {
         'TB': 'torbox', 'RD': 'realdebrid', 'AD': 'alldebrid',
-        'PM': 'premiumize', 'EN': 'easynews',
+        'PM': 'premiumize', 'OC': 'offcloud', 'EN': 'easynews',
     }
+    # StremThru (Torz) foloseste coduri de store proprii in nume: [TB] [RD] [PM] [OC] [AD] [EN]
+    STREMTHRU_STORES = {
+        'TRB': 'torbox', 'TB': 'torbox', 'RD': 'realdebrid', 'PM': 'premiumize',
+        'PT': 'premiumize', 'AD': 'alldebrid', 'OC': 'offcloud', 'EN': 'easynews',
+    }
+    TORZ_BOLT = '\u26a1\ufe0f'
 
     # Priority 1: Name-based — matches [TB+], [TB⚡], [TB🌩️] (Torrentio/Comet/Meteor)
     for initial, service in DEBRID_INITIALS.items():
@@ -4238,16 +4270,23 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             debrid_service = service
             is_cached = re.search(r'\[%s\s*(?:\+|\u26a1\ufe0f?|\U0001f329\ufe0f?)\s*\]' % initial, name_upper) is not None
             break
-    if debrid_service and not is_cached and provider_id == 'torz' and '⚡️' in raw_name:
+    # StremThru (Torz): numele e "<bolt> [CODE] ...". Boltul apare doar daca store-ul
+    # are deja fisierul, deci inseamna cached. Nu conditionam de provider_id: un manifest
+    # Torz pus in custom1-5 trebuie sa se comporte identic cu slotul dedicat.
+    _store = re.search(r'\[([A-Za-z]{2,3})\]', raw_name)
+    _store_code = _store.group(1).upper() if _store else ''
+    if TORZ_BOLT in raw_name and _store_code in STREMTHRU_STORES:
         is_cached = True
-    if debrid_service and not is_cached and provider_id == 'meteor' and '📫' in raw_name:
+    if not debrid_service and _store_code in STREMTHRU_STORES:
+        debrid_service = STREMTHRU_STORES[_store_code]
+    if debrid_service and '\U0001F4EB' in raw_name:
         is_cached = True
     if not debrid_service:
         # MediaFusion pattern: 🧲 CODE ⚡️ (e.g. 🧲 TRB ⚡️ for TorBox)
         mf_match = re.search(r'🧲\s*(\w+)\s*⚡', raw_name)
         if mf_match:
             mf_code = mf_match.group(1).upper()
-            mf_map = {'TRB': 'torbox', 'RD': 'realdebrid', 'AD': 'alldebrid', 'PM': 'premiumize', 'EN': 'easynews'}
+            mf_map = {'TRB': 'torbox', 'RD': 'realdebrid', 'AD': 'alldebrid', 'PM': 'premiumize', 'OC': 'offcloud', 'EN': 'easynews'}
             if mf_code in mf_map:
                 debrid_service = mf_map[mf_code]
                 is_cached = True
@@ -4258,6 +4297,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
             '/realdebrid/': 'realdebrid', '/rd/': 'realdebrid',
             '/alldebrid/': 'alldebrid', '/ad/': 'alldebrid',
             '/premiumize/': 'premiumize', '/pm/': 'premiumize',
+            '/offcloud/': 'offcloud', '/oc/': 'offcloud',
             '/torbox/': 'torbox', '/tb/': 'torbox',
             '/easynews/': 'easynews', '/en/': 'easynews',
         }
@@ -4413,13 +4453,13 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         link_match = re.search(r'🔗\s*(.*)', raw_title_unquoted)
         if link_match:
             indexer = link_match.group(1).strip()
-            if provider_id == 'meteor':
+            if family == 'meteor':
                 indexer = indexer.split(',')[0].strip()
-    if not indexer and provider_id not in ('torz', 'meteor'):
+    if not indexer and family not in ('torz', 'meteor'):
         gear_match = re.search(r'⚙️\s*([^\n💾]+)', raw_title_unquoted)
         if gear_match:
             indexer = gear_match.group(1).strip()
-    if not indexer and provider_id not in ('torz', 'meteor') and info_line:
+    if not indexer and family not in ('torz', 'meteor') and info_line:
         clean = re.sub(r'[\d.,]+\s*(?:GiB|MiB|TiB|KiB|GB|MB|TB)', '', info_line, flags=re.IGNORECASE)
         clean = re.sub(r'(?:👤|👥|S:|P:|Peers:)\s*\d+', '', clean, flags=re.IGNORECASE)
         clean = clean.replace('👤', '').replace('💾', '').replace('⚙️', '').replace('📦', '').replace('🔗', '').strip(' |-,')
@@ -4439,7 +4479,7 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
         quality = _extract_quality_from_string(filename) or 'SD'
         
     release_group = _extract_release_group(filename)
-    if provider_id == 'meteor':
+    if family == 'meteor':
         try:
             _bg_parts = str(s.get('behaviorHints', {}).get('bingeGroup', '')).split('|')
             if len(_bg_parts) >= 2 and _bg_parts[1] == 'library':
@@ -4507,6 +4547,14 @@ def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon
                 stream_obj = _parse_stremio_addon_stream(s, addon_name, addon_id)
                 if stream_obj: found_streams.append(stream_obj)
             log(f"[{addon_name.upper()}] Gasite: {len(found_streams)} surse.")
+            if addon_id in ('torz', 'comet', 'meteor', 'torrentio', 'mediafusion'):
+                _tot = len(found_streams)
+                _cch = sum(1 for _o in found_streams if (_o.get('info') or {}).get('is_cached'))
+                _dbc = sum(1 for _o in found_streams if (_o.get('info') or {}).get('debrid_service'))
+                _svcs = sorted({str((_o.get('info') or {}).get('debrid_service') or '-')
+                                for _o in found_streams})
+                log("[%s] cached %d/%d | debrid %d/%d | servicii: %s"
+                    % (addon_name.upper(), _cch, _tot, _dbc, _tot, ','.join(_svcs)))
             return found_streams
     except Exception as e:
         log(f"[{addon_name.upper()}] Error: {e}", xbmc.LOGERROR)
@@ -4789,6 +4837,7 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
                 if '[RD+]' in name_upper: is_cached = True; debrid_service = 'realdebrid'
                 elif '[AD+]' in name_upper: is_cached = True; debrid_service = 'alldebrid'
                 elif '[PM+]' in name_upper: is_cached = True; debrid_service = 'premiumize'
+                elif '[OC+]' in name_upper: is_cached = True; debrid_service = 'offcloud'
                 elif '[TB+]' in name_upper: is_cached = True; debrid_service = 'torbox'
                 elif '[EN+]' in name_upper or '[EN]' in name_upper: is_cached = True; debrid_service = 'easynews'
                 

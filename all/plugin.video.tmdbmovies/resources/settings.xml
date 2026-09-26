@@ -366,8 +366,9 @@
     <!-- 7. ACCOUNTS -->
     <category label="Accounts">
         <setting type="lsep" label="Watched Status Provider"/>
-        <setting id="watched_status_provider" type="enum" label="[B][COLOR yellow]Active Provider[/COLOR][/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFF70D1A]Kodi (Local)[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
-
+        <setting id="watched_status_provider" type="enum" label="[B][COLOR FF6AFB92]Active Provider[/COLOR][/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFF70D1A]Kodi (Local)[/COLOR][/B]" default="4" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
+        <setting id="watched_provider_prompt" type="bool" label="Warn me if my [B][COLOR FF6AFB92]active provider[/COLOR][/B] is not connected" default="true"/>
+        
 		<setting type="lsep" label="Watched"/>
 		<setting id="watched_mark_mode" type="enum" label="[B]Mark as watched on[/B]" values="Active provider|All providers|Custom selection" default="0"/>
 		<setting id="watched_mark_trakt" type="bool" label="  └─ Mark watched on [B][COLOR pink]Trakt[/COLOR][/B]" default="true" visible="eq(-1,2)"/>
@@ -519,6 +520,12 @@
         <setting type="lsep" label="Real-Debrid Account"/>
         <setting id="rd_api_key" type="text" option="hidden" visible="false" label="Real-Debrid API Key" default=""/>
         <setting label="Status:" type="text" id="rd_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Premiumize Account"/>
+        <setting id="pm_api_key" type="text" option="hidden" visible="false" label="Premiumize API Key" default=""/>
+        <setting label="Status:" type="text" id="pm_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Offcloud Account"/>
+        <setting id="oc_api_key" type="text" option="hidden" visible="false" label="Offcloud API Key" default=""/>
+        <setting label="Status:" type="text" id="oc_status" enable="false" default="Disconnected"/>
         <setting type="lsep" label="Connect from the [B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B] directory in the main menu"/>
     </category>
 </settings>

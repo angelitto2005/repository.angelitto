@@ -292,8 +292,17 @@ def get_settings_menu_items():
     simkl_token = addon.getSetting('simkl_access_token')
     punchplay_token = addon.getSetting('punchplay_access_token')
     if (trakt_user and trakt_user != 'Disconnected') or mdblist_token or mdblist_api_key or simkl_token or punchplay_token or _is_local_provider_active():
-        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
-        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]', 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_action', 'folder': False})
+        # Cand nu exista niciun provider online, butoanele promit un sync care nu aduce
+        # nimic vizibil - etichetam explicit ca ruleaza doar pe baza locala.
+        _local_only = ''
+        try:
+            _online = bool(trakt_user and trakt_user != 'Disconnected') or bool(mdblist_token) or bool(mdblist_api_key) or bool(simkl_token) or bool(punchplay_token)
+            if not _online:
+                _local_only = ' [B][COLOR FFF70D1A](Kodi Local)[/COLOR][/B]'
+        except Exception:
+            _local_only = ''
+        items.append({'name': '[B][COLOR FF6AFB92]Smart Sync[/COLOR][/B]' + _local_only, 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_smart_action', 'folder': False})
+        items.append({'name': '[B][COLOR cyan]Full Sync (Force)[/COLOR][/B]' + _local_only, 'iconImage': 'DefaultAddonsUpdates.png', 'mode': 'trakt_sync_action', 'folder': False})
     items.append({'name': '[B][COLOR orange]Delete All Cache[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png', 'mode': 'clear_cache_action', 'folder': False})
     items.append({'name': '[B][COLOR FF87CEEB]Open Kodi Log File[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'view_kodi_log', 'folder': False})
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})

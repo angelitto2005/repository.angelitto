@@ -12,12 +12,15 @@ import xbmcvfs
 from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL, kodi_abort_requested
 
 def _get_provider_raw():
+    # Valoare lipsa / non-numerica / in afara intervalului -> 'local' (singurul
+    # provider fara retea, deci nu poate ramane mort). Golul cade direct pe ramura
+    # de exceptie, nu pe '0' (care ar insemna Trakt + pop-up la pornire).
     try:
-        idx = int(ADDON.getSetting('watched_status_provider') or '0')
-    except:
-        idx = 0
+        idx = int(ADDON.getSetting('watched_status_provider') or '')
+    except Exception:
+        idx = 4
     # 'local' e la COADA (index 4) ca sa nu deplaseze indecsii salvati 0-3.
-    return ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')[idx] if idx <= 4 else 'trakt'
+    return ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')[idx] if 0 <= idx <= 4 else 'local'
 
 def clear_cache():
     """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
@@ -173,6 +176,14 @@ def _run_provider_auth(prov):
         pass
 
 
+def _prompt_enabled():
+    """Opt-out pentru dialogul de provider deconectat. Default = True (comportament actual)."""
+    try:
+        return (ADDON.getSetting('watched_provider_prompt') or 'true') != 'false'
+    except Exception:
+        return True
+
+
 def ensure_active_provider(notify=True, interactive=True):
     # Local: mereu conectat -> zero pop-up la boot. Fix-ul pentru userii fara cont.
     if _get_provider_raw() == 'local':
@@ -190,7 +201,10 @@ def ensure_active_provider(notify=True, interactive=True):
     fallback = next((p for p in _WATCHED_MARK_PROVIDERS if p in connected), None)
     if fallback is None:
         fallback = 'local'  # preferam ONLINE la reconnect, dar local e mereu o iesire
-    if interactive:
+    _prompt = _prompt_enabled()
+    xbmc.log('[TMDb Movies] Provider check: activ=%s conectati=%s prompt=%s'
+             % (prov, ','.join(connected) or '-', 'on' if _prompt else 'off'), xbmc.LOGINFO)
+    if interactive and _prompt:
         try:
             import xbmcgui
             dead_lbl = _PROVIDER_LABELS.get(prov, prov)
@@ -250,7 +264,12 @@ def ensure_active_provider(notify=True, interactive=True):
         _invalidate_fast_cache()
     except Exception:
         pass
-    if notify:
+    # Cu promptul dezactivat tacem (doar log), DAR pastram semnalul daca nu exista
+    # niciun provider online: atunci comutarea la local chiar inseamna "nu mai ai
+    # de ce sincroniza", iar tacerea ar ascunde motivul. 'local' e mereu conectat,
+    # deci ramura "no provider connected" de mai jos e inaccesibila.
+    _online_left = [p for p in _WATCHED_MARK_PROVIDERS if p in connected]
+    if notify and (_prompt or not _online_left):
         try:
             import xbmcgui
             dead_lbl = _PROVIDER_LABELS.get(prov, prov)

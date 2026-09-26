@@ -1513,6 +1513,17 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if episode: rem_params['episode'] = str(episode)
         cm.append(('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
 
+    # --- PLAY WITH SOURCE SELECT: are rost doar cand auto-play este pornit
+    # (altfel selectul randului deschide deja fereastra surselor). Pozitionat
+    # chiar deasupra "Search Youtube". no_auto=1 ocoleste autoplay-ul. ---
+    if ADDON.getSetting('auto_play') == 'true':
+        if content_type == 'movie':
+            _sel_auto = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'no_auto': '1'})
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_sel_auto})"))
+        elif content_type == 'episode' and season is not None and episode is not None:
+            _sel_auto = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name or title, 'tv_show_title': title, 'no_auto': '1'})
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_sel_auto})"))
+
     yt_params_dict = {'mode': 'youtube_search', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'year': year}
     if season is not None: yt_params_dict['season'] = str(season)
     if episode is not None: yt_params_dict['episode'] = str(episode)
@@ -7048,7 +7059,7 @@ def in_progress_movies(params):
         elif _prov == 'punchplay':
             add_directory("[COLOR cyan]No movies started. Sync PunchPlay.[/COLOR]", {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif _prov == 'local':
-            add_directory("[COLOR cyan]No movies started (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
+            add_directory("[COLOR cyan]No movies started yet - play something or mark a movie as watched (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No movies started. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7549,7 +7560,7 @@ def in_progress_episodes(params):
         elif use_punchplay:
             add_directory("[COLOR cyan]No episodes paused midway. Sync PunchPlay.[/COLOR]", {'mode': 'punchplay_sync'}, folder=False, icon='DefaultIconInfo.png')
         elif use_local:
-            add_directory("[COLOR cyan]No episodes paused midway (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
+            add_directory("[COLOR cyan]No episodes paused midway yet - play something or mark an episode as watched (Kodi Local).[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR cyan]No episodes paused midway. Sync Trakt.[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False, icon='DefaultIconInfo.png')
         xbmcplugin.endOfDirectory(HANDLE)
@@ -7734,6 +7745,10 @@ def in_progress_episodes(params):
             ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
             ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
+        # Are rost doar cu auto-play pornit (altfel selectul randului deschide
+        # deja fereastra surselor); no_auto=1 ocoleste autoplay-ul.
+        if ADDON.getSetting('auto_play') == 'true':
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)}&no_auto=1)"))
         # --- SELECT ACTION: rindul e redirectionat catre Extended Info -> Play in CM ---
         if select_ext_info_params('episode', tmdb_id, season, episode, show_name, ep_name):
             cm.insert(0, ('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)})"))
@@ -8044,6 +8059,8 @@ def get_next_episodes(params=None):
             add_directory("[COLOR gray]No new episodes (Run 'Simkl Sync')[/COLOR]", {'mode': 'simkl_sync'}, folder=False)
         elif use_punchplay:
             add_directory("[COLOR gray]No new episodes (Run 'PunchPlay Sync')[/COLOR]", {'mode': 'punchplay_sync'}, folder=False)
+        elif use_local:
+            add_directory("[COLOR cyan]No new episodes yet - mark a show as watched (right-click > Mark Watched), or sync your Kodi library.[/COLOR]", {'mode': 'main'}, folder=False, icon='DefaultIconInfo.png')
         else:
             add_directory("[COLOR gray]No new episodes (Run 'Trakt Sync')[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
         xbmcplugin.endOfDirectory(HANDLE)

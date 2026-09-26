@@ -1,3 +1,11 @@
+1.1.302
+- New setting under Accounts -> Watched Status Provider: "Warn me if my active provider is not connected" (on by default). Turn it off and the add-on quietly switches provider instead of asking at start.
+- New installs start on Kodi (Local), fully offline: mark watched from the add-on, Up Next / In Progress fill from local data, no account or library needed.
+- Premiumize.me and Offcloud added to My Debrid Cloud. API keys are entered from the directory and validated live.
+- Sources served through an Offcloud account now show the debrid badge and cached marker in the results window.
+- Auto-play and binge now start only on sources that begin instantly (cached debrid, Usenet, HTTP).
+- New context menu action "Play with source select" on movies and episodes (visible only while auto-play is enabled).
+
 1.1.301
 - New My Debrid Cloud directory in the main menu (show/hide from Settings -> Menu): TorBox and Real-Debrid. API keys are entered from the directory and validated live before being saved.
 - Fix a small bug with PunchPlay calendar

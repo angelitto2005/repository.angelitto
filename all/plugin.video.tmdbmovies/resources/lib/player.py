@@ -123,6 +123,101 @@ def classify_stream_source(stream):
     return 'http'
 
 
+def _is_instant_source(s):
+    """True = sursa porneste fara descarcare in debrid (instant sau deja in cache).
+
+    Folosit de auto-play si de binge ca sa nu aleaga un torrent necached, care
+    ar necesita mai intai transferul lui in debrid ("downloading into debrid").
+    HTTP si P2P nu sunt atinse aici; P2P este eliminat separat de ierarhia din
+    _autoplay_tier (nu intra in autoplay deloc).
+    """
+    if classify_stream_source(s) not in ('aio', 'stremio'):
+        return True
+    info = s.get('info') or {}
+    if info.get('is_cached') or info.get('is_cloud'):
+        return True
+    prov = ('%s %s %s' % (s.get('source_provider', ''), s.get('provider_id', ''),
+                          info.get('debrid_service', ''))).lower()
+    return 'usenet' in prov or 'easynews' in prov
+
+
+def _split_instant(streams):
+    """(eligibile, amanate) fara sa modifice lista primita."""
+    ok = []
+    later = []
+    for s in streams:
+        try:
+            (ok if _is_instant_source(s) else later).append(s)
+        except Exception:
+            ok.append(s)
+    return ok, later
+
+
+# IERARHIA DE PROVIDERI pentru auto-play (pool-ul de mai jos):
+# 0 usenet direct (NZB) -> 1 premiumize -> 2 torbox -> 3 realdebrid
+# -> 4 offcloud -> 5 alldebrid -> 6 easynews (web) -> 7 http
+# P2P nu intra deloc in autoplay (nu porneste instant).
+# Usenet direct se desparte de EasyNews web: pentru usenet mergem cu seek
+# normal, in timp ce EasyNews are probleme de pornire/derulare (de aceea
+# i se adauga seekable=0 in calea de play, vezi mai jos in functie).
+_AUTOPLAY_TIERS = (
+    'usenet', 'premiumize', 'torbox', 'realdebrid', 'offcloud', 'alldebrid',
+    'easynews', 'http',
+)
+
+
+def _autoplay_tier(s):
+    """0..7 conform ierarhiei de mai sus, sau None daca sursa nu intra in autoplay."""
+    cat = classify_stream_source(s)
+    if cat == 'p2p':
+        return None
+    if cat == 'http':
+        return _AUTOPLAY_TIERS.index('http')
+
+    info = s.get('info') or {}
+    debrid = str(info.get('debrid_service', '')).lower()
+    addon = str(info.get('addon', '')).lower()
+    src_prov = str(s.get('source_provider', '')).lower()
+    pid = str(s.get('provider_id', '')).lower()
+
+    # EasyNews web (addon/debrid/nume sau URL) - o parte din regula deja
+    # existenta in calea de play si in find_best_stream_index.
+    if 'easynews' in addon or 'easynews' in debrid or 'easynews' in s.get('url', '').lower():
+        return _AUTOPLAY_TIERS.index('easynews')
+
+    # Usenet direct: providerul dedicat sau un manifest de usenet pus intr-un
+    # slot custom1-5 (provider_id = customN, dar numele manifestului contine
+    # "usenet").
+    if pid == 'usenet' or 'usenet' in addon or 'usenet' in src_prov:
+        return _AUTOPLAY_TIERS.index('usenet')
+
+    for srv in ('premiumize', 'torbox', 'realdebrid', 'offcloud', 'alldebrid'):
+        if srv in debrid:
+            return _AUTOPLAY_TIERS.index(srv)
+    return _AUTOPLAY_TIERS.index('http')
+
+
+def _autoplay_pool(streams):
+    """([(nume_tier, surse), ...] in ordine prioritara, nr amanate).
+
+    Trec mai intai prin regula C1 (necached debrid = amanat) si elimina P2P
+    (nu porneste instant). Tier-urile goale sunt scoase, deci apelatorul itereaza
+    doar peste tier-uri cu surse. In interiorul unui tier sursele raman in
+    ordinea primita - departajarea o face sortarea existenta a apelatorului
+    (sort_streams_for_autoplay / find_best_stream_index).
+    """
+    eligible, deferred = _split_instant(streams)
+    groups = [[] for _ in _AUTOPLAY_TIERS]
+    for s in eligible:
+        try:
+            tier = _autoplay_tier(s)
+        except Exception:
+            tier = None
+        if tier is not None:
+            groups[tier].append(s)
+    return [(_AUTOPLAY_TIERS[i], g) for i, g in enumerate(groups) if g], len(deferred)
+
+
 # Tabela de tier-uri pt fiecare optiune de Source Priority (sort_opt):
 # prima pozitie = cel mai sus (score maxim), cached se consulta DOAR la aio/stremio.
 # 'aio_orig' pastreaza ordinea originala din lista (cheie statica).
@@ -3109,6 +3204,46 @@ def sort_streams_for_autoplay(streams, profile_idx):
         return final_list
 
 
+def _pick_autoplay_index(streams, profile_idx):
+    """Index in lista ORIGINALA ales de auto-play, sau -1 daca nu exista sursa instant.
+
+    Ierarhia de provideri decide primul tier cu surse; in interiorul tier-ului
+    sort_streams_for_autoplay face departajarea (calitate / logica Windows /
+    filtrul de profil). Nu muta lista primita: mapeaza inapoi pe indicele
+    original, ca fereastra de surse sa ramana in ordinea source_sorting.
+    """
+    try:
+        groups, deferred = _autoplay_pool(streams)
+        for tier, group in groups:
+            ordered = sort_streams_for_autoplay(group, profile_idx)
+            if ordered:
+                log(f"[AUTOPLAY] Tier ales: {tier} ({len(ordered)} surse) din {len(streams)} "
+                    f"({deferred} amanate)")
+                return streams.index(ordered[0])
+            log(f"[AUTOPLAY] Tier {tier} exclus de profil {profile_idx} -> tier urmator")
+        log("[AUTOPLAY] Nicio sursa instant (toate necached debrid) -> fereastra de surse, fara autoplay")
+        return -1
+    except Exception as exc:
+        log("[AUTOPLAY] Cautare esuita: %s" % exc)
+        return -1
+
+
+def _pick_binge_index(streams, prev_quality='', prev_group='', prev_is_sdr=False,
+                      prev_debrid='', prev_provider='', prev_codec='', prev_source=''):
+    """(index in lista ORIGINALA, nr amanate) pentru binge, sau (-1, n) fara sursa instant."""
+    try:
+        groups, deferred = _autoplay_pool(streams)
+        for tier, group in groups:
+            local = find_best_stream_index(group, prev_quality, prev_group, prev_is_sdr,
+                                           prev_debrid, prev_provider, prev_codec, prev_source)
+            if local is not None and local >= 0:
+                log(f"[BINGE-WATCH] Tier ales: {tier} (index local {local} din {len(group)})")
+                return streams.index(group[local]), deferred
+        return -1, deferred
+    except Exception:
+        return -1, 0
+
+
 def find_best_stream_index(streams, prev_quality, prev_group, prev_is_sdr, prev_debrid='', prev_provider='', prev_codec='', prev_source=''):
     """Gaseste cel mai bun stream pentru Auto-Play bazat pe istoricul detaliat."""
     best_idx = -1
@@ -3885,7 +4020,9 @@ def list_sources(params):
         except:
             pass
 
-    auto_play = ADDON.getSetting('auto_play') == 'true'
+    # no_auto=1 = chemat din context menu ("Play with source select"): deschidem
+    # fereastra de surse chiar daca auto-play este pornit.
+    auto_play = ADDON.getSetting('auto_play') == 'true' and params.get('no_auto') != '1'
     ret = -1
 
     # =========================================================
@@ -3902,23 +4039,32 @@ def list_sources(params):
         prev_provider = params.get('prev_provider', '')
         prev_codec = params.get('prev_codec', '')
         prev_source = params.get('prev_source', '')
-        
-        best_idx = find_best_stream_index(filtered_streams, prev_quality, prev_group, prev_is_sdr, prev_debrid, prev_provider, prev_codec, prev_source)
-        log(f"[BINGE-WATCH] Sursa aleasa index={best_idx} din {len(filtered_streams)}")
-        
-        if best_idx >= 0:
-            ret = best_idx
+
+        # Aceeasi regula ca la auto-play: un torrent necached debrid nu intra in pool,
+        # pentru ca scorul de potrivire exacta (pana la 15000) ar bate bonusul cached
+        # (10000) si episodul urmator ar incepe cu o descarcare in debrid.
+        ret, _deferred_n = _pick_binge_index(filtered_streams, prev_quality, prev_group, prev_is_sdr,
+                                             prev_debrid, prev_provider, prev_codec, prev_source)
+
+        if ret >= 0:
+            log(f"[BINGE-WATCH] Sursa aleasa index={ret} din {len(filtered_streams)} (instant; {_deferred_n} amanate)")
             xbmcgui.Dialog().notification("Binge Watching", "Auto-playing next episode...", TMDbmovies_ICON, 3000, False)
+        else:
+            log(f"[BINGE-WATCH] Nicio sursa instant ({_deferred_n} necached amanate) -> fereastra de surse, fara autoplay")
     # =========================================================
 
     # Autoplay-ul standard (Daca NU suntem in Binge Watching Next)
+    # Auto-play-ul nu alege torrente necached debrid: ar trebui mai intai transferate
+    # in debrid ("downloading into debrid" = ecran verde). Daca nu exista NICIO sursa
+    # eligibila, nu autoplay-am deloc - lasam fereastra de surse sa aleaga userul.
+    # Ordinea ramane cea din source_sorting: sortam doar o COPIA eligibila si
+    # mapam rezultatul inapoi pe indicele din filtered_streams (nemutam lista).
     if ret < 0 and auto_play and not auto_play_next:
         try:
             profile_idx = int(ADDON.getSetting('autoplay_profile'))
-            filtered_streams = sort_streams_for_autoplay(filtered_streams, profile_idx)
-            if filtered_streams:
+            ret = _pick_autoplay_index(filtered_streams, profile_idx)
+            if ret >= 0:
                 xbmcgui.Dialog().notification("Auto Play", "Selecting best source...", TMDbmovies_ICON, 3000, False)
-                ret = 0 
         except: pass
 
     if ret < 0:
