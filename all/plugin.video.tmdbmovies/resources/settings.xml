@@ -367,8 +367,10 @@
     <!-- 7. ACCOUNTS -->
     <category label="Accounts">
         <setting type="lsep" label="Watched Status Provider"/>
-        <setting id="watched_status_provider" type="enum" label="[B][COLOR FF6AFB92]Active Provider[/COLOR][/B]" values="[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B]|[B][COLOR FFF70D1A]Kodi (Local)[/COLOR][/B]" default="4" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
+        <setting id="watched_status_provider" type="enum" label="[B][COLOR FF6AFB92]Active Provider[/COLOR][/B]" values="[B][COLOR FFF70D1A]Kodi (Local) (no account needed)[/COLOR][/B]|[B][COLOR pink]Trakt[/COLOR][/B]|[B][COLOR lightskyblue]MDBList[/COLOR][/B]|[B][COLOR mediumpurple]Simkl[/COLOR][/B]|[B][COLOR FFFF6600]PunchPlay[/COLOR][/B]" default="0" onchange="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=clear_provider_cache)"/>
         <setting id="watched_provider_prompt" type="bool" label="Warn me if my [B][COLOR FF6AFB92]active provider[/COLOR][/B] is not connected" default="true"/>
+        <setting id="watched_provider_notify" type="bool" label="Show me the [B][COLOR FF6AFB92]active provider[/COLOR][/B] when the add-on opens" default="false"/>
+
         
 		<setting type="lsep" label="Watched"/>
 		<setting id="watched_mark_mode" type="enum" label="[B]Mark as watched on[/B]" values="Active provider|All providers|Custom selection" default="0"/>
@@ -455,6 +457,7 @@
 	<!-- 8. LIBRARY -->
     <category label="[B][COLOR FF6AFB92]Library[/COLOR][/B]">
         <setting label="─── Library Export ───" type="lsep" />
+        <setting id="provider_index_v2" type="bool" label="" default="false" visible="false"/>
         <setting id="library_enabled" type="bool" label="Enable Library Export" default="false"/>
         <setting id="library_dest_path" type="action" label="Destination Path (Library folder will be created inside)" default="special://profile/addon_data/plugin.video.tmdbmovies/" visible="eq(-1,true)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=library_browse_dest)"/>
         

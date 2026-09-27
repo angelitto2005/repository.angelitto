@@ -190,8 +190,11 @@ def set_cached(key, data):
         pass
 
 def _is_punchplay_provider():
+    # Pe NUME, nu pe index: indecsii enum-ului se renumara o data (vezi remapul
+    # din watched_provider) si un '3' hardcodat ar insemna alt provider dupa reordonare.
     try:
-        return (ADDON.getSetting('watched_status_provider') or '0') == '3'
+        from resources.lib.watched_provider import get_provider
+        return get_provider() == 'punchplay'
     except:
         return False
 

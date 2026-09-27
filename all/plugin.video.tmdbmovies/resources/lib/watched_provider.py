@@ -11,16 +11,211 @@ import xbmcvfs
 
 from resources.lib.config import ADDON, ADDON_PATH, MDBLIST_API_URL, kodi_abort_requested
 
+# =============================================================================
+# REMAPARE ONE-TIME A INDEXULUI DE PROVIDER (v1 -> v2)
+# =============================================================================
+# Kodi salveaza un enum ca INDEX in lista de values. Ordinea veche (v1) era
+# trakt=0, mdblist=1, simkl=2, punchplay=3, local=4; ordinea noua (v2) e
+# local=0, trakt=1, mdblist=2, simkl=3, punchplay=4 (Local primul + default).
+# Fara remapare, reordonarea ar schimba silenios providerul fiecarui user
+# existent (0 = Trakt ar deveni Local). Remapul e DOAR o renumerotare: nu
+# comuta pe nimeni, nu porneste sync-uri, nu da notificari.
+# ATENTIE (downgrade): daca revii vreodata la fisierele vechi (v1), sterge manual
+# provider_index_v2 din setarile addonului, altfel indicii ramin renumarati.
+_PROVIDERS_V1 = ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')
+_provider_index_migrated = False          # memo de proces (hot path: o citire de atribut)
+_provider_index_lock = threading.Lock()
+_PROVIDER_INDEX_STAMP = 'provider_index_v2'
+_PROVIDER_INDEX_CLAIM = 'tmdbmovies_provider_v2'   # claim cross-proces (Window 10000)
+_PROVIDER_INDEX_CLAIM_STALE = 30.0                 # secunde: sub asta, alt proces chiar lucreaza
+
+
+def _provider_setting_was_saved():
+    """True doar daca profilul are EXPLICIT id-ul in settings.xml (alegere anterioara).
+
+    Pe o instalare noua getSetting cade pe default-ul din resources/settings.xml ('0'),
+    imposibil de distins de un user v1 cu Trakt (tot 0) -> fara testul asta am muta
+    TOATE instalariile noi pe Trakt. Fail-safe: daca nu pot dovedi o alegere
+    anterioara, NU renumar (default-ul nou e oricum Kodi (Local))."""
+    try:
+        from resources.lib.config import _get_settings_dict
+        return 'watched_status_provider' in _get_settings_dict()
+    except Exception:
+        return False
+
+
+def _provider_claim_state(_win):
+    """'' (liber) | 'done' | timestamp (secunde) al claim-ului in curs."""
+    if _win is None:
+        return ''
+    try:
+        return _win.getProperty(_PROVIDER_INDEX_CLAIM) or ''
+    except Exception:
+        return ''
+
+
+def _provider_claim_age(_claim):
+    """Varsta claim-ului in secunde; None daca valoarea nu e un timestamp."""
+    try:
+        import time as _t
+        return _t.time() - float(_claim)
+    except Exception:
+        return None
+
+
+def _provider_index_remap_once():
+    """Un singur pas de remapare v1 -> v2 (vezi contractul de mai sus)."""
+    # 1. Stampila persistenta (supravietuieste restartului) sau claim-ul 'done' din
+    #    sesiunea curenta (RAM, Window 10000) -> deja remapat.
+    if (ADDON.getSetting(_PROVIDER_INDEX_STAMP) or '') == 'true':
+        return
+    _win = None
+    try:
+        import xbmcgui
+        _win = xbmcgui.Window(10000)
+    except Exception:
+        _win = None
+    _claim = _provider_claim_state(_win)
+    if _claim == 'done':
+        return
+    # 2. Alt proces remapeaza chiar acum (claim proaspat): astept max 10 x 150ms ca
+    #    sa prind valoarea finala, apoi il las pe el (nu dublez remapul).
+    if _claim:
+        _age = _provider_claim_age(_claim)
+        if _age is not None and _age < _PROVIDER_INDEX_CLAIM_STALE:
+            for _ in range(10):
+                try:
+                    xbmc.sleep(150)
+                except Exception:
+                    pass
+                if _provider_claim_state(_win) == 'done':
+                    return
+                if (ADDON.getSetting(_PROVIDER_INDEX_STAMP) or '') == 'true':
+                    return
+            return
+    # 3. Fara alegere anterioara salvata (instalare noua / setting nefolosit): valoarea
+    #    vine din default-ul XML, care e deja Kodi (Local) -> doar stampila.
+    if not _provider_setting_was_saved():
+        _provider_index_stamp(_win)
+        _provider_index_claim_done(_win)
+        return
+    # 4. Renumar. Stampila se scrie PRIMA: un crash intre cele doua setSetting-uri
+    #    lasa valoarea veche interpretata in schema noua (o fereastra de doua scrieri,
+    #    acceptata deliberat) - ordinea inversa ar DUBLA remaparea (0 -> 2: Trakt ar
+    #    ajunge Simkl). Claim-ul se pune inainte, ca alt proces sa astepte, nu sa citeasca
+    #    o valoare pe jumatate mutata.
+    if _win is not None:
+        try:
+            import time as _t
+            _win.setProperty(_PROVIDER_INDEX_CLAIM, str(_t.time()))
+        except Exception:
+            pass
+    try:
+        _provider_index_stamp(_win)
+        _provider_index_renumber()
+    finally:
+        # 'done' abia ACUM: un alt proces care astepta trebuie sa vada valoarea deja
+        # renumarata, nu stampila scrisa peste valoarea veche.
+        _provider_index_claim_done(_win)
+
+
+def _provider_index_renumber():
+    """Traducerea propriu-zisa a numarului: v1 -> v2 (Local pentru gunoi)."""
+    try:
+        _raw = ADDON.getSetting('watched_status_provider') or ''
+    except Exception:
+        _raw = ''
+    try:
+        _old = int(_raw)
+    except Exception:
+        _old = None
+    if _old is not None and 0 <= _old <= 4:
+        _name = _PROVIDERS_V1[_old]
+    else:
+        _name = 'local'
+        # Diagnostic pentru suport: valoare corupta (non-numerica) SAU in afara
+        # intervalului -> Kodi (Local). Se scrie o singura data (remapul ruleaza o
+        # data). Valoarea goala e "niciodata ales" (cazul normal pe profilele noi,
+        # unde guardul N1 a sarit oricum peste remapare) -> fara zgomot in log.
+        if _old is not None or str(_raw).strip() != '':
+            try:
+                xbmc.log('[TMDb Movies] Provider index %s: %r -> Kodi (Local).'
+                         % ('out of range' if _old is not None else 'corrupt', _raw),
+                         xbmc.LOGWARNING)
+            except Exception:
+                pass
+    try:
+        _new = PROVIDERS_ALL.index(_name)
+    except Exception:
+        _new = 0
+    if _old == _new:
+        return
+    try:
+        ADDON.setSetting('watched_status_provider', str(_new))
+    except Exception as _e:
+        try:
+            xbmc.log('[TMDb Movies] Provider index remap write failed: %s' % _e, xbmc.LOGWARNING)
+        except Exception:
+            pass
+        return
+    try:
+        xbmc.log('[TMDb Movies] Provider index remap: %s -> %s (Kodi (Local)=0).' % (_old, _new),
+                 xbmc.LOGINFO)
+    except Exception:
+        pass
+
+
+def _provider_index_stamp(_win):
+    """Stampila persistenta (supravietuieste restartului lui Kodi) - se scrie PRIMA."""
+    try:
+        ADDON.setSetting(_PROVIDER_INDEX_STAMP, 'true')
+    except Exception:
+        pass
+
+
+def _provider_index_claim_done(_win):
+    """Marcheaza claim-ul din sesiunea curenta ca terminat."""
+    if _win is not None:
+        try:
+            _win.setProperty(_PROVIDER_INDEX_CLAIM, 'done')
+        except Exception:
+            pass
+
+
+def _migrate_provider_index():
+    """Remapul lazy, o singura data per proces (si per profil).
+
+    NU se apeleaza explicit nicaieri: _get_provider_raw() e singurul cititor al
+    setarii si e folosit de monitor la boot (inainte de orice click al userului)
+    plus de orice plugin/context script -> acoperire totala, cost zero dupa prima
+    citire (un boolean de modul). Lock-ul se ia doar pe miss, niciodata pe hot path."""
+    global _provider_index_migrated
+    if _provider_index_migrated:
+        return
+    with _provider_index_lock:
+        if _provider_index_migrated:
+            return
+        try:
+            _provider_index_remap_once()
+        except Exception as _e:
+            try:
+                xbmc.log('[TMDb Movies] Provider index remap failed: %s' % _e, xbmc.LOGWARNING)
+            except Exception:
+                pass
+        _provider_index_migrated = True
+
+
 def _get_provider_raw():
-    # Valoare lipsa / non-numerica / in afara intervalului -> 'local' (singurul
-    # provider fara retea, deci nu poate ramane mort). Golul cade direct pe ramura
-    # de exceptie, nu pe '0' (care ar insemna Trakt + pop-up la pornire).
+    # Ordinea de pe disc e cea din _PROVIDERS_V1 pana la remapul one-time (lazy, aici).
+    _migrate_provider_index()
+    # Valoare lipsa / non-numerica / in afara intervalului -> 'local' (indexul 0):
+    # singurul provider fara retea, deci nu poate ramane mort (e si default-ul din
+    # settings.xml). Golul cade pe ramura de exceptie, nu pe '0' = Trakt + pop-up.
     try:
         idx = int(ADDON.getSetting('watched_status_provider') or '')
     except Exception:
-        idx = 4
-    # 'local' e la COADA (index 4) ca sa nu deplaseze indecsii salvati 0-3.
-    return ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')[idx] if 0 <= idx <= 4 else 'local'
+        idx = 0
+    return PROVIDERS_ALL[idx] if 0 <= idx <= 4 else 'local'
 
 def clear_cache():
     """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
@@ -68,7 +263,15 @@ def browse_command(url):
         pass
     return 'Container.Update(%s)' % url
 
-_WATCHED_MARK_PROVIDERS = ('trakt', 'mdblist', 'simkl', 'punchplay')  # tintte ONLINE (fanout)
+# Ordinea canonica din settings.xml (enum watched_status_provider):
+# local=0, trakt=1, mdblist=2, simkl=3, punchplay=4.
+# NU se schimba niciodata fara o remapare one-time (vezi _migrate_provider_index):
+# .index() scrie inapoi in setarea Kodi, deci ordinea asta E contractul cu discul.
+PROVIDERS_ALL = ('local', 'trakt', 'mdblist', 'simkl', 'punchplay')
+# Tintele ONLINE (fanout), derivate - fara al doilea tuplu hardcodat.
+PROVIDERS_ONLINE = tuple(p for p in PROVIDERS_ALL if p != 'local')
+
+_WATCHED_MARK_PROVIDERS = PROVIDERS_ONLINE  # tintte ONLINE (fanout)
 # NOTE fanout: local nu e in _WATCHED_MARK_PROVIDERS (nu e tintta de retea). Cind
 # activul e local, scrierea merge pe traseul "active provider" din dispatch_mark_*;
 # cind activul e online si userul bifeaza watched_mark_local in Custom selection,
@@ -149,7 +352,7 @@ def _mark_targets():
         targets.append(prov)
     # Ordine stabila; 'local' poate fi in targets (scris pe traseu separat in dispatch,
     # nu prin fanout-ul online).
-    return [p for p in ('trakt', 'mdblist', 'simkl', 'punchplay', 'local') if p in targets]
+    return [p for p in PROVIDERS_ALL if p in targets]
 
 
 _PROVIDER_LABELS = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}
@@ -198,9 +401,14 @@ def ensure_active_provider(notify=True, interactive=True):
         return False
     if prov in connected:
         return False
-    fallback = next((p for p in _WATCHED_MARK_PROVIDERS if p in connected), None)
-    if fallback is None:
-        fallback = 'local'  # preferam ONLINE la reconnect, dar local e mereu o iesire
+    # Tinta e MEREU Kodi (Local), pe ambele cai: dialog (alegerea userului) si
+    # silentioasa (avertizarea oprita). Regula: addonul nu muta NICIODATA singur
+    # marcajele pe alt cont - Local nu are cont si nu poate ramane mort.
+    fallback = 'local'
+    # True = userul a ales reconectarea, dar ea a picat sau a fost anulata
+    # (Back/Esc in fereastra QR). Atunci NU ramane pe providerul deconectat:
+    # cade mai jos, pe Local, ca in restul cazurilor.
+    _reconnect_failed = False
     _prompt = _prompt_enabled()
     xbmc.log('[TMDb Movies] Provider check: activ=%s conectati=%s prompt=%s'
              % (prov, ','.join(connected) or '-', 'on' if _prompt else 'off'), xbmc.LOGINFO)
@@ -209,18 +417,23 @@ def ensure_active_provider(notify=True, interactive=True):
             import xbmcgui
             dead_lbl = _PROVIDER_LABELS.get(prov, prov)
             dead_clr = _PROVIDER_COLORS.get(prov, 'yellow')
-            options = []
-            if fallback:
-                new_lbl = _PROVIDER_LABELS.get(fallback, fallback)
-                new_clr = _PROVIDER_COLORS.get(fallback, 'yellow')
-                options.append(f'Switch to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B]')
-            options.append(f'Reconnect [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] (QR)')
-            choice = xbmcgui.Dialog().contextmenu(options)
-            if choice < 0:
-                return False
-            if fallback and choice == 0:
-                pass
-            else:
+            new_lbl = _PROVIDER_LABELS.get(fallback, fallback)
+            new_clr = _PROVIDER_COLORS.get(fallback, 'yellow')
+            # Dialog nativ cu 2 optiuni: Yes = reconectare (QR), No/Back/Esc = Local.
+            # yesno intoarce False si pe Back/Esc, deci Esc ajunge exact pe Local.
+            heading = '[B][COLOR %s]%s[/COLOR][/B] [COLOR FFFF4444]is not connected[/COLOR]' % (dead_clr, dead_lbl)
+            msg = ('In [B]Settings[/B] > [B]Accounts[/B] the active provider is set to '
+                   '[B][COLOR %s]%s[/COLOR][/B], but it is [B][COLOR FFFF4444]not connected[/COLOR][/B].\n'
+                   'Watched marks cannot be saved to it.\n'
+                   '[COLOR FFCCCCFF]Connect it again, or switch to Kodi (Local)?[/COLOR]') % (dead_clr, dead_lbl)
+            yes_lbl = '[COLOR %s]Connect %s now (QR)[/COLOR]' % (dead_clr, dead_lbl)
+            no_lbl = '[COLOR %s]Switch to %s[/COLOR]' % (new_clr, new_lbl)
+            dlg = xbmcgui.Dialog()
+            try:
+                _yes = dlg.yesno(heading, msg, nolabel=no_lbl, yeslabel=yes_lbl)
+            except TypeError:
+                _yes = dlg.yesno(heading, msg)
+            if _yes:
                 _run_provider_auth(prov)
                 try:
                     reconnected = prov in _connected_mark_providers()
@@ -228,7 +441,9 @@ def ensure_active_provider(notify=True, interactive=True):
                     reconnected = False
                 if reconnected:
                     try:
-                        ADDON.setSetting('watched_status_provider', str(_WATCHED_MARK_PROVIDERS.index(prov)))
+                        # Indexul CANONIC (PROVIDERS_ALL), nu ordinea online: altfel
+                        # 0 ar insemna Kodi (Local) in loc de providerul reconectat.
+                        ADDON.setSetting('watched_status_provider', str(PROVIDERS_ALL.index(prov)))
                     except Exception:
                         return False
                     try:
@@ -243,43 +458,36 @@ def ensure_active_provider(notify=True, interactive=True):
                         except Exception:
                             pass
                     return True
-                if notify:
-                    try:
-                        xbmcgui.Dialog().notification('[B][COLOR FFFDBD01]Watched Provider[/COLOR][/B]',
-                                                      f'Still disconnected [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B]',
-                                                      os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
-                    except Exception:
-                        pass
-                return False
+                # Reconectarea a picat sau a fost anulata cu Back/Esc in fereastra QR.
+                # NU ne oprim aici: providerul e inca deconectat, deci mai jos se
+                # comuta pe Local (regula: niciodata raminem pe un provider mort).
+                _reconnect_failed = True
         except Exception:
             pass
-    if fallback is None:
-        fallback = 'local'  # nicio conexiune online -> local (mereu conectat)
-    _ALL_PROVS = ('trakt', 'mdblist', 'simkl', 'punchplay', 'local')
     try:
-        ADDON.setSetting('watched_status_provider', str(_ALL_PROVS.index(fallback)))
+        ADDON.setSetting('watched_status_provider', str(PROVIDERS_ALL.index(fallback)))
     except Exception:
         return False
     try:
         _invalidate_fast_cache()
     except Exception:
         pass
-    # Cu promptul dezactivat tacem (doar log), DAR pastram semnalul daca nu exista
-    # niciun provider online: atunci comutarea la local chiar inseamna "nu mai ai
-    # de ce sincroniza", iar tacerea ar ascunde motivul. 'local' e mereu conectat,
-    # deci ramura "no provider connected" de mai jos e inaccesibila.
-    _online_left = [p for p in _WATCHED_MARK_PROVIDERS if p in connected]
-    if notify and (_prompt or not _online_left):
+    # Semnalizam TOTDEAUNA mutarea pe Local, inclusiv cu avertizarea oprita: comutarea
+    # pe Local chiar inseamna "nu mai ai unde sincroniza", iar tacerea ar ascunde exact
+    # consecinta (marcajele nu mai ajung in cont). Decizie asumata: bifa "Warn me..."
+    # controleaza dialogul de la boot, nu informarea asta de o secunda.
+    if notify:
         try:
             import xbmcgui
             dead_lbl = _PROVIDER_LABELS.get(prov, prov)
             dead_clr = _PROVIDER_COLORS.get(prov, 'yellow')
             new_lbl = _PROVIDER_LABELS.get(fallback, fallback)
             new_clr = _PROVIDER_COLORS.get(fallback, 'yellow')
-            if fallback in connected:
-                msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, switched to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B]'
+            if _reconnect_failed:
+                msg = (f'Reconnecting to [B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] failed - '
+                       f'active provider switched to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B].')
             else:
-                msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, no provider connected'
+                msg = f'[B][COLOR {dead_clr}]{dead_lbl}[/COLOR][/B] disconnected, active provider switched to [B][COLOR {new_clr}]{new_lbl}[/COLOR][/B].'
             xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]', msg, os.path.join(ADDON_PATH, 'icon.png'), 5000, False)
         except Exception:
             pass

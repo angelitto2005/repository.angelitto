@@ -34,6 +34,7 @@ def _migrate_simkl_status():
     except:
         pass
 
+
 def get_addon():
     global _addon
     if _addon is None:
@@ -582,6 +583,37 @@ def _youtube_autoplay_loop(seen_ids, order):
     except:
         return
 
+# =============================================================================
+# NOTIFICARE PROVIDER ACTIV LA DESCHIDEREA ADDONULUI
+# Opt-in (Settings > Accounts > Watched Status Provider) si o SINGURA data per
+# sesiune Kodi: flag pe Window(10000), care se pierde la restartul Kodi.
+# =============================================================================
+_PROVIDER_NOTIFY_FLAG = 'tmdbmovies_provider_notify_shown'
+
+def _notify_active_provider():
+    try:
+        if (get_addon().getSetting('watched_provider_notify') or 'false') != 'true':
+            return
+        window = xbmcgui.Window(10000)
+        if window.getProperty(_PROVIDER_NOTIFY_FLAG):
+            return
+        # Import lazy: calea 'fara mode' (meniul root) nu trebuie incarcata cu
+        # watched_provider cand notificarea e oprita (default).
+        from resources.lib.watched_provider import get_provider, get_label, get_color, get_icon
+        get_provider()  # forteaza remapul one-time de index inainte de a citi eticheta
+        label = get_label()
+        color = get_color()
+        icon = get_icon()
+        # Flag INAINTE de afisare: daca notificarea esueaza pe o skin-atura, nu
+        # vrem sa reincercam la fiecare revenire in meniul root.
+        window.setProperty(_PROVIDER_NOTIFY_FLAG, '1')
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+            'The Active provider is: [B][COLOR %s]%s[/COLOR][/B]' % (color, label),
+            icon, 3500, False)
+    except Exception:
+        pass
+
 def run_plugin():
     global _handle
     import time
@@ -621,6 +653,8 @@ def run_plugin():
         _t2 = time.time()
         build_fast_menu(menus.root_menu(), no_cache=True)
         _t3 = time.time()
+        # Dupa ce meniul e desenat: notificarea nu intarzie pornirea.
+        _notify_active_provider()
         # DEBUG TIMING (pastreaza — util la depanare lag pornire):
         # xbmc.log(f"[TIMING] root menu: import={int((_t2-_t1)*1000)}ms build={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms", xbmc.LOGINFO)
         return
@@ -2417,11 +2451,17 @@ def run_service():
                     xbmc.log(f"[TMDb Movies] Watched provider changed: {self._last_provider} -> {_current}. Scheduling full sync...", xbmc.LOGINFO)
                     self._provider_pending = True
 
-                    def _provider_switch_sync():
+                    def _provider_switch_sync(_prev_snap=None):
+                        # _prev_snap e capturat SINCRON de caller: daca am citi
+                        # self._last_provider aici, firul principal l-ar suprascrie
+                        # cu providerul NOU inainte de primul sleep(2000) si am
+                        # pierde complet "providerul anterior" (butonul Keep ar
+                        # disparea iar Back/Esc ar cadea pe Local).
+                        _prev0 = _prev_snap if _prev_snap is not None else getattr(self, '_last_provider', None)
                         try:
                             xbmc.sleep(2000)
                             from resources.lib.config import clear_settings_cache as _csc
-                            from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl
+                            from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl, PROVIDERS_ALL as _PROVIDERS_ALL
                             _csc()
                             _cc()
                             _prov = _gp()
@@ -2440,11 +2480,15 @@ def run_service():
                                     _connected = True  # local: mereu conectat
                                 else:
                                     _connected = bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
+                                # True = finalul comutarii a fost deja anuntat cu un mesaj
+                                # specific (Local ales, Keep/revert, sau esec de conectare).
+                                # Daca ramane False, anuntam schimbarea la final.
+                                _notified = False
                                 if not _connected:
                                     _name = {'trakt': 'Trakt', 'mdblist': 'MDBList', 'simkl': 'Simkl', 'punchplay': 'PunchPlay', 'local': 'Kodi (Local)'}.get(_prov, _prov)
                                     _clr = {'trakt': 'pink', 'mdblist': 'lightskyblue', 'simkl': 'mediumpurple', 'punchplay': 'FFFF6600', 'local': 'FFF70D1A'}.get(_prov, 'yellow')
                                     # Iconita addonului din root (icon.png), cale statica
-                                    # via ADDON_PATH — fara apeluri care pot esua in
+                                    # via ADDON_PATH - fara apeluri care pot esua in
                                     # thread-ul de service.
                                     _notif_icon = os.path.join(CONFIG_ADDON_PATH, 'icon.png')
                                     # POARTA (nu doar informare): userul NU poate ramine pe un
@@ -2475,18 +2519,61 @@ def run_service():
                                             return False
                                         return False
 
-                                    _prev = getattr(self, '_last_provider', None)
+                                    _prev = _prev0
                                     _can_revert = bool(_prev) and _prev != _prov
                                     _prev_name = _NAMES.get(_prev, _prev)
-                                    _opts = [f'Connect {_name} now']
-                                    if _can_revert:
-                                        _opts.append(f'Keep {_prev_name} (without {_name})')
+                                    _prov_clr = _CLRS.get(_prov, 'FFFF6600')
+                                    _loc_clr = _CLRS.get('local', 'FFF70D1A')
+                                    _loc_name = _NAMES.get('local', 'local')
+                                    # "Tine providerul anterior" exista doar daca e conectat
+                                    # SI e altfel decat Local: pe Local butonul ar fi
+                                    # identic cu "Switch to Kodi (Local)". Altfel eticheta
+                                    # ramane goala si Kodi NU afiseaza butonul custom
+                                    # (GUIDialogYesNo: "Button only visible when label is
+                                    # not empty") -> raman doar 2 butoane.
+                                    _can_keep = _can_revert and _prev != 'local' and _is_conn(_prev)
+                                    _keep_lbl = ('[COLOR %s]Keep %s[/COLOR]'
+                                                 % (_CLRS.get(_prev, 'FFFF6600'), _prev_name)) if _can_keep else ''
+                                    _head = ('[B][COLOR %s]%s[/COLOR][/B] [COLOR FFFF4444]is not connected[/COLOR]'
+                                             % (_prov_clr, _name))
+                                    _msg = ('In [B]Settings[/B] > [B]Accounts[/B] the active provider is set to '
+                                            '[B][COLOR %s]%s[/COLOR][/B], but it is '
+                                            '[B][COLOR FFFF4444]not connected[/COLOR][/B].\n'
+                                            'Watched marks cannot be saved to it.\n'
+                                            '[COLOR FFCCCCFF]Connect it, keep your previous provider, '
+                                            'or switch to %s?[/COLOR]' % (_prov_clr, _name, _loc_name))
+                                    _yes_l = '[COLOR %s]Connect %s now (QR)[/COLOR]' % (_prov_clr, _name)
+                                    _no_l = '[COLOR %s]Switch to %s[/COLOR]' % (_loc_clr, _loc_name)
+                                    # yesnocustom: -1 = Back/Esc, 0 = No, 1 = Yes, 2 = Custom.
+                                    # Singurul mod nativ de a deosebi Back/Esc de butoane.
                                     try:
-                                        _sel = xbmcgui.Dialog().select(f'{_name} is not connected', _opts)
+                                        try:
+                                            _r = xbmcgui.Dialog().yesnocustom(
+                                                _head, _msg, _keep_lbl, _no_l, _yes_l, 0,
+                                                xbmcgui.DLG_YESNO_YES_BTN)
+                                        except TypeError:
+                                            _r = xbmcgui.Dialog().yesnocustom(
+                                                _head, _msg, _keep_lbl, _no_l, _yes_l)
                                     except Exception:
-                                        _sel = 1 if _can_revert else -1
+                                        # Kodi <19 sau skin fara buton custom: 2 butoane.
+                                        try:
+                                            _r = 1 if xbmcgui.Dialog().yesno(
+                                                _head, _msg, nolabel=_no_l, yeslabel=_yes_l) else 0
+                                        except Exception:
+                                            _r = -1
+                                    if _r == 1:
+                                        _action = 'connect'
+                                    elif _r == 0:
+                                        _action = 'local'
+                                    elif _r == 2:
+                                        _action = 'keep'
+                                    else:
+                                        # Back/Esc: ramanem pe providerul anterior daca era
+                                        # conectat, altfel pe Kodi (Local).
+                                        _action = 'keep' if _can_keep else 'local'
+                                    _tried_connect = _action == 'connect'
                                     _connected_now = False
-                                    if _sel == 0:
+                                    if _action == 'connect':
                                         try:
                                             if _prov == 'trakt':
                                                 from resources.lib.trakt_api import trakt_auth as _auth
@@ -2508,15 +2595,34 @@ def run_service():
                                             xbmc.sleep(1000)
                                             _csc()
                                             _connected_now = _is_conn(_prov)
+                                    elif _action == 'local':
+                                        # Alegere explicita: Kodi (Local) - fara cont, fara revert.
+                                        try:
+                                            get_addon().setSetting('watched_status_provider',
+                                                                   str(_PROVIDERS_ALL.index('local')))
+                                        except Exception as _se:
+                                            xbmc.log(f'[TMDb Movies] Provider switch: set local failed: {_se}', xbmc.LOGERROR)
+                                        _csc()
+                                        _cc()
+                                        _prov = 'local'
+                                        self._last_provider = 'local'
+                                        _connected_now = True
+                                        xbmc.log('[TMDb Movies] Provider switch: user chose Kodi (Local).', xbmc.LOGINFO)
+                                        try:
+                                            xbmcgui.Dialog().notification(
+                                                '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                                'Switched to [B][COLOR FFF70D1A]Kodi (Local)[/COLOR][/B].',
+                                                _notif_icon, 5000, False)
+                                            _notified = True
+                                        except Exception:
+                                            pass
                                     if not _connected_now:
-                                        # Back/Esc, "Keep ..." sau connect esuat -> revenim pe un
-                                        # provider CONECTAT (cel anterior are prioritate).
-                                        _order = []
-                                        if _can_revert:
-                                            _order.append(_prev)
-                                        for _p in ('trakt', 'mdblist', 'simkl', 'punchplay', 'local'):
-                                            if _p != _prov and _p not in _order:
-                                                _order.append(_p)
+                                        # "Switch to <anterior>" sau connect esuat -> revenim la
+                                        # providerul anterior daca e conectat, altfel Kodi (Local).
+                                        # NU sarim niciodata pe ALT cont online: ordinea e
+                                        # explicita, nu derivata din PROVIDERS_ALL (care acum
+                                        # incepe cu local si ar da un rezultat accidental).
+                                        _order = ([_prev] if _can_revert else []) + ['local']
                                         _target = None
                                         for _p in _order:
                                             if _is_conn(_p):
@@ -2524,9 +2630,9 @@ def run_service():
                                                 break
                                         if _target:
                                             try:
-                                                _idx = ('trakt', 'mdblist', 'simkl', 'punchplay', 'local').index(_target)
+                                                _idx = _PROVIDERS_ALL.index(_target)
                                             except Exception:
-                                                _idx = 0
+                                                _idx = _PROVIDERS_ALL.index('local')
                                             try:
                                                 get_addon().setSetting('watched_status_provider', str(_idx))
                                             except Exception as _se:
@@ -2537,16 +2643,40 @@ def run_service():
                                             self._last_provider = _target
                                             _t_name = _NAMES.get(_target, _target)
                                             xbmc.log(f'[TMDb Movies] Provider switch: reverted to {_target} ({_name} not connected).', xbmc.LOGINFO)
+                                            if _target == 'local':
+                                                _tail = 'Switched to [B][COLOR %s]%s[/COLOR][/B].' % (
+                                                    _CLRS.get('local', 'FFF70D1A'), _NAMES.get('local', 'local'))
+                                            else:
+                                                _tail = 'Kept [B][COLOR %s]%s[/COLOR][/B].' % (
+                                                    _CLRS.get(_target, 'yellow'), _t_name)
+                                            # "Connecting failed" doar daca chiar s-a incercat
+                                            # conectarea; la "Keep" sau Back/Esc e o alegere.
+                                            _fmsg = ('Connecting to [B][COLOR %s]%s[/COLOR][/B] failed. %s'
+                                                     % (_clr, _name, _tail)) if _tried_connect else _tail
                                             xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
-                                                                          f'Kept [B][COLOR {_CLRS.get(_target, "yellow")}]{_t_name}[/COLOR][/B] - [B][COLOR {_clr}]{_name}[/COLOR][/B] is not connected.',
-                                                                          _notif_icon, 5000, False)
+                                                                          _fmsg, _notif_icon, 6000, False)
+                                            _notified = True
                                         else:
                                             xbmc.log(f'[TMDb Movies] Provider switch: {_name} not connected and no other connected provider found.', xbmc.LOGWARNING)
                                             xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
                                                                           f'No account is connected. Connect [B][COLOR {_clr}]{_name}[/COLOR][/B] in Settings!',
                                                                           _notif_icon, 6000, False)
+                                            _notified = True
                             except:
                                 pass
+                            # Confirmarea comutarii: acopera si calea fara dialog
+                            # (provider nou deja conectat, sau Local), unde pana acum
+                            # nu exista niciun feedback. Daca dialogul a anuntat deja
+                            # ceva specific, nu repetam.
+                            if not _notified:
+                                try:
+                                    xbmcgui.Dialog().notification(
+                                        '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                        'Active provider switched to %s.' % provider_title(_prov),
+                                        os.path.join(CONFIG_ADDON_PATH, 'icon.png'), 5000, False)
+                                    _notified = True
+                                except Exception:
+                                    pass
                             # FARA refresh inainte de sync: culorile/etichetele
                             # se actualizeaza prin cel de dupa sync. Inainte,
                             # refresh-ul loveste exact cand userul incepe sa
@@ -2560,7 +2690,10 @@ def run_service():
                                 pass
                         except Exception as e:
                             xbmc.log(f"[TMDb Movies] Provider switch sync error: {e}", xbmc.LOGERROR)
-                    threading.Thread(target=_provider_switch_sync, daemon=True).start()
+                    # Argumentul e evaluat aici, pe firul principal, cat timp
+                    # self._last_provider inca e providerul VECHI.
+                    threading.Thread(target=_provider_switch_sync, args=(self._last_provider,),
+                                     daemon=True).start()
                 # Re-citim providerul real: daca in threadul de mai sus userul a ales
                 # "Keep <anterior>" (revert), aici nu mai pornim un sync pe cel nou.
                 try:
