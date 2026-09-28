@@ -3299,10 +3299,7 @@ def _view_trakt_my_calendar():
             display_title = f'{it["title"]} ({movie_year})' if movie_year else it['title']
             label = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Astazi', 'Maine'):
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
-                else:
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
             li = xbmcgui.ListItem(label=label)
             li.setProperty('cal_diff', str(diff))
             movie_plot = ''
@@ -3328,16 +3325,21 @@ def _view_trakt_my_calendar():
             ep_title = it['ep_title']
             if not ep_title or ep_title.strip().upper() in ('TBA', 'TBD', 'TO BE ANNOUNCED'):
                 ep_title = ep_title_map.get((it['tmdb_id'], it['season'], it['episode']), '') or ep_title
-            label = f'[B][COLOR {provider_color("trakt")}]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
+            # Difuzat AZI: numele serialului + eticheta, galben bold.
+            # Numele episodului rmane lavanda FFCCCCFF (standardul din toate listele).
+            _today = (diff == 0)
+            _tclr = 'yellow' if _today else provider_color('trakt')
+            _dclr = 'yellow' if _today else date_color
+            label = f'[B][COLOR {_tclr}]{it["title"]}[/COLOR][/B] - [B][COLOR {date_color}]S{it["season"]:02d}E{it["episode"]:02d}[/COLOR][/B]'
             if ep_title:
                 label += f' - [B][I][COLOR FFCCCCFF]{ep_title}[/I][/COLOR][/B]'
             if cal_date:
                 if diff in (0, 1):
                     _air_t = it.get('air_time', '') or ''
                     _air_suffix = f' • {_air_t}' if _air_t else ''
-                    label += f' [COLOR {date_color}] • [B]{cal_date}{_air_suffix}[/B][/COLOR]'
+                    label += f' [COLOR {_dclr}] • [B]{cal_date}{_air_suffix}[/B][/COLOR]'
                 else:
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                    label += f' [COLOR {_dclr}] • [B]{cal_date}[/B][/COLOR]'
             li = xbmcgui.ListItem(label=label)
             li.setProperty('cal_diff', str(diff))
             ep_plot = ep_overview_map.get((it['tmdb_id'], it['season'], it['episode']), '') or it['plot']
@@ -3542,11 +3544,15 @@ def trakt_calendar(params):
                         _at = ''
                     _at_suffix = f' • {_at}' if _at else ''
                     if 0 <= diff_d <= 1:
-                        label = calendar_localized_label(diff_d, '')
-                        date_label = f"[B][COLOR white]({label}{_at_suffix})[/COLOR][/B]"
+                        label = calendar_localized_label(diff_d, ad)
                     else:
-                        date_label = f"[B][COLOR white]({_fmt_dmy(ad)}{_at_suffix})[/COLOR][/B]"
-                    if ep_date == today or ep_date == today + datetime.timedelta(days=1):
+                        label = _fmt_dmy(ad)
+                    # Difuzat AZI: numele + eticheta, galben bold.
+                    _dclr = 'yellow' if diff_d == 0 else 'white'
+                    date_label = f"[B][COLOR {_dclr}]({label}{_at_suffix})[/COLOR][/B]"
+                    if ep_date == today:
+                        display_label = f"[B][COLOR yellow]{display_label}[/COLOR] {date_label}"
+                    elif ep_date == today + datetime.timedelta(days=1):
                         display_label = f"{display_label} {date_label}"
                     elif ep_date > today:
                         display_label = f"[B][COLOR FFE238EC]{display_label}[/COLOR] {date_label}"

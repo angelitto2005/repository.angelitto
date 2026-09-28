@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import xbmcgui
 import xbmcplugin
@@ -20,7 +20,7 @@ from resources.lib.config import (
     TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy, calendar_localized_label,
     get_plot_language_code, provider_color, provider_icon, provider_title
 )
-from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items
+from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
 from resources.lib import menus
 from resources.lib import trakt_sync
@@ -1605,14 +1605,27 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
             parts = p_str.split('-')
             release_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
             today = datetime.date.today()
-            if release_date > today:
-                if release_date == today:
-                    date_label = f"[B][COLOR white]({calendar_localized_label(0, '')})[/COLOR][/B]"
-                elif release_date == today + datetime.timedelta(days=1):
-                    date_label = f"[B][COLOR white]({calendar_localized_label(1, '')})[/COLOR][/B]"
+            # Ora de lansare (doar azi / maine) din calendarul Trakt de filme.
+            _mv_at = ''
+            if 0 <= (release_date - today).days <= 1:
+                try:
+                    _mv_at = movie_release_air_time(tmdb_id, release_date, today)
+                except:
+                    _mv_at = ''
+            if release_date == today:
+                # Lansare AZI: nume + eticheta galben bold (la fel ca in
+                # Up Next, sezon si calendare). Rozul e pentru viitor.
+                _dl = f"{calendar_localized_label(0, '')} • {_mv_at}" if _mv_at else calendar_localized_label(0, '')
+                date_label = f"[B][COLOR yellow]({_dl})[/COLOR][/B]"
+                display_title = f"[B][COLOR yellow]{display_title}[/COLOR][/B] {date_label}"
+            elif release_date > today:
+                if release_date == today + datetime.timedelta(days=1):
+                    _base = calendar_localized_label(1, _fmt_dmy(p_str))
                 else:
-                    date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
-                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR] {date_label}"
+                    _base = _fmt_dmy(p_str)
+                _dl = f"{_base} • {_mv_at}" if _mv_at else _base
+                date_label = f"[B][COLOR white]({_dl})[/COLOR][/B]"
+                display_title = f"[B][COLOR FFE238EC]{display_title}[/COLOR][/B] {date_label}"
         except: pass
 
     # --- CALCUL RESUME ---
@@ -1747,14 +1760,29 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
             parts = p_str.split('-')
             release_date = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
             today = datetime.date.today()
-            if release_date > today:
-                if release_date == today:
-                    date_label = f"[B][COLOR white]({calendar_localized_label(0, '')})[/COLOR][/B]"
-                elif release_date == today + datetime.timedelta(days=1):
-                    date_label = f"[B][COLOR white]({calendar_localized_label(1, '')})[/COLOR][/B]"
+            if release_date == today:
+                _dl = calendar_localized_label(0, '')
+                if 0 <= (release_date - today).days <= 1:
+                    try:
+                        _sa = get_episode_air_stamp(tmdb_id, 1, 1)[1]
+                    except:
+                        _sa = ''
+                    if _sa:
+                        _dl = f"{_dl} • {_sa}"
+                date_label = f"[B][COLOR yellow]({_dl})[/COLOR][/B]"
+                display_name = f"[B][COLOR yellow]{display_name}[/COLOR][/B] {date_label}"
+            elif release_date > today:
+                if release_date == today + datetime.timedelta(days=1):
+                    _base = calendar_localized_label(1, _fmt_dmy(p_str))
+                    try:
+                        _sa = get_episode_air_stamp(tmdb_id, 1, 1)[1]
+                    except:
+                        _sa = ''
+                    _base = f"{_base} • {_sa}" if _sa else _base
+                    date_label = f"[B][COLOR white]({_base})[/COLOR][/B]"
                 else:
                     date_label = f"[B][COLOR white]({_fmt_dmy(p_str)})[/COLOR][/B]"
-                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR] {date_label}"
+                display_name = f"[B][COLOR FFE238EC]{display_name}[/COLOR][/B] {date_label}"
         except: pass
 
     poster_path = full_details.get('poster_path', item.get('poster_path', ''))
@@ -1865,7 +1893,13 @@ def get_watched_status_tvshow(tmdb_id, watched_count=None):
             except:
                 pass
 
-    if not (total_eps and watched_count >= total_eps):
+    # Providerul poate declara un serial "complet" chiar daca oglinda noastra
+    # de episoade o contrazice (MDBList trimite in sync/watched.shows orice
+    # serial cu activitate, nu doar pe cele complet vizionate). Nu credem
+    # declaratia cand avem episoade reale mai putine decat totalul - altfel
+    # 1 episod din 40 primea badge "Complet" in In Progress TV Shows.
+    _contradicted = bool(watched_count and total_eps and watched_count < total_eps)
+    if not (total_eps and watched_count >= total_eps) and not _contradicted:
         try:
             _mod = watched_provider.get_source_module()
             _chk = getattr(_mod, 'is_fully_watched_show', None) if _mod else None
@@ -2625,6 +2659,16 @@ def tmdb_calendar_my():
         season_fetch = [(tid, sn) for tid, m in cand_map.items() for sn in m['seasons']]
         if season_fetch:
             season_data = _prefetch_tmdb_seasons(season_fetch)
+            # stamp-urile (data+ora din Trakt/Simkl) se citesc O SINGURA DATA pentru
+            # toate sezoanele, nu cate o interogare per episod
+            try:
+                _stamps = get_episode_air_stamps(
+                    [(tid, sn, ep.get('episode_number'))
+                     for tid, m in cand_map.items() for sn in m['seasons']
+                     for ep in ((season_data.get((tid, sn)) or {}).get('episodes') or [])
+                     if isinstance(ep, dict) and ep.get('episode_number')] or None)
+            except Exception:
+                _stamps = {}
             for tid, m in cand_map.items():
                 for sn in m['seasons']:
                     details = season_data.get((tid, sn))
@@ -2640,6 +2684,16 @@ def tmdb_calendar_my():
                             d = _dt.date.fromisoformat(air)
                         except Exception:
                             continue
+                        # TMDb poate avea data cu o zi in urma fata de sursa de difuzare
+                        # (ex. Lanterns S01E07: TMDb 27, Trakt/Simkl/MDBList 28). Fara asta
+                        # calendarul ar arata "ieri" iar Browse Season "azi" pentru acelasi
+                        # episod.
+                        try:
+                            _st = (_stamps or {}).get((str(tid), int(sn), int(ep_num)))
+                        except Exception:
+                            _st = None
+                        d = air_effective_date(d, _st, wnd['today'])
+                        air = d.isoformat()
                         if d < wnd['start'] or d > wnd['end']:
                             continue
                         ep_name = str(ep.get('name', '') or '').strip()
@@ -2724,6 +2778,20 @@ def _render_tmdb_calendar_entries(entries, wnd):
         pass
 
     items_to_add = []
+    # Orele de difuzare: prefetch o data pentru toata fereastra, apoi o singura
+    # citire bulk. Doar episodele de azi / maine le folosesc in eticheta.
+    _air_keys = [{'tmdb_id': e['tmdb_id'], 'season': e.get('season') or 0,
+                  'episode': e.get('episode') or 0, 'air_date': e.get('air_date') or '',
+                  'show_title': e.get('show_title') or ''}
+                 for e in entries if e.get('media_type') == 'tv'
+                 and -1 <= int(e.get('diff') or 0) <= 1]
+    try:
+        prefetch_air_times(_air_keys)
+        _air_stamps = get_episode_air_stamps(
+            [(k['tmdb_id'], int(k['season']), int(k['episode'])) for k in _air_keys]) or {}
+    except Exception:
+        _air_stamps = {}
+
     for e in entries:
         tmdb_id = e['tmdb_id']
         is_movie = e['media_type'] == 'movie'
@@ -2759,6 +2827,14 @@ def _render_tmdb_calendar_entries(entries, wnd):
             date_label = calendar_localized_label(diff, d)
         except Exception:
             date_label = str(e['air_date'])
+        # Ora de difuzare (doar azi / maine) din cache-ul comun de ore.
+        if -1 <= diff <= 1 and not is_movie:
+            try:
+                _at = _air_stamps.get((str(e['tmdb_id']), int(e.get('season') or 0), int(e.get('episode') or 0)))
+                if _at and _at[1]:
+                    date_label = f'{date_label} • {_at[1]}'
+            except Exception:
+                pass
         if diff == 0:
             date_color = 'white'
         elif diff < 0:
@@ -2766,19 +2842,25 @@ def _render_tmdb_calendar_entries(entries, wnd):
         else:
             date_color = 'yellow'
 
+        # Difuzat AZI: numele serialului/filmului + eticheta, galben bold.
+        # Numele episodului rmane lavanda FFCCCCFF (standardul din toate listele).
+        _today = (diff == 0)
         if is_movie:
             movie_year = str(e['air_date'])[:4] if e['air_date'] else ''
             display_title = f'{show_title} ({movie_year})' if movie_year else show_title
-            display = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
+            _tclr = 'yellow' if _today else 'FFFF4444'
+            display = f'[B][COLOR {_tclr}]{display_title}[/COLOR][/B]'
         else:
             ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
-            display = f'[B][COLOR FF00CED1]{show_title}[/COLOR][/B]'
+            _tclr = 'yellow' if _today else 'FF00CED1'
+            display = f'[B][COLOR {_tclr}]{show_title}[/COLOR][/B]'
             if ep_label:
                 display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
             if e.get('ep_title'):
                 display += f' - [B][I][COLOR FFCCCCFF]{e["ep_title"]}[/I][/COLOR][/B]'
         if date_label:
-            display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
+            _dclr = 'yellow' if _today else date_color
+            display += f' [COLOR {_dclr}] • [B]{date_label}[/B][/COLOR]'
 
         li = xbmcgui.ListItem(display)
         _safe_set_prop(li, 'cal_diff', str(diff))
@@ -5298,11 +5380,23 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
     total_seasons = show_details.get('number_of_seasons', 0) if show_details else 0
     total_eps_in_season = len(data.get('episodes',[])) if data else 0
 
-    # Batch fetch all progress for this season (one query instead of per-episode)
+    # Batch fetch all progress for this season (1 query instead of per-episode)
     progress_map = trakt_sync.get_local_playback_progress_batch(tmdb_id, 'tv', season_num)
     try:
-        prefetch_air_times([{'tmdb_id': str(tmdb_id), 'season': int(season_num), 'episode': int(ep.get('episode_number') or 0)}
-                            for ep in data.get('episodes', [])])
+        # Numai episoadele care pot AFISA o ora (azi sau viitoare, cu o zi de
+        # marja pentru un possible air_date gresit din TMDb). Cerutarea pentru
+        # episoadele deja difuzate era retea degeaba si incetinea sezonul.
+        def _ask_air(ep):
+            ad = ep.get('air_date') or ''
+            try:
+                _p = str(ad).split('T')[0].split('-')
+                return (datetime.date(int(_p[0]), int(_p[1]), int(_p[2])) - today).days >= -2
+            except:
+                return False
+        prefetch_air_times([{'tmdb_id': str(tmdb_id), 'season': int(season_num),
+                             'episode': int(ep.get('episode_number') or 0),
+                             'air_date': ep.get('air_date') or ''}
+                            for ep in data.get('episodes', []) if _ask_air(ep)])
     except:
         pass
 
@@ -5341,13 +5435,30 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         if ep_air_date:
             try:
                 parts = str(ep_air_date).split('-')
-                if datetime.date(int(parts[0]), int(parts[1]), int(parts[2])) > today:
-                    try:
-                        _ep_at = get_episode_air_time(tmdb_id, season_num, ep_num)
-                    except:
-                        _ep_at = ''
-                    _ep_when = f"{_fmt_dmy(ep_air_date)} • {_ep_at}" if _ep_at else _fmt_dmy(ep_air_date)
-                    display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({_ep_when})[/B]"
+                _ep_d = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+                try:
+                    _ep_stamp = get_episode_air_stamp(tmdb_id, season_num, ep_num)
+                except:
+                    _ep_stamp = None
+                _ep_at = _ep_stamp[1] if _ep_stamp else ''
+                _ep_d = air_effective_date(_ep_d, _ep_stamp, today)
+                if _ep_d >= today:
+                    # "doar azi si maine" primesc cuvantul + data; restul=data.
+                    if _ep_d == today:
+                        _ep_day = calendar_localized_label(0, '')
+                    elif _ep_d == today + datetime.timedelta(days=1):
+                        _ep_day = calendar_localized_label(1, _ep_d.isoformat())
+                    else:
+                        _ep_day = _fmt_dmy(ep_air_date)
+                    _ep_when = f"{_ep_day} • {_ep_at}" if _ep_at else _ep_day
+                    # Rozul FFE238EC = "nu s-a difuzat inca", deci doar pentru
+                    # viitor. Azi: numele episodului rmane lavanda (FFCCCCFF,
+                    # standardul din toate listele), doar eticheta devine
+                    # galben bold.
+                    if _ep_d > today:
+                        display_label = f"[B][COLOR FFE238EC]{season_num}x{int(ep_num):02d} {original_ep_name}[/COLOR] ({_ep_when})[/B]"
+                    else:
+                        display_label = f"[B]{season_num}x{int(ep_num):02d} [COLOR FFCCCCFF]{original_ep_name}[/COLOR][/B] [B][COLOR yellow]({_ep_when})[/COLOR][/B]"
             except: pass
         # -----------------------------------------------
         
@@ -6897,16 +7008,26 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
         try:
             existing = trakt_sync.get_tmdb_item_details_from_db(str_id, content_type)
             should_store = True
+            merge_release_dates = False
             if existing and existing.get('_cached_lang') not in ('en', None) and data.get('_cached_lang') == 'en' and skip_localization:
                 should_store = False
             elif existing and existing.get('_cached_lang') == data.get('_cached_lang'):
                 if not lightweight and existing.get('_lightweight'):
                     should_store = True
                 elif lightweight and not existing.get('_lightweight'):
+                    # Randul existent e "full" (credits/videos) si NU are release_dates.
+                    # Nu il suprascriem cu payload-ul lightweight (am pierde titlurile
+                    # localizate si overview-ul din randul full), dar completam DOAR
+                    # campul lipsa - altfel datele de lansare traiesc doar in pool-ul
+                    # RAM si calendarul se goleste la restartul lui Kodi.
+                    if not existing.get('release_dates') and data.get('release_dates'):
+                        existing['release_dates'] = data['release_dates']
+                        merge_release_dates = True
                     should_store = False
-            if should_store:
+            if should_store or merge_release_dates:
                 conn = trakt_sync.get_connection()
-                trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type, data)
+                trakt_sync.set_tmdb_item_details_to_db(conn.cursor(), tmdb_id, content_type,
+                                                       existing if merge_release_dates else data)
                 conn.commit()
                 conn.close()
         except:
@@ -7231,8 +7352,8 @@ def in_progress_tvshows(params):
 
     # === 1. FAST CACHE CHECK (RAM) ===
     # Bump LABEL_VERSION cand se modifica formatul label-urilor (e.g. culoare TBA)
-    # 7: label-urile din cache contin AIR_TIME_TOKEN, ora se pune la randare
-    LABEL_VERSION = "7"
+    # 8: randurile difuzate azi primesc si ele eticheta (Astazi) + token
+    LABEL_VERSION = "8"
     try:
         _air_time_on = ADDON.getSetting('show_air_time') == 'true'
     except:
@@ -7351,7 +7472,7 @@ def in_progress_tvshows(params):
 
     # Orele de difuzare: o singura conexiune sqlite pentru toata lista.
     try:
-        _ip_at_map = get_episode_air_times_map(
+        _ip_at_map = get_episode_air_stamps(
             [(str(x['tmdb_id']), int(x.get('season') or 0), int(x.get('episode') or 0)) for x in valid_shows])
     except:
         _ip_at_map = None
@@ -7453,40 +7574,54 @@ def in_progress_tvshows(params):
         is_tba = not air_date_str
 
         if is_tba:
-            label = f"[B][COLOR FFFF4444]{name} [COLOR FFFF4444](TBA)[/COLOR][/B]"
+            label = f"[B][COLOR FFFF4444]{name} (TBA)[/COLOR][/B]"
+            _ip_name = None
         else:
-            label = f"{name} ({year})" if year else name
+            _ip_name = f"{name} ({year})" if year else name
             if curr_total > 0 and curr_watched >= curr_total:
-                label += f" [B][COLOR lime](Complet)[/COLOR][/B]"
+                label = f"{_ip_name} [B][COLOR lime](Complet)[/COLOR][/B]"
             elif curr_watched > 0:
-                label = f"[B][COLOR FFEFD702]{label}[/COLOR] [COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+                label = f"[B][COLOR FFEFD702]{_ip_name}[/COLOR] [COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
             else:
-                label += f" [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
+                label = f"{_ip_name} [B][COLOR FF6AFB92]({curr_watched}/{display_total})[/COLOR][/B]"
         label_cache = label
         air_key = None
         try:
+            _ip_key = (str(tmdb_id), int(item.get('season') or 0), int(item.get('episode') or 0))
+            _ip_stamp = _ip_at_map.get(_ip_key) if _ip_at_map is not None else None
+            if _ip_stamp is None:
+                try:
+                    _ip_stamp = get_episode_air_stamp(tmdb_id, item.get('season'), item.get('episode'))
+                except:
+                    _ip_stamp = None
+            _ip_at = _ip_stamp[1] if _ip_stamp else ''
             _ip_ad = str(item.get('air_date', '')).split('T')[0]
             _ip_parts = _ip_ad.split('-')
             _ip_d = datetime.date(int(_ip_parts[0]), int(_ip_parts[1]), int(_ip_parts[2]))
-            if _ip_d > datetime.date.today():
-                if _ip_at_map is not None:
-                    _ip_at = _ip_at_map.get((str(tmdb_id), int(item.get('season') or 0), int(item.get('episode') or 0)), '')
-                else:
-                    try:
-                        _ip_at = get_episode_air_time(tmdb_id, item.get('season'), item.get('episode'))
-                    except:
-                        _ip_at = ''
+            _ip_d = air_effective_date(_ip_d, _ip_stamp, datetime.date.today())
+            if _ip_d >= datetime.date.today():
                 _ip_diff = (_ip_d - datetime.date.today()).days
-                if _ip_diff == 1:
-                    _ip_when = calendar_localized_label(1, '')
+                if _ip_diff == 0:
+                    _ip_when = calendar_localized_label(0, '')
+                elif _ip_diff == 1:
+                    _ip_when = calendar_localized_label(1, _ip_d.isoformat())
                 else:
                     _ip_when = _fmt_dmy(_ip_ad)
                 # Data se afiseaza mereu; ora doar cind o stim. In cache rămâne
                 # tokenul, deci ora se completeaza la randare (live + fast cache)
                 # fara sa fie nevoie de re-prefetch sau de re-salvare a listei.
-                label_cache = f"{label} [COLOR yellow]({_ip_when}{AIR_TIME_TOKEN})[/COLOR]"
+                if _ip_diff == 0 and _ip_name:
+                    # Azi: numele serialului + eticheta, galben bold. Rebuild
+                    # din nume (nu infasurarea labelului, care isi are deja
+                    # inchiderea /B si ar lasa un [/B] vizibil).
+                    _cnt = ' [B][COLOR FF6AFB92](%d/%s)[/COLOR][/B]' % (curr_watched, display_total)
+                    if curr_total > 0 and curr_watched >= curr_total:
+                        _cnt = ' [B][COLOR lime](Complet)[/COLOR][/B]'
+                    label_cache = f"[B][COLOR yellow]{_ip_name}[/COLOR][/B]{_cnt} [B][COLOR yellow]({_ip_when}{AIR_TIME_TOKEN})[/COLOR][/B]"
+                else:
+                    label_cache = f"{label} [COLOR yellow]({_ip_when}{AIR_TIME_TOKEN})[/COLOR]"
                 label = apply_air_time(label_cache, _ip_at)
-                air_key = (str(tmdb_id), int(item.get('season') or 0), int(item.get('episode') or 0))
+                air_key = _ip_key
         except:
             label_cache = label
 
@@ -8067,8 +8202,8 @@ def get_next_episodes(params=None):
         return
 
     # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
-    # 11: label-urile din cache contin AIR_TIME_TOKEN, ora se pune la randare
-    LABEL_VERSION = "11"
+    # 12: randurile difuzate azi primesc si ele eticheta (Astazi) + token
+    LABEL_VERSION = "12"
     try:
         _show_unstarted_cache = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
     except:
@@ -8141,7 +8276,7 @@ def get_next_episodes(params=None):
         except:
             continue
     try:
-        _at_map = get_episode_air_times_map(_keys)
+        _at_map = get_episode_air_stamps(_keys)
     except:
         _at_map = None
     try:
@@ -8387,31 +8522,43 @@ def get_next_episodes(params=None):
         # <<-- MODIFICARE AICI PENTRU CULOARE -->>
         is_upcoming = False
         _at = ''
+        _akey = (str(tmdb_id), int(it['season'] or 0), int(it['episode'] or 0))
+        _stamp = None
+        if _at_map is not None:
+            _stamp = _at_map.get(_akey)
+        else:
+            try:
+                _stamp = get_episode_air_stamp(tmdb_id, it['season'], it['episode'])
+            except:
+                _stamp = None
+        if _stamp:
+            _at = _stamp[1]
         if it['air_date']:
             try:
                 parts = str(it['air_date']).split('T')[0].split('-')
                 air_date_obj = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
-                if air_date_obj > today:
+                air_date_obj = air_effective_date(air_date_obj, _stamp, today)
+                if air_date_obj >= today:
                     is_upcoming = True
                     days_until = (air_date_obj - today).days
-                    if days_until == 1:
-                        zile_str = calendar_localized_label(1, '')
+                    if days_until == 0:
+                        zile_str = calendar_localized_label(0, '')
+                    elif days_until == 1:
+                        zile_str = calendar_localized_label(1, air_date_obj.isoformat())
                     elif 1 < days_until <= 7:
                         zile_str = f"In {days_until} zile" if get_plot_language_code() == 'ro' else f"In {days_until} days"
                     else:
                         zile_str = _fmt_dmy(it['air_date'])
-                    if _at_map is not None:
-                        # O singura conexiune sqlite pentru toata lista
-                        _at = _at_map.get((str(tmdb_id), int(it['season'] or 0), int(it['episode'] or 0)), '')
-                    else:
-                        try:
-                            _at = get_episode_air_time(tmdb_id, it['season'], it['episode'])
-                        except:
-                            _at = ''
                     # In fast cache salvam TOKENUL, nu ora: lista se poate salva
                     # imediat (deschiderile urmatoare = instant), iar orele apar la
                     # randare pe masura ce cache-ul de ore se umple.
-                    label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR yellow]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str}{AIR_TIME_TOKEN})[/COLOR]{badge}[/B]"
+                    # Rozul FFFF69B4 = "nu s-a difuzat inca", deci doar pentru
+                    # viitor. Pentru azi: numele si eticheta sunt galben bold
+                    # (semnalul "azi"), in toate listele.
+                    if days_until == 0:
+                        label = f"[B][COLOR yellow]{it['show_title']}[/COLOR][/B] - [B][COLOR FFCCCCCC]S{it['season']:02d}E{it['episode']:02d}[/COLOR][/B] - [B][COLOR FFCCCCFF][I]{it['ep_title']}{badge}[/I][/COLOR][/B]  [B][COLOR yellow]({zile_str}{AIR_TIME_TOKEN})[/COLOR][/B]"
+                    else:
+                        label = f"[B][COLOR FFFF69B4]{it['show_title']}[/COLOR] [COLOR yellow]- S{it['season']:02d}E{it['episode']:02d}[/COLOR] - [I][COLOR FFCCCCFF]{it['ep_title']}[/COLOR][/I]  [COLOR yellow]({zile_str}{AIR_TIME_TOKEN})[/COLOR]{badge}[/B]"
             except: 
                 pass
         elif show_future: # TBA (fara data)

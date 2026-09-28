@@ -632,7 +632,10 @@ def calendar_localized_label(diff, ds):
     if diff == 0:
         return 'Astazi' if is_ro else 'Today'
     if diff == 1:
-        return 'Maine' if is_ro else 'Tomorrow'
+        # Maine: cuvantul relativ + data reala (daca e primita), ca in
+        # "Maine (29.09.2026)". "doar azi si maine" primesc acest tratament.
+        base = 'Maine' if is_ro else 'Tomorrow'
+        return f'{base} ({ds})' if ds else base
     if diff == -1:
         return 'Ieri' if is_ro else 'Yesterday'
     if diff >= 2:

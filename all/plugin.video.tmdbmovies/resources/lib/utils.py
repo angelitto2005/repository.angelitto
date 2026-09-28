@@ -249,6 +249,7 @@ def is_season_fully_watched(tmdb_id, season, count_fn):
 _AIR_TIME_TTL = 7 * 24 * 3600          # ora cunoscuta: valabila 7 zile
 _AIR_TIME_NEG_TTL = 6 * 3600           # "nu exista (inca) ora": reincercam dupa 6h
 _AIR_TIME_FALLBACK_MAX = 10            # cereri per-episod (Trakt, secvential) per deschidere
+_AIR_TIME_BUDGET = 2.0                 # buget maxim (secunde) pentru reteaua din prefetch
 
 # Tokenul care tine locul orei de difuzare in label-urile salvate in fast cache.
 # Lista se salveaza MEREU in fast cache (deschiderile urmatoare ramin instant), iar
@@ -291,12 +292,15 @@ def _air_time_rows_fresh(rows, now=None):
     return fresh
 
 
-def get_episode_air_times_map(keys):
-    """Orele locale pentru mai multe episoade, dintr-o SINGURA conexiune sqlite.
+def get_episode_air_stamps(keys):
+    """Data SI ora locale pentru mai multe episoade, dintr-o SINGURA conexiune.
 
     keys = iterable de (tmdb_id, season, episode); returneaza
-    {(tmdb_id, season, episode): ora_locala} doar pentru orele valide.
+    {(tmdb_id, season, episode): (date_locala, ora_locala)} pentru orele valide.
+    Data vine din timestampul sursei (Trakt first_aired / CDN Simkl), nu din
+    air_date al tabelelor de provider - acelea pot fi cu o zi gresite.
     """
+    import datetime as _dtm
     out = {}
     try:
         wanted = set()
@@ -331,12 +335,186 @@ def get_episode_air_times_map(keys):
                 if now - float(r[4] or 0) >= _AIR_TIME_TTL:
                     continue
                 _at = utc_to_local_time(str(r[3])) or ''
-                if _at:
-                    out[key] = _at
+                if not _at:
+                    continue
+                _s = str(r[3]).replace('Z', '+00:00')
+                _dt = _dtm.datetime.fromisoformat(_s)
+                if _dt.tzinfo is None:
+                    _dt = _dt.replace(tzinfo=_dtm.timezone.utc)
+                out[key] = (_dt.astimezone().date(), _at)
             except:
                 continue
     except:
         return None
+    return out
+
+
+def get_episode_air_times_map(keys):
+    """Orele locale pentru mai multe episoade, dintr-o SINGURA conexiune sqlite.
+
+    keys = iterable de (tmdb_id, season, episode); returneaza
+    {(tmdb_id, season, episode): ora_locala} doar pentru orele valide.
+    """
+    stamps = get_episode_air_stamps(keys)
+    if stamps is None:
+        return None
+    return {k: v[1] for k, v in stamps.items()}
+
+
+_MOVIE_AIR_TRIED = False
+
+
+def movie_release_air_time(tmdb_id, release_date, today):
+    """Ora de lansare a unui film (azi / maine), din calendarul Trakt de filme.
+
+    Cheia in trakt_airtime_cache este (tmdb_id, 0, 0). Calendarul se cere O SINGURA
+    data per sesiune (o cerere pentru toate filmele), apoi timpul ramane in cache
+    7 zile. Fara Trakt sau fara timp cunoscut -> sir gol, eticheta arata doar data.
+    """
+    global _MOVIE_AIR_TRIED
+    try:
+        if ADDON.getSetting('show_air_time') != 'true':
+            return ''
+    except:
+        return ''
+    tid = str(tmdb_id)
+    if not tid or tid == 'None':
+        return ''
+    try:
+        _st = get_episode_air_stamp(tid, 0, 0)
+        if _st[1]:
+            return _st[1]
+        if _MOVIE_AIR_TRIED:
+            return ''
+        _MOVIE_AIR_TRIED = True
+        prefetch_air_times([{'tmdb_id': tid, 'season': 0, 'episode': 0,
+                             'air_date': release_date.isoformat(), 'title': ''}])
+        _st = get_episode_air_stamp(tid, 0, 0)
+        return _st[1] if _st[1] else ''
+    except:
+        return ''
+
+
+def get_episode_air_stamp(tmdb_id, season, episode):
+    """Varianta per episod: (data_locala, ora_locala) sau (None, '')."""
+    try:
+        if ADDON.getSetting('show_air_time') != 'true':
+            return (None, '')
+    except:
+        return (None, '')
+    try:
+        conn = _air_time_cache_table()
+        if conn is None:
+            return (None, '')
+        try:
+            r = conn.execute("SELECT first_aired, saved_at FROM trakt_airtime_cache WHERE tmdb_id=? AND season=? AND episode=?",
+                             (str(tmdb_id), int(season), int(episode))).fetchone()
+        finally:
+            try:
+                conn.close()
+            except:
+                pass
+        if not r or not r[0]:
+            return (None, '')
+        try:
+            if time.time() - float(r[1] or 0) >= _AIR_TIME_TTL:
+                return (None, '')
+        except:
+            pass
+        res = get_episode_air_stamps([(tmdb_id, season, episode)])
+        v = res.get((str(tmdb_id), int(season), int(episode)))
+        return v if v else (None, '')
+    except:
+        return (None, '')
+
+
+def air_effective_date(db_date, stamp, today):
+    """Data pe care o arata eticheta cand sursa spune AZI.
+
+    air_date din tabelele de provider vine din TMDb si poate fi cu o zi gresita
+    (Lanterns S01E07: DB 27, calendarul Trakt si CDN-ul Simkl spun 28). Cand
+    stampul rezolvat (data+ora din sursa) cade pe ziua de azi, el are prioritate.
+    """
+    import datetime
+    try:
+        if stamp and stamp[0]:
+            sd = stamp[0]
+            if isinstance(sd, str):
+                # stamp[0] vine ca data locala 'YYYY-MM-DD'; poate ajunge si
+                # obiect date sau datetime, deci normalizam inainte de comparatie
+                sd = datetime.date(int(sd[0:4]), int(sd[5:7]), int(sd[8:10]))
+            elif isinstance(sd, datetime.datetime):
+                sd = sd.date()
+            if sd == today:
+                return today
+    except Exception:
+        pass
+    return db_date
+
+
+def _simkl_cdn_air_times(air_dates_map, today):
+    """Ore locale din calendarul CDN public Simkl (fara auth).
+
+    Sursa secundara: ruleaza DOAR dupa Trakt, doar pentru cheile care lipsesc.
+    Citeste payload-ul CRUD din cache (cheia 'calendar', TTL 24h, populat si de
+    sync-ul de 30 min) si pastreaza timestamp-ul complet - parserul din simkl.py
+    taie ora la [:10], deci nu poate fi refolosit aici.
+    Fereastra [azi, azi+7] se aplica pe data SURSEI, NU pe air_date din
+    tabelele de provider: acelea vin din TMDb si pot fi cu o zi gresite
+    (Lanterns S01E07: DB 27, CDN-ul spune 28), si atunci episodul de azi ar
+    fi filtrat chiar de sursa care stie ora lui. Mai departe fereastra, CDN-ul
+    are placeholder-uri 00:00:00Z care ar sta 7 zile prin TTL.
+    """
+    import datetime as _dt
+    out = {}
+    try:
+        min_day = today.isoformat()
+        max_day = (today + _dt.timedelta(days=7)).isoformat()
+        wanted = set()
+        for k in (air_dates_map or {}):
+            try:
+                wanted.add((str(k[0]), int(k[1]), int(k[2])))
+            except:
+                continue
+        if not wanted:
+            return out
+        from resources.lib.simkl_sync import get_cached
+        data = get_cached('calendar', ttl=86400)
+        if data is None:
+            from resources.lib.simkl_api import SIMKLAPI
+            from resources.lib.simkl_sync import set_cached
+            data = SIMKLAPI().calendar_events()
+            if data is not None:
+                set_cached('calendar', data)
+        if not isinstance(data, dict):
+            return out
+        cal = data.get('calendar') or []
+        meta = data.get('metadata') or {}
+        if not isinstance(cal, list) or not isinstance(meta, dict):
+            return out
+        for item in cal:
+            try:
+                if not isinstance(item, dict):
+                    continue
+                raw = str(item.get('date') or '')
+                if 'T' not in raw:
+                    continue
+                day = raw[:10]
+                if not (min_day <= day <= max_day):
+                    continue
+                sid = item.get('simkl_id')
+                ids = (meta.get(str(sid)) or {}).get('ids') or {}
+                tid = str(ids.get('tmdb') or '')
+                if not tid:
+                    continue
+                ep = item.get('episode') or {}
+                key = (tid, int(ep.get('season') or 0), int(ep.get('episode') or 0))
+                if key in wanted and key not in out:
+                    out[key] = raw
+            except:
+                continue
+    except Exception as _e:
+        log(f"[AIRTIME] Simkl CDN air times failed: {_e}", xbmc.LOGWARNING)
     return out
 
 
@@ -357,22 +535,33 @@ def prefetch_air_times(items, days=120):
         import time as _tm
         from resources.lib import trakt_api as _ta
         try:
-            if not _ta.get_trakt_token():
-                return None
+            _trakt_ok = bool(_ta.get_trakt_token())
         except:
-            return None
+            _trakt_ok = False
         today = _dt.date.today()
         want = []
-        # need_time: ora se afiseaza doar la episoadele viitoare (sau fara data);
-        # pentru episoadele deja difuzate nu facem nicio cerere per episod.
+        # air_date din tabelele de provider vine din TMDb si poate fi cu o zi
+        # gresita (ex. Lanterns S01E07: DB 27, sursele spun 28). De aceea nu
+        # conditionam cautarea orei pe el: intrebam sursele pentru orice rand,
+        # iar fereastra [azi, azi+7] se aplica pe data SURSEI, in helper.
+        # need_time pastreaza doar prioritatea: randurile cu data >= azi sau
+        # apropiate de azi sunt cerute per episod inaintea celor vechi.
         need_time = {}
+        air_dates = {}
         names = {}
         for it in items or []:
             try:
                 key = (str(it.get('tmdb_id') or ''), int(it.get('season') or 0), int(it.get('episode') or 0))
             except:
                 continue
-            if not key[0] or key[0] == 'None' or key[1] <= 0 or key[2] <= 0:
+            if not key[0] or key[0] == 'None':
+                continue
+            # Filme: cheie (tmdb_id, 0, 0). Episodele: ambele > 0.
+            if key[1] > 0 and key[2] > 0:
+                pass
+            elif key[1] == 0 and key[2] == 0:
+                pass
+            else:
                 continue
             want.append(key)
             # Numele serialului doar pentru log (altfel ramine doar tmdb_id).
@@ -382,12 +571,22 @@ def prefetch_air_times(items, days=120):
                 names[key] = key[0]
             try:
                 _p = str(it.get('air_date') or '').split('T')[0].split('-')
-                need_time[key] = _dt.date(int(_p[0]), int(_p[1]), int(_p[2])) >= today
+                _pd = _dt.date(int(_p[0]), int(_p[1]), int(_p[2]))
+                need_time[key] = (_pd - today).days >= -3
+                air_dates[key] = _pd
             except:
                 need_time[key] = True
         want = list(dict.fromkeys(want))
         if not want:
             return None
+        # Randurile cu data cea mai apropiata de azi sunt cerute primele (plafon
+        # de cereri per episod), ca un DB cu o zi gresita sa nu fie irosit pe
+        # episoade vechi.
+        def _near(w):
+            d = air_dates.get(w)
+            return abs((d - today).days) if d else 10 ** 6
+        want.sort(key=_near)
+        _has_ep = any(w[1] > 0 and w[2] > 0 for w in want)
         try:
             conn = _air_time_cache_table()
             known_times = {}
@@ -407,15 +606,20 @@ def prefetch_air_times(items, days=120):
             have = set(k for k, v in known_times.items() if v)
             found = {}
             bulk_ok = False
+            simkl_filled = 0
             attempted = 0
+            _t_start = _tm.time()
 
+            # Daca nu mai lipseste nicio cheie, NU cerem nimic: o lista cu cache
+            # cald trebuie sa coste 0 cereri de retea, nu 1 la fiecare deschidere.
             if _needed and _pn:
                 # 1. BULK: calendarul Trakt "my shows". Un esec aici nu mai e mut:
                 #    fara log nu se putea sti de ce lista iese fara ore.
                 try:
-                    cal = _ta.get_trakt_calendar_shows(start_date=today.strftime('%Y-%m-%d'), days=days) or []
+                    cal = (_ta.get_trakt_calendar_shows(start_date=today.strftime('%Y-%m-%d'), days=days)
+                           if (_trakt_ok and _has_ep) else None) or []
                     bulk_ok = isinstance(cal, list) and len(cal) > 0
-                    if not bulk_ok:
+                    if not bulk_ok and _trakt_ok:
                         log("[AIRTIME] bulk calendar returned nothing (calendar 'my shows' gol sau cererea a esuat).", xbmc.LOGWARNING)
                     for entry in cal:
                         if not isinstance(entry, dict):
@@ -438,9 +642,14 @@ def prefetch_air_times(items, days=120):
                 #    Rezultatul gol se memoreaza si el (negative cache 6h), altfel
                 #    aceleasi episoade erau reincercate la fiecare deschidere.
                 try:
-                    for (t, s, e) in _pn:
+                    for (t, s, e) in (_pn if _trakt_ok else ()):
                         if attempted >= _AIR_TIME_FALLBACK_MAX:
                             break
+                        if _tm.time() - _t_start > _AIR_TIME_BUDGET:
+                            log(f"[AIRTIME] Buget depasit ({_AIR_TIME_BUDGET}s) dupa {attempted} cereri per episod.")
+                            break
+                        if s <= 0 or e <= 0:
+                            continue   # filmele nu au sezon/episod (vezi pas 2c)
                         fa = found.get((t, s, e))
                         if not fa:
                             try:
@@ -456,15 +665,92 @@ def prefetch_air_times(items, days=120):
                 except:
                     pass
 
-                # 3. Scriem o singura data tot ce am aflat (bulk + fallback,
+                # 2c. FILME lansate azi / maine: calendarul Trakt de filme
+                #     (o singura cerere pentru TOATE filmele din fereastra).
+                #     Cheia in cache este (tmdb_id, 0, 0). Salvam tot ce vine,
+                #     nu doar filmele cerute, altfel urmatorul film din lista
+                #     ar necesita o cerere noua (calendars raspunde o singura
+                #     data pentru toate).
+                movies_filled = 0
+                try:
+                    _mk = [w for w in _pn if w[1] == 0 and w[2] == 0
+                           and air_dates.get(w) is not None
+                           and 0 <= (air_dates.get(w) - today).days <= 1]
+                    if _mk and _trakt_ok:
+                        _mk_try = _ta.get_trakt_calendar_movies(
+                            start_date=today.strftime('%Y-%m-%d'), days=2, limit=200)
+                        _max_d = today + _dt.timedelta(days=1)
+                        for _me in (_mk_try or []):
+                            try:
+                                if not isinstance(_me, dict):
+                                    continue
+                                _mi = _me.get('movie', {}) or {}
+                                _mid = str((_mi.get('ids') or {}).get('tmdb', '') or '')
+                                if not _mid:
+                                    continue
+                                _md = (_me.get('first_aired') or _me.get('released')
+                                       or _mi.get('first_aired') or _mi.get('released') or '')
+                                if not _md or 'T' not in str(_md):
+                                    continue
+                                _pd = str(_md).replace('Z', '+00:00')
+                                _dd = _dt.datetime.fromisoformat(_pd).astimezone().date()
+                                if not (today <= _dd <= _max_d):
+                                    continue
+                                _k = (_mid, 0, 0)
+                                if _k not in found:
+                                    found[_k] = str(_md)
+                                    movies_filled += 1
+                            except:
+                                continue
+                        if movies_filled:
+                            log(f"[AIRTIME] Trakt movies calendar: {movies_filled} ore de lansare.")
+                except Exception as _me_err:
+                    log(f"[AIRTIME] movies calendar failed: {_me_err}", xbmc.LOGWARNING)
+
+                # 2b. SIMKL CDN (public, fara auth), sursa secundara: ruleaza
+                #     DOAR dupa Trakt si DOAR pentru cheile care mai lipsesc.
+                #     Se uita la TOATE cheile lipsa, nu doar la cele cu data
+                #     apropiata: fereastra [azi, azi+7] o aplica helperul pe
+                #     data SURSEI, deci un air_date gresit din DB nu ne ascunde.
+                try:
+                    _left = [w for w in missing if not found.get(w)]
+                    if _left:
+                        _sd = {}
+                        for w in _left:
+                            _d = air_dates.get(w)
+                            if _d:
+                                _sd[w] = _d
+                        if _sd:
+                            for _k, _v in _simkl_cdn_air_times(_sd, today).items():
+                                found[_k] = _v
+                                simkl_filled += 1
+                        if simkl_filled:
+                            log(f"[AIRTIME] Simkl CDN a adaugat {simkl_filled} ore.")
+                except:
+                    pass
+
+                # 3. Scriem o singura data tot ce am aflat (bulk + fallback + Simkl,
                 #    inclusiv negativele) intr-o singura conexiune.
                 try:
                     if conn is not None:
-                        for (t, s, e) in _pn:
-                            if (t, s, e) not in found:
+                        _wset = set(want)
+                        for (t, s, e) in found:
+                            # Episodele se salveaza doar daca au fost cerute;
+                            # filmele vin in bloc din calendar (vezi pas 2c).
+                            if (t, s, e) not in _wset and not (s == 0 and e == 0):
                                 continue
                             conn.execute("INSERT OR REPLACE INTO trakt_airtime_cache (tmdb_id, season, episode, first_aired, saved_at) VALUES (?,?,?,?,?)",
                                          (t, s, e, found[(t, s, e)], _tm.time()))
+                        # Ce n-a putut fi cerut (plafon sau buget) primeste totusi
+                        # linie negativa, ca sa NU fie recerut la fiecare
+                        # deschidere. Fara asta, o lista mare ramane lenta la
+                        # fiecare acces, pentru ca ultimele randuri nu intrau
+                        # niciodata in cache.
+                        for w in _pn:
+                            if w in found:
+                                continue
+                            conn.execute("INSERT OR REPLACE INTO trakt_airtime_cache (tmdb_id, season, episode, first_aired, saved_at) VALUES (?,?,?,?,?)",
+                                         (w[0], w[1], w[2], '', _tm.time()))
                         conn.commit()
                 except:
                     pass
@@ -481,21 +767,20 @@ def prefetch_air_times(items, days=120):
                 have |= set(k for k, v in found.items() if v)
                 unresolved = [w for w in _needed if w not in have]
                 _worked = bool(_needed and _pn)   # s-a incercat ceva in acest pas?
-                _bulk = 'ok' if bulk_ok else ('fail' if _worked else 'n/a')
+                _bulk = 'ok' if bulk_ok else ('n/a' if not _trakt_ok else ('fail' if _worked else 'n/a'))
                 if unresolved:
                     _sample = ', '.join(
                         f"{names.get((t, s, e)) or t} S{int(s):02d}E{int(e):02d}" for (t, s, e) in unresolved[:5])
                     _msg = (f"[AIRTIME] incomplete: {len(_needed) - len(unresolved)}/{len(_needed)} ore cunoscute "
-                            f"(bulk={_bulk}, fallback={attempted}, lipsa: {_sample})")
+                            f"(bulk={_bulk}, fallback={attempted}, simkl={simkl_filled}, lipsa: {_sample})")
                     if _worked:
-                        # Diagnostic real: am cerut si tot nu avem ora (Trakt nu are
-                        # ora pentru episod / calendar cazut).
-                        log(_msg + " - Trakt nu are ora sau calendarul nu a răspuns.", xbmc.LOGWARNING)
+                        # Diagnostic real: am cerut la toate sursele si tot nu avem ora.
+                        log(_msg + " - nicio sursa (Trakt/Simkl) nu da ora pentru acest episod.", xbmc.LOGWARNING)
                     else:
                         # Nimic de reincercat acum (negative cache): doar informativ.
                         log(_msg + " - nimic de reincercat acum (negative cache).")
                     return False
-                log(f"[AIRTIME] complete: {len(_needed)} ore cunoscute (bulk={_bulk}, fallback={attempted})")
+                log(f"[AIRTIME] complete: {len(_needed)} ore cunoscute (bulk={_bulk}, fallback={attempted}, simkl={simkl_filled})")
                 return True
             except:
                 pass

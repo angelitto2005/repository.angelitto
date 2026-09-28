@@ -7,7 +7,7 @@ import xbmcplugin
 import xbmc
 
 from resources.lib.config import ADDON as PROXIED_ADDON, PUNCHPLAY_COLOR, provider_color, provider_icon, provider_title
-from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, get_episode_air_stamp, prefetch_air_times
 
 PUNCHPLAY_ACTIONS = {
     'punchplay_menu',
@@ -914,6 +914,14 @@ def _view_calendar():
     except Exception:
         ep_name_map = {}
         ep_overview_map = {}
+    _air_keys = [{'tmdb_id': en['tmdb_id'], 'season': en.get('season') or 0,
+                  'episode': en.get('episode') or 0, 'air_date': en.get('air_date') or '',
+                  'show_title': en.get('show_title') or ''}
+                 for en in entries if not (en.get('media_type') == 'movie')]
+    try:
+        prefetch_air_times(_air_keys)
+    except Exception:
+        pass
     for en in entries:
         tid = en['tmdb_id']
         is_movie = en['media_type'] == 'movie'
@@ -948,6 +956,15 @@ def _view_calendar():
             date_label = calendar_localized_label(diff, d)
         except:
             date_label = str(en['air_date'])
+        # Ora de difuzare: PunchPlay o trimite in airDate, o folosim doar pe
+        # fereastra de azi (azi / maine). Nu se scrie in baza de date.
+        if -1 <= diff <= 1 and not is_movie:
+            try:
+                _at = get_episode_air_stamp(tid, en.get('season'), en.get('episode'))[1]
+                if _at:
+                    date_label = f'{date_label} • {_at}'
+            except Exception:
+                pass
         date_color = 'white' if diff == 0 else ('FF00FA9A' if diff < 0 else 'yellow')
         # Categorii + culori ca pe site-ul PunchPlay:
         # In Theaters = violet-300, Digital = amber-300, Anime = rose-300.
@@ -969,14 +986,19 @@ def _view_calendar():
                 cat_color, cat_badge = 'FF6EE7B7', 'Premiere'
             else:
                 cat_color = 'FF6EE7B7'  # episod normal: acelasi emerald
+        # Difuzat AZI: numele serialului + eticheta, galben bold.
+        # Numele episodului rmane lavanda FFCCCCFF (standardul din toate listele).
+        _today = (diff == 0)
         if is_movie:
-            display = (f'[B][COLOR {cat_color}]{show_title} ({str(en["air_date"])[:4]})[/COLOR][/B]'
-                       f' [B][COLOR {cat_color}]• {cat_badge}[/COLOR][/B]')
+            _tclr = 'yellow' if _today else cat_color
+            display = (f'[B][COLOR {_tclr}]{show_title} ({str(en["air_date"])[:4]})[/COLOR][/B]'
+                       f' [B][COLOR {("yellow" if _today else cat_color)}]• {cat_badge}[/COLOR][/B]')
         else:
             ep_label = f'S{en["season"]:02d}E{en["episode"]:02d}' if en['season'] else ''
-            display = f'[B][COLOR {cat_color}]{show_title}[/COLOR][/B]'
+            _tclr = 'yellow' if _today else cat_color
+            display = f'[B][COLOR {_tclr}]{show_title}[/COLOR][/B]'
             if cat_badge:
-                display += f' [B][COLOR {cat_color}]• {cat_badge}[/COLOR][/B]'
+                display += f' [B][COLOR {("yellow" if _today else cat_color)}]• {cat_badge}[/COLOR][/B]'
             if ep_label:
                 display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
             try:
@@ -986,7 +1008,8 @@ def _view_calendar():
             if ep_name:
                 display += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if date_label:
-            display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
+            _dclr = 'yellow' if _today else date_color
+            display += f' [COLOR {_dclr}] • [B]{date_label}[/B][/COLOR]'
         li = xbmcgui.ListItem(display)
         li.setProperty('cal_diff', str(diff))
         li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': fanart})

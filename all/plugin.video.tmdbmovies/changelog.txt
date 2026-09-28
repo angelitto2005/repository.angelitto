@@ -1,3 +1,8 @@
+1.1.306
+- Auto-Play Next Episode now keeps the source you started on: it prefers the same pack, then the same provider (free-leech kept on FileList/SpeedApp/SeedPool), then the same kind of source, and it never jumps to a different kind or to Dolby Vision unless you started on DV.
+- "Choose Source" in the next-episode prompt now really opens the source list.
+- Fix the setting under General: "Show air time" - the hour is now shown for shows airing today or tomorrow.
+
 1.1.305
 - New setting under Accounts -> Watched Status Provider: "Show me the active provider when the add-on opens" (off by default).
 - Choosing a provider that is not connected now shows a short, colored prompt.

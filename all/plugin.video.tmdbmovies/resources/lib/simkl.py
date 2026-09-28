@@ -36,6 +36,7 @@ _KIND_KEYS = {'movie': 'movies', 'tv': 'shows', 'anime': 'anime'}
 _HANDLE   = None
 _BASE_URL = None
 _ADDON    = None
+_MOVIE_DATE_FILLER = False
 
 def _ensure_globals():
     global _ADDON, _BASE_URL, _HANDLE
@@ -550,7 +551,8 @@ def _parse_calendar_episodes(cal_list, meta, wnd, tmdb_filter=None):
         ep = item.get('episode') or {}
         season = int(ep.get('season', 0) or 0)
         episode = int(ep.get('episode', 0) or 0)
-        date_str = str(item.get('date', ''))[:10]
+        date_raw = str(item.get('date', '') or '')
+        date_str = date_raw[:10]
         try:
             d = _dt.date.fromisoformat(date_str)
         except Exception:
@@ -569,11 +571,70 @@ def _parse_calendar_episodes(cal_list, meta, wnd, tmdb_filter=None):
             'episode': episode,
             'ep_title': ep.get('title', ''),
             'air_date': date_str,
+            'air_stamp': date_raw if 'T' in date_raw else '',
             'diff': (d - wnd['today']).days,
             'poster': show_info.get('poster', ''),
             'fanart': show_info.get('fanart', ''),
         })
     return entries
+
+def _start_movie_date_filler(movie_ids):
+    """Completeaza datele de lansare ale filmelor din watchlist, in fundal.
+
+    Fara el, calendarul poate afisa doar filmele care au deja meta in cache: cu
+    sute de filme, prefetch-ul cu buget de timp din view prinde doar o mana, iar
+    restul ramane fara release_dates pana la urmatoarea deschidere. Firul ruleaza
+    o singura data (flag), rate-limitat, ca sa nu se suprapuna intre deschideri.
+    """
+    global _MOVIE_DATE_FILLER
+    if _MOVIE_DATE_FILLER:
+        return
+    todo = [str(t) for t in movie_ids if t and str(t) != 'None']
+    if not todo:
+        return
+    _MOVIE_DATE_FILLER = True
+
+    def _run():
+        try:
+            import time as _t
+            from resources.lib.tmdb_api import get_tmdb_item_details, _get_cached_details
+            done = 0
+            for tid in todo:
+                try:
+                    # Testam EXISTENTA release_dates, nu doar a datelor: un rand
+                    # "full" (credits/videos) arata populat dar nu are release_dates,
+                    # deci calendarul ramane gol dupa restart (pool-ul RAM se pierde).
+                    _d = _get_cached_details(tid, 'movie') or {}
+                    if not ((_d.get('release_dates') or {}).get('results')):
+                        get_tmdb_item_details(tid, 'movie', lightweight=True)
+                        done += 1
+                except Exception:
+                    pass
+                # gentil cu TMDb: fara explozie de cereri pe 8 core-uri
+                if done and done % 20 == 0:
+                    _t.sleep(0.5)
+            if done:
+                xbmc.log(f'[SIMKL] calendar: {done} release dates completed in background', xbmc.LOGINFO)
+                # Randam din nou DOAR daca utilizatorul e inca pe calendarul Simkl,
+                # altfel nu lovim lista in care a navigat intre timp.
+                try:
+                    _cp = (xbmc.getInfoLabel('Container.FolderPath') or '').lower()
+                    if 'simkl_calendar' in _cp and 'plugin.video.tmdbmovies' in _cp:
+                        xbmc.executebuiltin('Container.Refresh')
+                except Exception:
+                    pass
+        except Exception as e:
+            xbmc.log(f'[SIMKL] calendar movie filler error: {e}', xbmc.LOGWARNING)
+        finally:
+            global _MOVIE_DATE_FILLER
+            _MOVIE_DATE_FILLER = False
+
+    try:
+        import threading
+        threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        _MOVIE_DATE_FILLER = False
+
 
 def _view_calendar(page=1):
     """My Calendar: episoade din CDN (tv+anime) pentru serialele din watchlist
@@ -617,15 +678,18 @@ def _view_calendar(page=1):
         import datetime as _dt
         from resources.lib.config import IMG_BASE, BACKDROP_BASE
         from resources.lib.tmdb_api import _get_cached_details
+        _start_movie_date_filler([r.get('tmdb_id') for r in watch_movies])
         fake_movies = [{'id': str(r.get('tmdb_id', '')), 'media_type': 'movie'} for r in watch_movies]
         # Fill paralel marginit (semafor 8, join 8s) — NU secvential: 259 filme
         # secvential = minute de blocare. Itemii ratati sunt sariti la prima
         # vizita si apar la a 2-a (SQLite populat de persist).
         _prefetch_or_fill(fake_movies, 'movie', fill_timeout=8)
+        _mv_nocache = _mv_nodate = _mv_outwin = 0
         for row in watch_movies:
             tid = str(row.get('tmdb_id', ''))
             details = _get_cached_details(tid, 'movie')
             if not details:
+                _mv_nocache += 1
                 continue
             rd = (details.get('release_dates') or {}).get('results') or []
             date_str = ''
@@ -640,12 +704,15 @@ def _view_calendar(page=1):
                         date_str = ds
                         break
             if not date_str:
+                _mv_nodate += 1
                 continue
             try:
                 d = _dt.date.fromisoformat(date_str)
             except Exception:
+                _mv_nodate += 1
                 continue
             if d < wnd['start'] or d > wnd['end']:
+                _mv_outwin += 1
                 continue
             entries.append({
                 'media_type': 'movie',
@@ -664,11 +731,21 @@ def _view_calendar(page=1):
         _empty('[No Calendar Events]')
         _end()
         return
+    try:
+        _ntv = len([e for e in entries if e['media_type'] == 'tv'])
+        _nmv = len(entries) - _ntv
+        _diag = ('[SIMKL] calendar: watchlist=%d tv=%d movies=%d | fereastra %s..%s | '
+                 'episoade=%d | filme: fara_cache=%d fara_data=%d inafara=%d IN=%d')
+        xbmc.log(_diag % (len(watch_tv) + _nmv, len(watch_tv), _nmv,
+                          wnd['start'], wnd['end'], _ntv,
+                          _mv_nocache, _mv_nodate, _mv_outwin, _nmv), xbmc.LOGINFO)
+    except Exception:
+        pass
     _render_calendar_entries(entries, wnd)
 
 def _render_calendar_entries(entries, wnd):
     import datetime as _dt
-    from resources.lib.config import IMG_BASE, BACKDROP_BASE, calendar_localized_label
+    from resources.lib.config import IMG_BASE, BACKDROP_BASE, calendar_localized_label, utc_to_local_time
     from resources.lib.tmdb_api import set_metadata, _get_full_context_menu, _get_cached_details
     try:
         from resources.lib.watched_provider import is_episode_watched as _wp_is_epw, is_movie_watched as _wp_is_mw, browse_command as _browse_cmd
@@ -798,6 +875,17 @@ def _render_calendar_entries(entries, wnd):
             date_label = calendar_localized_label(diff, d)
         except:
             date_label = str(e['air_date'])
+        # Ora de difuzare: Simkl o da in payload, o pierdeam la [:10]. Se afiseaza
+        # doar pe fereastra de azi (azi / maine), ca la celelalte liste.
+        if -1 <= diff <= 1 and not is_movie:
+            try:
+                _raw = e.get('air_stamp') or ''
+                if 'T' in _raw:
+                    _at = utc_to_local_time(_raw)
+                    if _at:
+                        date_label = f'{date_label} • {_at}'
+            except Exception:
+                pass
         if diff == 0:
             date_color = 'white'
         elif diff < 0:
@@ -805,13 +893,16 @@ def _render_calendar_entries(entries, wnd):
         else:
             date_color = 'yellow'
 
+        # Difuzat AZI: numele serialului/filmului + eticheta, galben bold.
+        # Numele episodului ramane lavanda FFCCCCFF (standardul din toate listele).
+        _today = (diff == 0)
         if is_movie:
             movie_year = str(e['air_date'])[:4] if e['air_date'] else ''
             display_title = f'{show_title} ({movie_year})' if movie_year else show_title
-            display = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
+            display = f'[B][COLOR {"yellow" if _today else "FFFF4444"}]{display_title}[/COLOR][/B]'
         else:
             ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
-            display = f'[B][COLOR {provider_color("simkl")}]{show_title}[/COLOR][/B]'
+            display = f'[B][COLOR {"yellow" if _today else provider_color("simkl")}]{show_title}[/COLOR][/B]'
             if ep_label:
                 display += f' - [B][COLOR {date_color}]{ep_label}[/COLOR][/B]'
             try:
@@ -821,46 +912,49 @@ def _render_calendar_entries(entries, wnd):
             if ep_name:
                 display += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if date_label:
-            display += f' [COLOR {date_color}] • [B]{date_label}[/B][/COLOR]'
+            _dclr = 'yellow' if _today else date_color
+            display += f' [COLOR {_dclr}] • [B]{date_label}[/B][/COLOR]'
 
-        li = xbmcgui.ListItem(display)
-        li.setProperty('cal_diff', str(diff))
-        li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': fanart})
-        if is_movie:
-            watched = _wp_is_mw(tmdb_id)
-            info = {'mediatype': 'movie', 'title': show_title}
-        else:
-            watched = _wp_is_epw(tmdb_id, e['season'], e['episode'])
-            ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
-            try:
-                ep_name = ep_name_map.get((str(tmdb_id), int(e.get('season') or 0), int(e.get('episode') or 0)), '') or e.get('ep_title')
-            except Exception:
-                ep_name = e.get('ep_title')
-            info = {'mediatype': 'episode', 'title': ep_name or ep_label, 'tvshowtitle': show_title,
-                    'season': e['season'], 'episode': e['episode']}
-        if plot:
-            info['plot'] = plot
-        set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched)
-        if is_movie:
-            cm = _get_full_context_menu(tmdb_id, 'movie', show_title)
-        else:
-            cm = calendar_context_menu(_get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode']),
-                                       'episode', tmdb_id, show_title, e['season'], e['episode'],
-                                       base_url=_BASE_URL, browse_cmd=_browse_cmd, urlencode_fn=urllib.parse.urlencode, clear_sources=True)
-        if cm:
-            li.addContextMenuItems(cm)
-        if is_movie:
-            url_params, is_folder = calendar_row_click_params('movie', tmdb_id, diff, show_title=show_title, sources_title=show_title)
-        else:
-            url_params, is_folder = calendar_row_click_params('episode', tmdb_id, diff, e['season'], e['episode'], show_title)
-        if url_params:
-            url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
-            items_to_add.append((url, li, is_folder))
+            li = xbmcgui.ListItem(display)
+            li.setProperty('cal_diff', str(diff))
+            li.setArt({'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': fanart})
+            if is_movie:
+                watched = _wp_is_mw(tmdb_id)
+                info = {'mediatype': 'movie', 'title': show_title}
+            else:
+                watched = _wp_is_epw(tmdb_id, e['season'], e['episode'])
+                ep_label = f'S{e["season"]:02d}E{e["episode"]:02d}' if e['season'] else ''
+                try:
+                    ep_name = ep_name_map.get((str(tmdb_id), int(e.get('season') or 0), int(e.get('episode') or 0)), '') or e.get('ep_title')
+                except Exception:
+                    ep_name = e.get('ep_title')
+                info = {'mediatype': 'episode', 'title': ep_name or ep_label, 'tvshowtitle': show_title,
+                        'season': e['season'], 'episode': e['episode']}
+            if plot:
+                info['plot'] = plot
+            set_metadata(li, info, unique_ids={'tmdb': tmdb_id}, watched_info=watched)
+            if is_movie:
+                cm = _get_full_context_menu(tmdb_id, 'movie', show_title)
+            else:
+                cm = calendar_context_menu(_get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode']),
+                                           'episode', tmdb_id, show_title, e['season'], e['episode'],
+                                           base_url=_BASE_URL, browse_cmd=_browse_cmd, urlencode_fn=urllib.parse.urlencode, clear_sources=True)
+            if cm:
+                li.addContextMenuItems(cm)
+            if is_movie:
+                url_params, is_folder = calendar_row_click_params('movie', tmdb_id, diff, show_title=show_title, sources_title=show_title)
+            else:
+                url_params, is_folder = calendar_row_click_params('episode', tmdb_id, diff, e['season'], e['episode'], show_title=show_title)
+            if url_params:
+                url = f"{_BASE_URL}?{urllib.parse.urlencode(url_params)}"
+                items_to_add.append((url, li, is_folder))
 
     items_to_add = sort_calendar_items(items_to_add, wnd['today_top'], wnd['sort_asc'])
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
+    xbmc.log('[SIMKL] calendar: randate %d, trimise la Kodi %d' % (len(entries), len(items_to_add)),
+             xbmc.LOGINFO)
     _end()
 
 def _view_history_menu():

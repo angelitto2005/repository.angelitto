@@ -14,7 +14,7 @@ import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
 from resources.lib.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
-from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, get_episode_air_stamp, prefetch_air_times
 
 MDBLIST_ACTIONS = {
     'mdblist_settings',
@@ -1180,6 +1180,14 @@ def _view_calendar(page=1):
     prov_color = provider_color('mdblist')
 
     items_to_add = []
+    try:
+        prefetch_air_times([{'tmdb_id': it.get('show_tmdb', ''), 'season': it.get('season_number') or 0,
+                             'episode': it.get('episode_number') or 0,
+                             'air_date': it.get('start', it.get('date', it.get('air_date', ''))) or '',
+                             'show_title': it.get('title', '') or ''}
+                            for it in page_items if it.get('type') != 'movie' and it.get('show_tmdb')])
+    except Exception:
+        pass
     for item in page_items:
         if item.get('type') == 'movie':
             tmdb_id = item.get('tmdb', '')
@@ -1191,10 +1199,7 @@ def _view_calendar(page=1):
             cal_date, date_color, diff = _format_cal_date(air_date)
             label = f'[B][COLOR FFFF4444]{display_title}[/COLOR][/B]'
             if cal_date:
-                if cal_date in ('Astazi', 'Maine'):
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
-                else:
-                    label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
             li = xbmcgui.ListItem(label=label)
             li.setProperty('cal_diff', str(diff))
             movie_plot = ''
@@ -1255,15 +1260,25 @@ def _view_calendar(page=1):
             show_title = 'Unknown'
         air_date = item.get('start', item.get('date', item.get('air_date', '')))
         cal_date, date_color, diff = _format_cal_date(air_date)
-        
-        label = f'[B][COLOR {prov_color}]{show_title}[/COLOR][/B] - [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
+        # Ora de difuzare (azi / maine) din cache-ul comun de ore.
+        if -1 <= diff <= 1:
+            try:
+                _at = get_episode_air_stamp(tmdb_id, s_num, ep_num)[1]
+                if _at:
+                    cal_date = f'{cal_date} • {_at}'
+            except Exception:
+                pass
+
+        # Difuzat AZI: numele serialului + eticheta, galben bold.
+        # Numele episodului rmane lavanda FFCCCCFF (standardul din toate listele).
+        _today = (diff == 0)
+        _tclr = 'yellow' if _today else prov_color
+        _dclr = 'yellow' if _today else date_color
+        label = f'[B][COLOR {_tclr}]{show_title}[/COLOR][/B] - [B][COLOR {date_color}]S{s_num:02d}E{ep_num:02d}[/COLOR][/B]'
         if ep_name:
             label += f' - [B][I][COLOR FFCCCCFF]{ep_name}[/I][/COLOR][/B]'
         if cal_date:
-            if cal_date in ('Astazi', 'Maine'):
-                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
-            else:
-                label += f' [COLOR {date_color}] • [B]{cal_date}[/B][/COLOR]'
+            label += f' [COLOR {_dclr}] • [B]{cal_date}[/B][/COLOR]'
         
         li = xbmcgui.ListItem(label=label)
         li.setProperty('cal_diff', str(diff))

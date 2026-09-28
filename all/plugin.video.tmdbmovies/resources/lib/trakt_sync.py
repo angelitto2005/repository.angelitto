@@ -3489,20 +3489,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         # ---
         
         # 4. Cautam urmatorul episod nevizionat DUPA ultimul vizionat cronologic
-        next_ep = None
-        if last_row:
-            last_s, last_e = last_row['season'], last_row['episode']
-            for s in show_details.get('seasons', []):
-                s_num = s.get('season_number')
-                if s_num == 0 or s_num < last_s: continue
-                ep_count = s.get('episode_count', 0)
-                start_ep = (last_e + 1) if s_num == last_s else 1
-                for e_num in range(start_ep, ep_count + 1):
-                    if (s_num, e_num) not in watched_eps:
-                        next_ep = {'season': s_num, 'number': e_num}
-                        break
-                if next_ep:
-                    break
+        next_ep = _tmdb_next_unwatched(show_details, watched_eps, last_row, tmdb_id)
         
         # 4b. Fallback: daca n-am gasit nimic dupa ultimul vizionat (ex: gap de episoade demarcate),
         #     scanam de la inceput
@@ -3637,6 +3624,54 @@ def _tmdb_first_episode(show_details):
     except Exception:
         pass
     return _tmdb_next_to_air(show_details)
+
+
+def _tmdb_next_unwatched(show_details, watched_eps, last_row, tmdb_id=None):
+    """Primul episod nevizionat de DUPA ultimul vizionat cronologic.
+
+    seasons[].episode_count de la nivelul serialului poate fi mai mic decat sezonul
+    real: episoadele recent difuzate lipsesc inca din TMDb (Lanterns S01: episode_count=6,
+    desi S01E7 tocmai difuzat). Cand lista se termina inainte de episodul cautat, o
+    consideram INCOMPLETA si verificam sezonul real - altfel apelatorul caderi pe
+    fallback-ul "scaneaza de la inceput" si ar intoarce S01E1 in loc de S01E7.
+    """
+    if not last_row:
+        return None
+    try:
+        last_s, last_e = int(last_row[0]), int(last_row[1])
+    except Exception:
+        return None
+    try:
+        seasons = (show_details or {}).get('seasons') or []
+    except Exception:
+        return None
+
+    for s in seasons:
+        try:
+            s_num = int(s.get('season_number') or 0)
+        except Exception:
+            continue
+        if s_num == 0 or s_num < last_s:
+            continue
+        start_ep = (last_e + 1) if s_num == last_s else 1
+        ep_count = int(s.get('episode_count') or 0)
+        for e_num in range(start_ep, ep_count + 1):
+            if (s_num, e_num) not in watched_eps:
+                return {'season': s_num, 'number': e_num}
+        if ep_count >= start_ep or not tmdb_id:
+            # lista de la nivelul serialului acopera intervalul cautat -> sezonul e complet
+            continue
+        try:
+            from resources.lib.tmdb_api import get_smart_season_details
+            season_data = get_smart_season_details(str(tmdb_id), s_num) or {}
+            real = [int(e.get('episode_number') or 0)
+                    for e in (season_data.get('episodes') or []) if e.get('episode_number')]
+        except Exception:
+            continue
+        for e_num in sorted(x for x in real if start_ep <= x):
+            if (s_num, e_num) not in watched_eps:
+                return {'season': s_num, 'number': e_num}
+    return None
 
 
 def _tmdb_ep_meta(tmdb_id, season, episode):

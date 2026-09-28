@@ -835,21 +835,8 @@ def refresh_next_episode_punchplay(tmdb_id, ignore_hidden=False):
             except: pass
             _local_trigger()
             return
-        next_ep = None
-        if last_row:
-            last_s, last_e = last_row[0], last_row[1]
-            for s in show_details.get('seasons', []):
-                s_num = s.get('season_number')
-                if s_num == 0 or s_num < last_s:
-                    continue
-                ep_count = s.get('episode_count', 0)
-                start_ep = (last_e + 1) if s_num == last_s else 1
-                for e_num in range(start_ep, ep_count + 1):
-                    if (s_num, e_num) not in watched_eps:
-                        next_ep = {'season': s_num, 'number': e_num}
-                        break
-                if next_ep:
-                    break
+        from resources.lib.trakt_sync import _tmdb_next_unwatched as _nxtu
+        next_ep = _nxtu(show_details, watched_eps, last_row, tmdb_id)
         if not next_ep:
             for s in show_details.get('seasons', []):
                 s_num = s.get('season_number')
@@ -1381,6 +1368,25 @@ def _enrich_air_dates(rows):
         out = rows
     return out if out else rows
 
+def _watched_episode_set(c, tid):
+    """Setul (season, episode) vizionat local pentru un serial."""
+    c.execute("SELECT season, episode FROM punchplay_watched_episodes WHERE tmdb_id=?", (str(tid),))
+    return {(int(r[0]), int(r[1])) for r in c.fetchall()}
+
+
+def _last_watched_episode(c, tid):
+    """Ultimul episod vizionat cronologic: (season, episode) sau None."""
+    c.execute("SELECT season, episode FROM punchplay_watched_episodes WHERE tmdb_id=? "
+              "ORDER BY last_watched_at DESC LIMIT 1", (str(tid),))
+    r = c.fetchone()
+    if not r:
+        return None
+    try:
+        return (int(r[0]), int(r[1]))
+    except Exception:
+        return None
+
+
 def _sync_up_next(api, c):
     try:
         data = api.continue_watching()
@@ -1490,7 +1496,30 @@ def _sync_up_next(api, c):
                     continue
                 if is_fully_watched_show(tid):
                     continue
-                if get_watched_episodes_count(tid) > 0:
+                _wc = get_watched_episodes_count(tid)
+                if _wc > 0:
+                    # Serial inceput, dar serverul nu l-a trimis in continue-watching
+                    # (ex: progresul vine dintr-un import de istoric facut DUPA sync).
+                    # Fara asta ar disparea complet din Up Next. Il calculam local.
+                    try:
+                        from resources.lib import tmdb_api as _ta2
+                        from resources.lib.trakt_sync import (_tmdb_next_unwatched as _nxtu2,
+                                                              _tmdb_ep_meta as _meta2)
+                        _sd = _ta2.get_tmdb_item_details(tid, 'tv', lightweight=True,
+                                                          skip_localization=True) or {}
+                        _loc = _nxtu2(_sd, _watched_episode_set(c, tid),
+                                       _last_watched_episode(c, tid), tid)
+                    except Exception:
+                        _loc = None
+                    if not _loc:
+                        continue
+                    try:
+                        _et2, _ov2, _ad2 = _meta2(tid, _loc['season'], _loc['number'])
+                    except Exception:
+                        _et2, _ad2 = '', ''
+                    rows.append((tid, str(w.get('title') or ''), _loc['season'], _loc['number'],
+                                 _et2, _ad2, _wc, 0, str(w.get('added_at') or now_str)))
+                    have.add(tid)
                     continue
                 rows.append((tid, str(w.get('title') or ''), 1, 1, '', '',
                              0, 0, str(w.get('added_at') or now_str)))
@@ -1499,6 +1528,71 @@ def _sync_up_next(api, c):
                 pass
     except:
         pass
+
+    # === CORRECTIE LOCALA a episodului "urmator" ===
+    # PunchPlay poate propune un episod deja vizionat sau inapoi (Has Fallen:
+    # ultimul vizionat S02E3, serverul a propus S01E1). Pentru randurile care
+    # contrazic ultimul episod vizionat local, recalculam din sezonele TMDb,
+    # ca la Trakt/MDBList.
+    try:
+        _stale = []
+        for _r in rows:
+            try:
+                _last = _last_watched_episode(c, _r[0])
+            except Exception:
+                _last = None
+            if not _last:
+                continue
+            if (int(_r[2]), int(_r[3])) > (int(_last[0]), int(_last[1])):
+                continue
+            _stale.append(_r)
+        if _stale:
+            from resources.lib import tmdb_api as _ta
+            from resources.lib.trakt_sync import _tmdb_next_unwatched as _nxtu, _tmdb_ep_meta as _meta
+            import concurrent.futures as _cf3
+            _det = {}
+            try:
+                with _cf3.ThreadPoolExecutor(max_workers=10) as _ex:
+                    _fs = {_ex.submit(_ta.get_tmdb_item_details, r[0], 'tv',
+                                      lightweight=True, skip_localization=True): r for r in _stale}
+                    for _f in _fs:
+                        try:
+                            _det[_fs[_f][0]] = _f.result(timeout=20)
+                        except Exception:
+                            _det[_fs[_f][0]] = None
+            except Exception:
+                _det = {}
+            _fixed = []
+            for r in _stale:
+                tid = r[0]
+                _last = _last_watched_episode(c, tid)
+                _wset = _watched_episode_set(c, tid)
+                loc = _nxtu(_det.get(tid) or {}, _wset, _last, tid)
+                if not loc:
+                    xbmc.log(f'[PUNCHPLAY] Up Next: {tid} complet vizionat, scos din lista', xbmc.LOGINFO)
+                    continue
+                if int(loc['season']) == int(r[2]) and int(loc['number']) == int(r[3]):
+                    _fixed.append(r)
+                    continue
+                try:
+                    _et, _ov, _ad = _meta(tid, loc['season'], loc['number'])
+                except Exception:
+                    _et, _ad = '', ''
+                _wc = _wc = 0
+                try:
+                    _wc = _wset.__len__()
+                except Exception:
+                    pass
+                _fixed.append((tid, r[1], loc['season'], loc['number'],
+                               _et or r[4], _ad or r[5], _wc, r[7] or _wc, r[8]))
+                xbmc.log('[PUNCHPLAY] Up Next %s: server S%02dE%02d -> local S%02dE%02d'
+                         % (tid, int(r[2]), int(r[3]), int(loc['season']), int(loc['number'])),
+                         xbmc.LOGINFO)
+            _sids = {id(x) for x in _stale}
+            rows = [r for r in rows if id(r) not in _sids] + _fixed
+    except Exception as e:
+        xbmc.log(f'[PUNCHPLAY] Up Next local correction error: {e}', xbmc.LOGWARNING)
+
     rows = _enrich_air_dates(rows)
     c.execute("DELETE FROM punchplay_next_episodes")
     if rows:

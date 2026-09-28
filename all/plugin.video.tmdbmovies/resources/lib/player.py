@@ -218,6 +218,117 @@ def _autoplay_pool(streams):
     return [(_AUTOPLAY_TIERS[i], g) for i, g in enumerate(groups) if g], len(deferred)
 
 
+# BINGE (Up Next): remember sursa aleasa manual. P2P intra mereu in pool (nu are
+# cache); aio/stremio doar instant (C1). Ordinea o da similaritatea, nu ierarhia.
+_PRIVATE_P2P = ('p2p_filelist', 'p2p_speedapp', 'p2p_seedpool')
+_HDR_OK = {'sdr': ('sdr',), 'hdr': ('hdr', 'hybrid'),
+           'dv': ('hdr', 'hybrid', 'dv'), 'hybrid': ('hdr', 'hybrid', 'dv')}
+_SECRET_QS = ('passkey', 'authkey', 'rsskey', 'apikey', 'token',
+              'secret', 'auth', 'passwd', 'password', 'key')
+
+
+def _hdr_class(tags):
+    has_dv = any(t in tags for t in ('DV', 'DOVI'))
+    has_hdr = any(t in tags for t in ('HDR', 'HDR10', 'HDR10+', 'HLG'))
+    if has_dv:
+        return 'hybrid' if has_hdr else 'dv'
+    return 'hdr' if has_hdr else 'sdr'
+
+
+def _magnet_hash(url):
+    m = re.search(r'xt=urn:btih:([0-9a-fA-F]{40})', str(url or ''))
+    return m.group(1).lower() if m else ''
+
+
+def _url_key(url):
+    """URL fara parametrii secreti (passkey ajunge in log prin URL-ul de plugin)."""
+    u = str(url or '')
+    if '?' not in u:
+        return u
+    base, qs = u.split('?', 1)
+    keep = [p for p in qs.split('&') if p
+            and not any(s in p.split('=', 1)[0].lower() for s in _SECRET_QS)]
+    return base + ('?' + '&'.join(keep) if keep else '')
+
+
+def _pack_title_key(s):
+    raw = s.get('title') or s.get('name') or ''
+    t = re.sub(r'[sS]\d{1,2}[eE]\d{1,3}', ' ', str(raw))
+    return re.sub(r'[^a-z0-9]+', ' ', t.lower()).strip()
+
+
+def _pack_exact_key(s, url):
+    """Cheie exacta de pack: btih la magnet, hash al linkului privat la rest."""
+    h = _magnet_hash(url)
+    if h:
+        return h
+    if str(s.get('provider_id', '')).lower() in _PRIVATE_P2P:
+        uk = _url_key(url)
+        if uk.startswith('http'):
+            import hashlib
+            return hashlib.sha1(uk.encode('utf-8', 'replace')).hexdigest()[:16]
+    return ''
+
+
+def _stream_ctx(s):
+    ex = extract_stream_info(s)
+    info = s.get('info') or {}
+    return {'cat': classify_stream_source(s),
+            'pid': str(s.get('provider_id', '')).lower(),
+            'hdr': _hdr_class(ex.get('tags', [])),
+            'exact': _pack_exact_key(s, s.get('url', '')),
+            'title': _pack_title_key(s),
+            'free': bool(info.get('freeleech')),
+            'server': str(ex.get('server') or ''),
+            'debrid': str(info.get('debrid_service', '')).lower()}
+
+
+def _pack_match(p_exact, p_title, c_exact, c_title):
+    if p_exact and c_exact:
+        if p_exact == c_exact:
+            return True
+    if not p_title or not c_title:
+        return False
+    short, long = (p_title, c_title) if len(p_title) <= len(c_title) else (c_title, p_title)
+    return len(short) >= 12 and len(short) >= 0.6 * len(long) and short in long
+
+
+def _binge_pool(streams):
+    """([(idx, stream), ...] eligibile, nr amanate). Fara ierarhia de debrid."""
+    ok, deferred = _split_instant(streams)
+    keep = {id(s) for s in ok}
+    return [(i, s) for i, s in enumerate(streams) if id(s) in keep], len(deferred)
+
+
+def _binge_lanes(cands, prev):
+    """Trepte de relaxare; prima nevida castiga. cands = [(idx, stream, ctx)]."""
+    hdr_ok = _HDR_OK.get(prev.get('hdr') or 'sdr', ('sdr',))
+    strict = [c for c in cands if c[2]['hdr'] in hdr_ok]
+    need_free = bool(prev.get('free')) and prev.get('pid') in _PRIVATE_P2P
+    p_exact, p_title = prev.get('hash') or '', prev.get('pack') or ''
+
+    def _free(c):
+        return (not need_free) or c[2]['free']
+
+    def _pack(c):
+        return _pack_match(p_exact, p_title, c[2]['exact'], c[2]['title'])
+
+    def _srv(c):
+        return bool(prev.get('server')) and c[2]['server'] == prev.get('server')
+
+    l_pack = [c for c in strict if _free(c) and _pack(c)]
+    l_pid = [c for c in strict if _free(c) and c[2]['pid'] == prev.get('pid')]
+    l_cat = [c for c in strict if _free(c) and c[2]['cat'] == prev.get('cat')]
+    l_cat_r = [c for c in strict if c[2]['cat'] == prev.get('cat')]
+    return [('pack+host', [c for c in l_pack if _srv(c)]),
+            ('pack', l_pack),
+            ('pid+pack', [c for c in l_pid if _pack(c)]),
+            ('pid', l_pid),
+            ('cat', l_cat),
+            ('cat+', l_cat_r),
+            ('instant', cands)]
+
+
 # Tabela de tier-uri pt fiecare optiune de Source Priority (sort_opt):
 # prima pozitie = cel mai sus (score maxim), cached se consulta DOAR la aio/stremio.
 # 'aio_orig' pastreaza ordinea originala din lista (cheie statica).
@@ -2111,6 +2222,7 @@ def start_playback_monitor(player_instance, dialog=None):
         # POST-PLAYBACK: DIALOGURI + REFRESH (in thread separat)
         # ==============================================================
         def _post_playback_dialogs():
+            import json as _bjson  # 'json' e local in functia care ne gazduieste
             is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
             prompted_next = False
             
@@ -2147,7 +2259,14 @@ def start_playback_monitor(player_instance, dialog=None):
                                 'prev_provider': getattr(player_instance, 'prev_provider', ''),
                                 'prev_codec': getattr(player_instance, 'prev_codec', ''),
                                 'prev_source': getattr(player_instance, 'prev_source', ''),
+                                # 'json' e import local in functia care ne gazduieste, deci
+                                # referirea ar fi tratata ca variabila neinitiializata.
+                                'prev_ctx': _bjson.dumps(getattr(player_instance, 'prev_ctx', None) or {}),
                             })
+                        else:
+                            # "Choose Source" deschide fereastra surselor: fara no_auto
+                            # intra oricum pe autoplay standard si ignora alegerea.
+                            url_params['no_auto'] = '1'
                         import urllib.parse
                         plugin_url = f"{sys.argv[0]}?{urllib.parse.urlencode(url_params)}"
                         if xbmc.Player().isPlaying():
@@ -2899,6 +3018,17 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player.prev_codec = 'HEVC' if 'hevc' in raw_stream_name.lower() or '265' in raw_stream_name.lower() else ('x264' if '264' in raw_stream_name.lower() or 'avc' in raw_stream_name.lower() else '')
         player.prev_source = 'BluRay' if 'bluray' in raw_stream_name.lower() or 'bdrip' in raw_stream_name.lower() else ('WEB' if 'web' in raw_stream_name.lower() else '')
         # --------------------------------------------
+
+        # Context pt episodul urmator (BINGE): provider/gama/pack/HDR/freeleech.
+        # Fara secrete: pack_keys foloseste doar btih sau linkul privat hasurat.
+        try:
+            _c = _stream_ctx(current_stream)
+            player.prev_ctx = {'pid': _c['pid'], 'cat': _c['cat'], 'hdr': _c['hdr'],
+                               'pack': _c['title'], 'hash': _c['exact'],
+                               'free': 1 if _c['free'] else 0,
+                               'server': _c['server'][:60]}
+        except Exception:
+            player.prev_ctx = {}
         
         # --- LOGARE STREAM DATA (sanitizat) ---
         try:
@@ -2991,7 +3121,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         if '.m3u8' in valid_url.split('|')[0].lower():
             li.setMimeType("application/vnd.apple.mpegurl")
             li.setProperty('inputstream', 'inputstream.adaptive')
-            li.setProperty('inputstream.adaptive.manifest_type', 'hls')
+            # manifest_type este depreciat (Kodi il detecteaza acum din URL, care
+            # contine deja .m3u8); mime type de mai sus ramane sursa declaratiei HLS.
             if '|' in valid_url:
                 headers_str = valid_url.split('|', 1)[1]
                 li.setProperty('inputstream.adaptive.stream_headers', headers_str)
@@ -3229,18 +3360,51 @@ def _pick_autoplay_index(streams, profile_idx):
 
 
 def _pick_binge_index(streams, prev_quality='', prev_group='', prev_is_sdr=False,
-                      prev_debrid='', prev_provider='', prev_codec='', prev_source=''):
-    """(index in lista ORIGINALA, nr amanate) pentru binge, sau (-1, n) fara sursa instant."""
+                      prev_debrid='', prev_provider='', prev_codec='', prev_source='', ctx=None):
+    """(index in lista ORIGINALA, nr amanate) pentru binge, sau (-1, n) fara sursa instant.
+
+    ctx gol = calea legacy (pool de autoplay, P2P exclus). ctx plin = treptele de
+    similaritate: pack -> provider -> categorie -> categorie relaxata -> orice instant.
+    """
+    if not ctx:
+        try:
+            groups, deferred = _autoplay_pool(streams)
+            for tier, group in groups:
+                local = find_best_stream_index(group, prev_quality, prev_group, prev_is_sdr,
+                                               prev_debrid, prev_provider, prev_codec, prev_source)
+                if local is not None and local >= 0:
+                    log(f"[BINGE-WATCH] Tier ales: {tier} (index local {local} din {len(group)})")
+                    return streams.index(group[local]), deferred
+            return -1, deferred
+        except Exception:
+            return -1, 0
     try:
-        groups, deferred = _autoplay_pool(streams)
-        for tier, group in groups:
-            local = find_best_stream_index(group, prev_quality, prev_group, prev_is_sdr,
-                                           prev_debrid, prev_provider, prev_codec, prev_source)
+        pool, deferred = _binge_pool(streams)
+        cands = [(i, s, _stream_ctx(s)) for i, s in pool]
+        prev = dict(ctx)
+        prev['debrid'] = prev_debrid
+        hdr_ok = _HDR_OK.get(prev.get('hdr') or 'sdr', ('sdr',))
+        for label, group in _binge_lanes(cands, prev):
+            if not group:
+                continue
+            note = ''
+            if label == 'instant' and len(group) != len([c for c in cands if c[2]['hdr'] in hdr_ok]):
+                note = ' hdr=relaxed'
+            local = find_best_stream_index([c[1] for c in group], prev_quality, prev_group,
+                                           prev_is_sdr, prev_debrid, prev_provider,
+                                           prev_codec, prev_source)
             if local is not None and local >= 0:
-                log(f"[BINGE-WATCH] Tier ales: {tier} (index local {local} din {len(group)})")
-                return streams.index(group[local]), deferred
+                idx = group[local][0]
+                log('[BINGE] treapta=%s pid=%s cat=%s pack=%s hdr=%s free=%s%s -> idx %s'
+                    % (label, prev.get('pid', ''), prev.get('cat', ''),
+                       (prev.get('hash') or prev.get('pack') or '-')[:24],
+                       prev.get('hdr', ''), 1 if prev.get('free') else 0, note, idx))
+                return idx, deferred
+        log('[BINGE] treapta=nimic pid=%s cat=%s hdr=%s -> fereastra surselor'
+            % (prev.get('pid', ''), prev.get('cat', ''), prev.get('hdr', '')))
         return -1, deferred
-    except Exception:
+    except Exception as e:
+        log(f'[BINGE] pick error: {e}')
         return -1, 0
 
 
@@ -4032,6 +4196,7 @@ def list_sources(params):
     log(f"[BINGE-WATCH] list_sources a primit auto_play_next={auto_play_next}")
     
     if auto_play_next:
+        import json as _bjson  # 'json' e local in list_sources: referirea ar fi neinitiializata
         prev_quality = params.get('prev_quality', '')
         prev_group = params.get('prev_group', '')
         prev_is_sdr = params.get('prev_is_sdr') == 'true'
@@ -4039,12 +4204,18 @@ def list_sources(params):
         prev_provider = params.get('prev_provider', '')
         prev_codec = params.get('prev_codec', '')
         prev_source = params.get('prev_source', '')
+        try:
+            _bctx = _bjson.loads(params.get('prev_ctx') or '{}') or {}
+        except Exception:
+            _bctx = {}
 
-        # Aceeasi regula ca la auto-play: un torrent necached debrid nu intra in pool,
-        # pentru ca scorul de potrivire exacta (pana la 15000) ar bate bonusul cached
-        # (10000) si episodul urmator ar incepe cu o descarcare in debrid.
+        # Regula C1 ramane absoluta: un torrent necached debrid nu intra in pool
+        # (altfel episodul urmator ar incepe cu o descarcare in debrid).
+        # Cu prev_ctx pornesc treptele de similaritate (pack -> provider -> categorie
+        # -> orice instant); fara el, calea legacy de autoplay.
         ret, _deferred_n = _pick_binge_index(filtered_streams, prev_quality, prev_group, prev_is_sdr,
-                                             prev_debrid, prev_provider, prev_codec, prev_source)
+                                             prev_debrid, prev_provider, prev_codec, prev_source,
+                                             _bctx or None)
 
         if ret >= 0:
             log(f"[BINGE-WATCH] Sursa aleasa index={ret} din {len(filtered_streams)} (instant; {_deferred_n} amanate)")

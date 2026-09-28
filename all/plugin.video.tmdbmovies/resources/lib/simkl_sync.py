@@ -933,21 +933,8 @@ def refresh_next_episode_simkl(tmdb_id, ignore_hidden=False):
             return
 
         # Urmatorul episod nevizionat dupa ultimul vizionat cronologic
-        next_ep = None
-        if last_row:
-            last_s, last_e = last_row[0], last_row[1]
-            for s in show_details.get('seasons', []):
-                s_num = s.get('season_number')
-                if s_num == 0 or s_num < last_s:
-                    continue
-                ep_count = s.get('episode_count', 0)
-                start_ep = (last_e + 1) if s_num == last_s else 1
-                for e_num in range(start_ep, ep_count + 1):
-                    if (s_num, e_num) not in watched_eps:
-                        next_ep = {'season': s_num, 'number': e_num}
-                        break
-                if next_ep:
-                    break
+        from resources.lib.trakt_sync import _tmdb_next_unwatched as _nxtu
+        next_ep = _nxtu(show_details, watched_eps, last_row, tmdb_id)
 
         # Fallback: scanare de la inceput (gap-uri de episoade demarcate)
         if not next_ep:

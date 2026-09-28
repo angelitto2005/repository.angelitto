@@ -782,21 +782,9 @@ def refresh_next_episode_mdblist(tmdb_id, ignore_hidden=False):
             return
 
         # Urmatorul episod nevizionat dupa ultimul vizionat cronologic
-        next_ep = None
-        if last_row:
-            last_s, last_e = last_row[0], last_row[1]
-            for s in show_details.get('seasons', []):
-                s_num = s.get('season_number')
-                if s_num == 0 or s_num < last_s:
-                    continue
-                ep_count = s.get('episode_count', 0)
-                start_ep = (last_e + 1) if s_num == last_s else 1
-                for e_num in range(start_ep, ep_count + 1):
-                    if (s_num, e_num) not in watched_eps:
-                        next_ep = {'season': s_num, 'number': e_num}
-                        break
-                if next_ep:
-                    break
+        # (helper comun: verifica si sezonul real cand episode_count e incomplet)
+        from resources.lib.trakt_sync import _tmdb_next_unwatched as _nxtu
+        next_ep = _nxtu(show_details, watched_eps, last_row, tmdb_id)
 
         # Fallback: scanare de la inceput (gap-uri de episoade demarcaate)
         if not next_ep:
@@ -1136,6 +1124,27 @@ def _sync_watched_all(api):
             if not pagination.get('has_more'):
                 break
             cursor = pagination.get('next_cursor')
+        # MDBList trimite in sync/watched.shows ORICE serial cu activitate, nu
+        # doar pe cele complet vizionate (ex. Lioness 16/17 apare tot acolo).
+        # Fara asta, 70/207 seriale primeau badge "Complet" in In Progress chiar
+        # daca aveau 1-2 episoade din 40. Stergem doar randurile contrazise de
+        # oglinda noastra de episoade; cele fara episoade se pastreaza (sunt
+        # exact cazul pentru care tabela exista). Ruleaza DUPA ultima pagina,
+        # ca sa nu numaram episoadele partiale.
+        try:
+            c.execute("""DELETE FROM mdblist_fully_watched_shows
+                          WHERE total_episodes > 0 AND tmdb_id IN (
+                              SELECT f.tmdb_id FROM mdblist_fully_watched_shows f
+                              JOIN (SELECT tmdb_id, COUNT(*) n FROM mdblist_watched_episodes
+                                     WHERE season > 0 AND episode > 0 GROUP BY tmdb_id) w
+                                ON w.tmdb_id = f.tmdb_id
+                              WHERE w.n < f.total_episodes)""")
+            _bad = c.rowcount
+            if _bad > 0:
+                xbmc.log(f'[MDBList] Curatate {int(_bad)} intrari "complet" contrazise de episoadele reale.', xbmc.LOGINFO)
+            conn.commit()
+        except Exception:
+            pass
     except Exception as e:
         xbmc.log(f'[MDBList] _sync_watched_all error: {e}', xbmc.LOGERROR)
     finally:
@@ -1313,6 +1322,75 @@ def _sync_up_next(api):
                                 rows.append(res)
         except Exception as e:
             xbmc.log(f'[MDBList] Up Next unstarted watchlist error: {e}', xbmc.LOGWARNING)
+
+        # === CORECTIE LOCALA a episodului "urmator" ===
+        # MDBList NU stie sa urceasca "urmatorul episod de la ultimul vizionat": /upnext
+        # intoarce S01E1 chiar daca S01E6 e vizionat, iar cand next_episode lipseste
+        # codul cadea pe "or 1" -> tot S01E1. Pentru randurile care contrazic ultimul
+        # episod vizionat local, recalculam din sezonele TMDb (ca Trakt/PunchPlay).
+        try:
+            stale = []
+            for _r in rows:
+                try:
+                    c.execute("SELECT season, episode FROM mdblist_watched_episodes WHERE tmdb_id=? "
+                              "ORDER BY last_watched_at DESC LIMIT 1", (_r[0],))
+                    _lr = c.fetchone()
+                except Exception:
+                    _lr = None
+                if not _lr:
+                    continue
+                if (int(_r[2]), int(_r[3])) > (int(_lr[0]), int(_lr[1])):
+                    continue
+                stale.append(_r)
+
+            if stale:
+                from resources.lib import tmdb_api as _ta
+                from resources.lib.trakt_sync import _tmdb_next_unwatched as _nxtu, _tmdb_ep_meta as _meta
+                from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _ac
+                _details = {}
+                try:
+                    with _TPE(max_workers=10) as _ex:
+                        _futs = {_ex.submit(_ta.get_tmdb_item_details, r[0], 'tv',
+                                            lightweight=True, skip_localization=True): r
+                                 for r in stale}
+                        for _f in _ac(_futs):
+                            try:
+                                _details[_futs[_f][0]] = _f.result()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                fixed = []
+                for r in stale:
+                    tid = r[0]
+                    try:
+                        c.execute("SELECT season, episode FROM mdblist_watched_episodes WHERE tmdb_id=?", (tid,))
+                        wset = {(int(x[0]), int(x[1])) for x in c.fetchall()}
+                        c.execute("SELECT season, episode FROM mdblist_watched_episodes WHERE tmdb_id=? "
+                                  "ORDER BY last_watched_at DESC LIMIT 1", (tid,))
+                        last = c.fetchone()
+                    except Exception:
+                        wset, last = set(), None
+                    loc = _nxtu(_details.get(tid) or {}, wset, last, tid)
+                    if not loc:
+                        xbmc.log(f'[MDBList] Up Next: {tid} complet vizionat, scos din lista', xbmc.LOGINFO)
+                        continue
+                    if int(loc['season']) == int(r[2]) and int(loc['number']) == int(r[3]):
+                        fixed.append(r)
+                        continue
+                    try:
+                        _et, _ov, _ad = _meta(tid, loc['season'], loc['number'])
+                    except Exception:
+                        _et, _ad = '', ''
+                    fixed.append((tid, r[1], loc['season'], loc['number'],
+                                  _et or r[4], _ad or r[5], r[6], r[7], r[8]))
+                    xbmc.log('[MDBList] Up Next %s: server S%02dE%02d -> local S%02dE%02d'
+                             % (tid, int(r[2]), int(r[3]), int(loc['season']), int(loc['number'])),
+                             xbmc.LOGINFO)
+                _stale_ids = {id(x) for x in stale}
+                rows = [r for r in rows if id(r) not in _stale_ids] + fixed
+        except Exception as e:
+            xbmc.log(f'[MDBList] Up Next local correction error: {e}', xbmc.LOGWARNING)
 
         _db_exec_retry(c, "DELETE FROM mdblist_next_episodes")
         import time as _t2
