@@ -2399,7 +2399,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
         
         try:
-            from resources.lib import debrid as _debrid_post
+            from resources.lib.cloud import debrid as _debrid_post
             _debrid_post.invalidate_playback_cache(getattr(player_instance, 'prev_debrid', ''))
         except Exception:
             pass

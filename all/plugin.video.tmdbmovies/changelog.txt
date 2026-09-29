@@ -1,3 +1,8 @@
+1.1.307
+- New: Set Views (Settings -> Set Views) - save your favourite Kodi view for 7 categories (Main, Movies, TV Shows, Seasons, Episodes, Episode Lists, Cloud / Files) + Reset Views.
+- Fixed My MDBList context menu freeze.
+- Internal cleanup: all cloud code and the Detonate browser, now lives together in resources/lib/cloud/.
+
 1.1.306
 - Auto-Play Next Episode now keeps the source you started on: it prefers the same pack, then the same provider (free-leech kept on FileList/SpeedApp/SeedPool), then the same kind of source, and it never jumps to a different kind or to Dolby Vision unless you started on DV.
 - "Choose Source" in the next-episode prompt now really opens the source list.
@@ -19,7 +24,6 @@
 - New setting under Menu: show or hide Downloads in the main menu.
 - Kodi (Local) is now the first and default entry in Settings -> Accounts -> Active Provider. Existing installs keep their choice, renumbered once in the background.
 - The "active provider is not connected" prompt is now a colored dialog with two choices: reconnect now (QR) or switch to Kodi (Local). Back/Esc switches to Kodi (Local).
-
 
 1.1.301
 - New My Debrid Cloud directory in the main menu (show/hide from Settings -> Menu): TorBox and Real-Debrid. API keys are entered from the directory and validated live before being saved.

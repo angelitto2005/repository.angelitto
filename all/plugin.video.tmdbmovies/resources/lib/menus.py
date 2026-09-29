@@ -81,6 +81,7 @@ movie_list = [
     {'name': 'Most Favorited', 'iconImage': 'favorites.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_top_rated'},
     {'name': 'Premieres', 'iconImage': 'fresh.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_premieres'},
     {'name': 'Latest Releases', 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_latest_releases'},
+    {'name': 'Digital Releases', 'iconImage': 'dvd.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_digital'},
     {'name': 'Netflix Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_netflix'},
     {'name': 'Amazon Prime Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_amazon'},
     {'name': 'Disney+ Movies', 'iconImage': 'movies.png', 'mode': 'build_movie_list', 'action': 'tmdb_movies_disney'},

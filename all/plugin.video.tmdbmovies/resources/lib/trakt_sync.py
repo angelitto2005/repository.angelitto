@@ -1048,6 +1048,7 @@ def _sync_tmdb_discovery(c):
         'tmdb_movies_top_rated',
         'tmdb_movies_premieres', 
         'tmdb_movies_latest_releases', 
+        'tmdb_movies_digital', 
         'tmdb_movies_netflix',
         'tmdb_movies_amazon',
         'tmdb_movies_disney',

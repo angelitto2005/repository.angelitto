@@ -15,7 +15,7 @@ import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
 from resources.lib.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
-from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, style_page_nav_item, next_page_label
 
 SIMKL_ACTIONS = {
     'simkl_menu',
@@ -120,9 +120,16 @@ def fetch_history(mediatype='movie', offset=0, limit=20):
 # ------------------------------------------------------------------
 # RENDERING HELPERS
 # ------------------------------------------------------------------
-def _end(succeeded=True, cache=True):
+def _end(succeeded=True, cache=True, view_type=None, content=None):
     _ensure_globals()
     xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded, cacheToDisc=cache)
+    # Set Views: aplica view-ul salvat pentru categoria acestei listari (paritate POV).
+    if succeeded and view_type:
+        try:
+            from resources.lib import views
+            views.apply_view(view_type, content)
+        except Exception:
+            pass
 
 def _add_dir(url, li, is_folder=True):
     _ensure_globals()
@@ -199,7 +206,7 @@ def _view_menu():
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
         _add_dir(_build_url({'action': action, **extra}), li, is_folder)
-    _end(cache=False)
+    _end(cache=False, view_type='main')
 
 def _view_account():
     _ensure_globals()
@@ -307,7 +314,7 @@ def _view_account():
             _add_dir(_build_url({'action': action}), li, is_folder)
         else:
             _add_dir(_build_url({}), li, False)
-    _end(cache=False)
+    _end(cache=False, view_type='main')
 
 def _filter_fully_watched(data):
     """Exclude serialele fara episoade difuzate nevizionate din listele de status
@@ -382,7 +389,7 @@ def _view_status_menu(status):
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'simkl_status_items', 'status': status, 'kind': kind, 'page': 1}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _prefetch_or_fill(fake_items, mt, fill_timeout=12):
     """Prefetch paralel (deadline 1.1s) + fill pentru itemii ratati (semafor 8,
@@ -489,10 +496,11 @@ def _view_status_items(status, kind, page=1):
         _add_dir(processed['url'], li, processed['is_folder'])
 
     if status != 'watching' and page * limit < len(items):
-        li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        li.setArt({'icon': _simkl_icon(), 'thumb': _simkl_icon(), 'poster': _simkl_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(page + 1))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'action': 'simkl_status_items', 'status': status, 'kind': kind, 'page': page + 1}), li, True)
-    _end()
+    _end(view_type='movies' if is_movie else 'tvshows',
+         content='movies' if is_movie else 'tvshows')
 
 def _load_calendar_data():
     """Payload CDN v2 (tv+anime) din cache (TTL 24h, actualizat de sync-ul de 30min)
@@ -955,7 +963,7 @@ def _render_calendar_entries(entries, wnd):
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
     xbmc.log('[SIMKL] calendar: randate %d, trimise la Kodi %d' % (len(entries), len(items_to_add)),
              xbmc.LOGINFO)
-    _end()
+    _end(view_type='episode_lists', content='episodes')
 
 def _view_history_menu():
     _ensure_globals()
@@ -976,7 +984,7 @@ def _view_history_menu():
         li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'simkl_history_items', 'mediatype': url_type, 'offset': 0}), li, True)
-    _end()
+    _end(view_type='main', content='videos')
 
 def _view_history_items(mediatype, offset=0):
     _ensure_globals()
@@ -1023,10 +1031,10 @@ def _view_history_items(mediatype, offset=0):
             _add_dir(processed['url'], processed['li'], processed['is_folder'])
 
     if offset + limit < total:
-        li = xbmcgui.ListItem(label=f'[B]Next Page >>[/B]')
-        li.setArt({'icon': _simkl_icon(), 'thumb': _simkl_icon(), 'poster': _simkl_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(None))
+        style_page_nav_item(li, None)
         _add_dir(_build_url({'action': 'simkl_history_items', 'mediatype': mediatype, 'offset': offset + limit}), li, True)
-    _end()
+    _end(view_type=kodi_content, content=kodi_content)
 
 def _view_upnext():
     """Delegatie catre Next Episodes dinamic (identic cu TV Shows -> Next Episodes)."""

@@ -7,7 +7,7 @@ import xbmcplugin
 import xbmc
 
 from resources.lib.config import ADDON as PROXIED_ADDON, PUNCHPLAY_COLOR, provider_color, provider_icon, provider_title
-from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, get_episode_air_stamp, prefetch_air_times
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, get_episode_air_stamp, prefetch_air_times, style_page_nav_item, next_page_label
 
 PUNCHPLAY_ACTIONS = {
     'punchplay_menu',
@@ -70,9 +70,16 @@ def is_authenticated():
     from resources.lib.punchplay_api import PunchplayAPI
     return PunchplayAPI().is_authenticated()
 
-def _end(succeeded=True, cache=True):
+def _end(succeeded=True, cache=True, view_type=None, content=None):
     _ensure_globals()
     xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded, cacheToDisc=cache)
+    # Set Views: aplica view-ul salvat pentru categoria acestei listari (paritate POV).
+    if succeeded and view_type:
+        try:
+            from resources.lib import views
+            views.apply_view(view_type, content)
+        except Exception:
+            pass
 
 def _add_dir(url, li, is_folder=True):
     _ensure_globals()
@@ -148,7 +155,7 @@ def _view_menu():
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
         _add_dir(_build_url({'action': action, **extra}), li, is_folder)
-    _end(cache=False)
+    _end(cache=False, view_type='main')
 
 def _view_account():
     _ensure_globals()
@@ -279,7 +286,7 @@ def _view_account():
             _add_dir(_build_url({'action': action}), li, is_folder)
         else:
             _add_dir(_build_url({}), li, False)
-    _end(cache=False)
+    _end(cache=False, view_type='main')
 
 def _prefetch_or_fill(fake_items, mt):
     if not fake_items:
@@ -304,7 +311,17 @@ def _prefetch_or_fill(fake_items, mt):
         for t in missing:
             _th.Thread(target=_fill, args=(t,), daemon=True).start()
 
-def _render_tmdb_rows(rows, mt, page=1, next_action=None, next_extra=None, dropped_mode=False, end_dir=True):
+def _mt_view_type(mt):
+    """Categoria Set Views pentru listele media punchplay (mt: movie/tv/mixed)."""
+    mt = str(mt or '').lower()
+    if mt == 'movie':
+        return 'movies'
+    if mt == 'tv':
+        return 'tvshows'
+    return 'main'
+
+def _render_tmdb_rows(rows, mt, page=1, next_action=None, next_extra=None, dropped_mode=False, end_dir=True, view_content=None):
+    """view_content: Container.Content asteptat la apply (None = derivat din mt)."""
     _ensure_globals()
     from resources.lib.utils import sort_personal_list
     items = []
@@ -317,7 +334,7 @@ def _render_tmdb_rows(rows, mt, page=1, next_action=None, next_extra=None, dropp
     if not items:
         _empty('[No items]')
         if end_dir:
-            _end()
+            _end(view_type=_mt_view_type(mt), content=view_content)
         return
     items = sort_personal_list(items)
     limit = _page_limit()
@@ -380,11 +397,12 @@ def _render_tmdb_rows(rows, mt, page=1, next_action=None, next_extra=None, dropp
                 pass
             continue
     if next_action and page * limit < len(items):
-        li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(page + 1))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'action': next_action, 'page': page + 1, **(next_extra or {})}), li, True)
     if end_dir:
-        _end()
+        _end(view_type=_mt_view_type(mt),
+             content=view_content if view_content is not None else ('movies' if mt == 'movie' else ('tvshows' if mt == 'tv' else None)))
 
 def _view_watchlist_menu():
     _ensure_globals()
@@ -399,7 +417,7 @@ def _view_watchlist_menu():
         li = xbmcgui.ListItem(label=text)
         li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
         _add_dir(_build_url({'action': 'punchplay_watchlist_items', 'mediatype': mt}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_watchlist(page=1):
     _view_watchlist_menu()
@@ -474,7 +492,7 @@ def _view_favourites_menu():
         li = xbmcgui.ListItem(label=text)
         li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
         _add_dir(_build_url({'action': 'punchplay_favourites_items', 'mediatype': mt}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_favourites(page=1):
     _view_favourites_menu()
@@ -590,7 +608,7 @@ def _view_my_lists():
         _art = _poster_map.get(str(r.get('list_id') or '')) or _pp_icon()
         li.setArt({'icon': _art, 'thumb': _art, 'poster': _art})
         _add_dir(_build_url({'action': 'punchplay_my_list_items', 'list_id': str(r['list_id'])}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _fetch_all_list_items(list_id):
     try:
@@ -663,9 +681,9 @@ def _view_collection():
         movies = [r for r in rows if str(r.get('media_type') or '') == 'movie']
         shows = [r for r in rows if str(r.get('media_type') or '') != 'movie']
         if movies:
-            _render_tmdb_rows(movies, 'movie', page=1, end_dir=not shows)
+            _render_tmdb_rows(movies, 'movie', page=1, end_dir=not shows, view_content='videos')
         if shows:
-            _render_tmdb_rows(shows, 'tv', page=1)
+            _render_tmdb_rows(shows, 'tv', page=1, view_content='videos')
         if not movies and not shows:
             _empty('[No items]')
             _end()
@@ -714,7 +732,7 @@ def _view_public_lists():
         li = xbmcgui.ListItem(label=text)
         li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
         _add_dir(_build_url({'action': 'punchplay_catalog_menu', 'mediatype': mt}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_catalog_menu(mediatype):
     _ensure_globals()
@@ -726,7 +744,7 @@ def _view_catalog_menu(mediatype):
         li = xbmcgui.ListItem(label=text)
         li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
         _add_dir(_build_url({'action': 'punchplay_catalog', 'mediatype': mt, 'list': _list}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_catalog(mediatype, list_name):
     _ensure_globals()
@@ -768,7 +786,7 @@ def _view_history_menu():
         li = xbmcgui.ListItem(label=text)
         li.setArt({'icon': _pp_icon(), 'thumb': _pp_icon(), 'poster': _pp_icon()})
         _add_dir(_build_url({'action': 'punchplay_history_items', 'mediatype': mt}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_history_items(mediatype, page=1):
     _ensure_globals()
@@ -1051,7 +1069,7 @@ def _view_calendar():
     items_to_add = sort_calendar_items(items_to_add, wnd['today_top'], wnd['sort_asc'])
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
-    _end()
+    _end(view_type='episode_lists', content='episodes')
 
 def watchlist_add(tmdb_id=None, mediatype='movie', title='', notify=True):
     if not tmdb_id:

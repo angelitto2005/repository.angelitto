@@ -9,6 +9,7 @@ import xbmcplugin
 import xbmcvfs
 
 from resources.lib.config import ADDON as PROXIED_ADDON, provider_title, _fmt_dmy
+from resources.lib.utils import style_page_nav_item, next_page_label
 
 DEBRID_ACTIONS = {
     'debrid_menu',
@@ -216,6 +217,14 @@ def _expiry_days_left(value):
 def _end(succeeded=True, cache=False):
     _ensure_globals()
     xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded, cacheToDisc=cache)
+    # Set Views: listarile cloud nu seteaza content -> mod "unknown" (fara poll), ca sa
+    # nu pierdem timeout-ul pe fiecare deschidere (vezi views.apply_view).
+    if succeeded:
+        try:
+            from resources.lib import views
+            views.apply_view('cloud', None)
+        except Exception:
+            pass
 
 
 def _add_dir(url, li, is_folder=True):
@@ -473,7 +482,7 @@ def _maybe_refresh_rd_total_bg():
     if _RD_TOTAL_FETCHING:
         return
     try:
-        from resources.lib import realdebrid_api
+        from resources.lib.cloud import realdebrid_api
         if not realdebrid_api.is_authenticated():
             return
     except Exception:
@@ -484,7 +493,7 @@ def _maybe_refresh_rd_total_bg():
     def _run():
         global _RD_TOTAL_FETCHING
         try:
-            from resources.lib import realdebrid_api
+            from resources.lib.cloud import realdebrid_api
             payload = realdebrid_api.user_cloud(1, 1)
             items, total, _tp = _rd_payload(payload)
             if total > 0:
@@ -551,7 +560,7 @@ def _safe_count(fn):
 
 
 def _pm_ready_count():
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
     if not premiumize_api.is_authenticated():
         return ''
     payload = _cache_get('tmdbmovies_pm_cloud')
@@ -563,7 +572,7 @@ def _pm_ready_count():
 
 
 def _oc_ready_count():
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
     if not offcloud_api.is_authenticated():
         return ''
     payload = _cache_get('tmdbmovies_oc_cloud')
@@ -576,7 +585,7 @@ def _oc_ready_count():
 
 def _view_torbox():
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     if not torbox_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _TB_COLOR + ']Connect TorBox[/COLOR][/B] (enter API key)',
@@ -625,7 +634,7 @@ def _view_torbox():
 
 def _view_rd():
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     if not realdebrid_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _RD_COLOR + ']Connect Real-Debrid[/COLOR][/B] (enter API key)',
@@ -758,7 +767,7 @@ def _pm_rows(items, source_name):
 
 def _view_premiumize():
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     if not premiumize_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _PM_COLOR + ']Connect Premiumize[/COLOR][/B] (enter API key)',
@@ -790,7 +799,7 @@ def _view_premiumize():
 
 def _view_pm_cloud(params):
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     payload, err = _cached_call('tmdbmovies_pm_cloud', premiumize_api.user_cloud)
     if err:
@@ -808,7 +817,7 @@ def _view_pm_cloud(params):
 
 def _view_pm_folder(params):
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     src = str(params.get('src') or '').strip()
     name = params.get('name', '')
@@ -841,7 +850,7 @@ def _view_pm_folder(params):
 
 def _view_pm_storage(params):
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     folder_id = str(params.get('folder_id') or '').strip()
     name = str(params.get('name') or '')
@@ -914,7 +923,7 @@ def _view_pm_storage(params):
 
 def _view_pm_account():
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     try:
         info = premiumize_api.account_info()
@@ -954,7 +963,7 @@ def _view_pm_account():
 
 def _view_offcloud():
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     if not offcloud_api.is_authenticated():
         _add_connect_item('[B][COLOR ' + _OC_COLOR + ']Connect Offcloud[/COLOR][/B] (enter API key)',
@@ -1029,7 +1038,7 @@ def _oc_rows(items, source_name):
 
 def _view_oc_cloud(params):
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     payload, err = _cached_call('tmdbmovies_oc_cloud', offcloud_api.user_cloud)
     if err:
@@ -1048,7 +1057,7 @@ def _view_oc_cloud(params):
 
 def _view_oc_history(params):
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     payload, err = _cached_call('tmdbmovies_oc_cloud', offcloud_api.user_cloud)
     if err:
@@ -1066,7 +1075,7 @@ def _view_oc_history(params):
 
 def _view_oc_folder(params):
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     rid = str(params.get('item_id') or '').strip()
     name = params.get('name', '')
@@ -1100,7 +1109,7 @@ def _view_oc_folder(params):
 
 def _view_oc_account():
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     try:
         info = offcloud_api.account_info()
@@ -1157,7 +1166,7 @@ def _tb_status(item):
 
 def _view_tb_cloud(params):
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     mediatype = params.get('mediatype', 'torrents')
     if mediatype not in ('torrents', 'usenet', 'webdl'):
@@ -1196,8 +1205,8 @@ def _view_tb_cloud(params):
             _add_inactive_row(f'[B]{_tb_status(it)} - {pct}%[/B] | [I]{nm}[/I]', _tb_icon())
 
     if page < total_pages:
-        li = xbmcgui.ListItem(label='[B][COLOR ' + _HL_COLOR + ']Next Page >>[/COLOR][/B]')
-        li.setArt({'icon': _tb_icon(), 'thumb': _tb_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(None))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'mode': 'debrid_tb_cloud', 'mediatype': mediatype, 'page': str(page + 1)}), li, True)
 
     _end()
@@ -1245,7 +1254,7 @@ def _add_tb_folder_row(item, mediatype):
 
 def _view_tb_airlock(params):
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
     page = _page_num(params)
 
     merged = []
@@ -1282,8 +1291,8 @@ def _view_tb_airlock(params):
         _add_tb_folder_row(it, it.get('_mt') or 'torrents')
 
     if page < total_pages:
-        li = xbmcgui.ListItem(label='[B][COLOR ' + _HL_COLOR + ']Next Page >>[/COLOR][/B]')
-        li.setArt({'icon': _tb_icon(), 'thumb': _tb_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(None))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'mode': 'debrid_tb_airlock', 'page': str(page + 1)}), li, True)
 
     _end()
@@ -1291,7 +1300,7 @@ def _view_tb_airlock(params):
 
 def _view_tb_folder(params):
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     mediatype = params.get('mediatype', 'torrents')
     item_id = params.get('item_id', '')
@@ -1380,7 +1389,7 @@ def _tb_plan_name(value):
 
 def _view_tb_account():
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     try:
         info = torbox_api.account_info()
@@ -1423,7 +1432,7 @@ def _view_tb_account():
 
 def _view_rd_cloud(params):
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     page = _page_num(params)
     limit = _rd_cloud_limit()
@@ -1473,8 +1482,8 @@ def _view_rd_cloud(params):
     else:
         show_next = raw_count >= limit
     if show_next:
-        li = xbmcgui.ListItem(label='[B][COLOR ' + _HL_COLOR + ']Next Page >>[/COLOR][/B]')
-        li.setArt({'icon': _rd_icon(), 'thumb': _rd_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(None))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'mode': 'debrid_rd_cloud', 'page': str(page + 1)}), li, True)
 
     _end()
@@ -1525,7 +1534,7 @@ def _rd_selected_links(info):
 
 
 def _rd_find_download(did, page, limit):
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
     pages = [page]
     for step in (1, -1, 2, -2):
         if len(pages) >= 5:
@@ -1558,7 +1567,7 @@ def _rd_find_download(did, page, limit):
 
 def _view_rd_folder(params):
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     tid = params.get('item_id', '')
     name = params.get('name', '')
@@ -1627,7 +1636,7 @@ def _view_rd_folder(params):
 
 def _view_rd_downloads(params):
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     page = _page_num(params)
     limit = _page_limit()
@@ -1654,8 +1663,8 @@ def _view_rd_downloads(params):
         _add_rd_download_row(it, page)
 
     if page < total_pages:
-        li = xbmcgui.ListItem(label='[B][COLOR ' + _HL_COLOR + ']Next Page >>[/COLOR][/B]')
-        li.setArt({'icon': _rd_icon(), 'thumb': _rd_icon()})
+        li = xbmcgui.ListItem(label=next_page_label(None))
+        style_page_nav_item(li, page + 1)
         _add_dir(_build_url({'mode': 'debrid_rd_downloads', 'page': str(page + 1)}), li, True)
 
     _end()
@@ -1694,7 +1703,7 @@ def _add_rd_download_row(item, page=1):
 
 def _view_rd_account():
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     try:
         info = realdebrid_api.account_info()
@@ -1728,16 +1737,16 @@ def _view_rd_account():
 
 _CRED_CFG = {
     'torbox': {'label': 'TorBox', 'heading': 'Enter TorBox API Key (torbox.app/settings)',
-               'key': 'torbox_api_key', 'status': 'torbox_status', 'icon': '_tb_icon', 'module': 'torbox_api',
+               'key': 'torbox_api_key', 'status': 'torbox_status', 'icon': '_tb_icon', 'module': 'cloud.torbox_api',
                'validate': 'account_info'},
     'rd': {'label': 'Real-Debrid', 'heading': 'Enter Real-Debrid API Key (real-debrid.com/apitoken)',
-           'key': 'rd_api_key', 'status': 'rd_status', 'icon': '_rd_icon', 'module': 'realdebrid_api',
+           'key': 'rd_api_key', 'status': 'rd_status', 'icon': '_rd_icon', 'module': 'cloud.realdebrid_api',
            'validate': 'account_info'},
     'premiumize': {'label': 'Premiumize', 'heading': 'Enter Premiumize API Key (premiumize.me/api)',
-                   'key': 'pm_api_key', 'status': 'pm_status', 'icon': '_pm_icon', 'module': 'premiumize_api',
+                   'key': 'pm_api_key', 'status': 'pm_status', 'icon': '_pm_icon', 'module': 'cloud.premiumize_api',
                    'validate': 'account_info'},
     'offcloud': {'label': 'Offcloud', 'heading': 'Enter Offcloud API Key (offcloud.com/api)',
-                 'key': 'oc_api_key', 'status': 'oc_status', 'icon': '_oc_icon', 'module': 'offcloud_api',
+                 'key': 'oc_api_key', 'status': 'oc_status', 'icon': '_oc_icon', 'module': 'cloud.offcloud_api',
                  'validate': 'account_info'},
 }
 
@@ -1812,7 +1821,7 @@ def _confirm_delete(name):
 
 def _delete_tb(params):
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     mediatype = params.get('mediatype', 'torrents')
     item_id = params.get('item_id', '')
@@ -1834,7 +1843,7 @@ def _delete_tb(params):
 
 def _toggle_tb_airlock(params):
     _ensure_globals()
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
 
     mediatype = params.get('mediatype', 'torrents')
     item_id = params.get('item_id', '')
@@ -1857,7 +1866,7 @@ def _toggle_tb_airlock(params):
 
 def _delete_rd_torrent(params):
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     item_id = params.get('item_id', '')
     name = params.get('name', '') or 'this item'
@@ -1877,7 +1886,7 @@ def _delete_rd_torrent(params):
 
 def _delete_rd_download(params):
     _ensure_globals()
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
 
     item_id = params.get('item_id', '')
     name = params.get('name', '') or 'this item'
@@ -1897,7 +1906,7 @@ def _delete_rd_download(params):
 
 def _delete_pm_transfer(params):
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     item_id = str(params.get('item_id') or '').strip()
     name = params.get('name', '') or 'this transfer'
@@ -1917,7 +1926,7 @@ def _delete_pm_transfer(params):
 
 def _retry_pm_transfer(params):
     _ensure_globals()
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
 
     item_id = str(params.get('item_id') or '').strip()
     name = params.get('name', '') or 'this transfer'
@@ -1935,7 +1944,7 @@ def _retry_pm_transfer(params):
 
 def _delete_oc_request(params):
     _ensure_globals()
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
 
     item_id = str(params.get('item_id') or '').strip()
     name = params.get('name', '') or 'this request'
@@ -1955,7 +1964,7 @@ def _delete_oc_request(params):
 
 def _clear_pm_cache():
     try:
-        from resources.lib import premiumize_api
+        from resources.lib.cloud import premiumize_api
         premiumize_api.clear_cloud_cache()
     except Exception:
         pass
@@ -1965,7 +1974,7 @@ def _clear_pm_cache():
 
 def _clear_oc_cache():
     try:
-        from resources.lib import offcloud_api
+        from resources.lib.cloud import offcloud_api
         offcloud_api.clear_cloud_cache()
     except Exception:
         pass
@@ -1974,12 +1983,12 @@ def _clear_oc_cache():
 
 
 def _resolve_tb_link(mediatype, item_id, file_id):
-    from resources.lib import torbox_api
+    from resources.lib.cloud import torbox_api
     return torbox_api.unrestrict_link(mediatype, item_id, file_id)
 
 
 def _resolve_rd_link(params):
-    from resources.lib import realdebrid_api
+    from resources.lib.cloud import realdebrid_api
     item_id = params.get('item_id', '')
     file_id = params.get('file_id', '')
     if file_id:
@@ -1999,7 +2008,7 @@ def _resolve_rd_link(params):
 
 
 def _resolve_pm_link(params):
-    from resources.lib import premiumize_api
+    from resources.lib.cloud import premiumize_api
     # Fisier din Cloud Storage: link direct din item/details (fara transfer).
     cloud_id = str(params.get('item_id') or '').strip()
     src = str(params.get('src') or '').strip()
@@ -2029,7 +2038,7 @@ def _resolve_pm_link(params):
 
 
 def _resolve_oc_link(params):
-    from resources.lib import offcloud_api
+    from resources.lib.cloud import offcloud_api
     item_id = str(params.get('item_id') or '').strip()
     if not item_id:
         raise Exception('File link not available')
@@ -2126,7 +2135,7 @@ def _download(params):
 
 def _clear_tb_cache():
     try:
-        from resources.lib import torbox_api
+        from resources.lib.cloud import torbox_api
         torbox_api.clear_cloud_cache()
     except Exception:
         pass
@@ -2136,7 +2145,7 @@ def _clear_tb_cache():
 
 def _clear_rd_cache():
     try:
-        from resources.lib import realdebrid_api
+        from resources.lib.cloud import realdebrid_api
         realdebrid_api.clear_cloud_cache()
     except Exception:
         pass

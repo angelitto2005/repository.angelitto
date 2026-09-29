@@ -20,7 +20,7 @@ from resources.lib.config import (
     TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy, calendar_localized_label,
     get_plot_language_code, provider_color, provider_icon, provider_title
 )
-from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items
+from resources.lib.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label
 from resources.lib.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
 from resources.lib import menus
 from resources.lib import trakt_sync
@@ -38,8 +38,20 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
 
-def render_from_fast_cache(items):
-    """Deseneaza lista instantaneu din datele cached folosind Batch Add."""
+def _set_views_apply(view_type, content=None):
+    """Set Views: aplica view-ul salvat DUPA endOfDirectory (content None -> folosim view_type)."""
+    try:
+        from resources.lib import views
+        views.apply_view(view_type, view_type if content is None else content)
+    except Exception:
+        pass
+
+
+def render_from_fast_cache(items, view_type=None):
+    """Deseneaza lista instantaneu din datele cached folosind Batch Add.
+
+    view_type: override Set Views pentru aceasta listare (ex. 'episode_lists').
+    """
     # Orele de difuzare nu sint "coapte" in label: tokenul din cache e inlocuit aici
     # cu ora reala din sqlite (o singura conexiune pentru toata lista). Asa lista
     # cache-uita se auto-vindeca fara re-prefetch la fiecare deschidere.
@@ -134,9 +146,22 @@ def render_from_fast_cache(items):
     
     xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     
+    _content = ''
     if items:
-        xbmcplugin.setContent(HANDLE, items[0]['info'].get('mediatype', 'movies') + 's')
+        try:
+            _content = (items[0]['info'].get('mediatype', 'movies') or 'movies') + 's'
+        except Exception:
+            _content = 'movies'
+        xbmcplugin.setContent(HANDLE, _content)
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    # Set Views: DOAR override explicit de la apelant. Derivarea din content a fost
+    # eliminata intentionat: 'episodes' si 'episode_lists' au EXACT acelasi content,
+    # deci nicio derivare nu le poate distinge. Fara override -> nu aplicam nimic
+    # (fallback sigur) si logam, ca sa depistam call site-ul care uita view_type.
+    if view_type:
+        _set_views_apply(view_type, _content or None)
+    else:
+        log('[SET VIEWS] render_from_fast_cache apelat fara view_type (content=%r) - nu se aplica nimic' % (_content,))
     
 
 # === LOCK DE CONSTRUCTIE PE LISTA (anti-race container vs widget) ===============
@@ -872,6 +897,16 @@ def get_tmdb_movies_standard(action, page_no):
             f"&with_runtime.gte=60&without_genres=99&vote_count.gte=5"
             f"&page={page_no}"
         )
+    elif action == 'tmdb_movies_digital':
+        current_date = datetime.date.today().strftime('%Y-%m-%d')
+        url = (
+            f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US"
+            f"&release_date.lte={current_date}"
+            f"&with_release_type=4"
+            f"&sort_by=release_date.desc"
+            f"&with_runtime.gte=60&without_genres=99"
+            f"&page={page_no}"
+        )
     elif action == 'tmdb_movies_netflix':
         current_date = datetime.date.today().strftime('%Y-%m-%d')
         url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&watch_region=US&with_watch_providers=8&primary_release_date.lte={current_date}&sort_by=primary_release_date.desc&with_runtime.gte=60&without_genres=99&vote_count.gte=5&page={page_no}"
@@ -1156,12 +1191,14 @@ def build_movie_list(params):
     ITEMS_PER_API_PAGE = 20
     api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
     start_api_page = (page - 1) * api_pages_needed + 1
+    if action == 'tmdb_movies_digital':
+        api_pages_needed = 0
 
 # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"list_movie_{action}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies')
         return
     # ---------------------------------
 
@@ -1184,6 +1221,16 @@ def build_movie_list(params):
         if len(results) < ITEMS_PER_API_PAGE:
             break
 
+    if action == 'tmdb_movies_digital':
+        try:
+            _need = page * PAGE_LIMIT + 1
+            _pool = _ensure_digital_pool(_need)
+            _start = (page - 1) * PAGE_LIMIT
+            all_results = _pool[_start:_start + PAGE_LIMIT + 1]
+            more_pages = len(_pool) > _start + PAGE_LIMIT
+        except Exception as e:
+            log(f"[LIST] Digital pool esuat: {e}")
+
     if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
         return
@@ -1191,11 +1238,58 @@ def build_movie_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
+    try:
+        current_items = [it for it in current_items if not _is_tmdb_list_junk(it)]
+    except Exception:
+        pass
+
+    if action == 'tmdb_movies_digital':
+        seen_ids = set()
+        seen_titles = set()
+        uniq = []
+        for it in current_items:
+            tid = str(it.get('id', '') or '')
+            if tid and tid in seen_ids:
+                continue
+            tkey = (str(it.get('title', '') or '').strip().lower(),
+                    str(it.get('release_date', '') or '')[:4])
+            if tkey[0] and tkey in seen_titles:
+                continue
+            if tid:
+                seen_ids.add(tid)
+            if tkey[0]:
+                seen_titles.add(tkey)
+            uniq.append(it)
+        current_items = uniq
+
 # Pre-warm + procesare: prefetch populeaza RAM pool, apoi _process_movie_item citeste instant din cache
     cache_list = []
     items_to_add = []
 
     prefetch_metadata_parallel(current_items, 'movie')
+
+    dig_map = {}
+    if action == 'tmdb_movies_digital' and current_items:
+        try:
+            for _it in current_items:
+                _ds = _it.get('_digital_date') or ''
+                if _ds:
+                    dig_map[str(_it.get('id', ''))] = _ds
+            _missing = [it for it in current_items if str(it.get('id', '')) not in dig_map]
+            if _missing:
+                dig_map.update(_digital_dates_map(_missing))
+        except Exception:
+            dig_map = {}
+        def _dig_key(it):
+            tid = str(it.get('id', '') or '')
+            ds = dig_map.get(tid, '')
+            if ds:
+                return (1, ds)
+            return (0, str(it.get('release_date', '') or '')[:10])
+        try:
+            current_items.sort(key=_dig_key, reverse=True)
+        except Exception:
+            pass
 
     for item in current_items:
         try:
@@ -1204,18 +1298,28 @@ def build_movie_list(params):
             log(f"[LIST] Item film sarit la procesare: {e}")
             continue
         if processed:
+            if dig_map:
+                try:
+                    _tid = str(item.get('id', '') or '')
+                    _ds = dig_map.get(_tid, '')
+                    if _ds:
+                        _li = processed.get('li')
+                        if _li is not None:
+                            _li.setLabel(f"{_li.getLabel()} [B][COLOR FF00CED1](Digital • {_fmt_dmy(_ds)})[/COLOR][/B]")
+                except Exception:
+                    pass
             cache_list.append(processed)
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
 # --- FIX PAGINARE SI CACHE ---
     if has_next:
         # Cream manual item-ul de Next Page
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         
         # 1. Adaugam la afisare imediata
         items_to_add.append((next_url, next_li, True))
@@ -1225,8 +1329,8 @@ def build_movie_list(params):
             'url': next_url,
             'li': next_li,          # <--- ADAUGAT (CRITIC PENTRU CACHE)
             'is_folder': True,
-            'info': {'mediatype': 'video'}, # Minim necesar
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, # Minim necesar
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'cm_items': [],         # <--- RENUMIT DIN 'cm' IN 'cm_items'
             'resume_time': 0,
             'total_time': 0
@@ -1243,6 +1347,8 @@ def build_movie_list(params):
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
+    _set_views_apply('movies')
+
     
     # Save to RAM
     set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
@@ -1277,7 +1383,7 @@ def build_tvshow_list(params):
     cache_key = f"list_tv_{action}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='tvshows')
         return
     # ---------------------------------
 
@@ -1307,6 +1413,11 @@ def build_tvshow_list(params):
     current_items = all_results[:PAGE_LIMIT]
     has_next = len(all_results) > PAGE_LIMIT or more_pages
 
+    try:
+        current_items = [it for it in current_items if not _is_tmdb_list_junk(it)]
+    except Exception:
+        pass
+
 # Pre-warm + procesare: prefetch populeaza RAM pool, apoi _process_tv_item citeste instant din cache
     cache_list = []
     items_to_add = []
@@ -1326,12 +1437,12 @@ def build_tvshow_list(params):
 # --- FIX PAGINARE SI CACHE ---
     if has_next:
         # Cream manual item-ul de Next Page
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         
         # 1. Adaugam la afisare
         items_to_add.append((next_url, next_li, True))
@@ -1341,8 +1452,8 @@ def build_tvshow_list(params):
             'url': next_url,
             'li': next_li,          # <--- ADAUGAT (CRITIC)
             'is_folder': True,
-            'info': {'mediatype': 'video'},
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'cm_items': [],         # <--- RENUMIT
             'resume_time': 0,
             'total_time': 0
@@ -1359,6 +1470,8 @@ def build_tvshow_list(params):
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
+    _set_views_apply('tvshows')
+
     
     # Save to RAM
     set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
@@ -2475,6 +2588,7 @@ def tmdb_my_lists():
         add_directory("[COLOR gray]No personal lists or sync again[/COLOR]", {'mode': 'trakt_sync_db'}, folder=False)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('main')
 
 
 def _tmdb_calendar_window():
@@ -2516,6 +2630,190 @@ def _tmdb_movie_release_date(details):
         except Exception:
             pass
     return ''
+
+
+def _us_digital_date(details):
+    if not isinstance(details, dict): return ''
+    best = ''
+    try:
+        rd = (details.get('release_dates') or {}).get('results') or []
+        for r in rd:
+            if str(r.get('iso_3166_1', '')).upper() != 'US':
+                continue
+            for e in r.get('release_dates', []) or []:
+                try:
+                    if int(e.get('type', 0)) != 4:
+                        continue
+                    ds = str(e.get('release_date', ''))[:10]
+                    if len(ds) == 10 and (not best or ds < best):
+                        best = ds
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return best
+
+
+def _digital_dates_map(items, timeout=8):
+    import threading as _th
+    import time as _t
+    out = {}
+    todo = []
+    for it in items or []:
+        tid = str(it.get('id', '') or '')
+        if not tid:
+            continue
+        try:
+            ds = _us_digital_date(_get_cached_details(tid, 'movie') or {})
+        except Exception:
+            ds = ''
+        if ds:
+            out[tid] = ds
+        else:
+            todo.append(tid)
+    if todo:
+        deadline = _t.time() + timeout
+        lock = _th.Lock()
+        def _task(tid):
+            try:
+                get_tmdb_item_details(tid, 'movie', lightweight=True)
+                ds = _us_digital_date(_get_cached_details(tid, 'movie') or {})
+                if ds:
+                    with lock:
+                        out[tid] = ds
+            except Exception:
+                pass
+        threads = []
+        for tid in todo:
+            t = _th.Thread(target=_task, args=(tid,))
+            t.daemon = True
+            threads.append(t)
+            t.start()
+        for t in threads:
+            remain = deadline - _t.time()
+            if remain <= 0:
+                break
+            t.join(timeout=remain)
+    return out
+
+
+_DIGITAL_JUNK_RE = re.compile(r'\b(njpw|aew|wwe|wwf|nxt|ufc|aaa|bellator|wsof|pfl|wrestle\s?kingdom|wrestlemania|royal\s?rumble|summerslam|survivor\s?series|money\s?in\s?the\s?bank|elimination\s?chamber|crown\s?jewel)\b', re.IGNORECASE)
+
+
+def _is_tmdb_list_junk(it):
+    try:
+        g = it.get('genre_ids')
+        if isinstance(g, list) and any(str(x) == '99' for x in g):
+            return True
+    except Exception:
+        pass
+    try:
+        t = str(it.get('title', '') or it.get('name', '') or '')
+        if t and _DIGITAL_JUNK_RE.search(t):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _digital_day_items(day_str):
+    import requests
+    out = []
+    try:
+        base = (f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US"
+                f"&release_date.gte={day_str}&release_date.lte={day_str}"
+                f"&with_release_type=4&sort_by=release_date.desc"
+                f"&with_runtime.gte=60&without_genres=99")
+        page = 1
+        while page <= 10:
+            try:
+                r = requests.get(base + f"&page={page}", timeout=15)
+                if r.status_code != 200:
+                    break
+                res = r.json().get('results', []) or []
+            except Exception:
+                break
+            if not res:
+                break
+            out.extend(res)
+            if len(res) < 20:
+                break
+            page += 1
+    except Exception:
+        pass
+    return out
+
+
+def _ensure_digital_pool(need, chunk=14, max_days=90, deadline_s=15):
+    import datetime as _dt
+    import threading as _th
+    import time as _t
+    today = _dt.date.today()
+    by_id = {}
+    days_back = 0
+    t_end = _t.time() + deadline_s
+    while len(by_id) < need and days_back < max_days:
+        days = [(today - _dt.timedelta(days=d)).strftime('%Y-%m-%d')
+                for d in range(days_back, min(days_back + chunk, max_days))]
+        results = {}
+        lock = _th.Lock()
+        def _task(ds):
+            try:
+                items = cache_object(_digital_day_items, f'tmdb_digital_day_{ds}_{LANG}', [ds], expiration=24) or []
+            except Exception:
+                items = []
+            with lock:
+                results[ds] = items
+        threads = []
+        for ds in days:
+            t = _th.Thread(target=_task, args=(ds,))
+            t.daemon = True
+            threads.append(t)
+            t.start()
+        for t in threads:
+            remain = t_end - _t.time()
+            if remain <= 0:
+                break
+            t.join(timeout=remain)
+        for ds in days:
+            for it in results.get(ds) or []:
+                try:
+                    tid = str(it.get('id', '') or '')
+                    if not tid:
+                        continue
+                    if not it.get('genre_ids'):
+                        continue
+                    try:
+                        if _DIGITAL_JUNK_RE.search(str(it.get('title', '') or '')):
+                            continue
+                    except Exception:
+                        pass
+                    cp = dict(it)
+                    cp['_digital_date'] = ds
+                    prev = by_id.get(tid)
+                    if prev is None or ds > prev.get('_digital_date', ''):
+                        by_id[tid] = cp
+                except Exception:
+                    pass
+        days_back += chunk
+        if _t.time() >= t_end:
+            break
+    pool = list(by_id.values())
+    try:
+        pool.sort(key=lambda it: it.get('_digital_date', ''), reverse=True)
+    except Exception:
+        pass
+    seen = set()
+    out = []
+    for it in pool:
+        tkey = (str(it.get('title', '') or '').strip().lower(),
+                str(it.get('release_date', '') or '')[:4])
+        if tkey[0] and tkey in seen:
+            continue
+        if tkey[0]:
+            seen.add(tkey)
+        out.append(it)
+    return out
 
 
 def _prefetch_tmdb_seasons(pairs):
@@ -2896,6 +3194,8 @@ def _render_tmdb_calendar_entries(entries, wnd):
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('episode_lists', 'episodes')
+
 
 
 def tmdb_account_recommendations(params):
@@ -2935,13 +3235,16 @@ def tmdb_account_recommendations(params):
     
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]", 
+            next_page_label(page + 1), 
             {'mode': 'tmdb_account_recommendations', 'type': content_type, 'page': str(page+1)}, 
-            folder=True
+            icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON,
+            info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True
         )
     
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('movies' if content_type == 'movie' else 'tvshows')
+
 
 
 def fetch_tmdb_list_items_all(list_id):
@@ -2980,7 +3283,7 @@ def tmdb_list_items(params):
     cache_key = f"tmdb_custom_list_{list_id}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies')
         return
     # ------------------------------
 
@@ -3001,8 +3304,9 @@ def tmdb_list_items(params):
         else: _process_tv_item(item)
 
     if page < total:
-        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': list_name, 'page': str(page+1)}, icon=NEXT_PAGE_ICON, folder=True)
+        add_directory(next_page_label(page + 1), {'mode': 'tmdb_list_items', 'list_id': list_id, 'list_name': list_name, 'page': str(page+1)}, icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON, info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True)
     xbmcplugin.setContent(HANDLE, 'movies'); xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('movies')
 
 
 def clear_list_cache(params):
@@ -3032,7 +3336,7 @@ def tmdb_watchlist(params):
     cache_key = f"tmdb_watchlist_{content_type}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if content_type == 'movie' else 'tvshows')
         return
     # ---------------------------------
 
@@ -3082,19 +3386,21 @@ def tmdb_watchlist(params):
 
     if page < total:
         # Adaugam butonul Next Page manual pentru Batch/Cache
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if content_type == 'movie' else 'tvshows')
+
     
     # Salvam in RAM
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
@@ -3110,7 +3416,7 @@ def tmdb_favorites(params):
     cache_key = f"tmdb_favorites_{content_type}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if content_type == 'movie' else 'tvshows')
         return
     # ------------------------------
 
@@ -3149,9 +3455,11 @@ def tmdb_favorites(params):
         else: _process_tv_item(item)
 
     if page < total:
-        add_directory(f"[B]Next Page ({page+1}) >>[/B]", {'mode': 'tmdb_favorites', 'type': content_type, 'page': str(page+1)}, icon=NEXT_PAGE_ICON, folder=True)
+        add_directory(next_page_label(page + 1), {'mode': 'tmdb_favorites', 'type': content_type, 'page': str(page+1)}, icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON, info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True)
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('movies' if content_type == 'movie' else 'tvshows')
+
 
 
 def add_to_tmdb_watchlist(content_type, tmdb_id, notify=True):
@@ -3603,18 +3911,14 @@ def show_mdblist_context_menu(tmdb_id, imdb_id, content_type, title='', season=N
         except:
             title = 'Title'
 
-    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
-    
-    watchlist = mdblist.fetch_watchlist(content_type)
-    in_watchlist = False
-    if watchlist:
-        for item in watchlist:
-            item_tmdb = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id', ''))
-            if item_tmdb == str(tmdb_id):
-                in_watchlist = True
-                break
-
-    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    # Add/Remove din mirrorul local (paritate Simkl/TMDB): fara retea si fara busy
+    # dialog, meniul se randeaza instant. Mirrorul se actualizeaza la sync si la
+    # fiecare add/remove facut din addon; o modificare pe site apare la sync-ul urmator.
+    try:
+        from resources.lib.mdblist_sync import is_in_watchlist
+        in_watchlist = is_in_watchlist(tmdb_id)
+    except Exception:
+        in_watchlist = False
 
     options = []
     if in_watchlist:
@@ -4126,8 +4430,10 @@ def show_punchplay_add_to_list_dialog(tmdb_id, content_type, title=''):
     from resources.lib.config import PUNCHPLAY_COLOR
     PUNCHPLAY_ICON = provider_icon('punchplay')
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
-    lists = _punchplay_lists_with_posters()
-    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    try:
+        lists = _punchplay_lists_with_posters()
+    finally:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel,true)')
     if not lists:
         xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
                                        'You have no lists (create one on the site first)', PUNCHPLAY_ICON, 3000, False)
@@ -4164,8 +4470,10 @@ def show_punchplay_remove_from_list_dialog(tmdb_id, content_type, title=''):
     from resources.lib.config import PUNCHPLAY_COLOR
     PUNCHPLAY_ICON = provider_icon('punchplay')
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
-    lists = [l for l in _punchplay_lists_with_posters(tmdb_id) if l['has_item']]
-    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    try:
+        lists = [l for l in _punchplay_lists_with_posters(tmdb_id) if l['has_item']]
+    finally:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel,true)')
     if not lists:
         xbmcgui.Dialog().notification(f"[B][COLOR {PUNCHPLAY_COLOR}]PunchPlay[/COLOR][/B]",
                                        'Not in any list', PUNCHPLAY_ICON, 3000, False)
@@ -4743,9 +5051,11 @@ def show_mdblist_add_to_list_dialog(tmdb_id, imdb_id, content_type, title=''):
             title = 'Title'
     
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
-    from resources.lib import mdblist
-    all_lists = mdblist.fetch_user_lists()
-    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+    try:
+        from resources.lib import mdblist
+        all_lists = mdblist.fetch_user_lists()
+    finally:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel,true)')
     
     if not all_lists:
         xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no personal lists on the site.", MDB_ICON, 3000, False)
@@ -4797,43 +5107,43 @@ def show_mdblist_remove_from_list_dialog(tmdb_id, imdb_id, content_type, title='
             title = 'Title'
     
     xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
-    from resources.lib import mdblist
-    user_lists = mdblist.fetch_user_lists()
-    
-    if not user_lists:
-        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
-        xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no personal lists on the site.", MDB_ICON, 3000, False)
-        return
+    try:
+        from resources.lib import mdblist
+        user_lists = mdblist.fetch_user_lists()
 
-    # --- FILTRARE LISTE STATICE ---
-    static_lists = []
-    for lst in user_lists:
-        if lst.get('dynamic') is True or lst.get('is_dynamic') is True or lst.get('type') == 'dynamic':
-            continue
-        static_lists.append(lst)
+        if not user_lists:
+            xbmcgui.Dialog().notification(provider_title('mdblist'), "You have no personal lists on the site.", MDB_ICON, 3000, False)
+            return
 
-    lists_with_item = []
-    
-    def check_worker(lst):
-        list_id = lst.get('id')
-        items, _ = mdblist.fetch_list_items(list_id, page=1, limit=1000)
-        found = False
-        if items:
-            for item in items:
-                item_tmdb = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id', ''))
-                if item_tmdb == str(tmdb_id):
-                    found = True
-                    break
-        return lst if found else None
-    
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(check_worker, lst) for lst in static_lists]
-        for future in as_completed(futures):
-            result = future.result()
-            if result:
-                lists_with_item.append(result)
+        # --- FILTRARE LISTE STATICE ---
+        static_lists = []
+        for lst in user_lists:
+            if lst.get('dynamic') is True or lst.get('is_dynamic') is True or lst.get('type') == 'dynamic':
+                continue
+            static_lists.append(lst)
 
-    xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        lists_with_item = []
+
+        def check_worker(lst):
+            list_id = lst.get('id')
+            items, _ = mdblist.fetch_list_items(list_id, page=1, limit=1000)
+            found = False
+            if items:
+                for item in items:
+                    item_tmdb = str(item.get('tmdbid') or item.get('tmdb_id') or item.get('show_tmdbid') or item.get('id', ''))
+                    if item_tmdb == str(tmdb_id):
+                        found = True
+                        break
+            return lst if found else None
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(check_worker, lst) for lst in static_lists]
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    lists_with_item.append(result)
+    finally:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel,true)')
     
     if not lists_with_item:
         xbmcgui.Dialog().notification(provider_title('mdblist'), "Title is NOT in any personal STATIC list.", MDB_ICON, 3000, False)
@@ -4999,7 +5309,7 @@ def list_favorites(content_type):
     cache_key = f"local_favs_{content_type}_{len(local_items)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if content_type == 'movie' else 'tvshows')
         return
     # ---------------------------------
 
@@ -5047,6 +5357,8 @@ def list_favorites(content_type):
 
     xbmcplugin.setContent(HANDLE, 'movies' if content_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if content_type == 'movie' else 'tvshows')
+
     
     # 4. SALVAM IN RAM PENTRU URMATOAREA DATA
     set_fast_cache(cache_key, [{
@@ -5197,6 +5509,8 @@ def show_details(tmdb_id, content_type):
         )
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('seasons')
+
 
     # Pre-fetch first 2 season details in background for instant episode loading
     import threading
@@ -5608,6 +5922,8 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('episodes')
+
 
 
 def show_info_dialog(params):
@@ -6331,7 +6647,7 @@ def build_search_result(search_type, query, page=1): # Adaugat parametrul page
     cache_key = f"search_{search_type}_{query}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if search_type == 'movie' else 'tvshows')
         return
     # ------------------------------
     data = cache_object(get_tmdb_search_results, f"search_{search_type}_{query}_{page}", [query, search_type, page], expiration=1)
@@ -6354,19 +6670,21 @@ def build_search_result(search_type, query, page=1): # Adaugat parametrul page
     # Paginare pentru cautare
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'perform_search', 'type': search_type, 'query': query, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if search_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if search_type == 'movie' else 'tvshows')
+
     
     # Save to RAM
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
@@ -6382,7 +6700,7 @@ def list_recommendations(params):
     cache_key = f"recomm_{tmdb_id}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if menu_type == 'movie' else 'tvshows')
         return
     # ------------------------------
 
@@ -6408,19 +6726,21 @@ def list_recommendations(params):
     # Next Page logic...
     total_pages = min(data.get('total_pages', 1), 500)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_recommendations', 'tmdb_id': tmdb_id, 'menu_type': menu_type, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if menu_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if menu_type == 'movie' else 'tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': 0, 'total_time': 0} for i in cache_list])
 
 
@@ -6436,7 +6756,7 @@ def build_actors_list(params):
     cache_key = f"actors_{action}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='main')
         return
 
     all_results = []
@@ -6503,18 +6823,20 @@ def build_actors_list(params):
         cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
 
     if has_next:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_actors_list', 'action': action, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {}, 'cm': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.setContent(HANDLE, 'files')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('main', 'files')
+
     set_fast_cache(cache_key, cache_list)
 
 
@@ -6547,7 +6869,7 @@ def build_actor_search_result(query, page=1):
     cache_key = f"actor_search_{query}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='main')
         return
 
     url = f"{BASE_URL}/search/person?api_key={API_KEY}&language={LANG}&query={quote(query)}&page={page}"
@@ -6591,18 +6913,20 @@ def build_actor_search_result(query, page=1):
 
     total_pages = min(data.get('total_pages', 1), 500)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'perform_actor_search', 'query': query, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {}, 'cm': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.setContent(HANDLE, 'files')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('main', 'files')
+
     set_fast_cache(cache_key, cache_list)
 
 
@@ -7321,13 +7645,16 @@ def in_progress_movies(params):
     
     if page < total_pages:
         add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
+            next_page_label(page + 1),
             {'mode': 'in_progress_movies', 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON, folder=True
+            icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON,
+            info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True
         )
         
     xbmcplugin.setContent(HANDLE, 'movies')
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('movies')
+
 
 
 def in_progress_tvshows(params):
@@ -7361,13 +7688,13 @@ def in_progress_tvshows(params):
     cache_key = f"in_progress_tvshows_all_future_{use_mdblist}_{use_simkl}_{use_punchplay}_{use_local}_{show_future}_{hide_unaired}_{LABEL_VERSION}_{int(_air_time_on)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='tvshows')
         log(f"[IN PROGRESS] din fast cache: {len(cached_data)} randuri (instant)")
         return
     # Alt proces construieste deja lista -> asteptam cache-ul lui (anti-race)
     cached_data = _list_build_wait(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='tvshows')
         log(f"[IN PROGRESS] din fast cache: {len(cached_data)} randuri (build preluat de alt proces)")
         return
     # ==================================
@@ -7659,6 +7986,8 @@ def in_progress_tvshows(params):
     
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('tvshows')
+
 
     set_fast_cache(cache_key, cache_list)
     _list_build_clear(cache_key)
@@ -7679,7 +8008,7 @@ def in_progress_episodes(params):
     cache_key = f"in_progress_episodes_all_{use_mdblist}_{use_simkl}_{use_punchplay}_{use_local}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='episode_lists')
         return
     
     try: icon = os.path.join(ADDON.getAddonInfo('path'), 'resources', 'media', 'player.png')
@@ -7969,6 +8298,8 @@ def in_progress_episodes(params):
         
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('episode_lists', 'episodes')
+
     
     set_fast_cache(cache_key, cache_list)
     try:
@@ -8216,7 +8547,7 @@ def get_next_episodes(params=None):
     cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('local' if use_local else ('simkl' if use_simkl else ('mdblist' if use_mdblist else ('punchplay' if use_punchplay else 'trakt'))))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}_{int(_air_time_on)}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='episode_lists')
         log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (instant)")
         return
 
@@ -8225,7 +8556,7 @@ def get_next_episodes(params=None):
     # -> pagina goala / crash). Asteptam putin cache-ul lui in loc sa re-construim.
     cached_data = _list_build_wait(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='episode_lists')
         log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (build preluat de alt proces)")
         return
 
@@ -8670,6 +9001,8 @@ def get_next_episodes(params=None):
 
     xbmcplugin.setContent(HANDLE, 'episodes')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('episode_lists', 'episodes')
+
     # Nu salva liste goale in fast cache: o randare din fereastra de sync/update
     # (tabela in rebuild, DB locked, exceptie de citire) ar ramine servita din RAM
     # pina la urmatorul clear — exact scenariul "Up Next gol dupa update".
@@ -8856,13 +9189,13 @@ def process_single_list_warmup(action, content_type, page=1):
 
     if len(cache_list) > 0 and not (monitor.abortRequested() or window.getProperty('tmdbmovies_loading_active') == 'true'):
         mode_str = 'build_movie_list' if content_type == 'movie' else 'build_tvshow_list'
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': mode_str, 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'info': {'mediatype': 'video', 'plot': 'Next Page'},
             'cm': [], 'resume_time': 0, 'total_time': 0, 'li': None
         })
@@ -8893,6 +9226,7 @@ def run_background_warmup_sync(content_type):
                 'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
                 'tmdb_movies_popular', 'tmdb_movies_top_rated',
                 'tmdb_movies_premieres', 'tmdb_movies_latest_releases',
+                'tmdb_movies_digital',
                 'tmdb_movies_netflix',  'tmdb_movies_amazon',
                 'tmdb_movies_disney', 'tmdb_movies_apple', 
                 'tmdb_movies_box_office', 'tmdb_movies_now_playing',
@@ -8984,6 +9318,7 @@ def navigator_genres(params):
                      icon=genre_icon, folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('main')
 
 
 def multiselect_genres(params):
@@ -9020,6 +9355,7 @@ def navigator_years(params):
                      icon=cal_icon, folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('main')
 
 
 def list_by_genre(params):
@@ -9034,7 +9370,7 @@ def list_by_genre(params):
     cache_key = f"genre_{media_type}_{genre_id}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_type == 'movie' else 'tvshows')
         return
 
     if media_type == 'movie':
@@ -9061,19 +9397,21 @@ def list_by_genre(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_genre', 'media_type': media_type, 'genre_id': genre_id, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if media_type == 'movie' else 'tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -9089,7 +9427,7 @@ def list_by_year(params):
     cache_key = f"year_{media_type}_{year}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_type == 'movie' else 'tvshows')
         return
 
     if media_type == 'movie':
@@ -9116,19 +9454,21 @@ def list_by_year(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_year', 'media_type': media_type, 'year': year, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if media_type == 'movie' else 'tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -9153,6 +9493,7 @@ def navigator_providers(params):
                      icon=thumb or fallback_icon, thumb=thumb, folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('main')
 
 
 def list_by_provider(params):
@@ -9167,7 +9508,7 @@ def list_by_provider(params):
     cache_key = f"provider_{media_type}_{provider_id}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_type == 'movie' else 'tvshows')
         return
 
     if media_type == 'movie':
@@ -9194,19 +9535,21 @@ def list_by_provider(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_provider', 'media_type': media_type, 'provider_id': provider_id, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if media_type == 'movie' else 'tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -9217,7 +9560,7 @@ def list_highest_revenue(params):
     cache_key = f"highest_revenue_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies')
         return
 
     url = f"{BASE_URL}/discover/movie?api_key={API_KEY}&language={LANG}&region=US&page={page}&sort_by=revenue.desc&vote_count.gte=10"
@@ -9241,19 +9584,21 @@ def list_highest_revenue(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_highest_revenue', 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -9264,7 +9609,7 @@ def list_most_voted(params):
     cache_key = f"most_voted_{media_type}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_type == 'movie' else 'tvshows')
         return
 
     if media_type == 'movie':
@@ -9291,19 +9636,21 @@ def list_most_voted(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_most_voted', 'media_type': media_type, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movie' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('movies' if media_type == 'movie' else 'tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])
 
 
@@ -9343,11 +9690,13 @@ def navigator_networks(params):
                      icon=thumb or fallback_icon, thumb=thumb, folder=True)
 
     if end < total:
-        add_directory(f"[B]Next Page ({page+1}) >>[/B]",
+        add_directory(next_page_label(page + 1),
                      {'mode': 'navigator_networks', 'menu_type': menu_type, 'page': str(page+1)},
-                     icon=os.path.join(icons_path, 'item_next.png'), folder=True)
+                     icon=os.path.join(icons_path, 'item_next.png'), thumb=os.path.join(icons_path, 'item_next.png'),
+                     info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    _set_views_apply('main')
 
 
 def list_by_network(params):
@@ -9362,7 +9711,7 @@ def list_by_network(params):
     cache_key = f"network_{media_type}_{network_id}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='tvshows')
         return
 
     url = f"{BASE_URL}/discover/tv?api_key={API_KEY}&language={LANG}&region=US&with_networks={network_id}&page={page}&sort_by=popularity.desc&vote_count.gte=10"
@@ -9386,17 +9735,19 @@ def list_by_network(params):
 
     total_pages = data.get('total_pages', 1)
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_network', 'media_type': media_type, 'network_id': network_id, 'page': str(page+1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
-        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video'}, 'cm_items': []})
+        cache_list.append({'label': next_label, 'url': next_url, 'is_folder': True, 'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []})
 
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    _set_views_apply('tvshows')
+
     set_fast_cache(cache_key, [{'label': i['li'].getLabel() if 'li' in i else i['label'], 'url': i['url'], 'is_folder': i['is_folder'], 'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 'resume_time': i.get('resume_time', 0), 'total_time': i.get('total_time', 0)} for i in cache_list])

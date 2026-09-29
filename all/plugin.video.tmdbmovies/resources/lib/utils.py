@@ -46,7 +46,12 @@ _WARM_IMPORT_MODULES = (
     'resources.lib.trakt_sync',
     'resources.lib.scraper',
     'resources.lib.player',
-    'resources.lib.detonate',
+    'resources.lib.cloud.debrid',
+    'resources.lib.cloud.detonate',
+    'resources.lib.cloud.realdebrid_api',
+    'resources.lib.cloud.premiumize_api',
+    'resources.lib.cloud.offcloud_api',
+    'resources.lib.cloud.torbox_api',
     'resources.lib.mdblist',
     'resources.lib.mdblist_api',
     'resources.lib.mdblist_sync',
@@ -1401,6 +1406,11 @@ def build_downloads_list(params):
     xbmcplugin.addDirectoryItems(handle, listing, len(listing))
     xbmcplugin.setContent(handle, 'files')
     xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib import views
+        views.apply_view('main', 'files')
+    except:
+        pass
     
 
 def delete_download_folder(params):
@@ -2080,5 +2090,37 @@ def make_qr(url, filename='auth_qr.png'):
     except Exception as e:
         log(f"[UTILS] make_qr error: {e}", xbmc.LOGERROR)
         return None
+
+
+NEXT_PAGE_ICON_PATH = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
+
+
+def next_page_art():
+    return {'icon': NEXT_PAGE_ICON_PATH, 'thumb': NEXT_PAGE_ICON_PATH, 'poster': NEXT_PAGE_ICON_PATH}
+
+
+def next_page_plot(page=None):
+    try:
+        return f"[B][COLOR orange]Next Page ({int(page)}) >>[/COLOR][/B]"
+    except Exception:
+        return "[B][COLOR orange]Next Page >>[/COLOR][/B]"
+
+
+def next_page_label(page=None):
+    return next_page_plot(page)
+
+
+def style_page_nav_item(li, page=None):
+    try:
+        li.setArt(next_page_art())
+    except Exception:
+        pass
+    try:
+        tag = li.getVideoInfoTag()
+        tag.setMediaType('video')
+        tag.setPlot(next_page_plot(page))
+    except Exception:
+        pass
+    return li
 
 

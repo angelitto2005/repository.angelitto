@@ -83,7 +83,7 @@ def get_params():
 # MENIU RAPID (OPTIMIZAT)
 # =============================================================================
 
-def build_fast_menu(items, content_type='', no_cache=False):
+def build_fast_menu(items, content_type='', no_cache=False, view_type=None):
     """Construieste meniul RAPID fara import-uri externe."""
     import time
     _t0 = time.time()
@@ -155,9 +155,20 @@ def build_fast_menu(items, content_type='', no_cache=False):
 
     _t2 = time.time()
     xbmcplugin.addDirectoryItems(handle, listing, len(listing))
-    if content_type:
-        xbmcplugin.setContent(handle, content_type)
+    try:
+        # Set Views: content determinist si pentru meniuri ('' - reteta POV); poll-ul din
+        # apply_view accepta ''/files/videos, deci acopera orice skin/Kodi.
+        xbmcplugin.setContent(handle, content_type if content_type else '')
+    except:
+        pass
     xbmcplugin.endOfDirectory(handle, True, False, not no_cache)
+    # Set Views: aplica view-ul salvat pentru categoria acestei listari (dupa endOfDirectory).
+    try:
+        from resources.lib import views
+        views.apply_view(view_type or views.view_for_content(content_type),
+                         content_type if content_type else '')
+    except:
+        pass
     _t3 = time.time()
     # DEBUG TIMING (pastreaza — util la depanare lag pornire):
     # if len(listing) < 15:
@@ -277,6 +288,7 @@ def get_settings_menu_items():
     addon = get_addon()
     items.append({'name': '[B]Addon Settings[/B]', 'iconImage': 'DefaultAddonService.png', 'mode': 'open_settings', 'folder': False})
     items.append({'name': '[B]My Providers[/B]', 'iconImage': 'DefaultAddonWebSkin.png', 'mode': 'providers_menu'})
+    items.append({'name': '[B]Set Views[/B]', 'iconImage': 'settings.png', 'mode': 'set_views_menu'})
     try:
         _inv_state = (addon.getSetting('reuse_language_invoker') or 'true').strip().lower()
     except:
@@ -309,6 +321,27 @@ def get_settings_menu_items():
     items.append({'name': '[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]', 'iconImage': 'lists.png', 'mode': 'upload_log', 'folder': False})
     items.append({'name': '[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]', 'iconImage': 'favorites.png', 'mode': 'show_donate', 'folder': False})
     return items
+
+def get_set_views_menu_items():
+    """Set Views (paritate POV): 7 categorii + Reset Views = 8 intrari."""
+    return [
+        {'name': '[B]Main (Root menus)[/B]', 'iconImage': 'settings.png',
+         'mode': 'set_views_choose', 'view_type': 'main'},
+        {'name': '[B]Movies[/B]', 'iconImage': 'movies.png',
+         'mode': 'set_views_choose', 'view_type': 'movies'},
+        {'name': '[B]TV Shows[/B]', 'iconImage': 'tv.png',
+         'mode': 'set_views_choose', 'view_type': 'tvshows'},
+        {'name': '[B]Seasons[/B]', 'iconImage': 'lists.png',
+         'mode': 'set_views_choose', 'view_type': 'seasons'},
+        {'name': '[B]Episodes[/B]', 'iconImage': 'next_episodes.png',
+         'mode': 'set_views_choose', 'view_type': 'episodes'},
+        {'name': '[B]Episode Lists[/B]', 'iconImage': 'in_progress_tvshow.png',
+         'mode': 'set_views_choose', 'view_type': 'episode_lists'},
+        {'name': '[B]Cloud / Files[/B]', 'iconImage': 'debrid.png',
+         'mode': 'set_views_choose', 'view_type': 'cloud'},
+        {'name': '[B][COLOR orange]Reset Views[/COLOR][/B]', 'iconImage': 'DefaultAddonNone.png',
+         'mode': 'set_views_reset', 'folder': False},
+    ]
 
 def get_search_menu_items():
     """Construieste meniul de cautare cu istoric."""
@@ -744,6 +777,35 @@ def run_plugin():
         build_fast_menu(get_providers_menu_items())
         return
 
+    if mode == 'set_views_menu':
+        build_fast_menu(get_set_views_menu_items())
+        return
+
+    if mode == 'set_views_choose':
+        # Folder cu un singur item: utilizatorul seteaza view-ul din Kodi, apoi click = salvare.
+        from resources.lib import views
+        _vt = params.get('view_type') or ''
+        if _vt in views.VIEW_TYPES:
+            _vt_content = views.CONTENT.get(_vt, '')
+            build_fast_menu(
+                [{'name': '[B][COLOR FF6AFB92]CLICK HERE TO SAVE VIEW[/COLOR][/B]',
+                  'iconImage': 'settings.png',
+                  'mode': 'set_views_save', 'view_type': _vt, 'folder': False,
+                  'info': {'plot': 'Set the view you want for [B]%s[/B] using Kodi\'s view menu, '
+                                   'then click this item to save it.' % views.VIEW_LABELS.get(_vt, _vt)}}],
+                content_type=_vt_content, view_type=_vt)
+        return
+
+    if mode == 'set_views_save':
+        from resources.lib import views
+        views.save_view(params.get('view_type') or '')
+        return
+
+    if mode == 'set_views_reset':
+        from resources.lib import views
+        views.clear_views()
+        return
+
     if mode == 'search_menu':
         build_fast_menu(get_search_menu_items())
         return
@@ -754,32 +816,32 @@ def run_plugin():
         return
 
     if mode == 'detonate':
-        from resources.lib.detonate import list_years
+        from resources.lib.cloud.detonate import list_years
         list_years()
         return
 
     if mode == 'detonate_all':
-        from resources.lib.detonate import list_all
+        from resources.lib.cloud.detonate import list_all
         list_all()
         return
 
     if mode == 'detonate_year':
-        from resources.lib.detonate import list_year
+        from resources.lib.cloud.detonate import list_year
         list_year(params.get('year', ''))
         return
 
     if mode == 'detonate_folder':
-        from resources.lib.detonate import list_folder
+        from resources.lib.cloud.detonate import list_folder
         list_folder(params.get('link', ''))
         return
 
     if mode == 'detonate_play':
-        from resources.lib.detonate import play_movie
+        from resources.lib.cloud.detonate import play_movie
         play_movie(params.get('link', ''), params.get('tmdb_id', ''))
         return
 
     if mode == 'detonate_clear_cache':
-        from resources.lib.detonate import clear_detonate_cache
+        from resources.lib.cloud.detonate import clear_detonate_cache
         ok = clear_detonate_cache()
         _icon = get_addon().getAddonInfo('icon')
         xbmcgui.Dialog().notification(
@@ -792,7 +854,7 @@ def run_plugin():
         # Sarcina de fundal lansata prin RunPlugin (invocare separata,
         # fire-and-forget): prefetch metadate sau refresh foldere cloud.
         action = params.get('action', '')
-        from resources.lib import detonate
+        from resources.lib.cloud import detonate
         links = detonate.get_links()
         if not links:
             return
@@ -1006,6 +1068,11 @@ def run_plugin():
         xbmcplugin.addDirectoryItems(handle, _yt_listing, len(_yt_listing))
         xbmcplugin.setContent(handle, 'videos')
         xbmcplugin.endOfDirectory(handle)
+        try:
+            from resources.lib import views
+            views.apply_view('main', 'videos')
+        except:
+            pass
         return
 
     if mode == 'youtube_play':
@@ -1736,7 +1803,7 @@ def run_plugin():
             handle_punchplay_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
     
-    from resources.lib.debrid import handle_debrid_action, DEBRID_ACTIONS
+    from resources.lib.cloud.debrid import handle_debrid_action, DEBRID_ACTIONS
     if mode in DEBRID_ACTIONS:
         from resources.lib.config import ADDON
         handle_debrid_action({'mode': mode, **params}, handle, sys.argv[0], ADDON)

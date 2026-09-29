@@ -14,7 +14,7 @@ import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
 from resources.lib.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
-from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, get_episode_air_stamp, prefetch_air_times
+from resources.lib.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, get_episode_air_stamp, prefetch_air_times, style_page_nav_item, next_page_label
 
 MDBLIST_ACTIONS = {
     'mdblist_settings',
@@ -416,9 +416,16 @@ def fetch_upnext(page=1, limit=20):
     if isinstance(data, list): return data, False
     return [], False
 
-def _end(succeeded=True, cache=True):
+def _end(succeeded=True, cache=True, view_type=None, content=None):
     _ensure_globals()
     xbmcplugin.endOfDirectory(_HANDLE, succeeded=succeeded, cacheToDisc=cache)
+    # Set Views: aplica view-ul salvat pentru categoria acestei listari (paritate POV).
+    if succeeded and view_type:
+        try:
+            from resources.lib import views
+            views.apply_view(view_type, content)
+        except Exception:
+            pass
 
 def _add_dir(url, li, is_folder=True):
     _ensure_globals()
@@ -505,7 +512,7 @@ def _view_menu():
         li = xbmcgui.ListItem(label=label)
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
         _add_dir(_build_url({'action': action}), li, is_folder)
-    _end(cache=False)
+    _end(cache=False, view_type='main')
 
 def _render_list_folders(lists, empty_label='[No lists found]', show_delete=False, create_list=False, external_lists=None, pov_style=False):
     all_lists = list(lists or []) + list(external_lists or [])
@@ -551,7 +558,7 @@ def _render_list_folders(lists, empty_label='[No lists found]', show_delete=Fals
             li = xbmcgui.ListItem(label='[B][COLOR FF6AFB92]+ Create List[/COLOR][/B]')
             li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
             _add_dir(_build_url({'action': 'mdblist_create_list'}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_my_lists():
     _ensure_globals()
@@ -714,11 +721,10 @@ def _view_popular(offset=0):
             
         if len(lists) == limit:
             next_page = (int(offset) // limit) + 2
-            next_li = xbmcgui.ListItem(label=f'[B]Next Page ({next_page}) >>[/B]')
-            next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
-            next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+            next_li = xbmcgui.ListItem(label=next_page_label(next_page))
+            style_page_nav_item(next_li, next_page)
             _add_dir(_build_url({'action': 'mdblist_popular', 'offset': int(offset) + limit}), next_li, True)
-    _end()
+    _end(view_type='main', content='files')
 
 def _view_liked(offset=0):
     _ensure_globals()
@@ -748,11 +754,10 @@ def _view_liked(offset=0):
         # ADDED: Full pagination for Liked lists
         if len(lists) == limit:
             next_page = (int(offset) // limit) + 2
-            next_li = xbmcgui.ListItem(label=f'[B]Next Page ({next_page}) >>[/B]')
-            next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
-            next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+            next_li = xbmcgui.ListItem(label=next_page_label(next_page))
+            style_page_nav_item(next_li, next_page)
             _add_dir(_build_url({'action': 'mdblist_liked', 'offset': int(offset) + limit}), next_li, True)
-    _end()
+    _end(view_type='main', content='files')
 
 def _view_search(query=None):
     _ensure_globals()
@@ -818,14 +823,14 @@ def _view_list_contents(list_id, page=1, list_type=''):
 
     # FIXED: Even if "total" is missing from the MDB site, we rely on the 20 item per page limit
     if total > int(page) * limit or len(items) == limit:
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({int(page) + 1}) >>[/B]')
-        next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        next_li = xbmcgui.ListItem(label=next_page_label(int(page) + 1))
+        style_page_nav_item(next_li, int(page) + 1)
         next_params = {'action': 'mdblist_view_list', 'list_id': list_id, 'page': int(page) + 1}
         if external:
             next_params['list_type'] = 'external'
         _add_dir(_build_url(next_params), next_li, True)
-    _end()
+    _end(view_type='tvshows' if _has_show else 'movies',
+         content='tvshows' if _has_show else 'movies')
 
 def _view_watchlist_menu():
     _ensure_globals()
@@ -851,7 +856,7 @@ def _view_watchlist_menu():
         li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'mdblist_watchlist_items', 'mediatype': url_type, 'page': 1}), li, True)
-    _end()
+    _end(view_type='main')
 
 def _view_watchlist_items(mediatype, page=1):
     _ensure_globals()
@@ -902,11 +907,10 @@ def _view_watchlist_items(mediatype, page=1):
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
     if page * limit < len(all_items):
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        next_li = xbmcgui.ListItem(label=next_page_label(page + 1))
+        style_page_nav_item(next_li, page + 1)
         _add_dir(_build_url({'action': 'mdblist_watchlist_items', 'mediatype': mediatype, 'page': page + 1}), next_li, True)
-    _end()
+    _end(view_type=kodi_content, content=kodi_content)
 
 # ==================================================================
 # MDBLIST COLLECTION
@@ -935,7 +939,7 @@ def _view_collection_menu():
         li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'mdblist_collection_items', 'mediatype': mediatype, 'page': 1}), li, True)
-    _end()
+    _end(view_type='main')
 def _view_collection_items(mediatype, page=1):
     _ensure_globals()
     kodi_content = 'movies' if mediatype == 'movie' else 'tvshows'
@@ -997,11 +1001,10 @@ def _view_collection_items(mediatype, page=1):
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
     if page * limit < len(items_list):
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        next_li = xbmcgui.ListItem(label=next_page_label(page + 1))
+        style_page_nav_item(next_li, page + 1)
         _add_dir(_build_url({'action': 'mdblist_collection_items', 'mediatype': mediatype, 'page': page + 1}), next_li, True)
-    _end()
+    _end(view_type=kodi_content, content=kodi_content)
 
 # ==================================================================
 # MDBLIST DROPPED
@@ -1044,11 +1047,10 @@ def _view_dropped(page=1):
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
     if page * limit < len(items_list):
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({page + 1}) >>[/B]')
-        next_icon = os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png')
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        next_li = xbmcgui.ListItem(label=next_page_label(page + 1))
+        style_page_nav_item(next_li, page + 1)
         _add_dir(_build_url({'action': 'mdblist_dropped', 'page': page + 1}), next_li, True)
-    _end()
+    _end(view_type='tvshows', content='tvshows')
 
 # ==================================================================
 # MDBLIST CALENDAR
@@ -1320,7 +1322,7 @@ def _view_calendar(page=1):
     if items_to_add:
         xbmcplugin.addDirectoryItems(_HANDLE, items_to_add, len(items_to_add))
 
-    _end()
+    _end(view_type='episode_lists', content='episodes')
 
 def _view_upnext(page=1):
     """Delegatie catre Next Episodes dinamic (identic cu TV Shows -> Next Episodes)."""
@@ -1460,7 +1462,7 @@ def _view_history_menu():
         li = xbmcgui.ListItem(label=display)
         li.setArt({'icon': art_path, 'thumb': art_path, 'poster': art_path})
         _add_dir(_build_url({'action': 'mdblist_history_items', 'mediatype': url_type, 'offset': 0}), li, True)
-    _end()
+    _end(view_type='main', content='videos')
 
 def _view_history_items(mediatype, offset=0, cursor=None):
     _ensure_globals()
@@ -1515,16 +1517,15 @@ def _view_history_items(mediatype, offset=0, cursor=None):
     has_more = next_cursor or (total > offset + limit)
     if has_more:
         next_page_num = (offset // limit) + 2
-        next_li = xbmcgui.ListItem(label=f'[B]Next Page ({next_page_num}) >>[/B]')
-        next_icon = xbmcvfs.translatePath(os.path.join(_ADDON.getAddonInfo('path'), 'resources', 'media', 'item_next.png'))
-        next_li.setArt({'icon': next_icon, 'thumb': next_icon, 'poster': next_icon})
+        next_li = xbmcgui.ListItem(label=next_page_label(next_page_num))
+        style_page_nav_item(next_li, next_page_num)
 
         url_params = {'action': 'mdblist_history_items', 'mediatype': mediatype, 'offset': offset + limit}
         if next_cursor:
             url_params['cursor'] = next_cursor
         _add_dir(_build_url(url_params), next_li, True)
 
-    _end()
+    _end(view_type=kodi_content, content=kodi_content)
 
 
 def handle_mdblist_action(params, handle, base_url, addon):

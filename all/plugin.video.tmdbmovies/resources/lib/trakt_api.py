@@ -32,7 +32,7 @@ except ImportError:
             return ''
     def utc_to_local_time(iso_ts):
         return ''
-from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, is_season_fully_watched
+from resources.lib.utils import read_json, write_json, log, get_json, get_language, paginate_list, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, is_season_fully_watched, style_page_nav_item, next_page_plot, next_page_label
 from resources.lib.cache import cache_object, MainCache
 
 from resources.lib import trakt_sync
@@ -2080,7 +2080,7 @@ def trakt_discovery_list(params):
     cache_key = f"list_{media_type}_{list_type}_{period}_{page}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_type == 'movies' else 'tvshows')
         return
     # ---------------------------------
 
@@ -2168,15 +2168,16 @@ def trakt_discovery_list(params):
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'period': period, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'url': next_url, 'li': next_li, 'is_folder': True,
-            'info': {'mediatype': 'video'},
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'cm_items': [], 'resume_time': 0, 'total_time': 0
         })
 
@@ -2185,6 +2186,11 @@ def trakt_discovery_list(params):
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_for_content('movies' if media_type == 'movies' else 'tvshows')
+    except:
+        pass
 
     from resources.lib.tmdb_api import set_fast_cache
     set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
@@ -2231,12 +2237,15 @@ def trakt_public_lists(params):
     
     if len(data) >= PAGE_LIMIT:
         add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
+            next_page_label(page + 1),
             {'mode': 'trakt_public_lists', 'list_type': list_type, 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON, folder=True
+            icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON,
+            info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
+    from resources.lib import views
+    views.apply_view('main', 'main')
 
 
 def trakt_liked_lists(params=None):
@@ -2273,6 +2282,8 @@ def trakt_liked_lists(params=None):
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
+    from resources.lib import views
+    views.apply_view('main', 'main')
 
 
 def trakt_search_list(params=None):
@@ -2322,12 +2333,15 @@ def trakt_search_list(params=None):
     
     if len(data) >= PAGE_LIMIT:
         add_directory(
-            f"[B]Next Page ({page+1}) >>[/B]",
+            next_page_label(page + 1),
             {'mode': 'trakt_search_list', 'query': query, 'page': str(page + 1)},
-            icon=NEXT_PAGE_ICON, folder=True
+            icon=NEXT_PAGE_ICON, thumb=NEXT_PAGE_ICON,
+            info={'mediatype': 'video', 'plot': next_page_plot(page + 1)}, folder=True
         )
     
     xbmcplugin.endOfDirectory(HANDLE)
+    from resources.lib import views
+    views.apply_view('main', 'main')
 
 
 # ===================== TRAKT LIST CONTENT =====================
@@ -2424,15 +2438,16 @@ def trakt_list_content(params):
     if page < total_pages:
         mode = 'build_movie_list' if media_type == 'movies' else 'build_tvshow_list'
         action = f'trakt_{media_type.rstrip("s")}_{list_type}'
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': mode, 'action': action, 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'url': next_url, 'li': next_li, 'is_folder': True,
-            'info': {'mediatype': 'video'},
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'cm_items': [], 'resume_time': 0, 'total_time': 0
         })
 
@@ -2441,6 +2456,11 @@ def trakt_list_content(params):
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_for_content('movies' if media_type == 'movies' else 'tvshows')
+    except:
+        pass
 
     from resources.lib.tmdb_api import set_fast_cache
     cache_key2 = f"list_{media_type}_{list_type}_{page}"
@@ -2471,7 +2491,7 @@ def trakt_list_items(params):
     cache_key = f"trakt_list_{list_type}_{slug}_{media_filter}_{page}_{sort_suffix}"
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='movies' if media_filter == 'movies' else 'tvshows')
         return
 
     data = None
@@ -2642,7 +2662,7 @@ def trakt_list_items(params):
 
     # 5. Paginare si Afisare
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_list_items', 'list_type': list_type, 'new_page': str(page + 1)}
         if user: next_params['user'] = user
         if slug: next_params['slug'] = slug
@@ -2650,12 +2670,12 @@ def trakt_list_items(params):
         
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []
         })
 
     if items_to_add:
@@ -2663,6 +2683,11 @@ def trakt_list_items(params):
 
     xbmcplugin.setContent(HANDLE, 'movies' if media_filter == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_for_content('movies' if media_filter == 'movies' else 'tvshows')
+    except:
+        pass
     
     # Salvare RAM
     final_cache = []
@@ -2917,7 +2942,7 @@ def trakt_favorites_list(params):
     cache_key_fav = f"trakt_fav_{m_type}_{page}_{'az' if personal_lists_sort_az() else 'orig'}"
     cached_fav = get_fast_cache(cache_key_fav)
     if cached_fav:
-        render_from_fast_cache(cached_fav)
+        render_from_fast_cache(cached_fav, view_type='movies' if m_type == 'movies' else 'tvshows')
         return
     
     data = trakt_sync.get_trakt_favorites_from_db(m_type)
@@ -2951,15 +2976,16 @@ def trakt_favorites_list(params):
             items_to_add.append((processed['url'], processed['li'], processed['is_folder']))
 
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'url': next_url, 'li': next_li, 'is_folder': True,
-            'info': {'mediatype': 'video'},
-            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON},
+            'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)},
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON},
             'cm_items': [], 'resume_time': 0, 'total_time': 0
         })
 
@@ -2968,6 +2994,11 @@ def trakt_favorites_list(params):
 
     xbmcplugin.setContent(HANDLE, 'movies' if m_type == 'movies' else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_for_content('movies' if m_type == 'movies' else 'tvshows')
+    except:
+        pass
 
     from resources.lib.tmdb_api import set_fast_cache
     set_fast_cache(cache_key_fav, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'],
@@ -2987,7 +3018,7 @@ def trakt_dropped_shows_list(params):
     
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='tvshows')
         return
 
     # Extragem ID-urile din SQL (populate de sync-ul global)
@@ -3040,15 +3071,15 @@ def trakt_dropped_shows_list(params):
             cache_list.append(processed)
 
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_dropped_shows', 'new_page': str(page + 1)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []
         })
 
     if items_to_add:
@@ -3056,6 +3087,11 @@ def trakt_dropped_shows_list(params):
 
     xbmcplugin.setContent(HANDLE, 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_for_content('tvshows')
+    except:
+        pass
     
     final_cache = []
     for i in cache_list:
@@ -3093,6 +3129,8 @@ def trakt_period_dialog(params):
                      icon=trakt_icon, folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    from resources.lib import views
+    views.apply_view('main', 'main')
 
 
 def _view_trakt_my_calendar():
@@ -3368,6 +3406,11 @@ def _view_trakt_my_calendar():
     if items_to_add:
         xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_view('episode_lists', 'episodes')
+    except:
+        pass
 
 
 def trakt_calendar_menu(params):
@@ -3392,6 +3435,8 @@ def trakt_calendar_menu(params):
         add_directory(item['name'], cal_params, icon=item['icon'], folder=True)
 
     xbmcplugin.endOfDirectory(HANDLE)
+    from resources.lib import views
+    views.apply_view('main', 'main')
 
 
 def trakt_calendar(params):
@@ -3415,7 +3460,7 @@ def trakt_calendar(params):
         pass
     cached_data = get_fast_cache(cache_key)
     if cached_data:
-        render_from_fast_cache(cached_data)
+        render_from_fast_cache(cached_data, view_type='episode_lists')
         return
 
     data = get_trakt_calendar(calendar_type, days=days)
@@ -3613,15 +3658,15 @@ def trakt_calendar(params):
             continue
 
     if page < total_pages:
-        next_label = f"[B]Next Page ({page+1}) >>[/B]"
+        next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_calendar', 'calendar_type': calendar_type, 'page': str(page + 1), 'days': str(days)}
         next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
         next_li = xbmcgui.ListItem(next_label)
-        next_li.setArt({'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON})
+        style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
-            'art': {'icon': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': 'Next Page'}, 'cm_items': []
+            'art': {'icon': NEXT_PAGE_ICON, 'thumb': NEXT_PAGE_ICON, 'poster': NEXT_PAGE_ICON}, 'info': {'mediatype': 'video', 'plot': next_page_plot(page + 1)}, 'cm_items': []
         })
 
     if items_to_add:
@@ -3629,6 +3674,11 @@ def trakt_calendar(params):
 
     xbmcplugin.setContent(HANDLE, 'movies' if is_movie else 'tvshows')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+    try:
+        from resources.lib import views
+        views.apply_view('episode_lists', ('movies', 'tvshows'))
+    except:
+        pass
 
     final_cache = []
     for i in cache_list:

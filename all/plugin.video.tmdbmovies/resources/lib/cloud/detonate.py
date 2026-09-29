@@ -926,6 +926,11 @@ def list_years():
             except Exception as e:
                 _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib import views
+        views.apply_view('cloud', 'files')
+    except Exception:
+        pass
     _dbg("Root: endOfDirectory OK")
 
     _prefetch_slice(links)
@@ -982,6 +987,11 @@ def list_year(year):
         except Exception as e:
             _log("Render error (" + fname + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib import views
+        views.apply_view('cloud', 'movies')
+    except Exception:
+        pass
     _dbg("Year {}: endOfDirectory OK".format(year))
     _dbg("Year {}: rendered in {:.2f}s".format(year, time.time() - _t0))
 
@@ -1043,6 +1053,11 @@ def list_all():
             _log("Render error (" + fname + "): " + repr(e))
 
     xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib import views
+        views.apply_view('cloud', 'movies')
+    except Exception:
+        pass
     _dbg("All: rendered in {:.2f}s".format(time.time() - _t0))
 
 
@@ -1067,6 +1082,11 @@ def list_folder(weblink):
         except Exception as e:
             _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib import views
+        views.apply_view('cloud', 'files')
+    except Exception:
+        pass
 
 
 # =============================================================================
