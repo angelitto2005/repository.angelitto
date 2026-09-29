@@ -4,8 +4,8 @@
 import xbmcgui
 import requests
 import threading
-from resources.lib.utils import log
-from resources.lib.config import get_plot_language_code
+from resources.lib.core.utils import log
+from resources.lib.core.config import get_plot_language_code
 
 OS_REST_HEADERS = {'User-Agent': 'HotSubtitlesV1'}
 
@@ -73,7 +73,7 @@ def check_ro_subs_bg(imdb_id=None, tmdb_id=None, season=None, episode=None):
             final_imdb = imdb_id
             if not final_imdb and tmdb_id:
                 # Fallback to get IMDb ID via TMDbMovies API
-                from resources.lib.tmdb_api import get_tmdb_item_details
+                from resources.lib.api.tmdb_api import get_tmdb_item_details
                 media_type = 'tv' if season else 'movie'
                 details = get_tmdb_item_details(str(tmdb_id), media_type)
                 if details:
@@ -87,7 +87,7 @@ def check_ro_subs_bg(imdb_id=None, tmdb_id=None, season=None, episode=None):
             numeric_id = str(final_imdb).replace('tt', '')
 
             # Get target language from plot_language setting
-            from resources.lib.config import get_plot_language_code, ADDON
+            from resources.lib.core.config import get_plot_language_code, ADDON
             check_lang = get_plot_language_code()
             raw_setting = ADDON.getSetting('plot_language').strip().lower()
             if raw_setting == 'enro':

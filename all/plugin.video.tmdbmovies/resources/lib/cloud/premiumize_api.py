@@ -3,7 +3,7 @@ import time
 import requests
 import xbmc
 
-from resources.lib.utils import DebridError, sleep_abortable
+from resources.lib.core.utils import DebridError, sleep_abortable
 
 BASE = 'https://www.premiumize.me/api'
 _REQUEST_TIMEOUT = 15
@@ -14,7 +14,7 @@ _READY_STATES = ('finished', 'seeding')
 
 
 def _api_key():
-    from resources.lib.config import ADDON
+    from resources.lib.core.config import ADDON
     try:
         return (ADDON.getSetting('pm_api_key') or '').strip()
     except Exception:
@@ -246,7 +246,7 @@ def retry_transfer(transfer_id):
 
 def clear_cloud_cache():
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete_prefix('tmdbmovies_pm_')
     except Exception:
         xbmc.log('[DEBRID][PM] clear cache error', xbmc.LOGWARNING)

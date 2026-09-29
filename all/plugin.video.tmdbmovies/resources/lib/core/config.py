@@ -1,0 +1,762 @@
+import xbmcaddon
+import xbmcvfs
+import xbmc
+import json
+import os
+import sys
+
+# =============================================================================
+# BASIC CONFIGURATION (ULTRA-LIGHT)
+# =============================================================================
+
+_SETTINGS_CACHE_KEY = 'tmdbm_settings'
+_SETTINGS_DICT = None  # Python-level cache (RLI-safe, per-process)
+_SETTINGS_MTIME = 0    # mtime-ul fisierului la ultimul parse
+_WINDOW = None  # lazy init
+
+def _get_window():
+    global _WINDOW
+    if _WINDOW is None:
+        import xbmcgui
+        _WINDOW = xbmcgui.Window(10000)
+    return _WINDOW
+
+def _get_settings_xml_path():
+    _a = xbmcaddon.Addon()
+    _profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
+    return os.path.join(_profile, 'settings.xml')
+
+def _load_settings_dict():
+    global _SETTINGS_DICT, _SETTINGS_MTIME
+    try:
+        import xml.etree.ElementTree as ET
+        _path = _get_settings_xml_path()
+        _mtime = os.path.getmtime(_path)
+        with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
+            _raw = _f.read()
+        if not _raw or not _raw.strip():
+            return {}
+        _root = ET.fromstring(_raw)
+        _d = {}
+        for _el in _root.iter('setting'):
+            _id = _el.get('id')
+            if _id:
+                _d[_id] = (_el.text or '')
+        _SETTINGS_DICT = _d
+        _SETTINGS_MTIME = _mtime
+        _get_window().setProperty(_SETTINGS_CACHE_KEY, json.dumps(_d))
+        _get_window().setProperty(_SETTINGS_CACHE_KEY + '_mtime', str(_mtime))
+        # xbmc.log(f"[XML] Loaded {len(_d)} settings (mtime={_mtime})", xbmc.LOGINFO)  # DEBUG TIMING
+        return _d
+    except Exception as _e:
+        xbmc.log(f"[XML] _load_settings_dict EXCEPTION: {_e}", xbmc.LOGINFO)
+        return {}
+
+def clear_settings_cache():
+    """Invalidates Python + Window Property caches. Urmatorul getSetting() re-parseaza."""
+    global _SETTINGS_DICT
+    _SETTINGS_DICT = None
+    try:
+        _get_window().clearProperty(_SETTINGS_CACHE_KEY)
+    except:
+        pass
+
+def _get_settings_dict():
+    """Python-level cache → mtime check → Window Property → XML parse."""
+    global _SETTINGS_DICT, _SETTINGS_MTIME
+    if _SETTINGS_DICT is not None:
+        try:
+            _mtime = os.path.getmtime(_get_settings_xml_path())
+            if _mtime != _SETTINGS_MTIME:
+                _SETTINGS_DICT = None
+                _get_window().clearProperty(_SETTINGS_CACHE_KEY)
+        except:
+            pass
+    if _SETTINGS_DICT is not None:
+        return _SETTINGS_DICT
+    try:
+        _raw = _get_window().getProperty(_SETTINGS_CACHE_KEY)
+        if _raw:
+            _d = json.loads(_raw)
+            if _d:
+                # Validam mtime-ul fisierului inainte sa acceptam Window Property:
+                # proprietatea persista intre procese (RLI), dar fisierul settings.xml
+                # se poate schimba (ex. provider schimbat din GUI) — fara aceasta
+                # verificare, procesele noi foloseau valori stale pana la un clear.
+                try:
+                    _mtime = os.path.getmtime(_get_settings_xml_path())
+                    _prop_mtime = _get_window().getProperty(_SETTINGS_CACHE_KEY + '_mtime')
+                    if _prop_mtime and float(_prop_mtime) == float(_mtime):
+                        _SETTINGS_MTIME = _mtime
+                        _SETTINGS_DICT = _d
+                        return _SETTINGS_DICT
+                except:
+                    pass
+                # stale sau fara mtime stocat → parse complet fresh
+    except:
+        pass
+    return _load_settings_dict()
+
+# Wrapper care intermediaza ADDON.getSetting prin Window Property cache (bypass RLI stale cache).
+# Citeste direct din settings.xml pe disk — RLI nu poate cache-ui asta.
+class _AddonProxy:
+    def __init__(self, addon):
+        self._addon = addon
+    def getSetting(self, setting_id):
+        _d = _get_settings_dict()
+        _val = _d.get(setting_id)
+        if _val is not None:
+            return _val
+        # xbmc.log(f"[XML] getSetting({setting_id}) not in XML, FALLBACK to C++", xbmc.LOGINFO)  # DEBUG TIMING
+        _fallback = self._addon.getSetting(setting_id)
+        # xbmc.log(f"[XML] getSetting({setting_id}) FALLBACK: {_fallback}", xbmc.LOGINFO)  # DEBUG TIMING
+        return _fallback
+    def setSetting(self, setting_id, value):
+        """Write to C++ AND settings.xml — C++ updates in-memory cache (prevents overwrite on settings close)."""
+        self._addon.setSetting(setting_id, value)
+        try:
+            import xml.etree.ElementTree as ET
+            _path = _get_settings_xml_path()
+            with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
+                _raw = _f.read()
+            if not _raw or not _raw.strip():
+                return
+            _root = ET.fromstring(_raw)
+            _found = False
+            for _el in _root.iter('setting'):
+                if _el.get('id') == setting_id:
+                    _el.text = str(value)
+                    _found = True
+                    break
+            if not _found:
+                ET.SubElement(_root, 'setting', {'id': setting_id}).text = str(value)
+            _out = ET.tostring(_root, encoding='utf-8')
+            if not _out.startswith(b'<?xml'):
+                _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
+            with open(_path, 'wb') as _f:
+                _f.write(_out)
+        except:
+            pass
+        clear_settings_cache()
+    def __getattr__(self, name):
+        return getattr(self._addon, name)
+
+try:
+    # Try automatic detection
+    ADDON = _AddonProxy(xbmcaddon.Addon())
+except RuntimeError:
+    # If it fails (RunScript from Context Menu case), specify the ID manually
+    ADDON = _AddonProxy(xbmcaddon.Addon('plugin.video.tmdbmovies'))
+
+try:
+    HANDLE = int(sys.argv[1])
+except:
+    HANDLE = -1
+
+PAGE_LIMIT_OPTIONS = [20, 40, 60, 80, 100]
+
+def _get_page_limit_idx():
+    """Returneaza indicele page_limit (0-4). ADDON.getSetting e deja patch-at sa citeasca via JSON-RPC."""
+    try:
+        return int(ADDON.getSetting('page_limit'))
+    except:
+        return 0
+
+def get_page_limit_index():
+    """Returneaza indicele page_limit ca string, pentru chei de cache."""
+    return str(_get_page_limit_idx())
+
+def get_page_limit_value():
+    """Returneaza valoarea numerica a page_limit."""
+    return PAGE_LIMIT_OPTIONS[_get_page_limit_idx()]
+
+def __getattr__(name):
+    if name == 'PAGE_LIMIT':
+        return get_page_limit_value()
+    if name == 'SESSION':
+        return get_session()
+    raise AttributeError(name)
+
+# Limba
+LANG = 'en-US'
+
+# Cai
+ADDON_PATH = ADDON.getAddonInfo('path')
+ADDON_DATA_DIR = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+FAVORITES_FILE = os.path.join(ADDON_DATA_DIR, 'favorites.json')
+TRAKT_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_token.json')
+TRAKT_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_history.json') 
+TMDB_SESSION_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_session.json')
+TMDB_LISTS_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_lists_cache.json')
+TRAKT_LISTS_CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'trakt_lists_cache.json')
+TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
+LAST_SYNC_FILE = os.path.join(ADDON_DATA_DIR, 'last_sync.json')
+
+def lib_json_path(name):
+    # Ancorat pe radacina addonului, nu pe __file__: ramane corect daca
+    # consumatorul SAU config.py se muta in subfoldere.
+    return os.path.join(ADDON_PATH, 'resources', 'lib', 'json', name)
+
+LISTS_CACHE_TTL = 3600
+
+# URLs
+BASE_URL = "https://api.themoviedb.org/3"
+TMDB_V4_BASE_URL = "https://api.themoviedb.org/4"
+API_KEY = "28af5f8c53c4bd145a3a39525ccbf764"
+TRAKT_CLIENT_ID = ADDON.getSetting('trakt_client_id') or "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
+TRAKT_CLIENT_SECRET = ADDON.getSetting('trakt_client_secret') or '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
+TRAKT_API_URL = "https://api.trakt.tv"
+TRAKT_SYNC_INTERVAL = 300
+MDBLIST_API_URL = "https://api.mdblist.com"
+MDBLIST_CLIENT_ID = ADDON.getSetting('mdblist_client_id') or "qjBRQUdgmOXXnAXjcLzupQVirkO31LQ2d8qQl0J3"
+SIMKL_API_URL = "https://api.simkl.com"
+SIMKL_CLIENT_ID = ADDON.getSetting('simkl_client_id') or "7824e353ba2d0d0e4d46245dd57f32fbe78d0c108a3fd23d68215f579db38f2f"
+PUNCHPLAY_API_URL = "https://punchplay.tv/api/platform/v1"
+PUNCHPLAY_CLIENT_ID = ADDON.getSetting('punchplay_client_id') or "ppc_b409dfbdf612ab1917f519a2"
+PUNCHPLAY_COLOR = "FFFF6600"
+
+# =============================================================================
+# IDENTITATE VIZUALA PER PROVIDER (sursa unica de adevar pentru randari / CM /
+# notificari): culori + iconite pentru Trakt, MDBList, Simkl, PunchPlay si TMDb.
+# - PROVIDER_COLORS / PROVIDER_ICONS: chei canonice 'trakt'|'mdblist'|'simkl'|
+#   'punchplay' (+ 'tmdb' la iconite);
+# - PROVIDER_ALIASES: variantele de chei folosite in randare ('show'/'shows'/'tv'
+#   pentru seriale, 'movie'/'movies' pentru filme, 'anime') -> cheie canonica;
+# - provider_color(key) / provider_icon(key) intoarce mereu o valoare valida
+#   (fallback: TMDb icon / 'white'), deci randarile nu pot pica pe chei noi;
+# - provider_title(key) construieste titlul standard de notificare
+#   '[B][COLOR x]Nume[/COLOR][/B]' — sursa unica pentru toate notificarile.
+# Consumatori: watched_provider (dicturile _WATCHED_MARK_*), tmdb_api
+# (Up Next show_color), trakt_api/mdblist/simkl/punchplay (randari + calendare).
+# =============================================================================
+PROVIDER_COLORS = {
+    'trakt': 'pink',
+    'mdblist': 'lightskyblue',
+    'simkl': 'mediumpurple',
+    'punchplay': 'FFFF6600',
+    'tmdb': 'FF00CED1',
+    'local': 'FFF70D1A',
+}
+
+PROVIDER_ICONS = {
+    'trakt': os.path.join(ADDON_PATH, 'resources', 'media', 'trakt.png'),
+    'mdblist': os.path.join(ADDON_PATH, 'resources', 'media', 'mdblist.png'),
+    'simkl': os.path.join(ADDON_PATH, 'resources', 'media', 'simkl.png'),
+    'punchplay': os.path.join(ADDON_PATH, 'resources', 'media', 'punchplay.png'),
+    'tmdb': os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png'),
+    'local': os.path.join(ADDON_PATH, 'resources', 'media', 'kodi.png'),
+}
+
+PROVIDER_ALIASES = {
+    'trakt': 'trakt',
+    'mdblist': 'mdblist',
+    'mdb': 'mdblist',
+    'simkl': 'simkl',
+    'punchplay': 'punchplay',
+    'tmdb': 'tmdb',
+    'local': 'local',
+    'kodi': 'local',
+    'show': 'trakt',
+    'shows': 'trakt',
+    'tv': 'trakt',
+    'tvshow': 'trakt',
+    'movie': 'tmdb',
+    'movies': 'tmdb',
+    'anime': 'tmdb',
+}
+
+
+def provider_color(key):
+    """Culoarea providerului pentru orice cheie de randare ('trakt', 'mdblist',
+    'simkl', 'punchplay', 'tmdb', 'show(s)', 'tv', 'movie(s)', 'anime').
+    Fallback sigur: 'white'."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        return PROVIDER_COLORS.get(canon, 'white')
+    except Exception:
+        return 'white'
+
+
+def provider_icon(key):
+    """Iconita providerului pentru aceleasi chei. Fallback sigur: iconita TMDb."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        path = PROVIDER_ICONS.get(canon)
+        if path:
+            return path
+    except Exception:
+        pass
+    return PROVIDER_ICONS.get('tmdb', '')
+
+
+# Numele afisat per provider (folosit la notificari si label-uri colorate).
+PROVIDER_NAMES = {
+    'trakt': 'Trakt',
+    'mdblist': 'MDBList',
+    'simkl': 'Simkl',
+    'punchplay': 'PunchPlay',
+    'tmdb': 'TMDb',
+    'local': 'Kodi (Local)',
+}
+
+
+def provider_title(key, name=None):
+    """Titlul standard de notificare '[B][COLOR x]Nume[/COLOR][/B]' pentru un
+    provider. Accepta aceleasi chei ca provider_color/provider_icon. 'name'
+    poate suprascrie numele afisat (ex: 'Disconnect Trakt' in dialoguri)."""
+    try:
+        canon = PROVIDER_ALIASES.get(str(key or '').strip().lower())
+        color = PROVIDER_COLORS.get(canon, 'white')
+    except Exception:
+        canon, color = None, 'white'
+    try:
+        label = name or PROVIDER_NAMES.get(canon) or str(key or '')
+    except Exception:
+        label = str(key or '')
+    return '[B][COLOR %s]%s[/COLOR][/B]' % (color, label)
+
+# --- V4 API CONFIGURATION (TV SHOWS) ---
+# Path where we save the user token (if it doesn't already exist, check line 35)
+TMDB_V4_TOKEN_FILE = os.path.join(ADDON_DATA_DIR, 'tmdb_v4_token.json')
+
+# App read token (Developer Read Token)
+# This allows the addon to request user permissions.
+# Copy the "API Read Access Token" from the TMDb website (Settings -> API)
+TMDB_V4_READ_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyOGFmNWY4YzUzYzRiZDE0NWEzYTM5NTI1Y2NiZjc2NCIsIm5iZiI6MTU1NzQwMzU0NC42NTIsInN1YiI6IjVjZDQxNzk4OTI1MTQxMDMyNjNiNWU2YiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.i065NOMgVeRfJ5nLLUlPRSssh8DXNnz93VnBQDsD4sU"
+
+
+
+# Imagini
+IMG_BASE = "https://image.tmdb.org/t/p/w500"
+BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/%s%s"
+IMAGE_RESOLUTION = {
+    'poster': 'w500',
+    'fanart': 'w1280',
+    'backdrop': 'original',
+    'still': 'w300'
+}
+
+
+
+# Persistent HTTP session with retry (LAZY — se importa la primul API call)
+_SESSION = None
+
+def get_session():
+    global _SESSION
+    if _SESSION is None:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        _SESSION = requests.Session()
+        retries = Retry(total=5, backoff_factor=0.1, status_forcelist=[500, 502, 503, 504])
+        _SESSION.mount('https://api.themoviedb.org', HTTPAdapter(pool_maxsize=100, max_retries=retries, pool_block=False))
+    return _SESSION
+# -----------------------------------------------------------
+
+
+# Cache RAM pentru TV Meta
+TV_META_CACHE = {}
+
+# =============================================================================
+# USER AGENTS - LAZY
+# =============================================================================
+_USER_AGENTS = None
+_CURRENT_SESSION_UA = None  # Global variable to remember the UA
+
+def _init_user_agents():
+    global _USER_AGENTS
+    if _USER_AGENTS is None:
+        _USER_AGENTS = [
+            'Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36',
+            'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Linux; Android 12; moto g(60)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Linux; Android 13; M2101K6G) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (iPad; CPU OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
+        ]
+    return _USER_AGENTS
+
+def get_random_ua():
+    global _CURRENT_SESSION_UA
+    if _CURRENT_SESSION_UA is None:
+        import random
+        # Generate one and save it
+        _CURRENT_SESSION_UA = random.choice(_init_user_agents())
+    return _CURRENT_SESSION_UA
+
+def get_headers():
+    return {
+        'User-Agent': get_random_ua(),
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
+    }
+
+# =============================================================================
+# TORRSERVER HELPERS
+# =============================================================================
+
+def get_torrserver_host():
+    """Returneaza URL-ul complet TorrServer bazat pe modul selectat (Local/Custom)."""
+    try:
+        mode = ADDON.getSetting('torrserver_mode') or '0'
+        if mode == '1':  # Custom
+            return ADDON.getSetting('torrserver_custom_url') or 'http://127.0.0.1:8090'
+        else:  # Local
+            host = ADDON.getSetting('torrserver_local_host') or '127.0.0.1'
+            port = ADDON.getSetting('torrserver_local_port') or '8090'
+            return 'http://{}:{}'.format(host, port)
+    except:
+        return 'http://127.0.0.1:8090'
+
+def get_torrserver_credentials():
+    """Returneaza (username, password) pentru TorrServer."""
+    try:
+        user = ADDON.getSetting('torrserver_user') or ''
+        pwd = ADDON.getSetting('torrserver_pass') or ''
+        return (user, pwd)
+    except:
+        return ('', '')
+
+def get_stream_headers(url=None):
+    ua = get_random_ua()
+    headers = {
+        'User-Agent': ua,
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'identity;q=1, *;q=0',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'video',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-CH-UA-Mobile': '?1',
+        'Sec-CH-UA-Platform': '"Android"',
+    }
+    if url:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            headers['Referer'] = f"{parsed.scheme}://{parsed.netloc}/"
+            headers['Origin'] = f"{parsed.scheme}://{parsed.netloc}"
+        except:
+            pass
+    return headers
+
+# =============================================================================
+# GENRE MAP
+# =============================================================================
+GENRE_MAP = {
+    28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime", 99: "Documentary",
+    18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History", 27: "Horror", 10402: "Music",
+    9648: "Mystery", 10749: "Romance", 878: "Sci-Fi", 10770: "TV Movie", 53: "Thriller",
+    10752: "War", 37: "Western", 10759: "Action & Adventure", 10762: "Kids", 10763: "News",
+    10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap", 10767: "Talk", 10768: "War & Politics"
+}
+
+# =============================================================================
+# LANGUAGE HELPERS
+# =============================================================================
+LANG_TO_TMDB = {
+    'enro': 'en-US', 'ro': 'ro-RO', 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR',
+    'de': 'de-DE', 'it': 'it-IT', 'hu': 'hu-HU', 'pt': 'pt-PT',
+    'ru': 'ru-RU', 'tr': 'tr-TR', 'bg': 'bg-BG', 'el': 'el-GR',
+    'pl': 'pl-PL', 'cs': 'cs-CZ', 'nl': 'nl-NL', 'ar': 'ar-SA',
+    'zh': 'zh-CN', 'ja': 'ja-JP', 'ko': 'ko-KR', 'sv': 'sv-SE',
+    'da': 'da-DK', 'fi': 'fi-FI', 'no': 'no-NO', 'hr': 'hr-HR',
+    'sr': 'sr-RS', 'sk': 'sk-SK', 'uk': 'uk-UA', 'he': 'he-IL',
+    'th': 'th-TH', 'vi': 'vi-VN', 'id': 'id-ID', 'ms': 'ms-MY',
+    'hi': 'hi-IN', 'fa': 'fa-IR', 'ca': 'ca-ES', 'eu': 'eu-ES',
+    'gl': 'gl-ES',
+}
+
+def get_plot_language_code():
+    """Returns the 2-letter language code from plot_language setting."""
+    try:
+        code = ADDON.getSetting('plot_language')
+        code = str(code).strip().lower()
+        if code == 'roen':
+            code = 'enro'
+        if code in ('0', '1'):  # backward compat for old enum values
+            return 'ro' if code == '1' else 'en'
+        if len(code) >= 2 and code[:2].isalpha():
+            return code[:2]
+        return 'en'
+    except:
+        return 'en'
+
+def get_plot_language():
+    """Returns the TMDB language code for plot based on setting."""
+    code = get_plot_language_code()
+    if code in LANG_TO_TMDB:
+        return LANG_TO_TMDB[code]
+    if len(code) == 2 and code.isalpha():
+        return f"{code}-{code.upper()}"
+    return 'en-US'
+
+def get_trailer_mode():
+    """Returns 'yt-dlp' or 'youtube_plugin' based on setting."""
+    try:
+        val = ADDON.getSetting('trailer_player')
+        return 'yt-dlp' if val == '0' else 'youtube_plugin'
+    except:
+        return 'yt-dlp'
+
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
+    mode = get_trailer_mode()
+    extra = ''
+    parts = []
+    if tmdb_id:
+        parts.append(('tmdb_id', str(tmdb_id)))
+    if dbtype:
+        parts.append(('dbtype', str(dbtype)))
+    if title:
+        parts.append(('title', str(title)))
+    if year:
+        parts.append(('year', str(year)))
+    if season:
+        parts.append(('season', str(season)))
+    if plot:
+        _pp = str(plot)[:2000]
+        if '[' in _pp[-40:] and ']' not in _pp.rsplit('[', 1)[-1]:
+            _pp = _pp.rsplit('[', 1)[0]
+        parts.append(('plot', _pp))
+    if studio:
+        parts.append(('studio', str(studio)))
+    if tagline:
+        parts.append(('tagline', str(tagline)))
+    if genre:
+        parts.append(('genre', str(genre)))
+    # Limba pentru meta-urile luate de tmdbm.trailers (plot sezon/episod)
+    try:
+        parts.append(('lang', LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')))
+    except:
+        pass
+    if parts:
+        from urllib.parse import urlencode
+        extra = '&' + urlencode(parts)
+    if mode == 'youtube_plugin':
+        return f"plugin://plugin.video.youtube/play/?video_id={video_id}"
+    return f"plugin://tmdbm.trailers/play/?video_id={video_id}{extra}"
+
+def get_plot_img_lang():
+    """Returns include_image_language parameter for the plot language."""
+    code = get_plot_language_code()
+    if code in ('en', 'enro'):
+        return 'en,null'
+    return f'{code},en,null'
+
+def _fmt_dmy(ds):
+    try:
+        import datetime as _dtm
+        try:
+            _us = ADDON.getSetting('date_format') == '1'
+        except:
+            _us = False
+        if isinstance(ds, (_dtm.date, _dtm.datetime)):
+            return ds.strftime('%m/%d/%Y') if _us else ds.strftime('%d.%m.%Y')
+        s = str(ds)
+        parts = s.split('T')[0].split('-')
+        if len(parts) == 3 and len(parts[0]) == 4 and parts[0].isdigit():
+            if _us:
+                return f'{parts[1]}/{parts[2]}/{parts[0]}'
+            return f'{parts[2]}.{parts[1]}.{parts[0]}'
+        return s
+    except:
+        return str(ds)
+
+_TZ_OFFSET_VALUES = ('auto', '-12', '-11', '-10', '-09', '-08', '-07', '-06', '-05', '-04', '-03', '-02', '-01', '+00', '+01', '+02', '+03', '+04', '+05', '+06', '+07', '+08', '+09', '+10', '+11', '+12', '+13', '+14')
+
+def utc_to_local_date(iso_ts):
+    try:
+        import datetime as _dtm
+        s = str(iso_ts or '').strip()
+        if not s:
+            return ''
+        try:
+            _ov_idx = int(ADDON.getSetting('timezone_override') or '0')
+            _ov = _TZ_OFFSET_VALUES[_ov_idx] if 0 <= _ov_idx < len(_TZ_OFFSET_VALUES) else 'auto'
+        except:
+            _ov = 'auto'
+        _s = s.replace('Z', '+00:00')
+        dt = _dtm.datetime.fromisoformat(_s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dtm.timezone.utc)
+        if _ov != 'auto':
+            try:
+                _tz = _dtm.timezone(_dtm.timedelta(hours=float(_ov)))
+                return dt.astimezone(_tz).date().isoformat()
+            except:
+                pass
+            return dt.date().isoformat()
+        return dt.astimezone().date().isoformat()
+    except:
+        try:
+            return str(iso_ts).split('T')[0]
+        except:
+            return ''
+
+def utc_to_local_time(iso_ts):
+    try:
+        import datetime as _dtm
+        s = str(iso_ts or '').strip()
+        if not s or 'T' not in s:
+            return ''
+        try:
+            _ov_idx = int(ADDON.getSetting('timezone_override') or '0')
+            _ov = _TZ_OFFSET_VALUES[_ov_idx] if 0 <= _ov_idx < len(_TZ_OFFSET_VALUES) else 'auto'
+        except:
+            _ov = 'auto'
+        _s = s.replace('Z', '+00:00')
+        dt = _dtm.datetime.fromisoformat(_s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dtm.timezone.utc)
+        if _ov != 'auto':
+            try:
+                _tz = _dtm.timezone(_dtm.timedelta(hours=float(_ov)))
+                dt = dt.astimezone(_tz)
+            except:
+                pass
+        else:
+            dt = dt.astimezone()
+        _h12 = dt.hour % 12 or 12
+        _ap = 'pm' if dt.hour >= 12 else 'am'
+        if dt.minute:
+            return '%d:%02d%s' % (_h12, dt.minute, _ap)
+        return '%d%s' % (_h12, _ap)
+    except:
+        return ''
+
+def calendar_localized_label(diff, ds):
+    """Relative date label for calendars: RO when plot_language='ro', else English.
+    Data e afisata dupa setarea date_format (EU dd.mm.yyyy sau US mm/dd/yyyy)."""
+    ds = _fmt_dmy(ds)
+    try:
+        is_ro = get_plot_language_code() == 'ro'
+    except:
+        is_ro = False
+    if diff == 0:
+        return 'Astazi' if is_ro else 'Today'
+    if diff == 1:
+        # Maine: cuvantul relativ + data reala (daca e primita), ca in
+        # "Maine (29.09.2026)". "doar azi si maine" primesc acest tratament.
+        base = 'Maine' if is_ro else 'Tomorrow'
+        return f'{base} ({ds})' if ds else base
+    if diff == -1:
+        return 'Ieri' if is_ro else 'Yesterday'
+    if diff >= 2:
+        return f'peste {diff} zile ({ds})' if is_ro else f'in {diff} days ({ds})'
+    if diff <= -2:
+        return f'acum {-diff} zile ({ds})' if is_ro else f'{-diff} days ago ({ds})'
+    return ds
+
+
+# =============================================================================
+# Daemon-thread safety net (fix shutdown hang: "script didn't stop in 5
+# seconds"). ThreadPoolExecutor workers are NON-daemon by default since
+# Python 3.9; at interpreter exit (reused invoker, reuselanguageinvoker=true)
+# threading._shutdown joins them, so any worker stuck in a network call holds
+# Kodi open until it is killed. Forcing daemon=True on every Thread created in
+# this interpreter makes exit independent of in-flight background work.
+# =============================================================================
+try:
+    import threading as _thr
+    _orig_init = _thr.Thread.__init__
+
+    def _daemon_init(self, *args, **kwargs):
+        _orig_init(self, *args, **kwargs)
+        try:
+            self.daemon = True
+        except Exception:
+            pass
+
+    _thr.Thread.__init__ = _daemon_init
+except Exception:
+    pass
+
+
+# =============================================================================
+# Addon-wide shutdown hook: la inchiderea interpretului (shutdown Kodi / RLI
+# teardown / stale-invoker SystemExit), buclele infinite de fundal (ex.
+# worker-ul de scrobble PunchPlay, care asteapta pe xbmc.sleep) pot concura
+# cu teardown-ul si il pot tine peste fereastra de 5s a lui Kodi. Acest hook
+# (rulat garantat la exit, inclusiv la SystemExit) seteaza fiecare Event
+# inregistrat si inchide generatoarele inregistrate, eliberand buclele care
+# asteapta pe ele -> thread-urile ies imediat, interpretul se termina curat.
+# =============================================================================
+try:
+    import atexit as _atexit
+
+    _SHUTDOWN_EVENTS = []
+    _SHUTDOWN_ITERATORS = []
+
+    def register_shutdown_event(ev):
+        try:
+            if ev is not None and ev not in _SHUTDOWN_EVENTS:
+                _SHUTDOWN_EVENTS.append(ev)
+        except Exception:
+            pass
+
+    def register_shutdown_iterator(it):
+        try:
+            if it is not None and it not in _SHUTDOWN_ITERATORS:
+                _SHUTDOWN_ITERATORS.append(it)
+        except Exception:
+            pass
+
+    _ADDON_SHUTTING_DOWN = [False]
+
+    def _addon_shutdown_hook():
+        try:
+            _ADDON_SHUTTING_DOWN[0] = True
+        except Exception:
+            pass
+        try:
+            for _ev in _SHUTDOWN_EVENTS:
+                try:
+                    _ev.set()
+                except Exception:
+                    pass
+            for _it in _SHUTDOWN_ITERATORS:
+                try:
+                    _it.close()
+                except Exception:
+                    pass
+            _SHUTDOWN_EVENTS[:] = []
+            _SHUTDOWN_ITERATORS[:] = []
+        except Exception:
+            pass
+
+    _atexit.register(_addon_shutdown_hook)
+except Exception:
+    _ADDON_SHUTTING_DOWN = [False]
+
+# =============================================================================
+# Helper de shutdown pentru buclele de fundal: Kodi (CPythonInvoker) NU intrerupe
+# firele Python la inchidere - trimite doar un AbortNotify catre monitoarele din
+# interpretul respectiv, apoi asteapta 5s si ucide invokerul daca firele inca
+# ruleaza ("script didn't stop in 5 seconds"), lasind procesul agatat. Orice
+# bucla de fundal trebuie sa iasa singura: fie pe evenimentul de shutdown, fie
+# pe kodi_abort_requested().
+# =========================================================================
+_KODI_ABORT_MONITOR = None
+
+def kodi_abort_requested():
+    global _KODI_ABORT_MONITOR
+    try:
+        if _ADDON_SHUTTING_DOWN[0]:
+            return True
+    except Exception:
+        pass
+    if _KODI_ABORT_MONITOR is None:
+        try:
+            import xbmc as _kodi_xbmc
+            _KODI_ABORT_MONITOR = _kodi_xbmc.Monitor()
+        except Exception:
+            _KODI_ABORT_MONITOR = False
+    if not _KODI_ABORT_MONITOR:
+        return False
+    try:
+        return bool(_KODI_ABORT_MONITOR.abortRequested())
+    except Exception:
+        return False

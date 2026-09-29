@@ -14,7 +14,7 @@ import re
 
 def log(msg):
     try:
-        from resources.lib.scraper import log as scraper_log
+        from resources.lib.playback.scraper import log as scraper_log
         scraper_log(msg)
     except:
         xbmc.log("[TorrServer API] %s" % msg)

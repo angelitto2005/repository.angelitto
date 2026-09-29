@@ -1,7 +1,7 @@
 import requests
 import xbmc
 
-from resources.lib.utils import DebridError
+from resources.lib.core.utils import DebridError
 
 BASE = 'https://api.torbox.app/v1/api/'
 
@@ -53,7 +53,7 @@ _REQUESTDL_ID_KEYS = {
 
 
 def _api_key():
-    from resources.lib.config import ADDON
+    from resources.lib.core.config import ADDON
     try:
         return (ADDON.getSetting('torbox_api_key') or '').strip()
     except Exception:
@@ -180,7 +180,7 @@ def unrestrict_link(mediatype, item_id, file_id=None):
 
 def clear_cloud_cache():
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete_prefix('tmdbmovies_tb_')
     except Exception:
         xbmc.log("[DEBRID][TorBox] clear cache error", xbmc.LOGWARNING)

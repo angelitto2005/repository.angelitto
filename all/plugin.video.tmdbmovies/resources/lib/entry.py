@@ -9,7 +9,7 @@ import os
 import json
 import time
 from urllib.parse import parse_qsl, urlencode, quote, unquote
-from resources.lib.config import provider_title, ADDON_PATH as CONFIG_ADDON_PATH
+from resources.lib.core.config import provider_title, ADDON_PATH as CONFIG_ADDON_PATH
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZA
@@ -38,7 +38,7 @@ def _migrate_simkl_status():
 def get_addon():
     global _addon
     if _addon is None:
-        from resources.lib.config import ADDON
+        from resources.lib.core.config import ADDON
         _addon = ADDON
     return _addon
 
@@ -117,13 +117,13 @@ def build_fast_menu(items, content_type='', no_cache=False, view_type=None):
         li = xbmcgui.ListItem(label=item.get('name'))
         if mode == 'next_episodes':
             try:
-                from resources.lib.watched_provider import get_color as _get_prov_color
+                from resources.lib.providers.watched_provider import get_color as _get_prov_color
                 li.setLabel('[B][COLOR {}]UP NEXT[/COLOR][/B]'.format(_get_prov_color()))
             except Exception:
                 pass
         if mode in ('in_progress_movies', 'in_progress_tvshows', 'in_progress_episodes'):
             try:
-                from resources.lib.watched_provider import get_color as _get_prov_color
+                from resources.lib.providers.watched_provider import get_color as _get_prov_color
                 _clr = _get_prov_color()
                 li.setLabel('[B][COLOR {}]{}[/COLOR][/B]'.format(_clr, item.get('name')))
             except Exception:
@@ -164,7 +164,7 @@ def build_fast_menu(items, content_type='', no_cache=False, view_type=None):
     xbmcplugin.endOfDirectory(handle, True, False, not no_cache)
     # Set Views: aplica view-ul salvat pentru categoria acestei listari (dupa endOfDirectory).
     try:
-        from resources.lib import views
+        from resources.lib.core import views
         views.apply_view(view_type or views.view_for_content(content_type),
                          content_type if content_type else '')
     except:
@@ -234,7 +234,7 @@ def get_providers_menu_items():
     if simkl_token:
         if not simkl_username:
             try:
-                from resources.lib.simkl_api import SIMKLAPI
+                from resources.lib.providers.simkl_api import SIMKLAPI
                 _sk_info = SIMKLAPI().get_user_info()
                 if isinstance(_sk_info, dict) and _sk_info.get('username'):
                     simkl_username = _sk_info['username']
@@ -254,7 +254,7 @@ def get_providers_menu_items():
     if punchplay_token:
         if not punchplay_username:
             try:
-                from resources.lib.punchplay_api import PunchplayAPI
+                from resources.lib.providers.punchplay_api import PunchplayAPI
                 _pp_info = PunchplayAPI().get_user_info()
                 if isinstance(_pp_info, dict) and _pp_info.get('username'):
                     punchplay_username = _pp_info['username']
@@ -276,7 +276,7 @@ def get_providers_menu_items():
 
 def _is_local_provider_active():
     try:
-        from resources.lib.watched_provider import get_provider as _gp
+        from resources.lib.providers.watched_provider import get_provider as _gp
         return _gp() == 'local'
     except Exception:
         return False
@@ -417,7 +417,7 @@ def _youtube_plot(channel='', views='', date='', dur='', desc=''):
 
 
 def _youtube_queue_entry(vid, title, views='', date='', dur=''):
-    from resources.lib.trailer_player import get_trailer_url
+    from resources.lib.playback.trailer_player import get_trailer_url
     from resources.lib.context.extended_info_mod import get_youtube_video_meta
     try:
         m = get_youtube_video_meta(vid) or {}
@@ -632,7 +632,7 @@ def _notify_active_provider():
             return
         # Import lazy: calea 'fara mode' (meniul root) nu trebuie incarcata cu
         # watched_provider cand notificarea e oprita (default).
-        from resources.lib.watched_provider import get_provider, get_label, get_color, get_icon
+        from resources.lib.providers.watched_provider import get_provider, get_label, get_color, get_icon
         get_provider()  # forteaza remapul one-time de index inainte de a citi eticheta
         label = get_label()
         color = get_color()
@@ -658,9 +658,9 @@ def run_plugin():
     _migrate_simkl_status()
 
     # Sync HANDLE across modules if already imported (stale copies with reuselanguageinvoker)
-    if 'resources.lib.config' in sys.modules:
-        sys.modules['resources.lib.config'].HANDLE = handle
-    for _mod in ('resources.lib.tmdb_api', 'resources.lib.trakt_api'):
+    if 'resources.lib.core.config' in sys.modules:
+        sys.modules['resources.lib.core.config'].HANDLE = handle
+    for _mod in ('resources.lib.api.tmdb_api', 'resources.lib.api.trakt_api'):
         if _mod in sys.modules:
             try:
                 sys.modules[_mod].HANDLE = handle
@@ -668,12 +668,12 @@ def run_plugin():
                 pass
 
     # Sync PAGE_LIMIT module-level copies (config.py __getattr__ face restul)
-    if 'resources.lib.config' in sys.modules:
+    if 'resources.lib.core.config' in sys.modules:
         try:
-            _pl = sys.modules['resources.lib.config'].PAGE_LIMIT  # → __getattr__
+            _pl = sys.modules['resources.lib.core.config'].PAGE_LIMIT  # → __getattr__
         except:
             _pl = 20
-        for _mod in ('resources.lib.tmdb_api', 'resources.lib.trakt_api'):
+        for _mod in ('resources.lib.api.tmdb_api', 'resources.lib.api.trakt_api'):
             if _mod in sys.modules:
                 try:
                     sys.modules[_mod].PAGE_LIMIT = _pl
@@ -682,7 +682,7 @@ def run_plugin():
 
     if not mode:
         _t1 = time.time()
-        from resources.lib import menus
+        from resources.lib.lists import menus
         _t2 = time.time()
         build_fast_menu(menus.root_menu(), no_cache=True)
         _t3 = time.time()
@@ -693,7 +693,7 @@ def run_plugin():
         return
 
     if mode == 'color_picker':
-        from resources.lib.color_picker import pick_color
+        from resources.lib.core.color_picker import pick_color
         pick_color(params.get('setting', ''))
         return
 
@@ -706,17 +706,17 @@ def run_plugin():
         # onWindowActivated inca unul (cu cooldown) — 4-5 refresh-uri simultane
         # produceau ping-pong de reincarcari = spinner infinit la navigare.
         try:
-            from resources.lib.config import clear_settings_cache
+            from resources.lib.core.config import clear_settings_cache
             clear_settings_cache()
         except:
             pass
-        from resources.lib.watched_provider import clear_cache
+        from resources.lib.providers.watched_provider import clear_cache
         clear_cache()
         def _provider_switch_sync():
             try:
                 xbmc.sleep(2000)
-                from resources.lib.config import clear_settings_cache as _csc
-                from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl
+                from resources.lib.core.config import clear_settings_cache as _csc
+                from resources.lib.providers.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl
                 _csc()
                 _cc()
                 _prov = _gp()
@@ -729,13 +729,13 @@ def run_plugin():
         return
 
     if mode == 'movies_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         import time
         window = xbmcgui.Window(10000)
         now = time.time()
         last_warmup = window.getProperty('tmdb_last_warmup_movie')
         if not last_warmup or (now - float(last_warmup)) > 300:
-            from resources.lib import tmdb_api
+            from resources.lib.api import tmdb_api
             tmdb_api.run_background_warmup('movie')
             window.setProperty('tmdb_last_warmup_movie', str(now))
         
@@ -743,13 +743,13 @@ def run_plugin():
         return
 
     if mode == 'tv_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         import time
         window = xbmcgui.Window(10000)
         now = time.time()
         last_warmup = window.getProperty('tmdb_last_warmup_tv')
         if not last_warmup or (now - float(last_warmup)) > 300:
-            from resources.lib import tmdb_api
+            from resources.lib.api import tmdb_api
             tmdb_api.run_background_warmup('tv')
             window.setProperty('tmdb_last_warmup_tv', str(now))
             
@@ -765,7 +765,7 @@ def run_plugin():
         return
 
     if mode == 'downloads_menu':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.build_downloads_list(params)
         return
     
@@ -783,7 +783,7 @@ def run_plugin():
 
     if mode == 'set_views_choose':
         # Folder cu un singur item: utilizatorul seteaza view-ul din Kodi, apoi click = salvare.
-        from resources.lib import views
+        from resources.lib.core import views
         _vt = params.get('view_type') or ''
         if _vt in views.VIEW_TYPES:
             _vt_content = views.CONTENT.get(_vt, '')
@@ -797,12 +797,12 @@ def run_plugin():
         return
 
     if mode == 'set_views_save':
-        from resources.lib import views
+        from resources.lib.core import views
         views.save_view(params.get('view_type') or '')
         return
 
     if mode == 'set_views_reset':
-        from resources.lib import views
+        from resources.lib.core import views
         views.clear_views()
         return
 
@@ -811,7 +811,7 @@ def run_plugin():
         return
 
     if mode == 'hindi_movies_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.hindi_movies_list)
         return
 
@@ -865,22 +865,22 @@ def run_plugin():
         return
 
     if mode == 'romania_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.romania_menu)
         return
 
     if mode == 'romania_movies_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.romania_movies_list)
         return
 
     if mode == 'romania_tvshows_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.romania_tvshows_list)
         return
 
     if mode == 'actors_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.build_actors_list({'action': 'popular'})
         return
 
@@ -891,7 +891,7 @@ def run_plugin():
         except:
             pass
         if video_id:
-            from resources.lib.trailer_player import play_trailer
+            from resources.lib.playback.trailer_player import play_trailer
             _tid = params.get('tmdb_id') or params.get('tmdb')
             _dbtype = params.get('dbtype')
             _ttl = params.get('title')
@@ -1069,14 +1069,14 @@ def run_plugin():
         xbmcplugin.setContent(handle, 'videos')
         xbmcplugin.endOfDirectory(handle)
         try:
-            from resources.lib import views
+            from resources.lib.core import views
             views.apply_view('main', 'videos')
         except:
             pass
         return
 
     if mode == 'youtube_play':
-        from resources.lib.trailer_player import get_trailer_url
+        from resources.lib.playback.trailer_player import get_trailer_url
         _yp_vid = params.get('video_id')
         _yp_plot = params.get('plot') or ''
         _yp_studio = params.get('studio') or ''
@@ -1149,113 +1149,114 @@ def run_plugin():
         return
 
     if mode == 'in_progress_movies':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.in_progress_movies(params)
         return
     if mode == 'in_progress_tvshows':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.in_progress_tvshows(params)
         return
     if mode == 'in_progress_episodes':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.in_progress_episodes(params)
         return
 
     if mode == 'build_movie_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.build_movie_list(params)
         return
     if mode == 'build_tvshow_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.build_tvshow_list(params)
         return
 
     if mode == 'build_actors_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.build_actors_list(params)
         return
 
     if mode == 'tmdb_my_lists':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_my_lists()
         return
     if mode == 'tmdb_account_info':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_account_info()
         return
     if mode == 'tmdb_calendar_my':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_calendar_my()
         return
     if mode == 'tmdb_up_next':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.get_next_episodes({'use_tmdb': 'true'})
         return
     if mode == 'tmdb_list_items':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_list_items(params)
         return
     if mode == 'tmdb_watchlist':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_watchlist(params)
         return
     if mode == 'tmdb_favorites':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_favorites(params)
         return
     if mode == 'tmdb_edit_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_edit_list(params)
         return
     if mode == 'tmdb_watchlist_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.tmdb_watchlist_list_menu())
         return
     if mode == 'tmdb_favorites_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.tmdb_favorites_list_menu())
         return
     if mode == 'tmdb_recommendations_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.tmdb_recommendations_list_menu)
         return
     if mode == 'tmdb_account_recommendations':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_account_recommendations(params)
         return
 
     if mode == 'trakt_auth':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_auth()
         return
     if mode == 'trakt_revoke':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_revoke()
         return
     if mode == 'trakt_account_info':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_account_info()
         return
     if mode == 'trakt_sync':
-        from resources.lib.watched_provider import sync_full_library
+        from resources.lib.providers.watched_provider import sync_full_library
         sync_full_library(silent=False, force=True)
         return
     if mode == 'trakt_sync_smart':
-        from resources.lib.watched_provider import sync_full_library
+        from resources.lib.providers.watched_provider import sync_full_library
         sync_full_library(silent=False, force=False)
         return
     if mode == 'trakt_sync_db':
-        from resources.lib import trakt_sync
+        from resources.lib.providers import trakt_sync
         trakt_sync.sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
     if mode == 'run_import':
-        from resources.lib.history_import import run_import
+        from resources.lib.providers.history_import import run_import
         run_import()
         return
     if mode == 'tmdb_refresh_lists':
         # Refresh DOAR contul TMDb (watchlist/favorites/liste/recommendations) — fara sync Trakt
-        from resources.lib import trakt_sync, tmdb_api
+        from resources.lib.providers import trakt_sync
+        from resources.lib.api import tmdb_api
         if not tmdb_api.get_tmdb_session():
             xbmcgui.Dialog().notification(provider_title('tmdb', name='TMDB'), "Not connected", xbmcgui.NOTIFICATION_WARNING)
             return
@@ -1264,8 +1265,8 @@ def run_plugin():
         xbmc.executebuiltin("Container.Refresh")
         return
     if mode == 'trakt_main_menu':
-        from resources.lib import menus
-        from resources.lib.watched_provider import _get_provider_raw as _gp_raw
+        from resources.lib.lists import menus
+        from resources.lib.providers.watched_provider import _get_provider_raw as _gp_raw
         _items = menus.trakt_main_list
         if _gp_raw() != 'trakt':
             _items = [it for it in _items if it.get('mode') != 'next_episodes']
@@ -1273,79 +1274,79 @@ def run_plugin():
         return
 
     if mode == 'trakt_movies_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_movies_list, no_cache=True)
         return
 
     if mode == 'trakt_tv_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_tv_list, no_cache=True)
         return
 
     if mode == 'trakt_public_lists_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_public_list)
         return
 
     if mode == 'next_episodes':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.get_next_episodes()
         return
     if mode == 'trakt_favorites_list':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_favorites_list(params)
         return
     if mode == 'trakt_list_items':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_list_items(params)
         return
     if mode == 'trakt_discovery_list':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_discovery_list(params)
         return
     if mode == 'trakt_favorites_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_favorites_list_menu())
         return
     if mode == 'trakt_watchlist_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_watchlist_list_menu())
         return
     if mode == 'trakt_history_menu':
-        from resources.lib import menus
+        from resources.lib.lists import menus
         build_fast_menu(menus.trakt_history_list_menu())
         return
     if mode == 'trakt_dropped_shows':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_dropped_shows_list(params)
         return
     if mode == 'trakt_period_dialog':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_period_dialog(params)
         return
     if mode == 'trakt_calendar_menu':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_calendar_menu(params)
         return
     if mode == 'trakt_calendar':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_calendar(params)
         return
     if mode == 'trakt_public_lists':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_public_lists(params)
         return
     if mode == 'trakt_liked_lists':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_liked_lists(params)
         return
     if mode == 'trakt_search_list':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_search_list(params)
         return
 
     if mode == 'trakt_my_lists':
-        from resources.lib import trakt_sync
+        from resources.lib.providers import trakt_sync
         
         token = get_addon().getSetting('trakt_access_token')
         if not token:
@@ -1357,7 +1358,7 @@ def run_plugin():
         _fav_total = 0
         _hist_total = 0
         try:
-            from resources.lib import trakt_sync as _ts
+            from resources.lib.providers import trakt_sync as _ts
             if os.path.exists(_ts.DB_PATH):
                 _conn = _ts.get_connection()
                 _c = _conn.cursor()
@@ -1406,129 +1407,129 @@ def run_plugin():
         return
 
     if mode == 'tmdb_auth':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_auth()
         return
     if mode in ('tmdb_logout', 'tmdb_revoke'):
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_logout()
         return
 
     if mode == 'perform_search':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.perform_search(params)
         return
     
     if mode == 'perform_actor_search':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.perform_actor_search(params)
         return
     
     if mode == 'perform_search_query':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.perform_search_query(params)
         return
     
     if mode == 'delete_search':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.delete_search_item(params)
         return
     
     if mode == 'edit_search':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.edit_search_item(params)
         return
     
     if mode == 'clear_search_history':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.clear_search_history_action()
         return
 
     if mode == 'navigator_genres':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_genres(params)
         return
     if mode == 'multiselect_genres':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.multiselect_genres(params)
         return
     if mode == 'navigator_years':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_years(params)
         return
     if mode == 'navigator_providers':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_providers(params)
         return
     if mode == 'navigator_languages':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_languages(params)
         return
     if mode == 'navigator_networks':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_networks(params)
         return
     if mode == 'navigator_because_you_watched':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.navigator_because_you_watched(params)
         return
     if mode == 'list_recommendations':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_recommendations(params)
         return
     if mode == 'list_by_genre':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_by_genre(params)
         return
     if mode == 'list_by_year':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_by_year(params)
         return
     if mode == 'list_by_provider':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_by_provider(params)
         return
     if mode == 'list_highest_revenue':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_highest_revenue(params)
         return
     if mode == 'list_most_voted':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_most_voted(params)
         return
     if mode == 'list_by_language':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_by_language(params)
         return
     if mode == 'list_by_network':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_by_network(params)
         return
 
     if mode == 'sources':
-        from resources.lib import player
+        from resources.lib.playback import player
         player.list_sources(params)
         return
     if mode == 'tmdb_resolve':
-        from resources.lib import player
+        from resources.lib.playback import player
         player.list_sources(params)
         return
 
     if mode == 'details':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_details(params.get('tmdb_id'), params.get('type'))
         return
     if mode == 'episodes':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_episodes(params.get('tmdb_id'), params.get('season'), params.get('tv_show_title'))
         return
 
     if mode == 'show_info':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_info_dialog(params)
         return
     if mode == 'global_info':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_global_info(params)
         return
     if mode == 'actor_dialog':
@@ -1586,30 +1587,30 @@ def run_plugin():
         return
 
     if mode == 'mdblist_auth':
-        from resources.lib.mdblist_api import mdblist_auth
+        from resources.lib.providers.mdblist_api import mdblist_auth
         mdblist_auth()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'mdblist_revoke':
-        from resources.lib.mdblist_api import mdblist_revoke
+        from resources.lib.providers.mdblist_api import mdblist_revoke
         mdblist_revoke()
         return
 
     if mode == 'mdblist_sync':
-        from resources.lib.mdblist_sync import sync_full_library
+        from resources.lib.providers.mdblist_sync import sync_full_library
         sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'mdblist_sync_smart':
-        from resources.lib.mdblist_sync import sync_full_library
+        from resources.lib.providers.mdblist_sync import sync_full_library
         sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'mdblist_rating':
-        from resources.lib.mdblist_api import prompt_mdblist_rating
+        from resources.lib.providers.mdblist_api import prompt_mdblist_rating
         prompt_mdblist_rating(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1620,7 +1621,7 @@ def run_plugin():
         return
 
     if mode == 'mdblist_context_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_mdblist_context_menu(
             params.get('tmdb_id'),
             params.get('imdb_id'),
@@ -1632,7 +1633,7 @@ def run_plugin():
         return
 
     if mode == 'mdblist_mark_dropped':
-        from resources.lib.mdblist_sync import drop_show
+        from resources.lib.providers.mdblist_sync import drop_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('mdblist'), "Show dropped", _icon, 3000, False)
@@ -1641,7 +1642,7 @@ def run_plugin():
         return
 
     if mode == 'mdblist_unmark_dropped':
-        from resources.lib.mdblist_sync import restore_show
+        from resources.lib.providers.mdblist_sync import restore_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('mdblist'), "Show restored", _icon, 3000, False)
@@ -1652,40 +1653,40 @@ def run_plugin():
     if mode and mode.startswith('mdblist_'):
         if mode == 'mdblist_upnext':
             # MDB Up Next = aceeasi functie dinamica ca TV Shows → Next Episodes
-            from resources.lib import trakt_api
+            from resources.lib.api import trakt_api
             trakt_api.get_next_episodes()
             return
-        from resources.lib.mdblist import handle_mdblist_action, MDBLIST_ACTIONS
+        from resources.lib.providers.mdblist import handle_mdblist_action, MDBLIST_ACTIONS
         if mode in MDBLIST_ACTIONS:
-            from resources.lib.config import ADDON
+            from resources.lib.core.config import ADDON
             handle_mdblist_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
 
     if mode == 'simkl_auth':
-        from resources.lib.simkl_api import simkl_auth
+        from resources.lib.providers.simkl_api import simkl_auth
         simkl_auth()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'simkl_revoke':
-        from resources.lib.simkl_api import simkl_revoke
+        from resources.lib.providers.simkl_api import simkl_revoke
         simkl_revoke()
         return
 
     if mode == 'simkl_sync':
-        from resources.lib.simkl_sync import sync_full_library
+        from resources.lib.providers.simkl_sync import sync_full_library
         sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'simkl_sync_smart':
-        from resources.lib.simkl_sync import sync_full_library
+        from resources.lib.providers.simkl_sync import sync_full_library
         sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'simkl_rating':
-        from resources.lib.simkl_api import prompt_simkl_rating
+        from resources.lib.providers.simkl_api import prompt_simkl_rating
         prompt_simkl_rating(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1696,7 +1697,7 @@ def run_plugin():
         return
 
     if mode == 'simkl_context_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_simkl_context_menu(
             params.get('tmdb_id'),
             params.get('imdb_id'),
@@ -1708,7 +1709,7 @@ def run_plugin():
         return
 
     if mode == 'simkl_mark_dropped':
-        from resources.lib.simkl_sync import drop_show
+        from resources.lib.providers.simkl_sync import drop_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('simkl'), "Show dropped", _icon, 3000, False)
@@ -1717,7 +1718,7 @@ def run_plugin():
         return
 
     if mode == 'simkl_unmark_dropped':
-        from resources.lib.simkl_sync import restore_show
+        from resources.lib.providers.simkl_sync import restore_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('simkl'), "Show restored", _icon, 3000, False)
@@ -1726,37 +1727,37 @@ def run_plugin():
         return
 
     if mode and mode.startswith('simkl_'):
-        from resources.lib.simkl import handle_simkl_action, SIMKL_ACTIONS
+        from resources.lib.providers.simkl import handle_simkl_action, SIMKL_ACTIONS
         if mode in SIMKL_ACTIONS or mode in ('simkl_dropped_restore', 'simkl_connect', 'simkl_disconnect'):
-            from resources.lib.config import ADDON
+            from resources.lib.core.config import ADDON
             handle_simkl_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
 
     if mode == 'punchplay_auth':
-        from resources.lib.punchplay_api import punchplay_auth
+        from resources.lib.providers.punchplay_api import punchplay_auth
         punchplay_auth()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'punchplay_revoke':
-        from resources.lib.punchplay_api import punchplay_revoke
+        from resources.lib.providers.punchplay_api import punchplay_revoke
         punchplay_revoke()
         return
 
     if mode == 'punchplay_sync':
-        from resources.lib.punchplay_sync import sync_full_library
+        from resources.lib.providers.punchplay_sync import sync_full_library
         sync_full_library(silent=False, force=True)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'punchplay_sync_smart':
-        from resources.lib.punchplay_sync import sync_full_library
+        from resources.lib.providers.punchplay_sync import sync_full_library
         sync_full_library(silent=False, force=False)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'punchplay_rating':
-        from resources.lib.punchplay_api import prompt_punchplay_rating
+        from resources.lib.providers.punchplay_api import prompt_punchplay_rating
         prompt_punchplay_rating(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1767,7 +1768,7 @@ def run_plugin():
         return
 
     if mode == 'punchplay_context_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_punchplay_context_menu(
             params.get('tmdb_id'),
             params.get('imdb_id'),
@@ -1779,7 +1780,7 @@ def run_plugin():
         return
 
     if mode == 'punchplay_mark_dropped':
-        from resources.lib.punchplay_sync import drop_show
+        from resources.lib.providers.punchplay_sync import drop_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('punchplay'), "Show dropped", _icon, 3000, False)
@@ -1788,7 +1789,7 @@ def run_plugin():
         return
 
     if mode == 'punchplay_unmark_dropped':
-        from resources.lib.punchplay_sync import restore_show
+        from resources.lib.providers.punchplay_sync import restore_show
         _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('punchplay'), "Show restored", _icon, 3000, False)
@@ -1797,15 +1798,15 @@ def run_plugin():
         return
 
     if mode and mode.startswith('punchplay_'):
-        from resources.lib.punchplay import handle_punchplay_action, PUNCHPLAY_ACTIONS
+        from resources.lib.providers.punchplay import handle_punchplay_action, PUNCHPLAY_ACTIONS
         if mode in PUNCHPLAY_ACTIONS or mode in ('punchplay_dropped_restore', 'punchplay_connect', 'punchplay_disconnect'):
-            from resources.lib.config import ADDON
+            from resources.lib.core.config import ADDON
             handle_punchplay_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
         return
     
     from resources.lib.cloud.debrid import handle_debrid_action, DEBRID_ACTIONS
     if mode in DEBRID_ACTIONS:
-        from resources.lib.config import ADDON
+        from resources.lib.core.config import ADDON
         handle_debrid_action({'mode': mode, **params}, handle, sys.argv[0], ADDON)
         return
     if isinstance(mode, str) and mode.startswith('debrid_'):
@@ -1817,7 +1818,7 @@ def run_plugin():
         return
 
     if mode == 'trakt_context_menu':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.show_trakt_context_menu(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1827,7 +1828,7 @@ def run_plugin():
         )
         return
     if mode == 'tmdb_context_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_tmdb_context_menu(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1838,7 +1839,7 @@ def run_plugin():
         return
 
     if mode == 'all_providers_context_menu':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_all_providers_context_menu(
             params.get('tmdb_id'),
             params.get('imdb_id'),
@@ -1850,7 +1851,7 @@ def run_plugin():
         return
 
     if mode == 'trakt_rating':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.rate_trakt_item(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1861,7 +1862,7 @@ def run_plugin():
         return
 
     if mode == 'tmdb_rating':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.rate_tmdb_item(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1872,7 +1873,7 @@ def run_plugin():
         return
 
     if mode == 'add_rating':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.prompt_add_rating_picker(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1883,50 +1884,50 @@ def run_plugin():
         return
 
     if mode == 'show_my_plays_menu':
-        from resources.lib import my_plays
+        from resources.lib.lists import my_plays
         my_plays.show_my_plays_menu(params)
         return
 
     if mode == 'tmdb_add_watchlist':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.add_to_tmdb_watchlist(params.get('type'), params.get('tmdb_id'))
         return
     if mode == 'tmdb_remove_watchlist':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.remove_from_tmdb_watchlist(params.get('type'), params.get('tmdb_id'))
         return
     if mode == 'tmdb_add_favorites':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.add_to_tmdb_favorites(params.get('type'), params.get('tmdb_id'))
         return
     if mode == 'tmdb_remove_favorites':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.remove_from_tmdb_favorites(params.get('type'), params.get('tmdb_id'))
         return
     if mode == 'tmdb_add_to_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_tmdb_add_to_list_dialog(params.get('tmdb_id'), params.get('type'))
         return
     if mode == 'tmdb_remove_from_list':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.show_tmdb_remove_from_list_dialog(params.get('tmdb_id'), params.get('type'))
         return
 
     if mode == 'add_favorite':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.add_favorite(params)
         return
     if mode == 'remove_favorite':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.remove_favorite(params)
         return
     if mode == 'list_favorites':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.list_favorites(params.get('type'))
         return
 
     if mode == 'mark_watched':
-        from resources.lib.watched_provider import dispatch_mark_watched
+        from resources.lib.providers.watched_provider import dispatch_mark_watched
         dispatch_mark_watched(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1936,7 +1937,7 @@ def run_plugin():
         return
         
     if mode == 'mark_unwatched':
-        from resources.lib.watched_provider import dispatch_mark_unwatched
+        from resources.lib.providers.watched_provider import dispatch_mark_unwatched
         dispatch_mark_unwatched(
             params.get('tmdb_id'),
             params.get('type'),
@@ -1946,7 +1947,7 @@ def run_plugin():
         return
 
     if mode == 'remove_progress':
-        from resources.lib.watched_provider import dispatch_remove_progress
+        from resources.lib.providers.watched_provider import dispatch_remove_progress
         import threading
         content_type = params.get('type', 'movie')
         tmdb_id = params.get('tmdb_id')
@@ -1970,7 +1971,7 @@ def run_plugin():
             try:
                 tv_title = params.get('tv_show_title') or params.get('title')
                 if not tv_title:
-                    from resources.lib import trakt_sync
+                    from resources.lib.providers import trakt_sync
                     _sd = trakt_sync.get_tmdb_item_details_from_db(tmdb_id, 'tv')
                     if _sd:
                         tv_title = _sd.get('name') or _sd.get('title') or ''
@@ -2005,31 +2006,31 @@ def run_plugin():
         return
 
     if mode == 'tmdb_auth_action':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_auth()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'tmdb_logout_action':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.tmdb_logout()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'trakt_auth_action':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_auth()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'trakt_revoke_action':
-        from resources.lib import trakt_api
+        from resources.lib.api import trakt_api
         trakt_api.trakt_revoke()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'trakt_sync_action':
-        from resources.lib.watched_provider import sync_full_library
+        from resources.lib.providers.watched_provider import sync_full_library
         import threading as _th_sync
         def _bg_full_sync():
             try:
@@ -2043,7 +2044,7 @@ def run_plugin():
         return
 
     if mode == 'trakt_sync_smart_action':
-        from resources.lib.watched_provider import sync_full_library
+        from resources.lib.providers.watched_provider import sync_full_library
         import threading as _th_sync2
         def _bg_smart_sync():
             try:
@@ -2061,59 +2062,59 @@ def run_plugin():
         return
 
     if mode == 'clear_cache_action':
-        from resources.lib.utils import clear_all_caches_with_notification
+        from resources.lib.core.utils import clear_all_caches_with_notification
         clear_all_caches_with_notification()
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'upload_log':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.upload_logfile()
         return
 
     if mode == 'view_kodi_log':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.view_kodi_log()
         return
 
     if mode == 'toggle_language_invoker':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.toggle_language_invoker()
         return
 
     if mode == 'show_donate':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.show_donate_link()
         return
 
     if mode == 'manual_trakt_backup':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.perform_trakt_backup(manual=True)
         return
 
     if mode == 'manual_mdblist_backup':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.perform_mdblist_backup(manual=True)
         return
 
     if mode == 'library_sync':
-        from resources.lib import library
+        from resources.lib.lists import library
         library.sync_library(force=True)
         return
     if mode == 'library_select_lists':
-        from resources.lib import library
+        from resources.lib.lists import library
         library.select_tmdb_lists_dialog()
         return
     if mode == 'library_browse_dest':
-        from resources.lib import library
+        from resources.lib.lists import library
         library.browse_destination()
         return
     if mode == 'library_clear':
-        from resources.lib import library
+        from resources.lib.lists import library
         library.clear_library()
         return
     if mode == 'add_to_library':
-        from resources.lib import library
+        from resources.lib.lists import library
         tmdb_id_a = params.get('tmdb_id')
         type_a = params.get('type')
         title_a = params.get('title')
@@ -2137,25 +2138,25 @@ def run_plugin():
         xbmcaddon.Addon().openSettings()
         return
     if mode == 'clear_all_cache':
-        from resources.lib.utils import clear_all_caches_with_notification
+        from resources.lib.core.utils import clear_all_caches_with_notification
         clear_all_caches_with_notification()
         xbmc.executebuiltin("Container.Refresh")
         return
     if mode == 'clear_cache':
-        from resources.lib.utils import clear_all_caches_with_notification
+        from resources.lib.core.utils import clear_all_caches_with_notification
         clear_all_caches_with_notification()
         return
     if mode == 'clear_list_cache':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.clear_list_cache(params)
         return
     if mode == 'clear_tmdb_lists_cache':
-        from resources.lib import tmdb_api
+        from resources.lib.api import tmdb_api
         tmdb_api.clear_tmdb_lists_cache(params)
         return
 
     if mode == 'clear_sources_context':
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         
         tmdb_id = params.get('tmdb_id')
         c_type = params.get('type')
@@ -2210,32 +2211,32 @@ def run_plugin():
         return
 
     if mode == 'initiate_download':
-        from resources.lib.cache import clear_all_fast_cache
+        from resources.lib.core.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        from resources.lib import player
+        from resources.lib.playback import player
         player.initiate_download(params)
         return
         
     if mode == 'stop_download_action':
-        from resources.lib.cache import clear_all_fast_cache
+        from resources.lib.core.cache import clear_all_fast_cache
         clear_all_fast_cache()
-        from resources.lib import player
+        from resources.lib.playback import player
         player.stop_download_action(params)
         xbmc.executebuiltin("Container.Refresh")
         return
 
     if mode == 'downloads_menu':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.build_downloads_list(params)
         return
 
     if mode == 'delete_download':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.delete_download_folder(params)
         return
         
     if mode == 'rename_download':
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.rename_download_folder(params)
         return
 
@@ -2257,7 +2258,7 @@ def _maybe_refresh_widgets_after_sync(force=False):
     altfel Up Next ramane gol pana la restart (widgetul a randat in timpul
     rebuild-ului DB din sync-ul fortat si nu se mai re-invoca singur)."""
     try:
-        from resources.lib.config import ADDON
+        from resources.lib.core.config import ADDON
         setting_on = ADDON.getSetting('trakt_sync_refresh_widgets') == 'true'
         if force and not setting_on:
             if _forced_widget_refresh_done[0]:
@@ -2265,7 +2266,7 @@ def _maybe_refresh_widgets_after_sync(force=False):
                 return
             _forced_widget_refresh_done[0] = True
         if setting_on or force:
-            from resources.lib.watched_provider import widget_refresh
+            from resources.lib.providers.watched_provider import widget_refresh
             widget_refresh()
             xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Performed", xbmc.LOGINFO)
         else:
@@ -2340,7 +2341,7 @@ def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
     sync_full_library(Trakt) include deja _sync_tmdb_data la final (trakt_sync.py:518),
     deci un thread TMDb separat ar rula in paralel cu cel inclus -> duplicat + amestec."""
     try:
-        from resources.lib.config import ADDON as _A
+        from resources.lib.core.config import ADDON as _A
     except Exception:
         return
 
@@ -2357,7 +2358,7 @@ def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
         # MDBList -> Simkl -> PunchPlay). TMDb nu mai depinde de tokenul Trakt;
         # providerii neconectati se sara elegant; o singura notificare finala.
         try:
-            from resources.lib.watched_provider import sync_full_library as _disp
+            from resources.lib.providers.watched_provider import sync_full_library as _disp
             _status = _disp(silent=True, force=True, post_update=True, update_stamp=t_detect)
         except Exception as e:
             _status = 'error'
@@ -2380,7 +2381,7 @@ def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
 
 def run_service():
     try:
-        from resources.lib.config import ADDON
+        from resources.lib.core.config import ADDON
     except:
         return
 
@@ -2400,7 +2401,7 @@ def run_service():
 
     # --- Reuse Language Invoker drift check (addon updates overwrite addon.xml) ---
     try:
-        from resources.lib import utils
+        from resources.lib.core import utils
         utils.check_language_invoker_mismatch()
     except:
         pass
@@ -2411,7 +2412,7 @@ def run_service():
     def _warm():
         try:
             xbmc.sleep(1500)  # lasa Kodi sa termine boot-ul
-            from resources.lib.utils import warm_import_modules
+            from resources.lib.core.utils import warm_import_modules
             warm_import_modules()
         except Exception as e:
             xbmc.log("[TMDb Movies] Warm import error: {}".format(e), xbmc.LOGERROR)
@@ -2419,12 +2420,12 @@ def run_service():
 
     # --- STARTUP WARMUP: incarcam cache-urile inainte ca utilizatorul sa apese orice ---
     try:
-        from resources.lib.cache import warm_ram_pool_from_db
+        from resources.lib.core.cache import warm_ram_pool_from_db
         warm_ram_pool_from_db()
     except:
         pass
     try:
-        from resources.lib.trakt_sync import warm_tv_meta_cache_from_db
+        from resources.lib.providers.trakt_sync import warm_tv_meta_cache_from_db
         warm_tv_meta_cache_from_db()
     except:
         pass
@@ -2449,7 +2450,7 @@ def run_service():
             self.update_context_menu_property()
 
             try:
-                from resources.lib.utils import check_addon_update
+                from resources.lib.core.utils import check_addon_update
                 if check_addon_update():
                     self._version_changed = True
                     try:
@@ -2461,7 +2462,7 @@ def run_service():
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Error la verificarea de update: {e}", xbmc.LOGERROR)
             try:
-                from resources.lib.watched_provider import get_provider as _gp0
+                from resources.lib.providers.watched_provider import get_provider as _gp0
                 self._last_provider = _gp0()
             except:
                 self._last_provider = None
@@ -2470,9 +2471,15 @@ def run_service():
             except:
                 self._last_tmdb_unstarted = None
             try:
-                from resources.lib.watched_provider import ensure_active_provider
+                from resources.lib.providers.watched_provider import ensure_active_provider
                 import threading as _th
                 _th.Thread(target=ensure_active_provider, daemon=True).start()
+            except:
+                pass
+            try:
+                from resources.lib.playback.scraper import netmirror_prewarm
+                import threading as _th2
+                _th2.Thread(target=netmirror_prewarm, daemon=True).start()
             except:
                 pass
 
@@ -2492,19 +2499,19 @@ def run_service():
             self.update_context_menu_property()
             # Clear fast cache — toate setarile iau efect instant
             try:
-                from resources.lib.cache import clear_all_fast_cache
+                from resources.lib.core.cache import clear_all_fast_cache
                 clear_all_fast_cache()
             except:
                 pass
             # Re-parse settings.xml → Window Property (bypass RLI stale cache)
             try:
-                from resources.lib.config import clear_settings_cache
+                from resources.lib.core.config import clear_settings_cache
                 clear_settings_cache()
             except:
                 pass
             # Clear watched provider cache (provider switching takes effect immediately)
             try:
-                from resources.lib.watched_provider import clear_cache as clear_provider_cache
+                from resources.lib.providers.watched_provider import clear_cache as clear_provider_cache
                 clear_provider_cache()
             except:
                 pass
@@ -2512,7 +2519,7 @@ def run_service():
             # Sync-ul ruleaza in procesul SERVICE (long-lived) — thread-urile daemon
             # dintr-un apel RunPlugin mor cu procesul pluginului (router.py SystemExit).
             try:
-                from resources.lib.watched_provider import get_provider as _get_prov
+                from resources.lib.providers.watched_provider import get_provider as _get_prov
                 _current = _get_prov()
                 if self._last_provider is not None and _current != self._last_provider:
                     xbmc.log(f"[TMDb Movies] Watched provider changed: {self._last_provider} -> {_current}. Scheduling full sync...", xbmc.LOGINFO)
@@ -2527,21 +2534,21 @@ def run_service():
                         _prev0 = _prev_snap if _prev_snap is not None else getattr(self, '_last_provider', None)
                         try:
                             xbmc.sleep(2000)
-                            from resources.lib.config import clear_settings_cache as _csc
-                            from resources.lib.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl, PROVIDERS_ALL as _PROVIDERS_ALL
+                            from resources.lib.core.config import clear_settings_cache as _csc
+                            from resources.lib.providers.watched_provider import clear_cache as _cc, get_provider as _gp, sync_full_library as _sfl, PROVIDERS_ALL as _PROVIDERS_ALL
                             _csc()
                             _cc()
                             _prov = _gp()
                             xbmc.log(f"[TMDb Movies] Provider switch sync -> {_prov} (force). Starting...", xbmc.LOGINFO)
                             try:
                                 if _prov == 'trakt':
-                                    from resources.lib.trakt_api import get_trakt_token as _tok
+                                    from resources.lib.api.trakt_api import get_trakt_token as _tok
                                     _connected = bool(_tok())
                                 elif _prov == 'simkl':
-                                    from resources.lib.simkl_api import SIMKLAPI as _SKAPI
+                                    from resources.lib.providers.simkl_api import SIMKLAPI as _SKAPI
                                     _connected = _SKAPI().is_authenticated()
                                 elif _prov == 'punchplay':
-                                    from resources.lib.punchplay_api import PunchplayAPI as _PPAPI
+                                    from resources.lib.providers.punchplay_api import PunchplayAPI as _PPAPI
                                     _connected = _PPAPI().is_authenticated()
                                 elif _prov == 'local':
                                     _connected = True  # local: mereu conectat
@@ -2572,15 +2579,15 @@ def run_service():
                                             if _p == 'local':
                                                 return True  # local: mereu conectat
                                             if _p == 'trakt':
-                                                from resources.lib.trakt_api import get_trakt_token as _t
+                                                from resources.lib.api.trakt_api import get_trakt_token as _t
                                                 return bool(_t())
                                             if _p == 'mdblist':
                                                 return bool(get_addon().getSetting('mdblist_access_token') or get_addon().getSetting('mdblist_api'))
                                             if _p == 'simkl':
-                                                from resources.lib.simkl_api import SIMKLAPI as _S
+                                                from resources.lib.providers.simkl_api import SIMKLAPI as _S
                                                 return _S().is_authenticated()
                                             if _p == 'punchplay':
-                                                from resources.lib.punchplay_api import PunchplayAPI as _P
+                                                from resources.lib.providers.punchplay_api import PunchplayAPI as _P
                                                 return _P().is_authenticated()
                                         except Exception:
                                             return False
@@ -2643,13 +2650,13 @@ def run_service():
                                     if _action == 'connect':
                                         try:
                                             if _prov == 'trakt':
-                                                from resources.lib.trakt_api import trakt_auth as _auth
+                                                from resources.lib.api.trakt_api import trakt_auth as _auth
                                             elif _prov == 'mdblist':
-                                                from resources.lib.mdblist_api import mdblist_auth as _auth
+                                                from resources.lib.providers.mdblist_api import mdblist_auth as _auth
                                             elif _prov == 'simkl':
-                                                from resources.lib.simkl_api import simkl_auth as _auth
+                                                from resources.lib.providers.simkl_api import simkl_auth as _auth
                                             else:
-                                                from resources.lib.punchplay_api import punchplay_auth as _auth
+                                                from resources.lib.providers.punchplay_api import punchplay_auth as _auth
                                             xbmc.log(f'[TMDb Movies] Provider switch: user chose to connect {_prov}.', xbmc.LOGINFO)
                                             _auth()
                                         except Exception as _ae:
@@ -2770,7 +2777,7 @@ def run_service():
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Provider switch detection error: {e}", xbmc.LOGERROR)
             try:
-                from resources.lib.utils import reset_debug_cache
+                from resources.lib.core.utils import reset_debug_cache
                 reset_debug_cache()
             except:
                 pass
@@ -2784,10 +2791,10 @@ def run_service():
                     def _tmdb_upnext_recompute():
                         try:
                             xbmc.sleep(1500)
-                            from resources.lib.config import TMDB_V4_TOKEN_FILE
+                            from resources.lib.core.config import TMDB_V4_TOKEN_FILE
                             if not os.path.exists(TMDB_V4_TOKEN_FILE):
                                 return
-                            from resources.lib import trakt_sync as _ts
+                            from resources.lib.providers import trakt_sync as _ts
                             _conn = _ts.get_connection()
                             _ts.sync_tmdb_up_next(_conn.cursor())
                             _conn.commit()
@@ -2805,7 +2812,7 @@ def run_service():
                 pass
 
             try:
-                from resources.lib.scrapers import reset_debug_cache as reset_scrapers_debug
+                from resources.lib.playback.scraper import reset_debug_cache as reset_scrapers_debug
                 reset_scrapers_debug()
             except:
                 pass
@@ -2839,7 +2846,7 @@ def run_service():
         def run(self):
             # --- Auto-sync check at startup (before delay) ---
             try:
-                from resources.lib.library import check_auto_sync
+                from resources.lib.lists.library import check_auto_sync
                 check_auto_sync(startup=True)
             except:
                 pass
@@ -2865,11 +2872,11 @@ def run_service():
             
             # Prefetch popular metadata into RAM for instant browsing
             try:
-                from resources.lib.cache import _ensure_ram_cache_ver, ram_cache_get_tvshow, ram_cache_set_tvshow
+                from resources.lib.core.cache import _ensure_ram_cache_ver, ram_cache_get_tvshow, ram_cache_set_tvshow
                 _ensure_ram_cache_ver()
-                from resources.lib import trakt_sync
-                from resources.lib.tmdb_api import get_tmdb_item_details, get_tmdb_movies_standard, get_tmdb_tv_standard
-                from resources.lib.cache import cache_object
+                from resources.lib.providers import trakt_sync
+                from resources.lib.api.tmdb_api import get_tmdb_item_details, get_tmdb_movies_standard, get_tmdb_tv_standard
+                from resources.lib.core.cache import cache_object
                 xbmc.log("[TMDb Movies] Prefetching popular metadata into RAM...", xbmc.LOGINFO)
                 # TV shows metadata + list cache
                 for action in ('tmdb_tv_trending_week', 'tmdb_tv_popular'):
@@ -2924,7 +2931,7 @@ def run_service():
                 if _last_sync_stamp and (time.time() - _last_sync_stamp >= 1800):
                     self.sync_worker()
                 try:
-                    from resources.lib.library import check_auto_sync
+                    from resources.lib.lists.library import check_auto_sync
                     check_auto_sync()
                 except:
                     pass
@@ -2942,7 +2949,7 @@ def run_service():
 
         def cleanup_downloads(self):
             try:
-                from resources.lib.downloader import cleanup_empty_download_folders
+                from resources.lib.playback.downloader import cleanup_empty_download_folders
                 cleanup_empty_download_folders()
             except:
                 pass
@@ -2963,7 +2970,7 @@ def run_service():
 
                 def _run_all():
                     try:
-                        from resources.lib.watched_provider import sync_full_library
+                        from resources.lib.providers.watched_provider import sync_full_library
                         _st = sync_full_library(silent=True, force=self._sync_force(), source='auto')
                     except Exception as e:
                         _st = 'error'
@@ -2991,19 +2998,19 @@ def run_script():
     mode = params.get('mode')
     if mode:
         if mode == 'trakt_auth':
-            from resources.lib import trakt_api
+            from resources.lib.api import trakt_api
             trakt_api.trakt_auth()
         elif mode == 'trakt_revoke':
-            from resources.lib import trakt_api
+            from resources.lib.api import trakt_api
             trakt_api.trakt_revoke()
         elif mode == 'trakt_sync':
-            from resources.lib import trakt_sync
+            from resources.lib.providers import trakt_sync
             trakt_sync.sync_full_library(silent=False, force=True)
         elif mode == 'tmdb_auth':
-            from resources.lib import tmdb_api
+            from resources.lib.api import tmdb_api
             tmdb_api.tmdb_auth()
         elif mode in ('tmdb_revoke', 'tmdb_logout'):
-            from resources.lib import tmdb_api
+            from resources.lib.api import tmdb_api
             tmdb_api.tmdb_logout()
         elif mode == 'subtitle_service':
             from resources.lib.subtitle.subtitles import run_wyzie_service
@@ -3012,23 +3019,23 @@ def run_script():
             episode = int(params.get('episode', 0)) or None
             run_wyzie_service(imdb_id, season, episode)
         elif mode == 'background_warmup':
-            from resources.lib.tmdb_api import run_background_warmup_sync
+            from resources.lib.api.tmdb_api import run_background_warmup_sync
             run_background_warmup_sync(params.get('type', 'movie'))
         elif mode == 'mdblist_auth':
-            from resources.lib.mdblist_api import mdblist_auth
+            from resources.lib.providers.mdblist_api import mdblist_auth
             mdblist_auth()
         elif mode == 'mdblist_revoke':
-            from resources.lib.mdblist_api import mdblist_revoke
+            from resources.lib.providers.mdblist_api import mdblist_revoke
             mdblist_revoke()
         elif mode == 'mdblist_sync':
-            from resources.lib.mdblist_sync import sync_full_library
+            from resources.lib.providers.mdblist_sync import sync_full_library
             sync_full_library(silent=False, force=True)
         elif mode == 'mdblist_sync_smart':
-            from resources.lib.mdblist_sync import sync_full_library
+            from resources.lib.providers.mdblist_sync import sync_full_library
             sync_full_library(silent=False, force=False)
         elif mode == 'clear_all_cache':
-            from resources.lib.utils import clear_all_caches_with_notification
+            from resources.lib.core.utils import clear_all_caches_with_notification
             clear_all_caches_with_notification()
         elif mode == 'color_picker':
-            from resources.lib.color_picker import pick_color
+            from resources.lib.core.color_picker import pick_color
             pick_color(params.get('setting', ''))

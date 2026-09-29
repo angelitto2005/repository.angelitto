@@ -12,8 +12,8 @@ import xbmc
 import xbmcgui
 import xbmcplugin
 
-from resources.lib import config as _config
-from resources.lib.config import ADDON
+from resources.lib.core import config as _config
+from resources.lib.core.config import ADDON
 
 API_FOLDER = "https://cloud.mail.ru/api/v2/folder"
 API_DISPATCHER = "https://cloud.mail.ru/api/v2/dispatcher"
@@ -44,7 +44,7 @@ _CACHE_TTL = 1800
 
 # JSON persistent in addon_data (incarcare instant la vizitele urmatoare)
 try:
-    from resources.lib.config import ADDON_DATA_DIR
+    from resources.lib.core.config import ADDON_DATA_DIR
 except ImportError:
     ADDON_DATA_DIR = ''
 _CACHE_FILE = os.path.join(ADDON_DATA_DIR, 'detonate_cache.json') if ADDON_DATA_DIR else ''
@@ -484,7 +484,7 @@ def _short_fallback_queries(title):
 
 def _search_tmdb(title, year):
     try:
-        from resources.lib.tmdb_api import get_tmdb_search_results
+        from resources.lib.api.tmdb_api import get_tmdb_search_results
 
         def _fetch(query, use_year):
             try:
@@ -552,7 +552,7 @@ def _lookup(title, year):
     if time.time() > _deadline_ts[0]:
         return {}
     try:
-        from resources.lib.tmdb_api import get_tmdb_item_details
+        from resources.lib.api.tmdb_api import get_tmdb_item_details
         data = get_tmdb_item_details(tid, 'movie', lightweight=True)
         return data or {}
     except Exception as e:
@@ -693,7 +693,7 @@ def _add_folder(handle, label, params, icon='DefaultFolder.png', title=None,
     if plot:
         info['plot'] = plot
     try:
-        from resources.lib.tmdb_api import set_metadata
+        from resources.lib.api.tmdb_api import set_metadata
         set_metadata(li, info)
     except Exception:
         li.setInfo('video', info)
@@ -717,12 +717,12 @@ def _add_movie(handle, entry, meta=None):
     progress = 0
     if tmdb_id:
         try:
-            from resources.lib import watched_provider
+            from resources.lib.providers import watched_provider
             watched = bool(watched_provider.is_movie_watched(tmdb_id))
         except Exception:
             pass
         try:
-            from resources.lib import trakt_sync
+            from resources.lib.providers import trakt_sync
             progress = float(trakt_sync.get_local_playback_progress(tmdb_id, 'movie') or 0)
         except Exception:
             pass
@@ -752,7 +752,7 @@ def _add_movie(handle, entry, meta=None):
         info['size'] = entry.get('size', 0)
 
     if meta:
-        from resources.lib.config import IMG_BASE, BACKDROP_BASE
+        from resources.lib.core.config import IMG_BASE, BACKDROP_BASE
         poster_path = meta.get('poster_path', '')
         backdrop_path = meta.get('backdrop_path', '')
         poster = (IMG_BASE + poster_path) if poster_path else 'DefaultVideo.png'
@@ -802,7 +802,7 @@ def _add_movie(handle, entry, meta=None):
         li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
 
     try:
-        from resources.lib.tmdb_api import set_metadata
+        from resources.lib.api.tmdb_api import set_metadata
         unique_ids = {'tmdb': tmdb_id} if tmdb_id else None
         set_metadata(li, info, unique_ids=unique_ids, watched_info=watched)
     except Exception:
@@ -813,7 +813,7 @@ def _add_movie(handle, entry, meta=None):
     cm = []
     if tmdb_id:
         try:
-            from resources.lib.tmdb_api import _get_full_context_menu
+            from resources.lib.api.tmdb_api import _get_full_context_menu
             _imdb = ''
             try:
                 _imdb = (meta or {}).get('external_ids', {}).get('imdb_id', '')
@@ -927,7 +927,7 @@ def list_years():
                 _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
     try:
-        from resources.lib import views
+        from resources.lib.core import views
         views.apply_view('cloud', 'files')
     except Exception:
         pass
@@ -988,7 +988,7 @@ def list_year(year):
             _log("Render error (" + fname + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
     try:
-        from resources.lib import views
+        from resources.lib.core import views
         views.apply_view('cloud', 'movies')
     except Exception:
         pass
@@ -1054,7 +1054,7 @@ def list_all():
 
     xbmcplugin.endOfDirectory(handle)
     try:
-        from resources.lib import views
+        from resources.lib.core import views
         views.apply_view('cloud', 'movies')
     except Exception:
         pass
@@ -1083,7 +1083,7 @@ def list_folder(weblink):
             _log("Render error (" + f.get('name', '') + "): " + repr(e))
     xbmcplugin.endOfDirectory(handle)
     try:
-        from resources.lib import views
+        from resources.lib.core import views
         views.apply_view('cloud', 'files')
     except Exception:
         pass
@@ -1111,8 +1111,8 @@ def play_movie(weblink, tmdb_id=''):
         info['year'] = int(year)
     if tmdb_id:
         try:
-            from resources.lib.tmdb_api import get_tmdb_item_details
-            from resources.lib.config import IMG_BASE, BACKDROP_BASE
+            from resources.lib.api.tmdb_api import get_tmdb_item_details
+            from resources.lib.core.config import IMG_BASE, BACKDROP_BASE
             meta = get_tmdb_item_details(tmdb_id, 'movie', lightweight=True) or {}
             poster_path = meta.get('poster_path', '')
             backdrop_path = meta.get('backdrop_path', '')
@@ -1127,7 +1127,7 @@ def play_movie(weblink, tmdb_id=''):
             pass
 
     try:
-        from resources.lib.tmdb_api import set_metadata
+        from resources.lib.api.tmdb_api import set_metadata
         set_metadata(li, info, unique_ids={'tmdb': tmdb_id} if tmdb_id else None, watched_info=False)
     except Exception:
         li.setInfo('video', {'title': title, 'mediatype': 'movie'})

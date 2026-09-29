@@ -4,7 +4,7 @@ import xbmc
 import xbmcgui
 import xbmcvfs
 import time
-from resources.lib.config import ADDON
+from resources.lib.core.config import ADDON
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
@@ -98,7 +98,7 @@ def cleanup_subs():
     except Exception as e:
         log(f"Cleanup error: {e}", xbmc.LOGERROR)
     try:
-        from resources.lib.downloader import cleanup_empty_download_folders
+        from resources.lib.playback.downloader import cleanup_empty_download_folders
         cleanup_empty_download_folders()
     except:
         pass

@@ -26,13 +26,13 @@ try:
 except ImportError:
     req_lib = None
 
-from resources.lib.config import ADDON, ADDON_PATH, get_torrserver_host
+from resources.lib.core.config import ADDON, ADDON_PATH, get_torrserver_host
 
 _CANCEL_ACTIONS = frozenset([9, 10, 13, 92, 110, 216])
 
 def log(msg):
     try:
-        from resources.lib.scraper import log as scraper_log
+        from resources.lib.playback.scraper import log as scraper_log
         scraper_log(msg)
     except:
         xbmc.log("[TorrServer] %s" % msg)

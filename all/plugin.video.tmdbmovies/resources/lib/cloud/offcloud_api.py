@@ -4,7 +4,7 @@ import requests
 import xbmc
 from requests.utils import requote_uri
 
-from resources.lib.utils import DebridError, sleep_abortable
+from resources.lib.core.utils import DebridError, sleep_abortable
 
 BASE = 'https://offcloud.com/api'
 _REQUEST_TIMEOUT = 15
@@ -13,7 +13,7 @@ _BACKOFF = (1, 2)
 
 
 def _api_key():
-    from resources.lib.config import ADDON
+    from resources.lib.core.config import ADDON
     try:
         return (ADDON.getSetting('oc_api_key') or '').strip()
     except Exception:
@@ -188,7 +188,7 @@ def delete_request(request_id):
 
 def clear_cloud_cache():
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete_prefix('tmdbmovies_oc_')
     except Exception:
         xbmc.log('[DEBRID][OC] clear cache error', xbmc.LOGWARNING)

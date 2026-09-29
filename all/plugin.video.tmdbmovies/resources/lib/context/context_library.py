@@ -70,11 +70,11 @@ def main():
             xbmcgui.Dialog().notification('TMDb Library', 'Cannot find TMDb ID', xbmcgui.NOTIFICATION_WARNING)
             return
     xbmc.log(f'[TMDbM Library DBG] context_library: tmdb_id={tmdb_id}, final_type={final_type}, title={search_title}', xbmc.LOGINFO)
-    from resources.lib.library import is_in_library, add_to_library
+    from resources.lib.lists.library import is_in_library, add_to_library
     already = is_in_library(tmdb_id, final_type)
     xbmc.log(f'[TMDbM Library DBG] context_library: already={already}', xbmc.LOGINFO)
     if already:
-        from resources.lib.library import ADDON_ICON
+        from resources.lib.lists.library import ADDON_ICON
         xbmcgui.Dialog().notification('[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies Library[/COLOR][/B]',
                                        f'[B][COLOR yellow]{search_title}[/COLOR][/B] already in library',
                                        ADDON_ICON)

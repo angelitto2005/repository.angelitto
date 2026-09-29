@@ -12,8 +12,8 @@ import random
 import time
 from urllib.parse import urlencode, quote
 from datetime import datetime, date
-from resources.lib import trakt_sync
-from resources.lib import watched_provider
+from resources.lib.providers import trakt_sync
+from resources.lib.providers import watched_provider
 
 # --- FIX EROARE LOG: Fortam ID-ul daca nu este detectat ---
 try:
@@ -29,7 +29,7 @@ except:
 ADDON_PATH = ADDON.getAddonInfo('path')
 
 try:
-    from resources.lib.config import API_KEY, IMG_BASE, BACKDROP_BASE
+    from resources.lib.core.config import API_KEY, IMG_BASE, BACKDROP_BASE
 except ImportError:
     API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
     # IMG_BASE este w500 (bun pentru postere principale)
@@ -190,8 +190,8 @@ def action_options_dialog(tmdb_id, media_type, season=None, episode=None, title=
     imdb_id = xbmc.getInfoLabel('Window.Property(movie.imdbnumber)') or ''
     year = xbmc.getInfoLabel('Window.Property(movie.year)') or xbmc.getInfoLabel('Window.Property(year)') or ''
     
-    from resources.lib.config import ADDON
-    from resources.lib.tmdb_api import _allprov_colored
+    from resources.lib.core.config import ADDON
+    from resources.lib.api.tmdb_api import _allprov_colored
     options = []
     dispatch = []
 
@@ -262,7 +262,7 @@ def get_tmdb_data(endpoint, params=None):
     params['language'] = 'en-US'
     
     try:
-        from resources.lib.config import get_plot_language_code, LANG_TO_TMDB, get_plot_img_lang
+        from resources.lib.core.config import get_plot_language_code, LANG_TO_TMDB, get_plot_img_lang
         lang_code = get_plot_language_code()
         is_non_en = lang_code != 'en'
         img_lang = get_plot_img_lang()
@@ -368,7 +368,7 @@ def _yt_cache_get(query):
     except:
         pass
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         data = MainCache().get('ytsearch_' + query)
         if data:
             try:
@@ -387,7 +387,7 @@ def _yt_cache_set(query, items):
     except:
         pass
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().set('ytsearch_' + query, items, expiration=168)
     except:
         pass
@@ -780,7 +780,7 @@ def get_youtube_video_meta(video_id):
     except:
         pass
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         data = MainCache().get('ytmeta_' + video_id)
         if data:
             try:
@@ -844,7 +844,7 @@ def get_youtube_video_meta(video_id):
     except:
         pass
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().set('ytmeta_' + video_id, meta, expiration=168)
     except:
         pass
@@ -879,7 +879,7 @@ def format_money_short(val):
 def format_date(date_str):
     if not date_str: return ''
     try:
-        from resources.lib.config import _fmt_dmy
+        from resources.lib.core.config import _fmt_dmy
         return _fmt_dmy(date_str)
     except:
         return date_str
@@ -887,7 +887,7 @@ def format_date(date_str):
 def format_date_short(date_str):
     if not date_str: return ''
     try:
-        from resources.lib.config import _fmt_dmy
+        from resources.lib.core.config import _fmt_dmy
         return _fmt_dmy(date_str)
     except:
         return date_str
@@ -2388,7 +2388,7 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
 
     def fill_season_list(self, list_id, seasons):
         try:
-            from resources.lib.config import ADDON as _cfg_addon
+            from resources.lib.core.config import ADDON as _cfg_addon
             _show_specials = _cfg_addon.getSetting('show_specials') == 'true'
             ctl = self.getControl(list_id)
             ctl.reset()
@@ -3131,7 +3131,7 @@ def _trailer_info_plot(meta, genres_str):
 
 
 def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=None, year=None, plot=None, studio=None):
-    from resources.lib.trailer_player import get_trailer_mode, get_trailer_url
+    from resources.lib.playback.trailer_player import get_trailer_mode, get_trailer_url
     mode = get_trailer_mode()
     if mode == 'youtube_plugin':
         url = f"plugin://plugin.video.youtube/play/?video_id={yt_id}"

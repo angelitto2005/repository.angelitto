@@ -8,8 +8,8 @@ import xbmcgui
 import xbmcplugin
 import xbmcvfs
 
-from resources.lib.config import ADDON as PROXIED_ADDON, provider_title, _fmt_dmy
-from resources.lib.utils import style_page_nav_item, next_page_label
+from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_title, _fmt_dmy
+from resources.lib.core.utils import style_page_nav_item, next_page_label
 
 DEBRID_ACTIONS = {
     'debrid_menu',
@@ -120,7 +120,7 @@ def _build_url(query):
 
 
 def _page_limit():
-    from resources.lib.config import get_page_limit_value
+    from resources.lib.core.config import get_page_limit_value
     try:
         return int(get_page_limit_value())
     except Exception:
@@ -155,7 +155,7 @@ def _page_num(params):
 
 def _expiry_us_format():
     try:
-        from resources.lib.config import ADDON as _cfg
+        from resources.lib.core.config import ADDON as _cfg
         return (_cfg.getSetting('date_format') or '0') == '1'
     except Exception:
         return False
@@ -221,7 +221,7 @@ def _end(succeeded=True, cache=False):
     # nu pierdem timeout-ul pe fiecare deschidere (vezi views.apply_view).
     if succeeded:
         try:
-            from resources.lib import views
+            from resources.lib.core import views
             views.apply_view('cloud', None)
         except Exception:
             pass
@@ -272,7 +272,7 @@ def _fmt_pct(progress):
 
 def _cache_get(key):
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         return MainCache().get(key)
     except Exception:
         return None
@@ -280,7 +280,7 @@ def _cache_get(key):
 
 def _cache_set(key, data, hours=_CACHE_TTL / 3600.0):
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().set(key, data, expiration=hours)
     except Exception:
         pass
@@ -288,7 +288,7 @@ def _cache_set(key, data, hours=_CACHE_TTL / 3600.0):
 
 def _cache_del(key):
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete(key)
     except Exception:
         pass
@@ -296,7 +296,7 @@ def _cache_del(key):
 
 def _cache_del_prefix(prefix):
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete_prefix(prefix)
     except Exception:
         pass
@@ -1764,7 +1764,7 @@ def _set_api_key(provider):
     if not key:
         return
 
-    from resources.lib.config import ADDON as _A
+    from resources.lib.core.config import ADDON as _A
     mod = __import__('resources.lib.' + cfg['module'], fromlist=[cfg['module']])
     prev = (_A.getSetting(cfg['key']) or '').strip()
     _A.setSetting(cfg['key'], key)
@@ -2124,7 +2124,7 @@ def _download(params):
         _notify('Download failed: ' + (err or 'no link'), ms=4000)
         return
 
-    from resources.lib.downloader import start_download_thread
+    from resources.lib.playback.downloader import start_download_thread
     try:
         start_download_thread(url, title=file_name, year='', tmdb_id='debrid_' + str(params.get('item_id', '0')) + '_' + str(params.get('file_id', '') or params.get('item_id', '0')),
                               c_type='movie', season=None, episode=None, release_name=file_name, provider_id='debrid')

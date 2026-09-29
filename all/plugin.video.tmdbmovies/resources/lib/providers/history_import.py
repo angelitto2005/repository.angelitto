@@ -1,0 +1,2041 @@
+# -*- coding: utf-8 -*-
+"""
+Import Watchlist / History / Ratings / Dropped intre Trakt, MDBList, TMDb, Simkl.
+
+Importa istoricul de vizionare dintr-un serviciu in celalalt,
+pastrand datele originale de vizionare (watched_at) si fara rewatched
+(itemele deja vizionate in destinatie sunt sarite).
+
+Flow:
+  1. Fetch istoric SURSA din API (nu din baza locala a addonului).
+  2. Fetch istoric DESTINATIE din API (skip-sets: filme pe tmdb_id,
+     episoade pe (tmdb_id, season, episode)).
+  3. Push in chunk-uri de max 150 itemi (limita MDBList = 200/request).
+  4. Mirror local in baza destinatiei + clear fast cache.
+"""
+
+import os
+import datetime
+
+import xbmc
+import xbmcgui
+
+from resources.lib.core.config import ADDON_PATH, PROVIDER_COLORS, PROVIDER_NAMES, provider_icon, provider_title
+
+TRAKT_ICON = provider_icon('trakt')
+MDBLIST_ICON = provider_icon('mdblist')
+TMDB_ICON = provider_icon('tmdb')
+SIMKL_ICON = provider_icon('simkl')
+PUNCHPLAY_ICON = provider_icon('punchplay')
+
+TRAKT_COLOR = PROVIDER_COLORS['trakt']
+MDBLIST_COLOR = PROVIDER_COLORS['mdblist']
+TMDB_COLOR = PROVIDER_COLORS['tmdb']
+SIMKL_COLOR = PROVIDER_COLORS['simkl']
+PUNCHPLAY_COLOR = PROVIDER_COLORS['punchplay']
+
+CHUNK = 150  # MDBList respinge >200 shows/request; 150 e marja sigura
+
+_PROVIDER_INFO = {
+    'trakt': (PROVIDER_NAMES['trakt'], TRAKT_COLOR, TRAKT_ICON),
+    'mdblist': (PROVIDER_NAMES['mdblist'], MDBLIST_COLOR, MDBLIST_ICON),
+    'tmdb': (PROVIDER_NAMES['tmdb'], TMDB_COLOR, TMDB_ICON),
+    'simkl': (PROVIDER_NAMES['simkl'], SIMKL_COLOR, SIMKL_ICON),
+    'punchplay': (PROVIDER_NAMES['punchplay'], PUNCHPLAY_COLOR, PUNCHPLAY_ICON),
+}
+
+
+def _now_iso():
+    return datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+
+# =============================================================================
+# FETCH SURSA/DESTINATIE (direct din API)
+# =============================================================================
+
+def _fetch_trakt_history():
+    """Returneaza (movies, episodes) din API-ul Trakt.
+
+    movies:   list[(tmdb_id, title, year, watched_at)]
+    episodes: list[(tmdb_id, season, episode, title, watched_at)]
+    """
+    from resources.lib.api import trakt_api
+    movies, episodes = [], []
+
+    data = trakt_api._get_trakt_paginated_list('/sync/watched/movies',
+                                               params={'extended': 'full'})
+    for item in data or []:
+        m = item.get('movie') or {}
+        ids = m.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        movies.append((str(tid), m.get('title') or 'Unknown',
+                       str(m.get('year') or ''),
+                       item.get('last_watched_at') or _now_iso()))
+
+    data = trakt_api._get_trakt_paginated_list('/sync/watched/shows',
+                                               params={'extended': 'progress'})
+    for item in data or []:
+        s = item.get('show') or {}
+        ids = s.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        show_title = s.get('title') or 'Unknown Show'
+        for season in item.get('seasons') or []:
+            s_num = season.get('number')
+            if s_num is None:
+                continue
+            for ep in season.get('episodes') or []:
+                e_num = ep.get('number')
+                if e_num is None:
+                    continue
+                episodes.append((str(tid), int(s_num), int(e_num), show_title,
+                                 ep.get('last_watched_at') or _now_iso()))
+    return movies, episodes
+
+
+def _fetch_mdblist_history(api):
+    """Idem, din API-ul MDBList (cursor pagination, limit 1000)."""
+    movies, episodes = [], []
+    cursor = None
+    for _ in range(100):
+        data = api.get_sync_watched(cursor=cursor, limit=1000)
+        if not data or not isinstance(data, dict):
+            break
+        for movie in data.get('movies') or []:
+            inner = movie.get('movie', movie) or {}
+            ids = inner.get('ids') or {}
+            tid = ids.get('tmdb')
+            if not tid:
+                continue
+            movies.append((str(tid), inner.get('title') or 'Unknown',
+                           str(inner.get('year') or inner.get('release_year') or ''),
+                           movie.get('watched_at') or movie.get('last_watched_at') or _now_iso()))
+        for row in data.get('episodes') or []:
+            inner = row.get('episode', row) or {}
+            show = inner.get('show') or {}
+            ids = show.get('ids') or inner.get('ids') or {}
+            tid = ids.get('tmdb')
+            if not tid:
+                continue
+            season = inner.get('season', 1)
+            number = inner.get('number', inner.get('episode', 1))
+            if season is None or number is None:
+                continue
+            episodes.append((str(tid), int(season), int(number),
+                             show.get('title') or inner.get('name') or 'Unknown Show',
+                             row.get('last_watched_at') or row.get('watched_at') or _now_iso()))
+        pagination = data.get('pagination') or {}
+        if not pagination.get('has_more'):
+            break
+        cursor = pagination.get('next_cursor')
+        if not cursor:
+            break
+    return movies, episodes
+
+
+def _fetch_simkl_history(api):
+    """History din GET /sync/all-items (singurul endpoint viu — /sync/movies + /sync/shows
+    intorc null de cand Simkl a mutat totul pe all-items).
+
+    Returneaza (movies, episodes, fully_watched_shows):
+    - movies: entry-uri cu last_watched_at (history real, nu doar watchlist)
+    - episodes: din seasons (doar show-urile partiale au seasons; cele complet
+      vizionate vin fara -> dedupe la nivel de serial cu watched==total)
+    - fully_watched_shows: set de tmdb_id cu watched_episodes_count == total_episodes_count
+      (toate episoadele sunt in history -> se skip la nivel de serial)
+    """
+    movies, episodes, fully = [], [], set()
+    data = api.get_watchlist()
+    if not isinstance(data, dict):
+        return movies, episodes, fully
+    for m in (data.get('movies') or []):
+        if not m.get('last_watched_at'):
+            continue
+        obj = m.get('movie') or {}
+        ids = obj.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        movies.append((str(tid), obj.get('title') or 'Unknown',
+                       str(obj.get('year') or ''),
+                       m.get('last_watched_at') or _now_iso()))
+    for s in (data.get('shows') or []) + (data.get('anime') or []):
+        obj = s.get('show') or {}
+        ids = obj.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        show_title = obj.get('title') or 'Unknown Show'
+        total = int(s.get('total_episodes_count') or 0)
+        watched = int(s.get('watched_episodes_count') or 0)
+        if total and watched >= total:
+            fully.add(str(tid))
+            continue
+        for season in s.get('seasons') or []:
+            s_num = season.get('number')
+            if s_num is None:
+                continue
+            for ep in season.get('episodes') or []:
+                e_num = ep.get('number')
+                if e_num is None:
+                    continue
+                episodes.append((str(tid), int(s_num), int(e_num), show_title,
+                                 ep.get('watched_at') or s.get('last_watched_at') or _now_iso()))
+    return movies, episodes, fully
+
+
+def _fetch_punchplay_history(api):
+    movies, episodes = [], []
+    cursor = None
+    for _ in range(200):
+        data = api.get_history(cursor=cursor, limit=100)
+        if not isinstance(data, dict):
+            break
+        for it in data.get('items') or []:
+            if not isinstance(it, dict):
+                continue
+            try:
+                tid = int(it.get('tmdbId') or 0)
+            except:
+                continue
+            if not tid:
+                continue
+            watched_at = it.get('watchedAt') or _now_iso()
+            if str(it.get('type') or '').lower() == 'movie':
+                movies.append((str(tid), it.get('title') or 'Unknown',
+                               str(it.get('year') or ''), watched_at))
+            else:
+                try:
+                    show_tid = int(it.get('showTmdbId') or tid)
+                except:
+                    show_tid = tid
+                try:
+                    s = int(it.get('season') or 0)
+                    e = int(it.get('episode') or 0)
+                except:
+                    continue
+                if not s or not e:
+                    continue
+                episodes.append((str(show_tid), s, e, it.get('title') or 'Unknown Show', watched_at))
+        cursor = data.get('nextCursor')
+        if not cursor:
+            break
+    return movies, episodes
+
+
+# =============================================================================
+# PAYLOAD + PUSH
+# =============================================================================
+
+def _build_movie_payload(movies):
+    return {'movies': [{'ids': {'tmdb': int(tid)}, 'watched_at': d}
+                       for tid, _t, _y, d in movies]}
+
+
+def _build_episode_payload(episodes):
+    """Grupare episoade pe serial+sezon — format identic la Trakt si MDBList."""
+    from collections import OrderedDict
+    shows = OrderedDict()
+    for tid, season, number, _title, d in episodes:
+        shows.setdefault(tid, OrderedDict()).setdefault(season, []).append((number, d))
+    out = []
+    for tid, seasons in shows.items():
+        seasons_list = []
+        for s_num, eps in seasons.items():
+            seasons_list.append({'number': s_num,
+                                 'episodes': [{'number': e, 'watched_at': d}
+                                              for e, d in eps]})
+        out.append({'ids': {'tmdb': int(tid)}, 'seasons': seasons_list})
+    return {'shows': out}
+
+
+def _chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def _push_to_mdblist(api, movies, episodes, progress_cb):
+    added_m = added_e = 0
+    done = 0
+    total = len(movies) + len(episodes)
+    for chunk in _chunks(movies, CHUNK):
+        res = api._post('sync/watched', data=_build_movie_payload(chunk))
+        updated = (res or {}).get('updated') or {}
+        added_m += int(updated.get('movies', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, CHUNK):
+        res = api._post('sync/watched', data=_build_episode_payload(chunk))
+        updated = (res or {}).get('updated') or {}
+        added_e += int(updated.get('episodes', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added_m, added_e
+
+
+def _push_to_trakt(movies, episodes, progress_cb):
+    from resources.lib.api import trakt_api
+    added_m = added_e = 0
+    done = 0
+    total = len(movies) + len(episodes)
+    for chunk in _chunks(movies, CHUNK):
+        res = trakt_api.trakt_api_request('/sync/history', method='POST',
+                                          data=_build_movie_payload(chunk))
+        added_m += int(((res or {}).get('added') or {}).get('movies', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, CHUNK):
+        res = trakt_api.trakt_api_request('/sync/history', method='POST',
+                                          data=_build_episode_payload(chunk))
+        added_e += int(((res or {}).get('added') or {}).get('episodes', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added_m, added_e
+
+
+def _push_to_simkl(api, movies, episodes, progress_cb):
+    added_m = added_e = 0
+    done = 0
+    total = len(movies) + len(episodes)
+    for chunk in _chunks(movies, CHUNK):
+        res = api.add_history_bulk([(t, d) for t, *_x, d in chunk], [])
+        updated = (res or {}).get('added') or {}
+        added_m += int(updated.get('movies', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, CHUNK):
+        res = api.add_history_bulk([], [(t, s, e, d) for t, s, e, *_x, d in chunk])
+        updated = (res or {}).get('added') or {}
+        added_e += int(updated.get('episodes', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added_m, added_e
+
+
+def _push_to_punchplay(api, movies, episodes, progress_cb):
+    added_m = added_e = failed = 0
+    done = 0
+    total = len(movies) + len(episodes)
+    for chunk in _chunks(movies, 100):
+        res = api.add_history_bulk([(t, d) for t, *_x, d in chunk], [])
+        if res is None:
+            failed += len(chunk)
+            xbmc.log('[HISTORY IMPORT] PunchPlay movies chunk failed (%d items)' % len(chunk), xbmc.LOGERROR)
+        else:
+            added_m += int(res.get('inserted', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, 100):
+        res = api.add_history_bulk([], [(t, s, e, d) for t, s, e, *_x, d in chunk])
+        if res is None:
+            failed += len(chunk)
+            xbmc.log('[HISTORY IMPORT] PunchPlay episodes chunk failed (%d items)' % len(chunk), xbmc.LOGERROR)
+        else:
+            added_e += int(res.get('inserted', 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    if failed:
+        xbmc.log('[HISTORY IMPORT] PunchPlay failed chunks total: %d items (re-run import to retry them)' % failed, xbmc.LOGWARNING)
+    return added_m, added_e
+
+
+# =============================================================================
+# MIRROR LOCAL (baza destinatiei)
+# =============================================================================
+
+def _mirror_to_mdblist_db(movies, episodes):
+    from resources.lib.providers import mdblist_sync
+    conn = mdblist_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mdblist_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?, ?, ?, ?)",
+            [(tid, t, y, d) for tid, t, y, d in movies])
+        conn.executemany(
+            "INSERT OR REPLACE INTO mdblist_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?, ?, ?, ?, ?)",
+            [(tid, s, e, t, d) for tid, s, e, t, d in episodes])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_to_trakt_db(movies, episodes):
+    from resources.lib.providers import trakt_sync
+    conn = trakt_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO trakt_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?, ?, ?, ?)",
+            [(tid, t, y, d) for tid, t, y, d in movies])
+        conn.executemany(
+            "INSERT OR REPLACE INTO trakt_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?, ?, ?, ?, ?)",
+            [(tid, s, e, t, d) for tid, s, e, t, d in episodes])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_to_simkl_db(movies, episodes):
+    from resources.lib.providers import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watched_movies (tmdb_id, title, year, last_watched_at) VALUES (?, ?, ?, ?)",
+            [(tid, t, y, d) for tid, t, y, d in movies])
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watched_episodes (tmdb_id, season, episode, title, last_watched_at) VALUES (?, ?, ?, ?, ?)",
+            [(tid, s, e, t, d) for tid, s, e, t, d in episodes])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_to_punchplay_db(movies, episodes):
+    from resources.lib.providers import punchplay_sync
+    punchplay_sync.mirror_history(
+        [(tid, d) for tid, _t, _y, d in movies],
+        [(tid, s, e, d) for tid, s, e, _t, d in episodes])
+
+
+# =============================================================================
+# ENTRY POINT
+# =============================================================================
+
+def import_history(direction):
+    """direction: 'trakt_to_mdblist' | 'mdblist_to_trakt' | 'trakt_to_simkl' | 'simkl_to_trakt' | ..."""
+    src, dst = direction.split('_to_')
+    src_name, src_color, _ = _PROVIDER_INFO[src]
+    dst_name, dst_color, dst_icon = _PROVIDER_INFO[dst]
+
+    # --- Auth checks (doar providerii implicati) ---
+    if 'trakt' in (src, dst):
+        from resources.lib.api import trakt_api
+        if not trakt_api.get_trakt_token():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                provider_title('trakt') + " is not connected. Connect it in Settings -> Accounts.",
+                TRAKT_ICON, 5000, False)
+            return
+    api = None
+    if 'mdblist' in (src, dst):
+        from resources.lib.providers.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        if not api.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                provider_title('mdblist') + " is not connected. Connect it in Settings -> Accounts.",
+                MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if 'simkl' in (src, dst):
+        from resources.lib.providers.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                provider_title('simkl') + " is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
+            return
+    ppapi = None
+    if 'punchplay' in (src, dst):
+        from resources.lib.providers.punchplay_api import PunchplayAPI
+        ppapi = PunchplayAPI()
+        if not ppapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]History Import[/COLOR][/B]",
+                provider_title('punchplay') + " is not connected. Connect it in Settings -> Accounts.",
+                PUNCHPLAY_ICON, 5000, False)
+            return
+
+    confirmed = xbmcgui.Dialog().yesno(
+        "[B][COLOR yellow]History Import[/COLOR][/B]",
+        "Import [B]watched history[/B] from [B][COLOR %s]%s[/COLOR][/B] to [B][COLOR %s]%s[/COLOR][/B]?"
+        "\nItems already watched in [B][COLOR %s]%s[/COLOR][/B] will be skipped. Original [B]watched dates[/B] will be kept. [B][COLOR yellow]Continue?[/COLOR][/B]" %
+        (src_color, src_name, dst_color, dst_name, dst_color, dst_name))
+    if not confirmed:
+        return
+
+    prog = None
+    try:
+        prog = xbmcgui.DialogProgressBG()
+        prog.create("[B][COLOR yellow]History Import[/COLOR][/B]",
+                    "[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]" %
+                    (src_color, src_name, dst_color, dst_name))
+    except Exception:
+        prog = None
+
+    def update(pct, line):
+        if prog:
+            try:
+                prog.update(int(pct), line)
+            except Exception:
+                pass
+
+    fetch = {
+        'trakt': _fetch_trakt_history,
+        'mdblist': lambda: _fetch_mdblist_history(api),
+        'simkl': lambda: _fetch_simkl_history(skapi),
+        'punchplay': lambda: _fetch_punchplay_history(ppapi),
+    }
+    push = {
+        'trakt': lambda _api, movies, episodes, cb: _push_to_trakt(movies, episodes, cb),
+        'mdblist': lambda _api, movies, episodes, cb: _push_to_mdblist(api, movies, episodes, cb),
+        'simkl': lambda _api, movies, episodes, cb: _push_to_simkl(skapi, movies, episodes, cb),
+        'punchplay': lambda _api, movies, episodes, cb: _push_to_punchplay(ppapi, movies, episodes, cb),
+    }
+    mirror = {
+        'trakt': _mirror_to_trakt_db,
+        'mdblist': _mirror_to_mdblist_db,
+        'simkl': _mirror_to_simkl_db,
+        'punchplay': _mirror_to_punchplay_db,
+    }
+
+    try:
+        update(3, "Fetching source history from %s..." % src_name)
+        src_res = fetch[src]()
+        src_movies, src_eps = src_res[0], src_res[1]
+
+        update(18, "Fetching destination history from %s..." % dst_name)
+        dst_res = fetch[dst]()
+        dst_movies, dst_eps = dst_res[0], dst_res[1]
+        dst_full_shows = dst_res[2] if len(dst_res) > 2 else set()
+
+        dst_movie_ids = {t for t, *_ in dst_movies}
+        dst_ep_keys = {(t, s, e) for t, s, e, *_ in dst_eps}
+
+        movies = [m for m in src_movies if m[0] not in dst_movie_ids]
+        episodes = [e for e in src_eps
+                    if (e[0], e[1], e[2]) not in dst_ep_keys and e[0] not in dst_full_shows]
+
+        skipped = len(src_movies) + len(src_eps) - len(movies) - len(episodes)
+        xbmc.log("[HISTORY IMPORT] source: %d movies, %d episodes | to push: %d movies, %d episodes | skipped (already watched): %d"
+                 % (len(src_movies), len(src_eps), len(movies), len(episodes), skipped), xbmc.LOGINFO)
+
+        def cb(done, total):
+            update(25 + 65 * done // max(total, 1),
+                   "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
+        added_m, added_e = push[dst](None, movies, episodes, cb)
+        update(92, "Updating local database...")
+        mirror[dst](movies, episodes)
+
+        update(98, "Clearing cache...")
+        from resources.lib.providers.watched_provider import _invalidate_fast_cache
+        _invalidate_fast_cache()
+
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+
+        msg = ("[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]: imported "
+               "[B][COLOR FF6AFB92]%d movies[/COLOR][/B] + [B][COLOR FF6698FF]%d episodes[/COLOR][/B]. "
+               "Skipped (already watched): [B]%d[/B]."
+               % (src_color, src_name, dst_color, dst_name, added_m, added_e, skipped))
+        xbmcgui.Dialog().notification("[B][COLOR yellow]History Import[/COLOR][/B]", msg, dst_icon, 8000, False)
+    except Exception as e:
+        xbmc.log("[HISTORY IMPORT] Error: %s" % e, xbmc.LOGERROR)
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+        xbmcgui.Dialog().notification(
+            "[B][COLOR yellow]History Import[/COLOR][/B]",
+            "Error: %s" % e, xbmcgui.NOTIFICATION_ERROR, 6000, False)
+
+
+# =============================================================================
+# WATCHLIST IMPORT (Trakt / MDBList / TMDb — toate directiile)
+# =============================================================================
+# Item shape: (tmdb_id, title, year, added_at, poster, overview)
+
+def _fetch_trakt_watchlist(media_type):
+    """media_type: 'movies' | 'shows' (endpoint Trakt)."""
+    from resources.lib.api import trakt_api
+    from resources.lib.core.config import IMG_BASE
+    items = []
+    data = trakt_api._get_trakt_paginated_list('/sync/watchlist/%s' % media_type,
+                                               params={'extended': 'full'})
+    for item in data or []:
+        obj = item.get('movie') or item.get('show') or {}
+        ids = obj.get('ids') or {}
+        tid = ids.get('tmdb')
+        if not tid:
+            continue
+        poster = ''
+        try:
+            p_urls = (obj.get('images') or {}).get('poster') or []
+            if p_urls and isinstance(p_urls, list) and p_urls[0] and 'image.tmdb.org' in str(p_urls[0]):
+                poster = IMG_BASE + '/' + str(p_urls[0]).split('/')[-1].split('?')[0]
+        except Exception:
+            pass
+        items.append((str(tid), obj.get('title') or obj.get('name') or 'Unknown',
+                      str(obj.get('year') or ''), item.get('listed_at') or '',
+                      poster, ''))
+    return items
+
+
+def _fetch_mdblist_watchlist(api, media_type):
+    """media_type: 'movie' | 'tv'. Fetch paginat (limit 1000)."""
+    items = []
+    key = 'movies' if media_type == 'movie' else 'shows'
+    cursor = None
+    for _ in range(100):
+        data = api.get_watchlist(cursor=cursor, limit=1000)
+        if not data or not isinstance(data, dict):
+            break
+        for entry in data.get(key) or []:
+            inner = entry.get('movie', entry.get('show', entry))
+            if not isinstance(inner, dict):
+                continue
+            ids = inner.get('ids') or {}
+            tid = ids.get('tmdb', '')
+            if not tid:
+                continue
+            items.append((str(tid), inner.get('title') or inner.get('name') or 'Unknown',
+                          str(inner.get('year') or inner.get('release_year') or ''),
+                          entry.get('added_at') or '', '', ''))
+        pagination = data.get('pagination') or {}
+        if not pagination.get('has_more'):
+            break
+        cursor = pagination.get('next_cursor')
+        if not cursor:
+            break
+    return items
+
+
+def _fetch_simkl_watchlist(api, media_type):
+    """media_type: 'movie' | 'tv'. GET /sync/all-items (dict shows/movies/anime, status per item).
+
+    Dedupe-ul trebuie sa caute in TOATE categoriile — Simkl poate clasifica un film
+    ca anime (ex. Ne Zha 2 -> anime, nu movie), iar importul l-ar re-importa mereu."""
+    items = []
+    data = api.get_watchlist()
+    if not isinstance(data, dict):
+        return items
+    for key in ('movies', 'shows', 'anime'):
+        for entry in (data.get(key) or []):
+            if not isinstance(entry, dict):
+                continue
+            inner = entry.get('movie') or entry.get('show') or entry.get('anime') or entry
+            if not isinstance(inner, dict):
+                continue
+            ids = inner.get('ids') or {}
+            tid = ids.get('tmdb', '')
+            if not tid:
+                continue
+            items.append((str(tid), inner.get('title') or inner.get('name') or 'Unknown',
+                          str(inner.get('year') or ''),
+                          entry.get('added_to_watchlist_at') or entry.get('added_at') or '', '', ''))
+    return items
+
+
+def _fetch_punchplay_watchlist(api, media_type):
+    items = []
+    try:
+        wid = api.get_watchlist_id()
+    except:
+        wid = None
+    if not wid:
+        try:
+            from resources.lib.providers import punchplay_sync
+            for r in punchplay_sync.get_watchlist_local() or []:
+                mt = str(r.get('media_type') or '')
+                if (media_type == 'movie' and mt == 'movie') or (media_type == 'tv' and mt in ('tv', 'show')):
+                    items.append((str(r.get('tmdb_id') or ''), r.get('title') or 'Unknown',
+                                  str(r.get('year') or ''), r.get('added_at') or '', '', ''))
+            items = [it for it in items if it[0]]
+        except:
+            pass
+        return items
+    try:
+        detail = api.get_list(wid)
+        if isinstance(detail, dict) and isinstance(detail.get('items'), list):
+            for it in detail.get('items'):
+                if not isinstance(it, dict):
+                    continue
+                try:
+                    tid = int(it.get('tmdbId') or 0)
+                except:
+                    continue
+                if not tid:
+                    continue
+                kind = str(it.get('type') or '').lower()
+                if media_type == 'movie' and kind != 'movie':
+                    continue
+                if media_type == 'tv' and kind == 'movie':
+                    continue
+                items.append((str(tid), it.get('title') or 'Unknown', '',
+                              it.get('addedAt') or '', '', ''))
+            return items
+    except:
+        pass
+    offset = 0
+    for _ in range(100):
+        try:
+            data = api.get_list_items(wid, offset=offset, limit=200)
+        except:
+            data = None
+        if not isinstance(data, dict):
+            break
+        for it in data.get('items') or []:
+            if not isinstance(it, dict):
+                continue
+            try:
+                tid = int(it.get('tmdbId') or 0)
+            except:
+                continue
+            if not tid:
+                continue
+            kind = str(it.get('type') or '').lower()
+            if media_type == 'movie' and kind != 'movie':
+                continue
+            if media_type == 'tv' and kind == 'movie':
+                continue
+            items.append((str(tid), it.get('title') or 'Unknown', '',
+                          it.get('addedAt') or '', '', ''))
+        try:
+            total = int(data.get('total') or 0)
+        except:
+            total = 0
+        offset += 200
+        nxt = data.get('nextOffset')
+        if nxt is None or (total and offset >= total):
+            break
+        try:
+            offset = int(nxt)
+        except:
+            pass
+    return items
+
+
+def _fetch_tmdb_watchlist(media_type):
+    """media_type: 'movie' | 'tv'. v4 GET /account/{id}/{movie|tv}/watchlist (paginat)."""
+    from resources.lib.api import tmdb_api
+    session = tmdb_api.get_tmdb_session()
+    if not session:
+        return []
+    aid = session['account_id']
+    ep = 'movie' if media_type == 'movie' else 'tv'
+    items = []
+    page = 1
+    while True:
+        data = tmdb_api.tmdb_auth_request('/account/%s/%s/watchlist' % (aid, ep), method='GET',
+                                          params={'page': page, 'sort_by': 'created_at.desc'}, v4=True)
+        if not data or not isinstance(data, dict) or 'results' not in data:
+            break
+        results = data.get('results') or []
+        if not results:
+            break
+        for r in results:
+            items.append((str(r.get('id', '')), r.get('title') or r.get('name') or 'Unknown',
+                          str((r.get('release_date') or r.get('first_air_date') or ''))[:4],
+                          _now_iso(), r.get('poster_path') or '', r.get('overview') or ''))
+        if page >= data.get('total_pages', 1):
+            break
+        page += 1
+    return items
+
+
+def _push_watchlist_to_mdblist(api, items, media_type, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    key = 'movies' if media_type == 'movie' else 'shows'
+    for chunk in _chunks(items, CHUNK):
+        data = {key: [{'ids': {'tmdb': int(t)}} for t, *_ in chunk]}
+        res = api._post('watchlist/items/add', data=data)
+        added += int(((res or {}).get('added') or {}).get(key, 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_watchlist_to_trakt(items, media_type, progress_cb):
+    from resources.lib.api import trakt_api
+    added = 0
+    done = 0
+    total = len(items)
+    key = 'movies' if media_type == 'movie' else 'shows'
+    for chunk in _chunks(items, CHUNK):
+        data = {key: [{'ids': {'tmdb': int(t)}} for t, *_ in chunk]}
+        res = trakt_api.trakt_api_request('/sync/watchlist', method='POST', data=data)
+        added += int(((res or {}).get('added') or {}).get(key, 0) or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_watchlist_to_simkl(api, items, media_type, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    movie_ids = []
+    show_ids = []
+    for chunk in _chunks(items, CHUNK):
+        ids = [int(t) for t, *_ in chunk]
+        if media_type == 'movie':
+            movie_ids = ids
+            show_ids = []
+        else:
+            movie_ids = []
+            show_ids = ids
+        res = api.watchlist_add_bulk(movie_ids, show_ids, status='plantowatch')
+        added_items = (res or {}).get('added') or {}
+        added += len(added_items.get('movies') or []) + len(added_items.get('shows') or [])
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_watchlist_to_tmdb(items, media_type, progress_cb):
+    """TMDb n-are bulk — un POST v3 per item (limita ~50/10s, pauza la 40)."""
+    from resources.lib.api import tmdb_api
+    session = tmdb_api.get_tmdb_session()
+    if not session:
+        return 0
+    aid = session['account_id']
+    m_type = 'movie' if media_type == 'movie' else 'tv'
+    added = 0
+    total = len(items)
+    for i, item in enumerate(items, start=1):
+        if i % 40 == 0:
+            xbmc.sleep(600)
+        res = tmdb_api.tmdb_auth_request('/account/%s/watchlist' % aid, method='POST',
+                                         data={'media_type': m_type, 'media_id': int(item[0]),
+                                               'watchlist': True}, v4=False)
+        if res is not None and res.get('success', True):
+            added += 1
+        progress_cb(i, total)
+    return added
+
+
+def _push_watchlist_to_punchplay(api, items, media_type, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    for chunk in _chunks(items, 100):
+        ids = [int(t) for t, *_ in chunk]
+        if media_type == 'movie':
+            res = api.watchlist_add_bulk(ids, [], status='plantowatch')
+        else:
+            res = api.watchlist_add_bulk([], ids, status='plantowatch')
+        out = (res or {}).get('added', 0) or 0
+        added += int(out)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _mirror_watchlist_to_mdblist_db(items, media_type):
+    from resources.lib.providers import mdblist_sync
+    conn = mdblist_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mdblist_watchlist (tmdb_id, media_type, added_at, title, year) VALUES (?, ?, ?, ?, ?)",
+            [(t, media_type, d, title, y) for t, title, y, d, _p, _o in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_watchlist_to_simkl_db(items, media_type):
+    from resources.lib.providers import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_watchlist (tmdb_id, media_type, status, title, year, added_at) VALUES (?, ?, 'plantowatch', ?, ?, ?)",
+            [(t, media_type, title, y, d) for t, title, y, d, _p, _o in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_watchlist_to_punchplay_db(items, media_type):
+    from resources.lib.providers import punchplay_sync
+    mt = 'movie' if media_type == 'movie' else 'tv'
+    punchplay_sync.mirror_watchlist([t for t, *_ in items] if mt == 'movie' else [],
+                                    [] if mt == 'movie' else [t for t, *_ in items],
+                                    status='watching')
+
+
+def _mirror_watchlist_to_trakt_db(items, media_type):
+    from resources.lib.providers import trakt_sync
+    conn = trakt_sync.get_connection()
+    try:
+        db_mt = 'movie' if media_type == 'movie' else 'show'
+        conn.executemany(
+            "INSERT OR REPLACE INTO trakt_lists (list_type, media_type, tmdb_id, title, year, added_at, poster, backdrop, overview) VALUES ('watchlist', ?, ?, ?, ?, ?, ?, '', ?)",
+            [(db_mt, t, title, y, d, p, o) for t, title, y, d, p, o in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_watchlist_to_tmdb_db(items, media_type):
+    from resources.lib.providers import trakt_sync
+    conn = trakt_sync.get_connection()
+    try:
+        m_type = 'movie' if media_type == 'movie' else 'tv'
+        conn.executemany(
+            "INSERT OR REPLACE INTO tmdb_account_lists VALUES ('watchlist', ?, ?, ?, ?, ?, ?, ?, '', '')",
+            [(m_type, t, title, y, p, d, o) for t, title, y, d, p, o in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_WATCHLIST_DIRS = {
+    'trakt_to_mdblist': ('trakt', 'mdblist'),
+    'mdblist_to_trakt': ('mdblist', 'trakt'),
+    'trakt_to_tmdb': ('trakt', 'tmdb'),
+    'tmdb_to_trakt': ('tmdb', 'trakt'),
+    'mdblist_to_tmdb': ('mdblist', 'tmdb'),
+    'tmdb_to_mdblist': ('tmdb', 'mdblist'),
+    'trakt_to_simkl': ('trakt', 'simkl'),
+    'simkl_to_trakt': ('simkl', 'trakt'),
+    'mdblist_to_simkl': ('mdblist', 'simkl'),
+    'simkl_to_mdblist': ('simkl', 'mdblist'),
+    'tmdb_to_simkl': ('tmdb', 'simkl'),
+    'simkl_to_tmdb': ('simkl', 'tmdb'),
+    'trakt_to_punchplay': ('trakt', 'punchplay'),
+    'punchplay_to_trakt': ('punchplay', 'trakt'),
+    'mdblist_to_punchplay': ('mdblist', 'punchplay'),
+    'punchplay_to_mdblist': ('punchplay', 'mdblist'),
+    'tmdb_to_punchplay': ('tmdb', 'punchplay'),
+    'punchplay_to_tmdb': ('punchplay', 'tmdb'),
+    'simkl_to_punchplay': ('simkl', 'punchplay'),
+    'punchplay_to_simkl': ('punchplay', 'simkl'),
+}
+
+
+def import_watchlist(direction, media_type):
+    """Importa watchlist (movie|tv) dintr-un provider in altul, fara duplicate."""
+    if direction not in _WATCHLIST_DIRS or media_type not in ('movie', 'tv'):
+        return
+    src, dst = _WATCHLIST_DIRS[direction]
+    src_name, src_color, _ = _PROVIDER_INFO[src]
+    dst_name, dst_color, dst_icon = _PROVIDER_INFO[dst]
+    kind_label = 'TV shows' if media_type == 'tv' else 'movies'
+
+    if src == 'trakt' or dst == 'trakt':
+        from resources.lib.api import trakt_api
+        if not trakt_api.get_trakt_token():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                provider_title('trakt') + " is not connected. Connect it in Settings -> Accounts.",
+                TRAKT_ICON, 5000, False)
+            return
+    api = None
+    if src == 'mdblist' or dst == 'mdblist':
+        from resources.lib.providers.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        if not api.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                provider_title('mdblist') + " is not connected. Connect it in Settings -> Accounts.",
+                MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if src == 'simkl' or dst == 'simkl':
+        from resources.lib.providers.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                provider_title('simkl') + " is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
+            return
+    ppapi = None
+    if src == 'punchplay' or dst == 'punchplay':
+        from resources.lib.providers.punchplay_api import PunchplayAPI
+        ppapi = PunchplayAPI()
+        if not ppapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                provider_title('punchplay') + " is not connected. Connect it in Settings -> Accounts.",
+                PUNCHPLAY_ICON, 5000, False)
+            return
+    if src == 'tmdb' or dst == 'tmdb':
+        from resources.lib.api import tmdb_api
+        if not tmdb_api.get_tmdb_session():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                provider_title('tmdb') + " is not connected. Connect it in Settings -> Accounts.",
+                TMDB_ICON, 5000, False)
+            return
+
+    confirmed = xbmcgui.Dialog().yesno(
+        "[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+        "Import [B]%s watchlist[/B] from [B][COLOR %s]%s[/COLOR][/B] to [B][COLOR %s]%s[/COLOR][/B]?"
+        "\nItems already in [B][COLOR %s]%s[/COLOR][/B]'s [B]watchlist[/B] will be skipped."
+        "\n[B][COLOR yellow]Are you sure you want to continue?[/COLOR][/B]" %
+        (kind_label, src_color, src_name, dst_color, dst_name, dst_color, dst_name))
+    if not confirmed:
+        return
+
+    prog = None
+    try:
+        prog = xbmcgui.DialogProgressBG()
+        prog.create("[B][COLOR yellow]Watchlist Import[/COLOR][/B]",
+                    "[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B] (%s)" %
+                    (src_color, src_name, dst_color, dst_name, kind_label))
+    except Exception:
+        prog = None
+
+    def update(pct, line):
+        if prog:
+            try:
+                prog.update(int(pct), line)
+            except Exception:
+                pass
+
+    fetch = {
+        'trakt': lambda mt: _fetch_trakt_watchlist('shows' if mt == 'tv' else 'movies'),
+        'mdblist': lambda mt: _fetch_mdblist_watchlist(api, mt),
+        'tmdb': _fetch_tmdb_watchlist,
+        'simkl': lambda mt: _fetch_simkl_watchlist(skapi, mt),
+        'punchplay': lambda mt: _fetch_punchplay_watchlist(ppapi, mt),
+    }
+    push = {
+        'trakt': _push_watchlist_to_trakt,
+        'mdblist': lambda items, mt, cb: _push_watchlist_to_mdblist(api, items, mt, cb),
+        'tmdb': _push_watchlist_to_tmdb,
+        'simkl': lambda items, mt, cb: _push_watchlist_to_simkl(skapi, items, mt, cb),
+        'punchplay': lambda items, mt, cb: _push_watchlist_to_punchplay(ppapi, items, mt, cb),
+    }
+    mirror = {
+        'trakt': _mirror_watchlist_to_trakt_db,
+        'mdblist': _mirror_watchlist_to_mdblist_db,
+        'tmdb': _mirror_watchlist_to_tmdb_db,
+        'simkl': _mirror_watchlist_to_simkl_db,
+        'punchplay': _mirror_watchlist_to_punchplay_db,
+    }
+
+    try:
+        update(3, "Fetching %s watchlist from [B][COLOR %s]%s[/COLOR][/B]..." % (kind_label, src_color, src_name))
+        src_items = fetch[src](media_type)
+        update(18, "Fetching %s watchlist from [B][COLOR %s]%s[/COLOR][/B]..." % (kind_label, dst_color, dst_name))
+        dst_items = fetch[dst](media_type)
+
+        dst_ids = {t for t, *_ in dst_items}
+        items = [it for it in src_items if it[0] not in dst_ids]
+        skipped = len(src_items) - len(items)
+        xbmc.log("[IMPORT] %s watchlist %s -> %s: source %d | to push %d | skipped (already there): %d"
+                 % (kind_label, src, dst, len(src_items), len(items), skipped), xbmc.LOGINFO)
+
+        def cb(done, total):
+            update(25 + 65 * done // max(total, 1),
+                   "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
+        added = push[dst](items, media_type, cb)
+
+        update(92, "Updating local database...")
+        mirror[dst](items, media_type)
+
+        update(98, "Clearing cache...")
+        from resources.lib.providers.watched_provider import _invalidate_fast_cache
+        _invalidate_fast_cache()
+        if dst == 'mdblist':
+            try:
+                from resources.lib.providers.mdblist_sync import clear_cached
+                clear_cached('watchlist')
+            except Exception:
+                pass
+        if dst == 'simkl':
+            try:
+                from resources.lib.providers.simkl_sync import clear_cached
+                clear_cached('watchlist')
+            except Exception:
+                pass
+
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+
+        msg = ("[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]: imported "
+               "[B][COLOR FF6AFB92]%d %s[/COLOR][/B]. Skipped (already there): [B]%d[/B]."
+               % (src_color, src_name, dst_color, dst_name, added, kind_label, skipped))
+        xbmcgui.Dialog().notification("[B][COLOR yellow]Import[/COLOR][/B]", msg, dst_icon, 8000, False)
+    except Exception as e:
+        xbmc.log("[IMPORT] Error: %s" % e, xbmc.LOGERROR)
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+        xbmcgui.Dialog().notification(
+            "[B][COLOR yellow]Import[/COLOR][/B]",
+            "Error: %s" % e, xbmcgui.NOTIFICATION_ERROR, 6000, False)
+
+
+# =============================================================================
+# RATINGS IMPORT (Trakt / MDBList / Simkl - fara TMDb)
+# =============================================================================
+# Item shape: (tmdb_id, media_type, season, episode, rating, rated_at)
+# media_type: 'movie' | 'show' | 'season' | 'episode'
+
+def _fetch_trakt_ratings():
+    from resources.lib.api import trakt_api
+    items = []
+    for endpoint, media_type in (('/sync/ratings/movies', 'movie'),
+                                 ('/sync/ratings/shows', 'show'),
+                                 ('/sync/ratings/seasons', 'season'),
+                                 ('/sync/ratings/episodes', 'episode')):
+        for row in trakt_api._get_trakt_paginated_list(endpoint) or []:
+            if not isinstance(row, dict):
+                continue
+            rating = row.get('rating')
+            if rating is None:
+                continue
+            rated_at = row.get('rated_at') or _now_iso()
+            tid, season, episode = '', 0, 0
+            if media_type == 'movie':
+                ids = (row.get('movie') or {}).get('ids') or {}
+                tid = ids.get('tmdb')
+            elif media_type == 'show':
+                ids = (row.get('show') or {}).get('ids') or {}
+                tid = ids.get('tmdb')
+            elif media_type == 'season':
+                ids = (row.get('show') or {}).get('ids') or {}
+                tid = ids.get('tmdb')
+                season = int((row.get('season') or {}).get('number') or 0)
+            else:
+                ids = (row.get('show') or {}).get('ids') or {}
+                tid = ids.get('tmdb')
+                season = int((row.get('episode') or {}).get('season') or 0)
+                episode = int((row.get('episode') or {}).get('number') or 0)
+            if tid:
+                items.append((str(tid), media_type, season, episode,
+                              int(rating), rated_at))
+    return items
+
+
+def _fetch_mdblist_ratings(api):
+    items = []
+    cursor = None
+    for _ in range(100):
+        data = api.get_sync_ratings(cursor=cursor, limit=1000)
+        if not data or not isinstance(data, dict):
+            break
+        for movie in data.get('movies') or []:
+            inner = movie.get('movie', movie) or movie
+            tid = str(((inner.get('ids') or {}).get('tmdb')) or '')
+            if tid and movie.get('rating') is not None:
+                items.append((tid, 'movie', 0, 0, int(movie.get('rating')),
+                              movie.get('rated_at') or _now_iso()))
+        for show in data.get('shows') or []:
+            inner = show.get('show', show) or show
+            tid = str(((inner.get('ids') or {}).get('tmdb')) or '')
+            if tid and show.get('rating') is not None:
+                items.append((tid, 'show', 0, 0, int(show.get('rating')),
+                              show.get('rated_at') or _now_iso()))
+        for row in data.get('seasons') or []:
+            inner = row.get('season', row) or row
+            show = inner.get('show', {}) or {}
+            ids = inner.get('ids', {}) or show.get('ids', {}) or {}
+            tid = str(ids.get('tmdb') or '')
+            if tid and row.get('rating') is not None:
+                items.append((tid, 'season', int(inner.get('number') or 0), 0,
+                              int(row.get('rating')), row.get('rated_at') or _now_iso()))
+        for row in data.get('episodes') or []:
+            inner = row.get('episode', row) or row
+            tid = str(((inner.get('ids') or {}).get('tmdb')) or '')
+            if tid and row.get('rating') is not None:
+                items.append((tid, 'episode', int(inner.get('season') or 0),
+                              int(inner.get('number') or 0), int(row.get('rating')),
+                              row.get('rated_at') or _now_iso()))
+        pagination = data.get('pagination', {})
+        if not pagination.get('has_more'):
+            break
+        cursor = pagination.get('next_cursor')
+    return items
+
+
+def _fetch_simkl_ratings(api):
+    items = []
+    data = api.get_sync_ratings(extended='full')
+    if not data or not isinstance(data, dict):
+        return items
+    for row in data.get('movies') or []:
+        if not isinstance(row, dict):
+            continue
+        inner = row.get('movie') or row
+        ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
+        tid = str(ids.get('tmdb') or '')
+        rating = row.get('user_rating')
+        if rating is None:
+            rating = row.get('rating')
+        if tid and rating is not None:
+            items.append((tid, 'movie', 0, 0, int(rating),
+                          row.get('user_rated_at') or row.get('rated_at') or _now_iso()))
+    for row in data.get('shows') or []:
+        if not isinstance(row, dict):
+            continue
+        inner = row.get('show') or row
+        ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
+        tid = str(ids.get('tmdb') or '')
+        rating = row.get('user_rating')
+        if rating is None:
+            rating = row.get('rating')
+        rated_at = row.get('user_rated_at') or row.get('rated_at') or _now_iso()
+        if tid and rating is not None:
+            items.append((tid, 'show', 0, 0, int(rating), rated_at))
+        for season in row.get('seasons') or []:
+            if not isinstance(season, dict):
+                continue
+            for ep in season.get('episodes') or []:
+                if not isinstance(ep, dict):
+                    continue
+                ep_rating = ep.get('user_rating')
+                if ep_rating is None:
+                    ep_rating = ep.get('rating')
+                if ep_rating is None:
+                    continue
+                items.append((tid, 'episode', int(season.get('number') or 0),
+                              int(ep.get('number') or 0), int(ep_rating),
+                              ep.get('user_rated_at') or ep.get('rated_at') or rated_at))
+    return items
+
+
+def _fetch_punchplay_ratings(api):
+    items = []
+    page = 1
+    for _ in range(200):
+        data = api.get_ratings(page=page)
+        if not isinstance(data, dict):
+            break
+        for row in data.get('items') or []:
+            if not isinstance(row, dict):
+                continue
+            try:
+                tid = int(row.get('tmdbId') or 0)
+            except:
+                continue
+            if not tid or row.get('rating') is None:
+                continue
+            scope = str(row.get('scope') or 'title').lower()
+            try:
+                s = int(row.get('season') or 0)
+                e = int(row.get('episode') or 0)
+            except:
+                s, e = 0, 0
+            kind = str(row.get('kind') or '').lower()
+            if scope == 'episode' and e:
+                mt = 'episode'
+            elif scope == 'season' and s:
+                mt = 'season'
+            else:
+                mt = 'movie' if kind == 'movie' else 'show'
+            items.append((str(tid), mt, s, e, int(row.get('rating')),
+                          row.get('ratedAt') or _now_iso()))
+        if not data.get('hasMore'):
+            break
+        page += 1
+    return items
+
+
+def _push_ratings_to_trakt(items, progress_cb):
+    from resources.lib.api import trakt_api
+    added = 0
+    done = 0
+    total = len(items)
+    for chunk in _chunks(items, 50):
+        movies, shows = [], []
+        for tid, media_type, season, episode, rating, rated_at in chunk:
+            rating = min(max(int(rating), 1), 10)
+            if media_type == 'movie':
+                movies.append({'ids': {'tmdb': int(tid)}, 'rating': rating,
+                               'rated_at': rated_at})
+            elif media_type == 'show':
+                shows.append({'ids': {'tmdb': int(tid)}, 'rating': rating,
+                              'rated_at': rated_at})
+            elif media_type == 'season':
+                shows.append({'ids': {'tmdb': int(tid)},
+                              'seasons': [{'number': int(season), 'rating': rating,
+                                           'rated_at': rated_at}]})
+            else:
+                shows.append({'ids': {'tmdb': int(tid)},
+                              'seasons': [{'number': int(season),
+                                           'episodes': [{'number': int(episode),
+                                                         'rating': rating,
+                                                         'rated_at': rated_at}]}]})
+        data = {}
+        if movies:
+            data['movies'] = movies
+        if shows:
+            data['shows'] = shows
+        res = trakt_api.trakt_api_request('/sync/ratings', method='POST', data=data)
+        added_block = (res or {}).get('added') or {}
+        added += sum(int(added_block.get(k) or 0)
+                     for k in ('movies', 'shows', 'seasons', 'episodes'))
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _post_mdblist_retry(api, path, data):
+    res = api._post(path, data=data)
+    if res is not None:
+        return res
+    for wait in (10, 30, 60):
+        xbmc.log("[IMPORT] MDBList no response, waiting %ds..." % wait, xbmc.LOGINFO)
+        xbmc.sleep(wait * 1000)
+        res = api._post(path, data=data)
+        if res is not None:
+            return res
+    return None
+
+
+def _count_added(res, fallback):
+    block = (res or {}).get('added') or (res or {}).get('updated') or {}
+    if isinstance(block, dict):
+        total = 0
+        for value in block.values():
+            if isinstance(value, list):
+                total += len(value)
+            else:
+                try:
+                    total += int(value)
+                except Exception:
+                    pass
+        if total:
+            return total
+    if res is not None:
+        return fallback
+    return 0
+
+
+def _push_ratings_to_mdblist(api, items, progress_cb):
+    from collections import OrderedDict
+    movies = [{'ids': {'tmdb': int(t)}, 'rating': min(max(int(r), 1), 10),
+               'rated_at': d}
+              for t, mt, _s, _e, r, d in items if mt == 'movie']
+    shows = [{'ids': {'tmdb': int(t)}, 'rating': min(max(int(r), 1), 10),
+              'rated_at': d}
+             for t, mt, _s, _e, r, d in items if mt == 'show']
+    season_groups = OrderedDict()
+    for t, mt, s, _e, r, d in items:
+        if mt != 'season':
+            continue
+        season_groups.setdefault(str(t), []).append(
+            {'number': int(s), 'rating': min(max(int(r), 1), 10), 'rated_at': d})
+    season_entries = [{'ids': {'tmdb': int(t)}, 'seasons': v}
+                      for t, v in season_groups.items()]
+    episode_groups = OrderedDict()
+    for t, mt, s, e, r, d in items:
+        if mt != 'episode':
+            continue
+        episode_groups.setdefault((str(t), int(s)), []).append(
+            {'number': int(e), 'rating': min(max(int(r), 1), 10), 'rated_at': d})
+    show_seasons = OrderedDict()
+    for (t, s), eps in episode_groups.items():
+        show_seasons.setdefault(t, []).append({'number': s, 'episodes': eps})
+    episode_entries = [{'ids': {'tmdb': int(t)}, 'seasons': v}
+                       for t, v in show_seasons.items()]
+    payloads = []
+    for chunk in _chunks(movies, 100):
+        payloads.append(({'movies': chunk}, len(chunk)))
+    for chunk in _chunks(shows, 100):
+        payloads.append(({'shows': chunk}, len(chunk)))
+    for chunk in _chunks(season_entries, 50):
+        payloads.append(({'shows': chunk},
+                          sum(len(e['seasons']) for e in chunk)))
+    for chunk in _chunks(episode_entries, 50):
+        payloads.append(({'shows': chunk},
+                          sum(len(ep) for e in chunk for ep in e['seasons'])))
+    added = 0
+    done = 0
+    total = len(items)
+    for data, count in payloads:
+        res = _post_mdblist_retry(api, 'sync/ratings', data)
+        added += _count_added(res, count)
+        done += count
+        progress_cb(done, total)
+    return added
+
+
+def _push_ratings_to_simkl(api, items, progress_cb):
+    movies = [(t, min(max(int(r), 1), 10), d)
+              for t, mt, _s, _e, r, d in items if mt == 'movie']
+    shows = [(t, min(max(int(r), 1), 10), d)
+             for t, mt, _s, _e, r, d in items if mt == 'show']
+    added = 0
+    done = 0
+    total = len(movies) + len(shows)
+    for chunk in _chunks(movies, 100):
+        res = api.add_ratings_bulk(chunk, [], [])
+        added_block = (res or {}).get('added') or {}
+        added += int(added_block.get('movies') or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(shows, 100):
+        res = api.add_ratings_bulk([], chunk, [])
+        added_block = (res or {}).get('added') or {}
+        added += int(added_block.get('shows') or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_ratings_to_punchplay(api, items, progress_cb):
+    movies = [(t, min(max(int(r), 1), 10), d)
+              for t, mt, _s, _e, r, d in items if mt == 'movie']
+    shows = [(t, min(max(int(r), 1), 10), d)
+             for t, mt, _s, _e, r, d in items if mt == 'show']
+    episodes = [(t, int(s), int(e), min(max(int(r), 1), 10), d)
+                for t, mt, s, e, r, d in items if mt in ('season', 'episode')]
+    added = 0
+    done = 0
+    total = len(movies) + len(shows) + len(episodes)
+    for chunk in _chunks(movies, 100):
+        res = api.add_ratings_bulk(chunk, [], [])
+        out = (res or {}).get('added', 0) or 0
+        added += int(out)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(shows, 100):
+        res = api.add_ratings_bulk([], chunk, [])
+        out = (res or {}).get('added', 0) or 0
+        added += int(out)
+        done += len(chunk)
+        progress_cb(done, total)
+    for chunk in _chunks(episodes, 100):
+        res = api.add_ratings_bulk([], [], chunk)
+        out = (res or {}).get('added', 0) or 0
+        added += int(out)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _mirror_ratings_to_mdblist_db(items):
+    from resources.lib.providers import mdblist_sync
+    conn = mdblist_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mdblist_ratings (tmdb_id, media_type, season, episode, rating, rated_at) VALUES (?,?,?,?,?,?)",
+            [(t, mt, s, e, r, d) for t, mt, s, e, r, d in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_ratings_to_simkl_db(items):
+    from resources.lib.providers import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_ratings (tmdb_id, media_type, season, episode, rating, rated_at) VALUES (?,?,?,?,?,?)",
+            [(t, mt, s, e, r, d) for t, mt, s, e, r, d in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_ratings_to_punchplay_db(items):
+    from resources.lib.providers import punchplay_sync
+    punchplay_sync.mirror_ratings(
+        [(t, r, d) for t, mt, _s, _e, r, d in items if mt == 'movie'],
+        [(t, r, d) for t, mt, _s, _e, r, d in items if mt == 'show'],
+        [(t, s, e, r, d) for t, mt, s, e, r, d in items if mt in ('season', 'episode')])
+
+
+def import_ratings(direction):
+    src, dst = direction.split('_to_')
+    src_name, src_color, _ = _PROVIDER_INFO[src]
+    dst_name, dst_color, dst_icon = _PROVIDER_INFO[dst]
+
+    if 'trakt' in (src, dst):
+        from resources.lib.api import trakt_api
+        if not trakt_api.get_trakt_token():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+                provider_title('trakt') + " is not connected. Connect it in Settings -> Accounts.",
+                TRAKT_ICON, 5000, False)
+            return
+    api = None
+    if 'mdblist' in (src, dst):
+        from resources.lib.providers.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        if not api.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+                provider_title('mdblist') + " is not connected. Connect it in Settings -> Accounts.",
+                MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if 'simkl' in (src, dst):
+        from resources.lib.providers.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+                provider_title('simkl') + " is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
+            return
+    ppapi = None
+    if 'punchplay' in (src, dst):
+        from resources.lib.providers.punchplay_api import PunchplayAPI
+        ppapi = PunchplayAPI()
+        if not ppapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+                provider_title('punchplay') + " is not connected. Connect it in Settings -> Accounts.",
+                PUNCHPLAY_ICON, 5000, False)
+            return
+
+    confirmed = xbmcgui.Dialog().yesno(
+        "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+        "Import [B]ratings[/B] from [B][COLOR %s]%s[/COLOR][/B] to [B][COLOR %s]%s[/COLOR][/B]?"
+        "\nItems already rated in [B][COLOR %s]%s[/COLOR][/B] will be skipped."
+        "\n[B][COLOR yellow]Are you sure you want to continue?[/COLOR][/B]" %
+        (src_color, src_name, dst_color, dst_name, dst_color, dst_name))
+    if not confirmed:
+        return
+
+    prog = None
+    try:
+        prog = xbmcgui.DialogProgressBG()
+        prog.create("[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+                    "[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]" %
+                    (src_color, src_name, dst_color, dst_name))
+    except Exception:
+        prog = None
+
+    def update(pct, line):
+        if prog:
+            try:
+                prog.update(int(pct), line)
+            except Exception:
+                pass
+
+    fetch = {
+        'trakt': _fetch_trakt_ratings,
+        'mdblist': lambda: _fetch_mdblist_ratings(api),
+        'simkl': lambda: _fetch_simkl_ratings(skapi),
+        'punchplay': lambda: _fetch_punchplay_ratings(ppapi),
+    }
+
+    try:
+        update(3, "Fetching ratings from [B][COLOR %s]%s[/COLOR][/B]..." % (src_color, src_name))
+        src_items = fetch[src]()
+        update(18, "Fetching ratings from [B][COLOR %s]%s[/COLOR][/B]..." % (dst_color, dst_name))
+        dst_items = fetch[dst]()
+
+        dst_keys = {(t, mt, s, e) for t, mt, s, e, _r, _d in dst_items}
+        items = [it for it in src_items if (it[0], it[1], it[2], it[3]) not in dst_keys]
+        skipped = len(src_items) - len(items)
+        unsupported = 0
+        if dst == 'simkl':
+            supported = [it for it in items if it[1] in ('movie', 'show')]
+            unsupported = len(items) - len(supported)
+            items = supported
+        xbmc.log("[RATINGS IMPORT] %s -> %s: source %d | to push %d | skipped (already rated): %d | skipped (unsupported by Simkl): %d"
+                 % (src, dst, len(src_items), len(items), skipped, unsupported), xbmc.LOGINFO)
+
+        def cb(done, total):
+            update(25 + 65 * done // max(total, 1),
+                   "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
+        if dst == 'trakt':
+            added = _push_ratings_to_trakt(items, cb)
+        elif dst == 'mdblist':
+            added = _push_ratings_to_mdblist(api, items, cb)
+        elif dst == 'punchplay':
+            added = _push_ratings_to_punchplay(ppapi, items, cb)
+        else:
+            added = _push_ratings_to_simkl(skapi, items, cb)
+
+        update(92, "Updating local database...")
+        if dst == 'mdblist':
+            _mirror_ratings_to_mdblist_db(items)
+        elif dst == 'simkl':
+            _mirror_ratings_to_simkl_db(items)
+        elif dst == 'punchplay':
+            _mirror_ratings_to_punchplay_db(items)
+
+        update(98, "Clearing cache...")
+        from resources.lib.providers.watched_provider import _invalidate_fast_cache
+        _invalidate_fast_cache()
+
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+
+        msg = ("[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]: imported "
+               "[B][COLOR FF6AFB92]%d ratings[/COLOR][/B]. Skipped (already rated): [B]%d[/B]."
+               % (src_color, src_name, dst_color, dst_name, added, skipped))
+        if unsupported:
+            msg += " ([B]%d[/B] season/episode ratings skipped - Simkl has no season/episode ratings.)" % unsupported
+        xbmcgui.Dialog().notification("[B][COLOR yellow]Ratings Import[/COLOR][/B]", msg, dst_icon, 8000, False)
+    except Exception as e:
+        xbmc.log("[RATINGS IMPORT] Error: %s" % e, xbmc.LOGERROR)
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+        xbmcgui.Dialog().notification(
+            "[B][COLOR yellow]Ratings Import[/COLOR][/B]",
+            "Error: %s" % e, xbmcgui.NOTIFICATION_ERROR, 6000, False)
+
+
+# =============================================================================
+# DROPPED IMPORT (Trakt / MDBList / Simkl - TV shows, fara TMDb)
+# =============================================================================
+# Item shape: (tmdb_id, title, dropped_at)
+
+def _enrich_dropped_titles(items):
+    try:
+        from resources.lib.api.tmdb_api import get_tmdb_item_details
+    except Exception:
+        return items
+    out = []
+    for tid, title, d in items:
+        if title:
+            out.append((tid, title, d))
+            continue
+        try:
+            details = get_tmdb_item_details(str(tid), 'tv', lightweight=True, skip_localization=True) or {}
+            out.append((tid, details.get('name') or 'Unknown Show', d))
+        except Exception:
+            out.append((tid, 'Unknown Show', d))
+    return out
+
+
+def _fetch_trakt_dropped():
+    from resources.lib.providers import trakt_sync
+    try:
+        hidden = trakt_sync._get_hidden_show_ids() or {}
+        tids = hidden.get('tmdb') or set()
+    except Exception:
+        tids = set()
+    return _enrich_dropped_titles([(str(t), '', _now_iso()) for t in tids if t])
+
+
+def _fetch_mdblist_dropped(api):
+    items = []
+    cursor = None
+    for _ in range(100):
+        data = api.get_dropped(cursor=cursor, limit=1000)
+        if not data or not isinstance(data, dict):
+            break
+        for row in data.get('shows') or data.get('dropped') or []:
+            if not isinstance(row, dict):
+                continue
+            inner = row.get('show', row) or row
+            ids = inner.get('ids', {}) or {}
+            tid = str(ids.get('tmdb') or '')
+            if tid:
+                items.append((tid, inner.get('title') or 'Unknown Show',
+                              row.get('dropped_at') or _now_iso()))
+        pagination = data.get('pagination', {})
+        if not pagination.get('has_more'):
+            break
+        cursor = pagination.get('next_cursor')
+    return items
+
+
+def _fetch_simkl_dropped(api):
+    items = []
+    data = api.get_watchlist()
+    if not isinstance(data, dict):
+        return items
+    for row in (data.get('shows') or []) + (data.get('anime') or []):
+        if not isinstance(row, dict) or row.get('status') != 'dropped':
+            continue
+        inner = row.get('show') or row
+        ids = (inner.get('ids') or {}) if isinstance(inner, dict) else {}
+        tid = str(ids.get('tmdb') or '')
+        if tid:
+            items.append((tid, inner.get('title') or 'Unknown Show',
+                          row.get('added_to_watchlist_at') or _now_iso()))
+    return items
+
+
+def _fetch_punchplay_dropped(api):
+    items = []
+    after = 0
+    for _ in range(200):
+        try:
+            data = api.sync_snapshot('interaction', after=after, limit=500)
+        except Exception:
+            break
+        if not isinstance(data, dict):
+            break
+        for row in data.get('items') or []:
+            if not isinstance(row, dict):
+                continue
+            status = row.get('showStatus') or row.get('show_status')
+            if status != 'DROPPED':
+                continue
+            scope = str(row.get('scope') or 'title').lower()
+            if scope not in ('title', 'series'):
+                continue
+            try:
+                tid = int(row.get('tmdbId') or row.get('tmdb_id')
+                          or row.get('sourceId') or 0)
+            except Exception:
+                continue
+            if tid:
+                items.append((str(tid), '',
+                              row.get('updatedAt') or row.get('updated_at')
+                              or _now_iso()))
+        if not data.get('hasMore'):
+            break
+        try:
+            after = int(data.get('nextAfter') or 0)
+        except Exception:
+            break
+        if after <= 0:
+            break
+    return _enrich_dropped_titles(items)
+
+
+def _push_dropped_to_trakt(items, progress_cb):
+    from resources.lib.api import trakt_api
+    added = 0
+    done = 0
+    total = len(items)
+    for chunk in _chunks(items, 50):
+        data = {'shows': [{'ids': {'tmdb': int(t)}} for t, _title, _d in chunk]}
+        r3 = trakt_api.trakt_api_request('/users/hidden/dropped', method='POST', data=data)
+        trakt_api.trakt_api_request('/users/hidden/progress_watched', method='POST', data=data)
+        trakt_api.trakt_api_request('/users/hidden/calendar', method='POST', data=data)
+        added_block = (r3 or {}).get('added') or {}
+        added += int(added_block.get('shows') or 0)
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_dropped_to_mdblist(api, items, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    for chunk in _chunks(items, 100):
+        data = {'shows': [{'ids': {'tmdb': int(t)}, 'dropped_at': d}
+                          for t, _title, d in chunk]}
+        res = _post_mdblist_retry(api, 'sync/dropped', data)
+        added += _count_added(res, len(chunk))
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_dropped_to_simkl(api, items, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    for chunk in _chunks([int(t) for t, _title, _d in items], 100):
+        res = api.watchlist_add_bulk([], chunk, status='dropped')
+        added_block = (res or {}).get('added') or {}
+        added += len(added_block.get('shows') or [])
+        done += len(chunk)
+        progress_cb(done, total)
+    return added
+
+
+def _push_dropped_to_punchplay(api, items, progress_cb):
+    added = 0
+    done = 0
+    total = len(items)
+    for t, _title, _d in items:
+        try:
+            res = api.interact('show', t, scope='title', show_status='DROPPED')
+        except Exception as e:
+            xbmc.log('[DROPPED IMPORT] PunchPlay drop failed tmdb=%s: %s' % (t, e), xbmc.LOGERROR)
+            res = None
+        if res is not None:
+            added += 1
+        else:
+            xbmc.log('[DROPPED IMPORT] PunchPlay drop not confirmed tmdb=%s' % t, xbmc.LOGWARNING)
+        done += 1
+        progress_cb(done, total)
+    return added
+
+
+def _mirror_dropped_to_trakt_db(items):
+    from resources.lib.providers import trakt_sync
+    conn = trakt_sync.get_connection()
+    try:
+        conn.executemany("INSERT OR REPLACE INTO trakt_hidden_shows VALUES (?)",
+                         [(t,) for t, _title, _d in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_dropped_to_mdblist_db(items):
+    from resources.lib.providers import mdblist_sync
+    conn = mdblist_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO mdblist_dropped (tmdb_id, dropped_at, title) VALUES (?,?,?)",
+            [(t, d, title) for t, title, d in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_dropped_to_simkl_db(items):
+    from resources.lib.providers import simkl_sync
+    conn = simkl_sync.get_connection()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO simkl_dropped (tmdb_id, dropped_at, title) VALUES (?,?,?)",
+            [(t, d, title) for t, title, d in items])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _mirror_dropped_to_punchplay_db(items):
+    from resources.lib.providers import punchplay_sync
+    punchplay_sync.mirror_dropped([(t, title, d) for t, title, d in items])
+
+
+def _unmirror_dropped(dst, tids):
+    try:
+        if dst == 'punchplay':
+            from resources.lib.providers import punchplay_sync
+            for t in tids:
+                try:
+                    punchplay_sync.drop_remove_local(t)
+                except Exception:
+                    pass
+            return
+        if dst == 'trakt':
+            from resources.lib.providers import trakt_sync
+            conn = trakt_sync.get_connection()
+            table, sql = 'trakt_hidden_shows', "DELETE FROM trakt_hidden_shows WHERE tmdb_id=?"
+        elif dst == 'mdblist':
+            from resources.lib.providers import mdblist_sync
+            conn = mdblist_sync.get_connection()
+            table, sql = 'mdblist_dropped', "DELETE FROM mdblist_dropped WHERE tmdb_id=?"
+        else:
+            from resources.lib.providers import simkl_sync
+            conn = simkl_sync.get_connection()
+            table, sql = 'simkl_dropped', "DELETE FROM simkl_dropped WHERE tmdb_id=?"
+        try:
+            conn.executemany(sql, [(str(t),) for t in tids])
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        xbmc.log('[DROPPED IMPORT] Unmirror %s error: %s' % (dst, e), xbmc.LOGERROR)
+
+
+def import_dropped(direction):
+    src, dst = direction.split('_to_')
+    src_name, src_color, _ = _PROVIDER_INFO[src]
+    dst_name, dst_color, dst_icon = _PROVIDER_INFO[dst]
+
+    if 'trakt' in (src, dst):
+        from resources.lib.api import trakt_api
+        if not trakt_api.get_trakt_token():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+                provider_title('trakt') + " is not connected. Connect it in Settings -> Accounts.",
+                TRAKT_ICON, 5000, False)
+            return
+    api = None
+    if 'mdblist' in (src, dst):
+        from resources.lib.providers.mdblist_api import MDBListAPI
+        api = MDBListAPI()
+        if not api.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+                provider_title('mdblist') + " is not connected. Connect it in Settings -> Accounts.",
+                MDBLIST_ICON, 5000, False)
+            return
+    skapi = None
+    if 'simkl' in (src, dst):
+        from resources.lib.providers.simkl_api import SIMKLAPI
+        skapi = SIMKLAPI()
+        if not skapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+                provider_title('simkl') + " is not connected. Connect it in Settings -> Accounts.",
+                SIMKL_ICON, 5000, False)
+            return
+    ppapi = None
+    if 'punchplay' in (src, dst):
+        from resources.lib.providers.punchplay_api import PunchplayAPI
+        ppapi = PunchplayAPI()
+        if not ppapi.is_authenticated():
+            xbmcgui.Dialog().notification(
+                "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+                provider_title('punchplay') + " is not connected. Connect it in Settings -> Accounts.",
+                PUNCHPLAY_ICON, 5000, False)
+            return
+
+    confirmed = xbmcgui.Dialog().yesno(
+        "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+        "Import [B]dropped TV shows[/B] from [B][COLOR %s]%s[/COLOR][/B] to [B][COLOR %s]%s[/COLOR][/B]?"
+        "\nShows already dropped in [B][COLOR %s]%s[/COLOR][/B] will be skipped."
+        "\n[B][COLOR yellow]Are you sure you want to continue?[/COLOR][/B]" %
+        (src_color, src_name, dst_color, dst_name, dst_color, dst_name))
+    if not confirmed:
+        return
+
+    prog = None
+    try:
+        prog = xbmcgui.DialogProgressBG()
+        prog.create("[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+                    "[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]" %
+                    (src_color, src_name, dst_color, dst_name))
+    except Exception:
+        prog = None
+
+    def update(pct, line):
+        if prog:
+            try:
+                prog.update(int(pct), line)
+            except Exception:
+                pass
+
+    fetch = {
+        'trakt': _fetch_trakt_dropped,
+        'mdblist': lambda: _fetch_mdblist_dropped(api),
+        'simkl': lambda: _fetch_simkl_dropped(skapi),
+        'punchplay': lambda: _fetch_punchplay_dropped(ppapi),
+    }
+    push = {
+        'trakt': lambda items, cb: _push_dropped_to_trakt(items, cb),
+        'mdblist': lambda items, cb: _push_dropped_to_mdblist(api, items, cb),
+        'simkl': lambda items, cb: _push_dropped_to_simkl(skapi, items, cb),
+        'punchplay': lambda items, cb: _push_dropped_to_punchplay(ppapi, items, cb),
+    }
+    mirror = {
+        'trakt': _mirror_dropped_to_trakt_db,
+        'mdblist': _mirror_dropped_to_mdblist_db,
+        'simkl': _mirror_dropped_to_simkl_db,
+        'punchplay': _mirror_dropped_to_punchplay_db,
+    }
+
+    try:
+        update(3, "Fetching dropped shows from [B][COLOR %s]%s[/COLOR][/B]..." % (src_color, src_name))
+        src_items = fetch[src]()
+        update(18, "Fetching dropped shows from [B][COLOR %s]%s[/COLOR][/B]..." % (dst_color, dst_name))
+        dst_items = fetch[dst]()
+
+        dst_ids = {t for t, *_ in dst_items}
+        items = [it for it in src_items if it[0] not in dst_ids]
+        skipped = len(src_items) - len(items)
+        xbmc.log("[DROPPED IMPORT] %s -> %s: source %d | to push %d | skipped (already dropped): %d"
+                 % (src, dst, len(src_items), len(items), skipped), xbmc.LOGINFO)
+
+        def cb(done, total):
+            update(25 + 65 * done // max(total, 1),
+                   "Pushing to [B][COLOR %s]%s[/COLOR][/B]: %d/%d..." % (dst_color, dst_name, done, total))
+        added = push[dst](items, cb)
+
+        update(92, "Verifying on [B][COLOR %s]%s[/COLOR][/B]..." % (dst_color, dst_name))
+        mirror_items, unverified = items, []
+        if items:
+            try:
+                verify_ids = {t for t, *_ in fetch[dst]()}
+            except Exception as e:
+                xbmc.log('[DROPPED IMPORT] Verify %s error: %s (mirroring pushed items)' % (dst, e), xbmc.LOGWARNING)
+                verify_ids = None
+            if verify_ids is not None:
+                mirror_items = [it for it in items if it[0] in verify_ids]
+                unverified = [it for it in items if it[0] not in verify_ids]
+                xbmc.log('[DROPPED IMPORT] %s -> %s: verified %d/%d on server'
+                         % (src, dst, len(mirror_items), len(items)), xbmc.LOGINFO)
+
+        update(95, "Updating local database...")
+        mirror[dst](mirror_items)
+        if unverified:
+            _unmirror_dropped(dst, [t for t, *_ in unverified])
+
+        update(98, "Clearing cache...")
+        from resources.lib.providers.watched_provider import _invalidate_fast_cache
+        _invalidate_fast_cache()
+
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+
+        msg = ("[B][COLOR %s]%s[/COLOR][/B] -> [B][COLOR %s]%s[/COLOR][/B]: imported "
+               "[B][COLOR FF6AFB92]%d dropped shows[/COLOR][/B]. Skipped (already dropped): [B]%d[/B]."
+               % (src_color, src_name, dst_color, dst_name, added, skipped))
+        if unverified:
+            msg += " ([B]%d[/B] not confirmed on server - skipped, retry on next run.)" % len(unverified)
+        xbmcgui.Dialog().notification("[B][COLOR yellow]Dropped Import[/COLOR][/B]", msg, dst_icon, 8000, False)
+    except Exception as e:
+        xbmc.log("[DROPPED IMPORT] Error: %s" % e, xbmc.LOGERROR)
+        if prog:
+            try:
+                prog.close()
+            except Exception:
+                pass
+        xbmcgui.Dialog().notification(
+            "[B][COLOR yellow]Dropped Import[/COLOR][/B]",
+            "Error: %s" % e, xbmcgui.NOTIFICATION_ERROR, 6000, False)
+
+
+# =============================================================================
+# DISPATCHER (selector din Settings -> Accounts)
+# =============================================================================
+
+_DIR_12 = [
+    'trakt_to_mdblist', 'mdblist_to_trakt',
+    'trakt_to_tmdb', 'tmdb_to_trakt',
+    'mdblist_to_tmdb', 'tmdb_to_mdblist',
+    'trakt_to_simkl', 'simkl_to_trakt',
+    'mdblist_to_simkl', 'simkl_to_mdblist',
+    'tmdb_to_simkl', 'simkl_to_tmdb',
+    'trakt_to_punchplay', 'punchplay_to_trakt',
+    'mdblist_to_punchplay', 'punchplay_to_mdblist',
+    'tmdb_to_punchplay', 'punchplay_to_tmdb',
+    'simkl_to_punchplay', 'punchplay_to_simkl',
+]
+
+_DIR_6 = [
+    'trakt_to_mdblist', 'mdblist_to_trakt',
+    'trakt_to_simkl', 'simkl_to_trakt',
+    'mdblist_to_simkl', 'simkl_to_mdblist',
+    'trakt_to_punchplay', 'punchplay_to_trakt',
+    'mdblist_to_punchplay', 'punchplay_to_mdblist',
+    'simkl_to_punchplay', 'punchplay_to_simkl',
+]
+
+
+def _read_import_setting(setting_id):
+    from resources.lib.core.config import ADDON
+    try:
+        return int(str(ADDON.getSetting(setting_id) or '0').strip() or '0')
+    except Exception:
+        return 0
+
+
+def run_import(_legacy=None):
+    what = _read_import_setting('import_what')
+    if what in (0, 1):
+        didx = _read_import_setting('import_dir_12')
+        direction = _DIR_12[didx] if 0 <= didx < len(_DIR_12) else _DIR_12[0]
+        media_type = 'movie' if what == 0 else 'tv'
+        xbmc.log("[IMPORT] run_import: what=watchlist direction=%s media_type=%s"
+                 % (direction, media_type), xbmc.LOGINFO)
+        import_watchlist(direction, media_type)
+        return
+    didx = _read_import_setting('import_dir_6')
+    direction = _DIR_6[didx] if 0 <= didx < len(_DIR_6) else _DIR_6[0]
+    xbmc.log("[IMPORT] run_import: what=%s direction=%s"
+             % ({2: 'history', 3: 'ratings'}.get(what, 'dropped'), direction),
+             xbmc.LOGINFO)
+    if what == 2:
+        import_history(direction)
+    elif what == 3:
+        import_ratings(direction)
+    else:
+        import_dropped(direction)

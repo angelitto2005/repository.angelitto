@@ -3,7 +3,7 @@ import math
 import requests
 import xbmc
 
-from resources.lib.utils import DebridError
+from resources.lib.core.utils import DebridError
 
 BASE = 'https://api.real-debrid.com/rest/1.0/'
 
@@ -13,7 +13,7 @@ _REQUEST_TIMEOUT = 15
 
 
 def _api_key():
-    from resources.lib.config import ADDON
+    from resources.lib.core.config import ADDON
     try:
         return (ADDON.getSetting('rd_api_key') or '').strip()
     except Exception:
@@ -180,7 +180,7 @@ def unrestrict_link(link):
 
 def clear_cloud_cache():
     try:
-        from resources.lib.cache import MainCache
+        from resources.lib.core.cache import MainCache
         MainCache().delete_prefix('tmdbmovies_rd_')
     except Exception:
         xbmc.log("[DEBRID][RD] clear cache error", xbmc.LOGWARNING)

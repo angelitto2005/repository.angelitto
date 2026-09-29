@@ -151,7 +151,7 @@ def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
     [/B]-ul final) si cu genurile incluse in string (parametrul genre=
     alimenteaza doar linia de sub titlul clipului, nu randul din OSD)."""
     try:
-        from resources.lib.config import get_plot_language_code, LANG_TO_TMDB
+        from resources.lib.core.config import get_plot_language_code, LANG_TO_TMDB
         lang = LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')
     except Exception:
         lang = 'en-US'
@@ -293,7 +293,7 @@ def main():
     log('video_id={}'.format(video_id))
 
     if video_id:
-        from resources.lib.trailer_player import get_trailer_url, has_tmdbm_trailers, has_youtube_plugin
+        from resources.lib.playback.trailer_player import get_trailer_url, has_tmdbm_trailers, has_youtube_plugin
         url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
                               title=title, year=year, season=season,
                               plot=plot_param, tagline=tagline_param)

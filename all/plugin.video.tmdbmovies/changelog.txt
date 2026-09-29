@@ -1,3 +1,8 @@
+1.1.308
+- Fixed: NetMirror
+- Fixed: VOE links now resolve again.
+- Massive internal cleanup
+
 1.1.307
 - New: Set Views (Settings -> Set Views) - save your favourite Kodi view for 7 categories (Main, Movies, TV Shows, Seasons, Episodes, Episode Lists, Cloud / Files) + Reset Views.
 - Fixed My MDBList context menu freeze.
