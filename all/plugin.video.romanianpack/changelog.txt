@@ -1,4 +1,4 @@
-1.2.86
+1.2.87
 SpeedApp
 - Site-ul a migrat la interfata noua (Vue SPA + API JSON)
 - SpeedApp rescris complet pe API-ul oficial

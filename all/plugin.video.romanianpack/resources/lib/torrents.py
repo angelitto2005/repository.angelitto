@@ -631,17 +631,20 @@ def _sp_fmt_params(params):
 def _sp_quota(resp, label):
     try:
         rem = resp.headers.get('x-ratelimit-remaining')
+        lim = resp.headers.get('x-ratelimit-limit')
         if rem is None:
             return
         rem = int(rem)
+        lim = int(lim) if lim else None
     except:
         return
     if rem > 0 and not _SP_QUOTA['logged']:
-        log('[SpeedApp] rate-limit %s: %d/600 ramase (ferestre ~5 min)' % (label, rem))
+        log('[SpeedApp] rate-limit %s: %d ramase%s' % (label, rem,
+            (' din %d' % lim) if lim else ''))
         _SP_QUOTA['logged'] = True
     if rem == 0:
         if not _SP_QUOTA['warned']:
-            log('[SpeedApp] ATINS rate-limit %s 0/600 - asteptam resetul ferestrei' % label)
+            log('[SpeedApp] ATINS rate-limit %s 0 - asteptam resetul ferestrei' % label)
             _SP_QUOTA['warned'] = True
     else:
         _SP_QUOTA['warned'] = False
