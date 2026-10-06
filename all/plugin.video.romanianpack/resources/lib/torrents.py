@@ -5,6 +5,7 @@ import ssl
 import hashlib
 import pickle
 import abc
+import threading
 from resources.functions import __settings__
 zeroseed = __settings__.getSetting("zeroseed") == 'true'
 
@@ -606,7 +607,78 @@ class filelist(Torrent):
             
         return lists
 
+_SP_API = 'https://speedapp.io/api'
+_SP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+_SP_JUNK = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
+_SP_LOCK = threading.Lock()
+_SP_MEM = {'token': None, 'ts': 0, 'fails': 0}
+_SP_QUOTA = {'logged': False, 'warned': False}
+
+
+def _sp_fmt_params(params):
+    try:
+        parts = []
+        for k in sorted(params):
+            v = params[k]
+            if isinstance(v, list):
+                v = ','.join(str(x) for x in v)
+            parts.append('%s=%s' % (k, v))
+        return '&'.join(parts)
+    except:
+        return str(params)
+
+
+def _sp_quota(resp, label):
+    try:
+        rem = resp.headers.get('x-ratelimit-remaining')
+        if rem is None:
+            return
+        rem = int(rem)
+    except:
+        return
+    if rem > 0 and not _SP_QUOTA['logged']:
+        log('[SpeedApp] rate-limit %s: %d/600 ramase (ferestre ~5 min)' % (label, rem))
+        _SP_QUOTA['logged'] = True
+    if rem == 0:
+        if not _SP_QUOTA['warned']:
+            log('[SpeedApp] ATINS rate-limit %s 0/600 - asteptam resetul ferestrei' % label)
+            _SP_QUOTA['warned'] = True
+    else:
+        _SP_QUOTA['warned'] = False
+
+
+def _sp_cache_read():
+    try:
+        f = open(os.path.join(dataPath, 'speedapp_api.json'), 'r')
+        d = json.load(f)
+        f.close()
+        return d if isinstance(d, dict) else {}
+    except:
+        return {}
+
+
+def _sp_cache_write(d):
+    try:
+        f = open(os.path.join(dataPath, 'speedapp_api.json'), 'w')
+        json.dump(d, f)
+        f.close()
+    except:
+        pass
+
+
 class speedapp(Torrent):
+    # Categorii video acceptate in rezultate (canonicalName de pe noul API)
+    yescats = set(['movies_sd', 'movies_sd_ro', 'movies_dvd', 'movies_dvd_ro',
+        'movies_hd', 'movies_hd_ro', 'movies_bluray', 'movies_blurayro',
+        'uhd', 'uhd_ro', 'movies_packs', 'ro_movie',
+        'tv_sd', 'tv_sd_ro', 'tv_hd', 'tv_hd_ro', 'tv_packs', 'tv_pack_ro', 'ro_tv',
+        'sport', 'sports_ro', 'cartoons', 'documentary', 'documentary_ro',
+        'anime_hentai', 'music_videos',
+        'xxx', 'xxx_sd', 'xxx_dvd', 'xxx_hd', 'xxx_packs'])
+
+    # Categoriile XXX cer scope=adult, altfel API-ul intoarce 400 "Invalid category IDs"
+    _adult_cats = set(['xxx', 'xxx_sd', 'xxx_dvd', 'xxx_hd', 'xxx_packs', 'xxx_imgset'])
+
     def __init__(self):
         self.base_url = 'speedapp.io'
         self.thumb = os.path.join(media, 'speedapp.png')
@@ -624,119 +696,520 @@ class speedapp(Torrent):
         self.login_url = 'https://%s/login' % (self.base_url)
         self.search_url_base = 'https://%s/browse' % self.base_url
 
-        self.sortare = [('După dată', ''),
-                ('După mărime', 'sort=torrent.size&direction=desc'),
-                ('După downloads', 'sort=torrent.timesCompleted&direction=desc'),
-                ('După seederi', 'sort=torrent.seeders&direction=desc'),
-                ('După leecheri', 'sort=torrent.leechers&direction=desc')]
-        
-        self.categorii = [('Anime/Hentai', '3'),
-                ('Seriale HDTV', '43'),
-                ('Seriale HDTV-Ro', '44'),
-                ('Filme 3D', '61'),
-                ('Filme 3d Ro', '62'),
-                ('Filme BluRay', '17'),
-                ('Filme BluRay-Ro', '24'),
-                ('Filme DVD', '7'),
-                ('Filme DVD-Ro', '2'),
-                ('Filme HD', '8'),
-                ('Filme HD-Ro', '29'),
-                ('Filme Românești', '59'),
-                ('Filme 4K(2160p)', '61'),
-                ('Filme 4K-RO(2160p)', '57'),
-                ('Movies Packs', '38'),
-                ('Videoclipuri', '64'),
-                ('Filme SD', '10'),
-                ('Filme SD-Ro', '35'),
-                ('Sport', '22'),
-                ('Sport-Ro', '58'),
-                ('Seriale TV', '45'),
-                ('Seriale TV-Ro', '46'),
-                ('TV Packs', '41'),
-                ('TV Packs-Ro', '66'),
-                ('Seriale Românești', '60'),
-                ('Desene Animate', '62'),
-                ('Documentare', '9'),
-                ('Documentare-Ro', '63')]
-        self.adult = [('XXX-Packs', '50'),
-                ('XXX', '15'),
-                ('XXX DVD', '47'),
-                ('XXX HD', '48'),
-                ('XXX-SD', '51')]
-        self.menu = [('Recente', "https://%s/browse?page=1" % self.base_url, 'recente', self.thumb)]
+        self.sortare = [('Dupa data', ''),
+                ('Dupa marime', 'sort=size&direction=desc'),
+                ('Dupa downloads', 'sort=timesCompleted&direction=desc'),
+                ('Dupa seederi', 'sort=seeders&direction=desc'),
+                ('Dupa leecheri', 'sort=leechers&direction=desc')]
+
+        self.categorii = [('Anime/Hentai', 'anime_hentai'),
+                ('Seriale HDTV', 'tv_hd'),
+                ('Seriale HDTV-Ro', 'tv_hd_ro'),
+                ('Seriale TV (SD)', 'tv_sd'),
+                ('Seriale TV-Ro (SD)', 'tv_sd_ro'),
+                ('Seriale Romanesti', 'ro_tv'),
+                ('Filme BluRay', 'movies_bluray'),
+                ('Filme BluRay-Ro', 'movies_blurayro'),
+                ('Filme DVD', 'movies_dvd'),
+                ('Filme DVD-Ro', 'movies_dvd_ro'),
+                ('Filme HD', 'movies_hd'),
+                ('Filme HD-Ro', 'movies_hd_ro'),
+                ('Filme romanesti', 'ro_movie'),
+                ('Filme 4K(2160p)', 'uhd'),
+                ('Filme 4K-RO(2160p)', 'uhd_ro'),
+                ('Movies Packs', 'movies_packs'),
+                ('Videoclipuri', 'music_videos'),
+                ('Filme SD', 'movies_sd'),
+                ('Filme SD-Ro', 'movies_sd_ro'),
+                ('Sport', 'sport'),
+                ('Sport-Ro', 'sports_ro'),
+                ('TV Packs', 'tv_packs'),
+                ('TV Packs-Ro', 'tv_pack_ro'),
+                ('Desene Animate', 'cartoons'),
+                ('Documentare', 'documentary'),
+                ('Documentare-Ro', 'documentary_ro')]
+        self.adult = [('XXX-Packs', 'xxx_packs'),
+                ('XXX', 'xxx'),
+                ('XXX DVD', 'xxx_dvd'),
+                ('XXX HD', 'xxx_hd'),
+                ('XXX-SD', 'xxx_sd')]
+
+        self.menu = [('Recente', self._build_url(page=1), 'recente', self.thumb)]
+        self.menu.append(('Internal', self._build_url(scope='internal', page=1), 'sortare', self.thumb))
         l = []
         for x in self.categorii:
-            l.append((x[0], 'https://%s/browse?categories[0]=%s' % (self.base_url, x[1]), 'sortare', self.thumb))
+            l.append((x[0], self._build_url(cat=[x[1]]), 'sortare', self.thumb))
         self.menu.extend(l)
         m = []
         for x in self.adult:
-            m.append((x[0], 'https://%s/adult?categories[0]=%s' % (self.base_url, x[1]), 'sortare', self.thumb))
+            m.append((x[0], self._build_url(cat=[x[1]]), 'sortare', self.thumb))
         self.menu.extend(m)
-        self.menu.extend([('Toate(fără XXX)', 'https://%s/browse?categories[0]=38&categories[1]=10&categories[2]=35&categories[3]=8&categories[4]=29&categories[5]=7&categories[6]=2&categories[7]=17&categories[8]=24&categories[9]=59&categories[10]=57&categories[11]=61&categories[12]=41&categories[13]=66&categories[14]=45&categories[15]=46&categories[16]=43&categories[17]=44&categories[18]=60&categories[19]=62&categories[20]=3&categories[21]=64&categories[22]=22&categories[23]=58&categories[24]=9&categories[25]=63' % self.base_url, 'sortare', self.thumb)])
-        self.menu.extend([('Căutare', self.base_url, 'cauta', self.searchimage)])
+        self.menu.extend([('Toate(fara XXX)', self._build_url(cat=[x[1] for x in self.categorii]), 'sortare', self.thumb)])
+        self.menu.extend([('Cautare', self.base_url, 'cauta', self.searchimage)])
+
+    # ---------- URL / query helpers ----------
+    def _build_url(self, search=None, cat=None, sort=None, direction=None, page=1, items=50, scope=None):
+        parts = []
+        if scope:
+            parts.append('scope=' + scope)
+        if search:
+            parts.append('search=' + urllib.quote_plus(search))
+        if cat:
+            parts.append('cat=' + ','.join(cat))
+        if sort:
+            parts.append('sort=%s&direction=%s' % (sort, direction or 'desc'))
+        parts.append('page=%d' % int(page or 1))
+        parts.append('itemsPerPage=%d' % int(items or 50))
+        return '%s/torrents?%s' % (_SP_API, '&'.join(parts))
+
+    def _url_params(self, url):
+        raw = {}
+        qs = url.split('?', 1)[1] if '?' in url else ''
+        for part in qs.split('&'):
+            if not part:
+                continue
+            k, sep, v = part.partition('=')
+            k = urllib.unquote_plus(k)
+            v = urllib.unquote_plus(v) if sep else ''
+            if k in raw:
+                if not isinstance(raw[k], list):
+                    raw[k] = [raw[k]]
+                raw[k].append(v)
+            else:
+                raw[k] = v
+        cats = self._categories()
+        params = {}
+        for k, v in raw.items():
+            if k == 'cat':
+                names = v if isinstance(v, list) else [x for x in v.split(',')]
+                ids = []
+                known = []
+                missing = []
+                for n in names:
+                    n = n.strip()
+                    if not n:
+                        continue
+                    if n in cats:
+                        ids.append(cats[n])
+                        known.append(n)
+                    else:
+                        missing.append(n)
+                if missing:
+                    log('[SpeedApp] categorii necunoscute pe API, ignorate: %s' % ','.join(missing))
+                if ids:
+                    params['categories[]'] = ids
+                # API-ul respinge categoriile XXX (400 "Invalid category IDs") daca nu trimitem scope=adult
+                if known and all(n in self._adult_cats for n in known):
+                    params['scope'] = 'adult'
+            elif k in ('page', 'itemsPerPage'):
+                if isinstance(v, list):
+                    v = v[0]
+                try:
+                    params[k] = int(v)
+                except:
+                    pass
+            elif k in ('sort', 'direction', 'search', 'scope'):
+                params[k] = v if not isinstance(v, list) else v[0]
+        params.setdefault('itemsPerPage', 50)
+        return params
+
+    def _next_url(self, params):
+        cats = self._categories()
+        rev = {}
+        for name, cid in cats.items():
+            rev[cid] = name
+        names = [rev.get(int(c), None) for c in (params.get('categories[]') or [])]
+        names = [n for n in names if n]
+        return self._build_url(search=params.get('search'), cat=names or None,
+                               sort=params.get('sort'), direction=params.get('direction'),
+                               page=int(params.get('page', 1)) + 1,
+                               items=int(params.get('itemsPerPage', 50)),
+                               scope=params.get('scope'))
+
+    # ---------- API ----------
+    def _token(self, force=False):
+        # /api/login are rate-limit agresiv (429 cu zeci de minute) -> un singur login per proces
+        # si niciun retry in serie (parola gresita ar lovi limita la fiecare listing)
+        with _SP_LOCK:
+            if _SP_MEM.get('fails') and (time.time() - _SP_MEM['fails']) < 600:
+                return _SP_MEM.get('token')
+            if not force and _SP_MEM['token'] and (time.time() - _SP_MEM['ts']) < 12 * 86400:
+                return _SP_MEM['token']
+            cache = _sp_cache_read()
+            tok = cache.get('token')
+            ts = cache.get('ts', 0)
+            if not force and tok and (time.time() - ts) < 12 * 86400:
+                _SP_MEM['token'] = tok
+                _SP_MEM['ts'] = ts
+                return tok
+            if not self.username or not self.password:
+                log('[SpeedApp] lipsesc credentialele (SPAusername/SPApassword)')
+                return tok if tok else None
+            try:
+                r = requests.post(_SP_API + '/login', json={'username': self.username, 'password': self.password},
+                                  headers={'User-Agent': _SP_UA}, timeout=15, verify=False)
+            except Exception as e:
+                _SP_MEM['fails'] = time.time()
+                log('[SpeedApp] API login error: %s' % str(e))
+                return tok if tok else None
+            if r.status_code == 429:
+                _SP_MEM['fails'] = time.time()
+                if tok:
+                    return tok
+                log('[SpeedApp] API login rate-limit (429) - nu mai incercam 10 min')
+                return None
+            if r.status_code not in (200, 201):
+                _SP_MEM['fails'] = time.time()
+                log('[SpeedApp] API login failed: %s %s (nu mai incercam 10 min)' % (r.status_code, str(r.text)[:120]))
+                return tok if tok else None
+            try:
+                new_tok = (r.json() or {}).get('token')
+            except:
+                new_tok = None
+            if not new_tok:
+                return tok if tok else None
+            now = time.time()
+            cache['token'] = new_tok
+            cache['ts'] = now
+            _sp_cache_write(cache)
+            _SP_MEM['token'] = new_tok
+            _SP_MEM['ts'] = now
+            return new_tok
+
+    def _api_get(self, path, params):
+        for attempt in (0, 1):
+            tok = self._token(force=(attempt == 1))
+            if not tok:
+                return None
+            try:
+                r = requests.get(_SP_API + path, params=params,
+                                 headers={'User-Agent': _SP_UA, 'Authorization': 'Bearer ' + tok,
+                                          'Accept': 'application/ld+json'},
+                                 timeout=20, verify=False)
+            except Exception as e:
+                log('[SpeedApp] API %s error: %s' % (path, str(e)))
+                return None
+            _sp_quota(r, path)
+            if r.status_code == 200:
+                try:
+                    return r.json()
+                except:
+                    return None
+            if r.status_code in (401, 403):
+                if attempt == 0:
+                    continue
+                # login reusit, dar requestul tot 401 -> nu mai reimprospteaza in fiecare listing
+                _SP_MEM['fails'] = time.time()
+                log('[SpeedApp] token respingat (401 la %s) - pauza 10 min' % path)
+                return None
+            if r.status_code == 429:
+                log('[SpeedApp] API rate-limit (429)')
+                return None
+            log('[SpeedApp] API %s -> %s %s' % (path, r.status_code, str(r.text)[:150]))
+            return None
+        return None
+
+    def _categories(self):
+        cache = _sp_cache_read()
+        cats = cache.get('categories')
+        if cats and (time.time() - cache.get('cats_ts', 0)) < 86400:
+            return cats
+        data = self._api_get('/categories', {'itemsPerPage': 100})
+        m = {}
+        if data:
+            for c in (data.get('member') or []):
+                if c.get('canonicalName'):
+                    m[c['canonicalName']] = c.get('id')
+        if m:
+            cache['categories'] = m
+            cache['cats_ts'] = time.time()
+            _sp_cache_write(cache)
+            return m
+        return cats if cats else {}
 
     def login(self):
-        headers = {'Host': self.base_url,
-                   'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:70.1) Gecko/20100101 Firefox/70.1',
-                   'Accept-Language': 'ro,en-US;q=0.7,en;q=0.3'}
-        y, session = makeRequest('https://%s/login' % (self.base_url), name=self.__class__.__name__, headers=headers, savecookie=True)
-        save_cookie(self.__class__.__name__, session)
-        token_match = re.search('_csrf_token.+?value="(.+?)"', y)
-        if not token_match:
-            return False
-        token = token_match.group(1)
-        
-        data = {
-            'password': self.password,
-            'email': self.username,
-            '_remember_me': 'on',
-            '_csrf_token': token
-        }
-        log('Log-in  attempt')
-        e = []
-        try: cookiesitems = session.cookies.iteritems()
-        except: cookiesitems = session.cookies.items()
-        for i, j in cookiesitems:
-            e.append('%s=%s' % (i, j))
-        headers['Cookie'] = "; ".join(e)
-        headers['Origin'] = 'https://' + self.base_url
-        headers['Referer'] = 'https://' + self.base_url + '/login'
-        xbmc.sleep(1000)
-        x, session1 = makeRequest('https://%s/login' % (self.base_url), name=self.__class__.__name__, data=data, headers=headers, savecookie=True)
-        if re.search('logout', x):
-            log('LOGGED SpeedApp')
-        if re.search('Invalid credentials', x):
-            xbmc.executebuiltin((u'Notification(%s,%s)' % ('SpeedApp Login Error', 'Parola/Username incorecte')))
-            clear_cookie(self.__class__.__name__)
-        save_cookie(self.__class__.__name__, session1)
-        try: cookiesitems = session1.cookies.iteritems()
-        except: cookiesitems = session1.cookies.items()
-        for cookie, value in cookiesitems:
-            return cookie + '=' + value
-        return False
+        return self._token(force=True)
 
+    # ---------- rezultate ----------
+    def _item(self, t, filter_data, preserved_ids, hide_int=False):
+        nume = (t.get('name') or '').strip()
+        if not nume:
+            return None
+        cat = t.get('category') or {}
+        cat_name = cat.get('canonicalName') or ''
+        if cat_name and cat_name not in self.yescats:
+            return None
+        if re.search(_SP_JUNK, nume):
+            return None
+        s_match = re.search(r'(?i)S(\d+)', nume)
+        e_match = re.search(r'(?i)E(\d+)', nume)
+        item_season = int(s_match.group(1)) if s_match else -1
+        item_episode = int(e_match.group(1)) if e_match else -1
+        is_episode_flag = (item_season != -1 and item_episode != -1)
+        fmode = filter_data.get('mode') if filter_data else 'normal'
+        if fmode == 'D1':
+            target_s = filter_data.get('season')
+            target_e = filter_data.get('target_ep')
+            if item_season != -1 and item_season != target_s:
+                return None
+            if is_episode_flag and item_episode != target_e:
+                return None
+        elif fmode == 'D2':
+            target_s = filter_data.get('season')
+            if item_season != -1 and item_season != target_s:
+                return None
+            if is_episode_flag:
+                return None
+        try:
+            seeds = int(t.get('seeders') or 0)
+            leechers = int(t.get('leechers') or 0)
+        except:
+            seeds = 0
+            leechers = 0
+        if seeds == 0 and not zeroseed:
+            return None
+        try:
+            size_b = int(t.get('size') or 0)
+        except:
+            size_b = 0
+        size = format_bytes(size_b)
+        free = '[B][COLOR lime]FREE[/COLOR][/B] ' if t.get('isFreeleech') else ''
+        double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if t.get('isDoubleUpload') else ''
+        promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if t.get('isSticky') else ''
+        intern = '' if (hide_int or not t.get('isInternal')) else '[B][COLOR FF00CED1]INT[/COLOR][/B] '
+        nume_afisat = '%s%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, intern, nume, size, seeds, leechers)
+        plot = '%s\n\n[COLOR yellow]Download: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, size, size, seeds, leechers)
+        info_dict = {'Title': nume, 'Plot': plot, 'Size': size, 'Poster': self.thumb}
+        if preserved_ids:
+            info_dict.update(preserved_ids)
+        tid = t.get('id')
+        if tid is None:
+            return None
+        return {'nume': nume_afisat,
+                'legatura': '%s/torrents/%s/download' % (_SP_API, tid),
+                'imagine': self.thumb,
+                'switch': 'torrent_links',
+                'info': info_dict}
+
+    def _collect(self, data, lists, seen, filter_data, preserved_ids, rows=None, hide_int=False):
+        if not data:
+            return 0
+        added = 0
+        for t in (data.get('member') or []):
+            tid = t.get('id')
+            if tid is None or tid in seen:
+                continue
+            it = self._item(t, filter_data, preserved_ids, hide_int)
+            if not it:
+                continue
+            seen.add(tid)
+            lists.append(it)
+            if rows is not None:
+                rows.append((it, t))
+            added += 1
+        return added
+
+    # ---------- postere TMDb (API-ul SpeedApp nu livreaza imagini) ----------
+    _poster_ttl = 7 * 86400
+    _poster_workers = 10
+    _poster_deadline = 5.0
+    _poster_max = 40
+
+    def _poster_key(self, title, year, kind):
+        return '%s|%s|%s' % (kind, re.sub(r'[^a-z0-9]+', '', (title or '').lower()), year or '')
+
+    def _poster_meta(self, t):
+        title = (t.get('title') or '').strip()
+        year = t.get('year')
+        name = t.get('name') or ''
+        cat = ((t.get('category') or {}).get('canonicalName') or '')
+        kind = 'movie'
+        if cat.startswith('tv_') or cat in ('ro_tv', 'anime_hentai') or re.search(r'(?i)\bS\d+E\d+', name):
+            kind = 'tv'
+        if not title:
+            try:
+                from resources.lib import PTN
+                parsed = PTN.parse(re.sub(r'[._\-]+', ' ', name))
+                title = str(parsed.get('title') or '').strip()
+                if not year and parsed.get('year'):
+                    year = parsed.get('year')
+                if parsed.get('season') is not None:
+                    kind = 'tv'
+            except:
+                pass
+        if not title or len(title) < 2:
+            return None
+        return (title, year, kind)
+
+    def _poster_cache_read(self, keys):
+        out = {}
+        if not keys:
+            return out
+        try:
+            con = database.connect(addonCache)
+            cur = con.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS sp_posters (k TEXT PRIMARY KEY, poster TEXT, ts INTEGER)")
+            cur.execute("SELECT k, poster, ts FROM sp_posters WHERE k IN (%s)" % ','.join(['?'] * len(keys)), keys)
+            now = time.time()
+            for k, poster, ts in cur.fetchall():
+                if ts and (now - ts) < self._poster_ttl:
+                    out[k] = poster or ''
+            con.close()
+        except Exception as e:
+            log('[SpeedApp] poster cache read: %s' % str(e))
+        return out
+
+    def _poster_cache_write(self, pairs):
+        if not pairs:
+            return
+        try:
+            con = database.connect(addonCache)
+            cur = con.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS sp_posters (k TEXT PRIMARY KEY, poster TEXT, ts INTEGER)")
+            now = int(time.time())
+            cur.executemany("INSERT OR REPLACE INTO sp_posters (k, poster, ts) VALUES (?,?,?)",
+                            [(k, v or '', now) for k, v in pairs])
+            con.commit()
+            con.close()
+        except Exception as e:
+            log('[SpeedApp] poster cache write: %s' % str(e))
+
+    def _tmdb_poster(self, title, year, kind):
+        try:
+            params = {'api_key': tmdb_key(), 'query': title, 'language': 'en-US'}
+            if kind != 'tv' and year:
+                params['primary_release_year'] = year
+            r = requests.get('https://api.themoviedb.org/3/search/%s' % kind, params=params,
+                             timeout=6, verify=False)
+            if r.status_code != 200:
+                return ''
+            results = (r.json() or {}).get('results') or []
+        except:
+            return ''
+        tnorm = re.sub(r'[^a-z0-9]+', ' ', (title or '').lower()).strip()
+        best = None
+        best_score = 0
+        for it in results:
+            if not it.get('poster_path'):
+                continue
+            nm = it.get('name') if kind == 'tv' else it.get('title')
+            if not nm:
+                continue
+            inorm = re.sub(r'[^a-z0-9]+', ' ', nm.lower()).strip()
+            score = 0
+            if inorm == tnorm:
+                score += 10
+            elif inorm.startswith(tnorm) or tnorm.startswith(inorm):
+                score += 6
+            elif tnorm in inorm or inorm in tnorm:
+                score += 3
+            ry = (it.get('first_air_date') if kind == 'tv' else it.get('release_date')) or ''
+            ry = ry[:4]
+            if year and ry:
+                try:
+                    if ry == str(year):
+                        score += 5
+                    elif abs(int(ry) - int(year)) <= 1:
+                        score += 2
+                except:
+                    pass
+            if score > best_score:
+                best_score = score
+                best = it
+        if not best or best_score < 6:
+            return ''
+        return 'https://image.tmdb.org/t/p/w500%s' % best['poster_path']
+
+    def _apply_posters(self, rows):
+        if not rows:
+            return
+        jobs = {}
+        for item, t in rows:
+            info = item.get('info') or {}
+            if info.get('Poster') and info.get('Poster') != self.thumb:
+                continue
+            meta = self._poster_meta(t)
+            if not meta:
+                continue
+            jobs[self._poster_key(*meta)] = meta
+        if not jobs:
+            return
+        keys = list(jobs.keys())[:self._poster_max]
+        cached = self._poster_cache_read(keys)
+        lut = {}
+        for k in keys:
+            if k in cached:
+                lut[k] = cached[k]
+        todo = [k for k in keys if k not in lut]
+        if todo:
+            lock = threading.Lock()
+            found = {}
+
+            def work(key):
+                title, year, kind = jobs[key]
+                p = self._tmdb_poster(title, year, kind)
+                if not p:
+                    p = self._tmdb_poster(title, year, 'tv' if kind == 'movie' else 'movie')
+                with lock:
+                    found[key] = p
+
+            deadline = time.time() + self._poster_deadline
+            running = []
+            while todo or running:
+                while todo and len(running) < self._poster_workers:
+                    key = todo.pop(0)
+                    th = threading.Thread(target=work, args=(key,))
+                    th.daemon = True
+                    try:
+                        th.start()
+                    except:
+                        continue
+                    running.append(th)
+                if time.time() >= deadline:
+                    break
+                time.sleep(0.05)
+                running = [t for t in running if t.is_alive()]
+            with lock:
+                done = dict(found)
+            self._poster_cache_write(list(done.items()))
+            lut.update(done)
+        hit = 0
+        for item, t in rows:
+            meta = self._poster_meta(t)
+            if not meta:
+                continue
+            p = lut.get(self._poster_key(*meta))
+            if p:
+                info = item.get('info')
+                if isinstance(info, dict):
+                    info['Poster'] = p
+                item['imagine'] = p
+                hit += 1
+        log('[SpeedApp] postere TMDb: %d/%d randuri, %d cautari in cache' % (hit, len(rows), len(keys)))
+
+    # ---------- cautare ----------
     def cauta(self, keyword, limit=None):
-        import xbmcgui, json
-        
+        import xbmcgui
+
         clean_keyword = unquote(keyword)
-        
+
         try:
             if not isinstance(clean_keyword, str) and hasattr(clean_keyword, 'decode'):
                 clean_keyword = clean_keyword.decode('utf-8')
         except: pass
-        
+
         diacritice = {
             'ă':'a', 'â':'a', 'î':'i', 'ș':'s', 'ț':'t', 'Ă':'A', 'Â':'A', 'Î':'I', 'Ș':'S', 'Ț':'T',
             'ş':'s', 'ţ':'t', 'Ş':'S', 'Ţ':'T'
         }
         for d, r in diacritice.items():
             clean_keyword = clean_keyword.replace(d, r)
-        
+
         imdb_id = None
         media_type = 'movie'
         season = None
         episode = None
-        
+
         try:
             window = xbmcgui.Window(10000)
             playback_info_str = window.getProperty('mrsp.playback.info')
@@ -758,7 +1231,7 @@ class speedapp(Torrent):
         match_s_e = re.search(r'(.*?)\s+S(\d+)(?:E(\d+))?', clean_keyword, re.IGNORECASE)
         title_for_search = clean_keyword
         year = None
-        
+
         if match_s_e:
             title_for_search = match_s_e.group(1).strip()
             if season is None: season = int(match_s_e.group(2))
@@ -785,339 +1258,151 @@ class speedapp(Torrent):
             else:
                 filter_data = {'mode': 'D2', 'season': int(season)}
 
-        urls_to_scan = []
-        fallback_urls = []
-        
+        base = {'sort': 'seeders', 'direction': 'desc', 'itemsPerPage': 100}
+        scan_queries = []
+        fallback_queries = []
+
+        def q(term):
+            d = dict(base)
+            d['search'] = term
+            return d
+
         if imdb_id and str(imdb_id).startswith('tt'):
-            urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, str(imdb_id)))
-            
+            scan_queries.append(q(str(imdb_id)))
+
         if season is not None:
-            term_season = "%s S%02d" % (title_for_search, int(season))
-            urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_season)))
+            scan_queries.append(q("%s S%02d" % (title_for_search, int(season))))
             if episode is not None:
-                term_episode = "%s S%02dE%02d" % (title_for_search, int(season), int(episode))
-                urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(term_episode)))
+                scan_queries.append(q("%s S%02dE%02d" % (title_for_search, int(season), int(episode))))
         else:
             text_fallback_enabled = __settings__.getSetting("SPAtextfallback") == 'true'
-            
             if text_fallback_enabled:
-                fallback_urls.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword)))
-            
-            if not urls_to_scan:
-                urls_to_scan.append("https://%s/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=1" % (self.base_url, urllib.quote_plus(clean_keyword)))
-                fallback_urls = []
+                fallback_queries.append(q(clean_keyword))
+            if not scan_queries:
+                scan_queries.append(q(clean_keyword))
+                fallback_queries = []
 
-        # --- LOGIN + SEARCH CU SESIUNE PERSISTENTA ---
-        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        session = requests.Session()
-        
-        try:
-            login_resp = session.get('https://%s/login' % self.base_url,
-                headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
-                timeout=15, verify=False)
-            token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
-            if not token_match:
-                log('[SpeedApp] no CSRF token found')
-                return self.__class__.__name__, self.name, []
-            csrf_token = token_match.group(1)
-            login_post = session.post('https://%s/login' % self.base_url, data={
-                    'email': self.username, 'password': self.password,
-                    '_remember_me': 'on', '_csrf_token': csrf_token
-                }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
-                           "Referer": 'https://' + self.base_url + '/login'},
-                timeout=15, verify=False)
-            if 'logout' not in login_post.text:
-                log('[SpeedApp] login failed')
-                return self.__class__.__name__, self.name, []
-            log('[SpeedApp] login OK')
-        except Exception as e:
-            log('[SpeedApp] login error: %s' % str(e))
-            return self.__class__.__name__, self.name, []
+        preserved_ids = {}
+        if imdb_id:
+            preserved_ids['imdb_id'] = imdb_id
 
-        def fetch_html(url):
-            try:
-                resp = session.get(url, headers={"User-Agent": ua}, timeout=15, verify=False)
-                log('[SpeedApp] fetch status=%d len=%d' % (resp.status_code, len(resp.text)))
-                if resp.status_code == 200:
-                    return resp.text
-                return None
-            except Exception as e:
-                log('[SpeedApp] fetch error: %s' % str(e))
-                return None
-
-        yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
-        imagine = self.thumb
         lists = []
-        seen_magnets = set()
+        seen = set()
+        rows = []
 
-        def parse_blocks(html, mode):
-            if not html:
-                return
-            blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
-            if len(blocks) > 1:
-                blocks = blocks[1:]
-            for block_content in blocks:
-                try:
-                    if 'href="/torrents/' not in block_content:
-                        continue
-                    cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
-                    if not cat_match:
-                        continue
-                    cat = cat_match.group(1)
-                    if cat not in yescat:
-                        continue
-                    detalii_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block_content, re.DOTALL)
-                    if not detalii_match:
-                        continue
-                    nume = ensure_str(detalii_match.group(1)).strip()
-                    junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
-                    if re.search(junk_pattern, nume):
-                        continue
-                    download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
-                    if not download_match:
-                        continue
-                    legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                    if legatura in seen_magnets:
-                        continue
-                    s_match = re.search(r'(?i)S(\d+)', nume)
-                    e_match = re.search(r'(?i)E(\d+)', nume)
-                    item_season = int(s_match.group(1)) if s_match else -1
-                    item_episode = int(e_match.group(1)) if e_match else -1
-                    is_episode_flag = (item_season != -1 and item_episode != -1)
-                    keep_item = True
-                    fmode = filter_data.get('mode')
-                    if fmode == 'D1':
-                        target_s = filter_data.get('season')
-                        target_e = filter_data.get('target_ep')
-                        if item_season != -1 and item_season != target_s:
-                            keep_item = False
-                        elif is_episode_flag and item_episode != target_e:
-                            keep_item = False
-                    elif fmode == 'D2':
-                        target_s = filter_data.get('season')
-                        if item_season != -1 and item_season != target_s:
-                            keep_item = False
-                        elif is_episode_flag:
-                            keep_item = False
-                    if not keep_item:
-                        continue
-                    size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block_content)
-                    size = size_match.group(1).strip() if size_match else 'N/A'
-                    seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block_content)
-                    seeds = seeds_match.group(1) if seeds_match else '0'
-                    leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block_content)
-                    leechers = leech_match.group(1) if leech_match else '0'
-                    if seeds == '0' and not zeroseed:
-                        continue
-                    seen_magnets.add(legatura)
-                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'Descarcarea acestui torrent este gratuita' in block_content else ''
-                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'Uploadul pe acest torrent se va contoriza dublu.' in block_content else ''
-                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
-                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-                    plot = '%s\n\n[COLOR yellow]Download: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, size, size, seeds, leechers)
-                    info_dict = {
-                        'Title': nume, 'Plot': plot, 'Size': formatsize(size), 'Poster': imagine
-                    }
-                    if imdb_id:
-                        info_dict['imdb_id'] = imdb_id
-                    lists.append({
-                        'nume': nume_afisat, 'legatura': legatura, 'imagine': imagine,
-                        'switch': 'torrent_links', 'info': info_dict
-                    })
-                except Exception:
-                    continue
+        for params in scan_queries:
+            log('[SpeedApp] API search: %s' % params.get('search'))
+            data = self._api_get('/torrents', params)
+            self._collect(data, lists, seen, filter_data, preserved_ids, rows)
 
-        for url in urls_to_scan:
-            log('[SpeedApp] Fetching: %s' % url)
-            html = fetch_html(url)
-            if html:
-                parse_blocks(html, 'primary')
-
-        if not lists and fallback_urls:
+        if not lists and fallback_queries:
             log('[SpeedApp] IMDb n-a gasit nimic, fallback pe cautare text...')
-            for url in fallback_urls:
-                log('[SpeedApp] Fallback fetching: %s' % url)
-                html = fetch_html(url)
-                if html:
-                    parse_blocks(html, 'fallback')
+            for params in fallback_queries:
+                log('[SpeedApp] API fallback: %s' % params.get('search'))
+                data = self._api_get('/torrents', params)
+                self._collect(data, lists, seen, filter_data, preserved_ids, rows)
 
+        self._apply_posters(rows)
         return self.__class__.__name__, self.name, lists
 
+    # ---------- browse ----------
     def _fetch_and_parse_browse(self, orig_url, scan_urls, fallback_urls, yescat, filter_data, imagine, preserved_ids):
         lists = []
-        seen_magnets = set()
-        ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        session = requests.Session()
+        seen = set()
+        rows = []
+        params = None
+        data = None
 
-        try:
-            login_resp = session.get('https://%s/login' % self.base_url,
-                headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
-                timeout=15, verify=False)
-            token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
-            if not token_match:
-                log('[SpeedApp] browse: no CSRF token found')
-                return lists
-            csrf_token = token_match.group(1)
-            login_post = session.post('https://%s/login' % self.base_url, data={
-                    'email': self.username, 'password': self.password,
-                    '_remember_me': 'on', '_csrf_token': csrf_token
-                }, headers={"User-Agent": ua, "Origin": 'https://' + self.base_url,
-                           "Referer": 'https://' + self.base_url + '/login'},
-                timeout=15, verify=False)
-            if 'logout' not in login_post.text:
-                log('[SpeedApp] browse: login failed')
-                return lists
-            log('[SpeedApp] browse: login OK')
-        except Exception as e:
-            log('[SpeedApp] browse: login error: %s' % str(e))
-            return lists
-
-        def fetch_html(url):
-            try:
-                resp = session.get(url, headers={"User-Agent": ua}, timeout=15, verify=False)
-                if resp.status_code == 200:
-                    return resp.text
-                return None
-            except Exception as e:
-                log('[SpeedApp] browse fetch error: %s' % str(e))
-                return None
-
-        def parse_blocks(html, mode):
-            if not html:
-                return
-            blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
-            if len(blocks) > 1:
-                blocks = blocks[1:]
-            for block_content in blocks:
-                try:
-                    if 'href="/torrents/' not in block_content:
-                        continue
-                    cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block_content)
-                    if not cat_match:
-                        continue
-                    cat = cat_match.group(1)
-                    if cat not in yescat:
-                        continue
-                    detalii_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block_content, re.DOTALL)
-                    if not detalii_match:
-                        continue
-                    nume = ensure_str(detalii_match.group(1)).strip()
-                    junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
-                    if re.search(junk_pattern, nume):
-                        continue
-                    download_match = re.search(r'href="(/torrents/\d+/[^"]+\.torrent)"', block_content)
-                    if not download_match:
-                        continue
-                    legatura = 'https://%s%s' % (self.base_url, download_match.group(1))
-                    if legatura in seen_magnets:
-                        continue
-                    s_match = re.search(r'(?i)S(\d+)', nume)
-                    e_match = re.search(r'(?i)E(\d+)', nume)
-                    item_season = int(s_match.group(1)) if s_match else -1
-                    item_episode = int(e_match.group(1)) if e_match else -1
-                    is_episode_flag = (item_season != -1 and item_episode != -1)
-                    keep_item = True
-                    fmode = filter_data.get('mode')
-                    if fmode == 'D1':
-                        target_s = filter_data.get('season')
-                        target_e = filter_data.get('target_ep')
-                        if item_season != -1 and item_season != target_s:
-                            keep_item = False
-                        elif is_episode_flag and item_episode != target_e:
-                            keep_item = False
-                    elif fmode == 'D2':
-                        target_s = filter_data.get('season')
-                        if item_season != -1 and item_season != target_s:
-                            keep_item = False
-                        elif is_episode_flag:
-                            keep_item = False
-                    if not keep_item:
-                        continue
-                    size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block_content)
-                    size = size_match.group(1).strip() if size_match else 'N/A'
-                    seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block_content)
-                    seeds = seeds_match.group(1) if seeds_match else '0'
-                    leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block_content)
-                    leechers = leech_match.group(1) if leech_match else '0'
-                    if seeds == '0' and not zeroseed:
-                        continue
-                    seen_magnets.add(legatura)
-                    free = '[B][COLOR lime]FREE[/COLOR][/B] ' if 'Descarcarea acestui torrent este gratuita' in block_content else ''
-                    double = '[B][COLOR yellow]DoubleUP[/COLOR][/B] ' if 'Uploadul pe acest torrent se va contoriza dublu.' in block_content else ''
-                    promovat = '[B][COLOR lime]PROMOVAT[/COLOR][/B] ' if 'Acest torrent este promovat' in block_content else ''
-                    nume_afisat = '%s%s%s%s (%s) [S/L: %s/%s]' % (promovat, free, double, nume, size, seeds, leechers)
-                    plot = '%s\n\n[COLOR yellow]Download: %s[/COLOR]\n[B][COLOR FF00FA9A](%s)[/COLOR][/B] [B][COLOR FFFF69B4][S/L: %s/%s][/COLOR][/B]' % (nume_afisat, size, size, seeds, leechers)
-                    info_dict = {
-                        'Title': nume, 'Plot': plot, 'Size': formatsize(size), 'Poster': imagine
-                    }
-                    if preserved_ids:
-                        info_dict.update(preserved_ids)
-                    lists.append({
-                        'nume': nume_afisat, 'legatura': legatura, 'imagine': imagine,
-                        'switch': 'torrent_links', 'info': info_dict
-                    })
-                except Exception:
-                    continue
-
-        for url in scan_urls:
-            log('[SpeedApp] Browse fetching: %s' % url)
-            html = fetch_html(url)
-            parse_blocks(html, 'primary')
+        for u in scan_urls:
+            params = self._url_params(u)
+            log('[SpeedApp] Browse API: %s -> %s' % (u, _sp_fmt_params(params)))
+            data = self._api_get('/torrents', params)
+            hide_int = params.get('scope') == 'internal'
+            self._collect(data, lists, seen, filter_data, preserved_ids, rows, hide_int)
 
         if not lists and fallback_urls:
             log('[SpeedApp] Browse: IMDb n-a gasit nimic, fallback pe cautare text...')
-            for url in fallback_urls:
-                log('[SpeedApp] Browse fallback: %s' % url)
-                html = fetch_html(url)
-                parse_blocks(html, 'fallback')
+            for u in fallback_urls:
+                fparams = self._url_params(u)
+                log('[SpeedApp] Browse fallback: %s' % u)
+                self._collect(self._api_get('/torrents', fparams), lists, seen, filter_data, preserved_ids, rows)
+
+        self._apply_posters(rows)
 
         # Paginare doar pt browsare normala (nu cautare compusa)
-        if len(scan_urls) == 1 and 'search=' not in scan_urls[0]:
+        if len(scan_urls) == 1 and params and data and not params.get('search'):
             try:
-                if 'page=' in orig_url:
-                    new_page_match = re.search(r'page=(\d+)', orig_url)
-                    if new_page_match:
-                        current_page = int(new_page_match.group(1))
-                        next_url = orig_url.replace('page=%d' % current_page, 'page=%d' % (current_page + 1))
-                        lists.append({
-                            'nume': 'Next',
-                            'legatura': next_url,
-                            'imagine': self.nextimage,
-                            'switch': 'get_torrent',
-                            'info': {}
-                        })
+                per = int(params.get('itemsPerPage', 50))
+                page = int(params.get('page', 1))
+                total = int(data.get('totalItems') or 0)
+                if per > 0 and page * per < total:
+                    lists.append({'nume': 'Next',
+                                  'legatura': self._next_url(params),
+                                  'imagine': self.nextimage,
+                                  'switch': 'get_torrent',
+                                  'info': {}})
             except:
                 pass
 
         return lists
 
+    def getTorrentFile(self, url):
+        tok = self._token()
+        headers = {'User-Agent': _SP_UA}
+        if tok:
+            headers['Authorization'] = 'Bearer ' + tok
+        try:
+            r = requests.get(url, headers=headers, timeout=30, verify=False)
+        except Exception as e:
+            log('[SpeedApp] download error: %s' % str(e))
+            return None
+        _sp_quota(r, 'download')
+        if r.status_code == 429:
+            log('[SpeedApp] download rate-limit (429)')
+            return None
+        if r.status_code in (401, 403):
+            tok = self._token(force=True)
+            if not tok:
+                return None
+            try:
+                r = requests.get(url, headers={'User-Agent': _SP_UA, 'Authorization': 'Bearer ' + tok},
+                                 timeout=30, verify=False)
+            except Exception as e:
+                log('[SpeedApp] download retry error: %s' % str(e))
+                return None
+        if r.status_code != 200 or not r.content:
+            log('[SpeedApp] download failed: %s' % r.status_code)
+            return None
+        if b'8:announce' not in r.content[:64] and b'd8:announce' not in r.content[:64]:
+            log('[SpeedApp] download invalid (nu bencode)')
+            return None
+        return saveTorrentFile(url, r.content)
+
     def parse_menu(self, url, meniu, info={}, torraction=None, limit=None):
         lists = []
-        yescat = ['38', '10', '35', '8', '29', '7', '2', '17', '24', '59', '57', '61', '41', '66', '45', '46', '43', '44', '60', '62', '3', '64', '22', '58', '9', '63', '50', '51', '15', '47', '48']
         imagine = self.thumb
-        
+
         filter_data = info.get('_filter_data', {'mode': 'normal'}) if info else {'mode': 'normal'}
         scan_urls = info.get('_scan_urls', [url]) if info else [url]
         fallback_urls = info.get('_fallback_urls', []) if info else []
-        
-        # === Pastrare ID-uri pentru a le propaga in rezultate ===
+
         preserved_ids = {}
         if info:
             if info.get('tmdb_id'): preserved_ids['tmdb_id'] = info['tmdb_id']
             if info.get('imdb_id'): preserved_ids['imdb_id'] = info['imdb_id']
-        
+
         if info:
             info = info.copy()
             if '_filter_data' in info: del info['_filter_data']
             if '_scan_urls' in info: del info['_scan_urls']
             if '_fallback_urls' in info: del info['_fallback_urls']
-        
+
         if meniu == 'get_torrent' or meniu == 'cauta' or meniu == 'recente':
             if meniu == 'cauta':
                 from resources.Core import Core
                 Core().searchSites({'landsearch': self.__class__.__name__})
             else:
-                lists = self._fetch_and_parse_browse(url, scan_urls, fallback_urls, yescat, filter_data, imagine, preserved_ids)
+                lists = self._fetch_and_parse_browse(url, scan_urls, fallback_urls, None, filter_data, imagine, preserved_ids)
 
         elif meniu == 'sortare':
             for nume, sortare in self.sortare:
@@ -1129,9 +1414,12 @@ class speedapp(Torrent):
                                 'info': info})
         elif meniu == 'torrent_links':
             turl = self.getTorrentFile(url)
+            if not turl:
+                xbmc.executebuiltin((u'Notification(%s,%s)' % ('SpeedApp', 'Download esuitat')))
+                return lists
             action = torraction if torraction else ''
             openTorrent(self._get_torrent_params(turl, info, torraction))
-            
+
         return lists
 
 

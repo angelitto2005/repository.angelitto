@@ -1736,7 +1736,6 @@ def openTorrent(params):
         # Extragem S si E din titlu daca lipsesc (Ex: pachete)
         if not s_val or not e_val:
             title_str = info_data.get('Title') or get('nume') or orig_url or url
-            import re
             m_se = re.search(r'(?i)S(\d+)[._ -]*E(\d+)', title_str)
             if m_se:
                 if not s_val: s_val = m_se.group(1)
@@ -1772,7 +1771,6 @@ def openTorrent(params):
         link_to_check = unique_media_id
         if not link_to_check:
             link_str = orig_url if orig_url else url
-            import re
             btih_match = re.search(r'btih:([a-zA-Z0-9]+)', link_str, re.I)
             if btih_match:
                 link_to_check = 'hash_%s' % btih_match.group(1).lower()
@@ -1803,6 +1801,7 @@ def openTorrent(params):
         log('[MRSP-RESUME] Link / ID setat pentru Resume la PLAY: %s' % link_to_check)
 
         # === FIX: TITLU CORECT PENTRU EPISOADE ÎN PLAYER (TOATE PLAYERELE) ===
+        name = get('nume') or ''
         _player_title = info.get('Title') or name or 'Stream'
         _is_episode_play = False
         _show_title_play = ''

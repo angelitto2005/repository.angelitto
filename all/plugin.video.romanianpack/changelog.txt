@@ -1,3 +1,10 @@
+1.2.86
+SpeedApp
+- Site-ul a migrat la interfata noua (Vue SPA + API JSON)
+- SpeedApp rescris complet pe API-ul oficial
+- Adaugata sectiunee "Internal"
+- Adaugat postere din TMDb cu cache SQLite local
+
 1.2.85
 - Fixed Speedapp
 
