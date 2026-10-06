@@ -1,0 +1,705 @@
+# Addon Name: NewPipe MOD
+# Addon id: plugin.video.newpipe
+# Original Provider: Twilight0 | MOD: @TrainAgain2
+msgid ""
+msgstr ""
+"Project-Id-Version: NewPipe MOD\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ko_KR\n"
+
+msgctxt "#30001"
+msgid "Search"
+msgstr "검색"
+
+msgctxt "#30002"
+msgid "Subscriptions"
+msgstr "구독"
+
+msgctxt "#30003"
+msgid "Subscription feed"
+msgstr "구독 피드"
+
+msgctxt "#30004"
+msgid "Watch history"
+msgstr "시청 기록"
+
+msgctxt "#30005"
+msgid "Settings"
+msgstr "설정"
+
+msgctxt "#30006"
+msgid "New search..."
+msgstr "새 검색..."
+
+msgctxt "#30007"
+msgid "Clear history"
+msgstr "기록 지우기"
+
+msgctxt "#30008"
+msgid "Forget this search"
+msgstr "이 검색어 삭제"
+
+msgctxt "#30010"
+msgid "Videos"
+msgstr "동영상"
+
+msgctxt "#30011"
+msgid "Channels"
+msgstr "채널"
+
+msgctxt "#30012"
+msgid "Playlists"
+msgstr "재생목록"
+
+msgctxt "#30013"
+msgid "Subscribe"
+msgstr "구독하기"
+
+msgctxt "#30014"
+msgid "Subscribed"
+msgstr "구독함"
+
+msgctxt "#30015"
+msgid "Unsubscribe"
+msgstr "구독 취소"
+
+msgctxt "#30016"
+msgid "Videos"
+msgstr "동영상"
+
+msgctxt "#30017"
+msgid "Shorts"
+msgstr "쇼츠"
+
+msgctxt "#30018"
+msgid "Live"
+msgstr "실시간"
+
+msgctxt "#30020"
+msgid "General"
+msgstr "일반"
+
+msgctxt "#30021"
+msgid "Results per page"
+msgstr "페이지당 결과 수"
+
+msgctxt "#30022"
+msgid "Feed items per channel"
+msgstr "채널당 피드 항목 수"
+
+msgctxt "#30023"
+msgid "Audio only"
+msgstr "오디오 전용"
+
+msgctxt "#30024"
+msgid "Debug (disable cache)"
+msgstr "디버그(캐시 비활성화)"
+
+msgctxt "#30025"
+msgid "Trending"
+msgstr "인기"
+
+msgctxt "#30026"
+msgid "Go to channel"
+msgstr "채널로 이동"
+
+msgctxt "#30027"
+msgid "Bookmarks"
+msgstr "북마크"
+
+msgctxt "#30028"
+msgid "Bookmark"
+msgstr "북마크 추가"
+
+msgctxt "#30029"
+msgid "Remove bookmark"
+msgstr "북마크 제거"
+
+msgctxt "#30030"
+msgid "Bookmarked"
+msgstr "북마크됨"
+
+msgctxt "#30031"
+msgid "Clear cache"
+msgstr "캐시 지우기"
+
+msgctxt "#30032"
+msgid "Cache cleared"
+msgstr "캐시가 지워졌습니다"
+
+msgctxt "#30033"
+msgid "Cache clear failed"
+msgstr "캐시 삭제 실패"
+
+msgctxt "#30034"
+msgid "Next page"
+msgstr "다음 페이지"
+
+msgctxt "#30035"
+msgid "Content country (ISO 3166-1)"
+msgstr "콘텐츠 국가 (ISO 3166-1)"
+
+msgctxt "#30036"
+msgid "Content language (YouTube code)"
+msgstr "콘텐츠 언어 (YouTube 코드)"
+
+msgctxt "#30037"
+msgid "Direct playback maximum resolution"
+msgstr "직접 재생 최대 해상도"
+
+msgctxt "#30038"
+msgid "Uses one direct audio/video stream and avoids the failing DASH proxy."
+msgstr "단일 오디오/비디오 직접 스트림을 사용하여 실패하는 DASH 프록시를 피합니다."
+
+msgctxt "#30039"
+msgid "Fast start"
+msgstr "빠른 시작"
+
+msgctxt "#30040"
+msgid "Prefer a 360p/480p direct stream when available. Disable this to prefer the highest selected resolution."
+msgstr "가능하면 360p/480p 직접 스트림을 우선합니다. 이 옵션을 끄면 선택한 가장 높은 해상도를 우선합니다."
+
+msgctxt "#30041"
+msgid "Custom country code (optional)"
+msgstr "사용자 국가 코드(선택 사항)"
+
+msgctxt "#30042"
+msgid "Enter any two-letter ISO 3166-1 country code. It overrides the country picker."
+msgstr "임의의 2자리 ISO 3166-1 국가 코드를 입력하세요. 국가 선택기를 무시합니다."
+
+msgctxt "#30043"
+msgid "Custom language code (optional)"
+msgstr "사용자 언어 코드(선택 사항)"
+
+msgctxt "#30044"
+msgid "Enter a YouTube language code such as pt, pt-PT, en or es. It overrides the language picker."
+msgstr "pt, pt-PT, en 또는 es 같은 YouTube 언어 코드를 입력하세요. 언어 선택기를 무시합니다."
+
+msgctxt "#30045"
+msgid "Select the country used by YouTube to localize results."
+msgstr "YouTube가 결과를 현지화할 때 사용하는 국가를 선택하세요."
+
+msgctxt "#30046"
+msgid "Select the language used by YouTube to localize titles and results."
+msgstr "YouTube가 제목과 결과를 현지화할 때 사용하는 언어를 선택하세요."
+
+msgctxt "#30047"
+msgid "Default Trending category"
+msgstr "기본 인기 카테고리"
+
+msgctxt "#30048"
+msgid "Choose the category that opens immediately when selecting Trending."
+msgstr "인기 선택 시 즉시 열릴 카테고리를 선택하세요."
+
+msgctxt "#30049"
+msgid "Default Live category"
+msgstr "기본 실시간 카테고리"
+
+msgctxt "#30050"
+msgid "Choose the category that opens immediately when selecting Live."
+msgstr "실시간 선택 시 즉시 열릴 카테고리를 선택하세요."
+
+msgctxt "#30051"
+msgid "Trailers"
+msgstr "예고편"
+
+msgctxt "#30052"
+msgid "Trailer language/version"
+msgstr "예고편 언어/버전"
+
+msgctxt "#30053"
+msgid "Choose how trailers are searched. This is independent of the selected content country."
+msgstr "예고편을 검색하는 방식을 선택하세요. 이는 선택된 콘텐츠 국가와는 독립적입니다."
+
+msgctxt "#30054"
+msgid "Trailer maximum resolution"
+msgstr "예고편 최대 해상도"
+
+msgctxt "#30055"
+msgid "Choose the resolution requested for trailers. 4K depends on availability, device decoding and InputStream Adaptive settings."
+msgstr "예고편에 요청할 해상도를 선택하세요. 4K는 가용성, 기기 디코딩 및 InputStream Adaptive 설정에 따라 달라집니다."
+
+msgctxt "#30056"
+msgid "Delete all watch history"
+msgstr "모든 시청 기록 삭제"
+
+msgctxt "#30057"
+msgid "Remove from watch history"
+msgstr "시청 기록에서 제거"
+
+msgctxt "#30058"
+msgid "Delete all watched videos from the local history?"
+msgstr "로컬 기록에서 본 모든 동영상을 삭제하시겠습니까?"
+
+msgctxt "#30059"
+msgid "YouTube account"
+msgstr "YouTube 계정"
+
+msgctxt "#30060"
+msgid "Connect YouTube account"
+msgstr "YouTube 계정 연결"
+
+msgctxt "#30061"
+msgid "Sync YouTube subscriptions"
+msgstr "YouTube 구독 동기화"
+
+msgctxt "#30062"
+msgid "Disconnect YouTube account"
+msgstr "YouTube 계정 연결 해제"
+
+msgctxt "#30064"
+msgid "YouTube authorization is pending"
+msgstr "YouTube 승인 대기 중"
+
+msgctxt "#30065"
+msgid "Open this address in a browser:"
+msgstr "이 주소를 브라우저에서 여세요:"
+
+msgctxt "#30066"
+msgid "Enter this code:"
+msgstr "이 코드를 입력하세요:"
+
+msgctxt "#30067"
+msgid "Connection setup failed"
+msgstr "연결 설정 실패"
+
+msgctxt "#30068"
+msgid "After authorization, NewPipe synchronizes automatically."
+msgstr "승인 후 NewPipe가 자동으로 동기화합니다."
+
+msgctxt "#30069"
+msgid "YouTube subscriptions synchronized: {0}"
+msgstr "YouTube 구독 동기화됨: {0}"
+
+msgctxt "#30070"
+msgid "YouTube sync failed: {0}"
+msgstr "YouTube 동기화 실패: {0}"
+
+msgctxt "#30071"
+msgid "The YouTube authorization code expired. Start again."
+msgstr "YouTube 승인 코드가 만료되었습니다. 다시 시작하세요."
+
+msgctxt "#30072"
+msgid "Disconnect from YouTube? Local subscriptions remain."
+msgstr "YouTube에서 연결을 끊으시겠습니까? 로컬 구독은 유지됩니다."
+
+msgctxt "#30073"
+msgid "YouTube account disconnected"
+msgstr "YouTube 계정 연결 해제됨."
+
+msgctxt "#30074"
+msgid "YouTube TV login method"
+msgstr "YouTube TV 로그인 방법"
+
+msgctxt "#30075"
+msgid "Uses the current public YouTube TV client data, following NewPipe MOD's activation flow."
+msgstr "NewPipe MOD의 활성화 흐름을 따라 현재 공개된 YouTube TV 클라이언트 데이터를 사용합니다."
+
+msgctxt "#30076"
+msgid "Creates a YouTube TV activation code and QR. Authorize it with your Google account on another device."
+msgstr "YouTube TV 활성화 코드와 QR을 생성합니다. 다른 기기에서 Google 계정으로 승인하세요."
+
+msgctxt "#30077"
+msgid "Imports the current account subscriptions after YouTube TV authorization."
+msgstr "YouTube TV 승인 후 현재 계정의 구독을 가져옵니다."
+
+msgctxt "#30078"
+msgid "Removes the local OAuth token only. It never changes your YouTube subscriptions."
+msgstr "로컬 OAuth 토큰만 제거합니다. YouTube 구독에는 영향을 주지 않습니다."
+
+msgctxt "#30079"
+msgid "YouTube account is already connected"
+msgstr "YouTube 계정이 이미 연결되어 있습니다."
+
+msgctxt "#30080"
+msgid "QR link:"
+msgstr "QR 링크:"
+
+msgctxt "#30081"
+msgid "No Google Cloud client configuration is required"
+msgstr "Google Cloud 클라이언트 구성은 필요하지 않습니다."
+
+msgctxt "#30082"
+msgid "The public YouTube TV client is fetched when a new activation code is created and cached only in the local addon profile."
+msgstr "새 활성화 코드가 생성될 때 공개 YouTube TV 클라이언트를 가져오며 로컬 애드온 프로필에만 캐시됩니다."
+
+msgctxt "#30083"
+msgid "Subscribed channels"
+msgstr "구독한 채널"
+
+msgctxt "#30084"
+msgid "My YouTube"
+msgstr "내 YouTube"
+
+msgctxt "#30085"
+msgid "My subscriptions"
+msgstr "내 구독"
+
+msgctxt "#30086"
+msgid "Watch Later"
+msgstr "나중에 볼 동영상"
+
+msgctxt "#30087"
+msgid "Saved playlists"
+msgstr "저장된 재생목록"
+
+msgctxt "#30088"
+msgid "Add to Watch Later"
+msgstr "나중에 볼 동영상에 추가"
+
+msgctxt "#30089"
+msgid "Remove from Watch Later"
+msgstr "나중에 볼 동영상에서 제거"
+
+msgctxt "#30090"
+msgid "Local watch history"
+msgstr "로컬 시청 기록"
+
+msgctxt "#30091"
+msgid "Step 1 — Scan QR code"
+msgstr "1단계 — QR 코드 스캔"
+
+msgctxt "#30092"
+msgid "Step 2 — Use manual code: {0}"
+msgstr "2단계 — 수동 코드 사용: {0}"
+
+msgctxt "#30093"
+msgid "Step 3 — Confirm connection"
+msgstr "3단계 — 연결 확인"
+
+msgctxt "#30094"
+msgid "Generate new code"
+msgstr "새 코드 생성"
+
+msgctxt "#30095"
+msgid "Cancel connection"
+msgstr "연결 취소"
+
+msgctxt "#30096"
+msgid "Interface language"
+msgstr "인터페이스 언어"
+
+msgctxt "#30097"
+msgid "Choose the language used by NewPipe MOD menus and messages. Settings labels follow Kodi interface language."
+msgstr "NewPipe MOD의 메뉴와 메시지에 사용할 언어를 선택하세요. 설정 라벨은 Kodi 인터페이스 언어를 따릅니다."
+
+msgctxt "#30098"
+msgid "Same as content language"
+msgstr "콘텐츠 언어와 동일"
+
+msgctxt "#30099"
+msgid "Kodi interface language"
+msgstr "Kodi 인터페이스 언어"
+
+msgctxt "#30100"
+msgid "Portuguese — Portugal (pt-PT)"
+msgstr "포르투갈어 — 포르투갈 (pt-PT)"
+
+msgctxt "#30101"
+msgid "Portuguese — Brazil (pt-BR)"
+msgstr "포르투갈어 — 브라질 (pt-BR)"
+
+msgctxt "#30102"
+msgid "English (en)"
+msgstr "영어 (en)"
+
+msgctxt "#30103"
+msgid "Spanish (es)"
+msgstr "스페인어 (es)"
+
+msgctxt "#30104"
+msgid "French (fr)"
+msgstr "프랑스어 (fr)"
+
+msgctxt "#30105"
+msgid "German (de)"
+msgstr "독일어 (de)"
+
+msgctxt "#30106"
+msgid "Italian (it)"
+msgstr "이탈리아어 (it)"
+
+msgctxt "#30107"
+msgid "Dutch (nl)"
+msgstr "네덜란드어 (nl)"
+
+msgctxt "#30108"
+msgid "Romanian (ro)"
+msgstr "루마니아어 (ro)"
+
+msgctxt "#30109"
+msgid "Turkish (tr)"
+msgstr "터키어 (tr)"
+
+msgctxt "#30110"
+msgid "Japanese (ja)"
+msgstr "일본어 (ja)"
+
+msgctxt "#30111"
+msgid "Korean (ko)"
+msgstr "한국어 (ko)"
+
+msgctxt "#30120"
+msgid "Brazil (BR)"
+msgstr "브라질 (BR)"
+
+msgctxt "#30121"
+msgid "Portugal (PT)"
+msgstr "포르투갈 (PT)"
+
+msgctxt "#30122"
+msgid "Angola (AO)"
+msgstr "앙골라 (AO)"
+
+msgctxt "#30123"
+msgid "Mozambique (MZ)"
+msgstr "모잠비크 (MZ)"
+
+msgctxt "#30124"
+msgid "Cabo Verde (CV)"
+msgstr "카보베르데 (CV)"
+
+msgctxt "#30125"
+msgid "United States (US)"
+msgstr "미국 (US)"
+
+msgctxt "#30126"
+msgid "Canada (CA)"
+msgstr "캐나다 (CA)"
+
+msgctxt "#30127"
+msgid "United Kingdom (GB)"
+msgstr "영국 (GB)"
+
+msgctxt "#30128"
+msgid "Ireland (IE)"
+msgstr "아일랜드 (IE)"
+
+msgctxt "#30129"
+msgid "Spain (ES)"
+msgstr "스페인 (ES)"
+
+msgctxt "#30130"
+msgid "France (FR)"
+msgstr "프랑스 (FR)"
+
+msgctxt "#30131"
+msgid "Germany (DE)"
+msgstr "독일 (DE)"
+
+msgctxt "#30132"
+msgid "Italy (IT)"
+msgstr "이탈리아 (IT)"
+
+msgctxt "#30133"
+msgid "Netherlands (NL)"
+msgstr "네덜란드 (NL)"
+
+msgctxt "#30134"
+msgid "Belgium (BE)"
+msgstr "벨기에 (BE)"
+
+msgctxt "#30135"
+msgid "Switzerland (CH)"
+msgstr "스위스 (CH)"
+
+msgctxt "#30136"
+msgid "Austria (AT)"
+msgstr "오스트리아 (AT)"
+
+msgctxt "#30137"
+msgid "Sweden (SE)"
+msgstr "스웨덴 (SE)"
+
+msgctxt "#30138"
+msgid "Norway (NO)"
+msgstr "노르웨이 (NO)"
+
+msgctxt "#30139"
+msgid "Denmark (DK)"
+msgstr "덴마크 (DK)"
+
+msgctxt "#30140"
+msgid "Finland (FI)"
+msgstr "핀란드 (FI)"
+
+msgctxt "#30141"
+msgid "Poland (PL)"
+msgstr "폴란드 (PL)"
+
+msgctxt "#30142"
+msgid "Romania (RO)"
+msgstr "루마니아 (RO)"
+
+msgctxt "#30143"
+msgid "Turkey (TR)"
+msgstr "터키 (TR)"
+
+msgctxt "#30144"
+msgid "Greece (GR)"
+msgstr "그리스 (GR)"
+
+msgctxt "#30145"
+msgid "India (IN)"
+msgstr "인도 (IN)"
+
+msgctxt "#30146"
+msgid "Japan (JP)"
+msgstr "일본 (JP)"
+
+msgctxt "#30147"
+msgid "South Korea (KR)"
+msgstr "대한민국 (KR)"
+
+msgctxt "#30148"
+msgid "Indonesia (ID)"
+msgstr "인도네시아 (ID)"
+
+msgctxt "#30149"
+msgid "Philippines (PH)"
+msgstr "필리핀 (PH)"
+
+msgctxt "#30150"
+msgid "Australia (AU)"
+msgstr "호주 (AU)"
+
+msgctxt "#30151"
+msgid "New Zealand (NZ)"
+msgstr "뉴질랜드 (NZ)"
+
+msgctxt "#30152"
+msgid "Mexico (MX)"
+msgstr "멕시코 (MX)"
+
+msgctxt "#30153"
+msgid "Argentina (AR)"
+msgstr "아르헨티나 (AR)"
+
+msgctxt "#30154"
+msgid "Chile (CL)"
+msgstr "칠레 (CL)"
+
+msgctxt "#30155"
+msgid "Colombia (CO)"
+msgstr "콜롬비아 (CO)"
+
+msgctxt "#30156"
+msgid "Peru (PE)"
+msgstr "페루 (PE)"
+
+msgctxt "#30157"
+msgid "South Africa (ZA)"
+msgstr "남아프리카 공화국 (ZA)"
+
+msgctxt "#30160"
+msgid "Music"
+msgstr "음악"
+
+msgctxt "#30161"
+msgid "Gaming"
+msgstr "게임"
+
+msgctxt "#30162"
+msgid "News"
+msgstr "뉴스"
+
+msgctxt "#30163"
+msgid "Movies"
+msgstr "영화"
+
+msgctxt "#30164"
+msgid "Live"
+msgstr "실시간"
+
+msgctxt "#30165"
+msgid "Sports"
+msgstr "스포츠"
+
+msgctxt "#30166"
+msgid "Podcasts"
+msgstr "팟캐스트"
+
+msgctxt "#30170"
+msgid "Portuguese dubbed"
+msgstr "포르투갈어 더빙"
+
+msgctxt "#30171"
+msgid "Portuguese subtitled"
+msgstr "포르투갈어 자막"
+
+msgctxt "#30172"
+msgid "English original"
+msgstr "영어 원어"
+
+msgctxt "#30173"
+msgid "Spanish"
+msgstr "스페인어"
+
+msgctxt "#30174"
+msgid "Romanian"
+msgstr "루마니아어"
+
+msgctxt "#30175"
+msgid "Low — 360p"
+msgstr "낮음 — 360p"
+
+msgctxt "#30176"
+msgid "Medium — 480p"
+msgstr "보통 — 480p"
+
+msgctxt "#30177"
+msgid "High — 720p"
+msgstr "높음 — 720p"
+
+msgctxt "#30178"
+msgid "Very high — 1080p"
+msgstr "매우 높음 — 1080p"
+
+msgctxt "#30179"
+msgid "Unable to obtain a playable video."
+msgstr "재생 가능한 동영상을 가져올 수 없습니다."
+
+msgctxt "#30180"
+msgid "Activation code expired. Start again."
+msgstr "활성화 코드가 만료되었습니다. 다시 시작하세요."
+
+msgctxt "#30181"
+msgid "Sign in to YouTube"
+msgstr "YouTube에 로그인"
+
+msgctxt "#30182"
+msgid "Open: {0}\n\nEnter the code:\n[B]{1}[/B]\n\nAfter authorizing, return to this submenu and choose “Step 3 — Confirm connection”."
+msgstr "열기: {0}\n\n코드를 입력하세요:\n[B]{1}[/B]\n\n승인 후 이 하위메뉴로 돌아와 “3단계 — 연결 확인”을 선택하세요."
+
+msgctxt "#30183"
+msgid "{0} channels, {1} videos"
+msgstr "{0}개 채널, {1}개 동영상"
+
+msgctxt "#30184"
+msgid "Synchronizing YouTube subscriptions…"
+msgstr "YouTube 구독 동기화 중…"
+
+msgctxt "#30185"
+msgid "Unknown error"
+msgstr "알 수 없는 오류"
+
+msgctxt "#30186"
+msgid "Unknown"
+msgstr "알 수 없음"
+
+msgctxt "#30187"
+msgid "HD — 720p"
+msgstr "HD — 720p"
+
+msgctxt "#30188"
+msgid "Full HD — 1080p"
+msgstr "Full HD — 1080p"
+
+msgctxt "#30189"
+msgid "Quad HD — 1440p"
+msgstr "Quad HD — 1440p"
+
+msgctxt "#30190"
+msgid "Ultra HD — 2160p (4K)"
+msgstr "Ultra HD — 2160p (4K)"

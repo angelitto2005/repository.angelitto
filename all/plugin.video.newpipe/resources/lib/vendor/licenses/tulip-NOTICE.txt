@@ -1,0 +1,1 @@
+Tulip Library collection — GPL-3.0-only; vendored for an offline Kodi installation.

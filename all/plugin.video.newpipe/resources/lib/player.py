@@ -1,0 +1,409 @@
+# -*- coding: utf-8 -*-
+"""Fast, native progressive playback for NewPipe.
+
+The add-on obtains one combined audio/video URL through PluginsGR and gives it
+straight to Kodi. No DASH/MPD manifest, localhost proxy or plugin.video.youtube
+is used. The resolver is intentionally limited to the iOS mobile client first:
+the generic PluginsGR client chain also probes TV clients that are anonymous-
+blocked by YouTube and needlessly delay every playback attempt.
+"""
+
+from __future__ import absolute_import
+
+import json
+import os
+import sys
+import time
+from urllib.parse import parse_qs, urlencode, urlparse
+
+from tulip import directory, kodi
+from tulip.log import log
+
+from . import ui
+
+
+# The lightweight YouTube resolver is bundled in resources/lib/ytresolver.
+# It replaces the external PluginsGR / ResolveURL add-on chain so installation
+# does not depend on any script.module package being present in Kodi.
+_BUNDLED_ENGINE_PATH = os.path.dirname(__file__)
+# Keep fallbacks mobile-only.  TV clients cause anonymous "Please sign in" and
+# "The page needs to be reloaded" responses on this device.
+_DIRECT_CLIENT_ATTEMPTS = (
+    ('iOS', ('ios',)),
+    ('iOS compatibility', ('ios_testsuite_params',)),
+)
+_SAFE_HEADERS = (
+    'User-Agent',
+    'Referer',
+    'Origin',
+    'Accept-Language',
+    'X-YouTube-Client-Name',
+    'X-YouTube-Client-Version',
+    'X-Goog-Visitor-Id',
+)
+_STREAM_CACHE_TTL = 15 * 60
+_STREAM_CACHE_CAP = 30
+_STREAM_CACHE_VERSION = 3
+_RESOLVE_LOCK_TTL = 35
+
+
+def _error(message):
+    """Log errors at Kodi's visible error level; Tulip logging may be debug-only."""
+
+    try:
+        import xbmc
+        xbmc.log('[NewPipe] {0}'.format(message), xbmc.LOGERROR)
+    except Exception:
+        log('NewPipe: {0}'.format(message))
+
+
+def _info(message):
+    try:
+        import xbmc
+        xbmc.log('[NewPipe] {0}'.format(message), xbmc.LOGINFO)
+    except Exception:
+        log('NewPipe: {0}'.format(message))
+
+
+def _profile_dir():
+    try:
+        path = kodi.transPath('special://profile/addon_data/plugin.video.newpipe/')
+    except Exception:
+        path = ''
+    if not path or path.startswith('special://'):
+        path = os.path.join(os.getcwd(), 'newpipe-progressive')
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        pass
+    return path
+
+
+def _state_path(name):
+    return os.path.join(_profile_dir(), name)
+
+
+def _read_state(name, default):
+    try:
+        with open(_state_path(name), encoding='utf-8') as handle:
+            value = json.load(handle)
+        return value if isinstance(value, type(default)) else default
+    except (OSError, ValueError, TypeError):
+        return default
+
+
+def _write_state(name, value):
+    path = _state_path(name)
+    temporary = path + '.tmp'
+    try:
+        with open(temporary, 'w', encoding='utf-8') as handle:
+            json.dump(value, handle, ensure_ascii=False, separators=(',', ':'))
+        os.replace(temporary, path)
+    except OSError:
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+
+
+def _playback_profile(profile):
+    return 'trailer' if str(profile or '').lower() == 'trailer' else 'default'
+
+
+def _quality_value(profile='default'):
+    profile = _playback_profile(profile)
+    setting = 'trailer_max_height' if profile == 'trailer' else 'direct_max_height'
+    default = '1080' if profile == 'trailer' else '720'
+    value = kodi.setting(setting) or default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _quality_index(max_height):
+    """Map the NewPipe setting to the native resolver's progressive quality."""
+
+    return {360: 1, 480: 2, 720: 3, 1080: 4, 1440: 5, 2160: 6}.get(max_height, 3)
+
+
+def _fast_start_enabled():
+    # Existing installations have no stored value, so the new safe default is on.
+    return (kodi.setting('fast_start') or 'true').lower() != 'false'
+
+
+def _cache_key(video_id, audio_only, profile):
+    return 'v{0}:{1}:{2}:{3}:{4}:{5}'.format(
+        _STREAM_CACHE_VERSION,
+        video_id,
+        int(bool(audio_only)),
+        _playback_profile(profile),
+        _quality_value(profile),
+        int(_fast_start_enabled()))
+
+
+def _stream_expiry(stream, now):
+    """Return a conservative local expiry, respecting YouTube URL expiry if present."""
+
+    expires = now + _STREAM_CACHE_TTL
+    try:
+        query = parse_qs(urlparse(stream.split('|', 1)[0]).query)
+        remote = int((query.get('expire') or ['0'])[0])
+        if remote:
+            # Leave two minutes before Google's signature expiry.
+            expires = min(expires, remote - 120)
+    except (TypeError, ValueError):
+        pass
+    return expires
+
+
+def _cached_stream(video_id, audio_only, profile):
+    now = int(time.time())
+    payload = _read_state('progressive_streams.json', {'items': {}})
+    entry = (payload.get('items') or {}).get(_cache_key(video_id, audio_only, profile), {})
+    stream = entry.get('stream') if isinstance(entry, dict) else ''
+    expires = entry.get('expires', 0) if isinstance(entry, dict) else 0
+    if isinstance(stream, str) and stream.startswith(('http://', 'https://')) and expires > now:
+        _info('stream direto em cache para {0}'.format(video_id))
+        return {'url': stream, 'hls': bool(entry.get('hls', False))}
+    return None
+
+
+def _save_stream(video_id, audio_only, profile, resolved):
+    stream = resolved.get('url', '') if isinstance(resolved, dict) else ''
+    if not stream:
+        return
+    now = int(time.time())
+    expires = _stream_expiry(stream, now)
+    if expires <= now:
+        return
+    payload = _read_state('progressive_streams.json', {'items': {}})
+    items = payload.get('items') or {}
+    items = {
+        key: item for key, item in items.items()
+        if isinstance(item, dict) and item.get('expires', 0) > now
+    }
+    items[_cache_key(video_id, audio_only, profile)] = {
+        'stream': stream,
+        'hls': bool(resolved.get('hls', False)),
+        'expires': expires,
+        'saved': now,
+    }
+    if len(items) > _STREAM_CACHE_CAP:
+        ordered = sorted(items.items(), key=lambda pair: pair[1].get('saved', 0), reverse=True)
+        items = dict(ordered[:_STREAM_CACHE_CAP])
+    _write_state('progressive_streams.json', {'items': items})
+
+
+def _acquire_resolve_slot(video_id):
+    """Avoid overlapping Kodi demuxers when the user changes video while loading."""
+
+    now = int(time.time())
+    active = _read_state('progressive_resolve_lock.json', {})
+    started = active.get('started', 0) if isinstance(active, dict) else 0
+    try:
+        busy = now - int(started) < _RESOLVE_LOCK_TTL
+    except (TypeError, ValueError):
+        busy = False
+    if busy:
+        return False
+    _write_state('progressive_resolve_lock.json', {'video_id': video_id, 'started': now})
+    return True
+
+
+def _clear_resolve_slot():
+    try:
+        os.remove(_state_path('progressive_resolve_lock.json'))
+    except OSError:
+        pass
+
+
+def _pluginsgr_path():
+    path = _BUNDLED_ENGINE_PATH
+    if not os.path.isdir(os.path.join(path, 'ytresolver')):
+        raise RuntimeError('O motor interno de reprodução não foi encontrado.')
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    return path
+
+
+def _engine_context(max_height):
+    """Create an isolated PluginsGR engine context configured without MPD."""
+
+    _pluginsgr_path()
+    from ytresolver.kodion.context.standalone import StandaloneContext
+
+    try:
+        temp_dir = kodi.transPath('special://temp/newpipe-progressive/')
+        profile_dir = _profile_dir()
+    except Exception:
+        temp_dir = profile_dir = ''
+
+    if not temp_dir or temp_dir.startswith('special://'):
+        temp_dir = os.path.join(os.getcwd(), 'newpipe-progressive')
+    if not profile_dir or profile_dir.startswith('special://'):
+        profile_dir = temp_dir
+    os.makedirs(temp_dir, exist_ok=True)
+    os.makedirs(profile_dir, exist_ok=True)
+
+    context = StandaloneContext(
+        data_dir=temp_dir,
+        config_file=os.path.join(profile_dir, 'ytresolver-progressive.json'),
+        # H.264/AAC is the safest combined stream for the Android device.
+        video_codecs=['avc1'],
+    )
+    settings = context.get_settings()
+    settings.use_mpd_videos(False)
+    settings.fixed_video_quality(_quality_index(max_height))
+    return context
+
+
+def _stream_with_headers(url, headers):
+    """Encode the YouTube client headers Kodi needs for direct Googlevideo I/O."""
+
+    selected = {}
+    for name in _SAFE_HEADERS:
+        value = (headers or {}).get(name)
+        if value:
+            selected[name] = str(value)
+    return '{0}|{1}'.format(url, urlencode(selected)) if selected else url
+
+
+def _is_hls_stream(item, url):
+    """Identify manifests so Kodi uses inputstream.adaptive instead of file demuxing."""
+
+    container = str((item or {}).get('container') or '').lower()
+    base_url = (url or '').split('|', 1)[0].lower()
+    return container in ('hls', 'm3u8') or '.m3u8' in base_url or '/manifest/hls' in base_url
+
+
+def _pick_progressive(streams, audio_only, fast_start):
+    if audio_only:
+        candidates = [
+            item for item in streams
+            if item.get('url') and item.get('audio') and not item.get('video')
+        ]
+        key = lambda item: (item.get('audio') or {}).get('bitrate', 0)
+    else:
+        candidates = [
+            item for item in streams
+            if item.get('url') and item.get('video') and item.get('audio')
+        ]
+        # Prefer a true progressive file when a client also returns HLS; HLS
+        # remains a valid fallback when it is the only combined stream.
+        regular = [item for item in candidates
+                   if not _is_hls_stream(item, item.get('url', ''))]
+        if regular:
+            candidates = regular
+        if fast_start and regular:
+            # A 360/480p combined stream starts much faster than a high-bitrate
+            # progressive stream on Android. If none is available, use the best
+            # stream the selected quality limit permits.
+            quick = [item for item in candidates
+                     if (item.get('video') or {}).get('height', 0) <= 480]
+            if quick:
+                candidates = quick
+        key = lambda item: (
+            (item.get('video') or {}).get('height', 0),
+            (item.get('audio') or {}).get('bitrate', 0),
+        )
+    return max(candidates, key=key) if candidates else None
+
+
+def _resolve_from_mobile_clients(video_id, audio_only, profile):
+    """Resolve from one mobile-client group at a time, never probing TV clients."""
+
+    _pluginsgr_path()
+    from ytresolver.youtube.client.player_client import YouTubePlayerClient
+
+    max_height = _quality_value(profile)
+    fast_start = profile != 'trailer' and _fast_start_enabled()
+    failures = []
+    for label, client_names in _DIRECT_CLIENT_ATTEMPTS:
+        try:
+            client = YouTubePlayerClient(
+                context=_engine_context(max_height), clients=client_names)
+            # `clients=` only inserts a custom group; without this override the
+            # engine still continues into TV/test/VR groups after the iOS call.
+            client._client_groups = (('newpipe_direct', client_names),)
+            streams, _item = client.load_stream_info(
+                video_id=video_id,
+                use_mpd=False,
+                audio_only=audio_only,
+            )
+            selected = _pick_progressive(list(streams), audio_only, fast_start)
+            if not selected:
+                failures.append('{0}: sem stream A/V direto'.format(label))
+                continue
+
+            url = selected.get('url') or ''
+            if not url.startswith(('http://', 'https://')):
+                failures.append('{0}: URL inválida'.format(label))
+                continue
+            if '127.0.0.1' in url or '.mpd' in url:
+                failures.append('{0}: retornou DASH/proxy'.format(label))
+                continue
+
+            hls = _is_hls_stream(selected, url)
+            _info('stream direto via {0} para {1}: itag={2}, formato={3}, altura={4}, hls={5}, perfil={6}, limite={7}p'.format(
+                label,
+                video_id,
+                selected.get('itag', '?'),
+                selected.get('container', '?'),
+                (selected.get('video') or {}).get('height', '?'),
+                hls,
+                profile,
+                max_height))
+            return {
+                'url': _stream_with_headers(url, selected.get('headers') or {}),
+                'hls': hls,
+            }
+        except Exception as exc:
+            failures.append('{0}: {1}'.format(label, exc))
+
+    raise RuntimeError('; '.join(failures) or 'Nenhum cliente móvel retornou vídeo direto.')
+
+
+def resolve(video_id, audio_only=False, profile='default'):
+    """Return a direct progressive URL from PluginsGR, with no local proxy."""
+
+    profile = _playback_profile(profile)
+    cached = _cached_stream(video_id, audio_only, profile)
+    if cached:
+        return cached
+    try:
+        stream = _resolve_from_mobile_clients(video_id, audio_only, profile)
+        _save_stream(video_id, audio_only, profile, stream)
+        return stream
+    except Exception as exc:
+        _error('Falha no stream progressivo para {0}: {1}'.format(video_id, exc))
+        return None
+
+
+def _resolve_failure():
+    from tulip.init import syshandle
+    kodi.resolve(syshandle, False, kodi.item())
+
+
+def play(video_id, title='', image='', profile='default'):
+    audio_only = kodi.setting('audio_only') == 'true'
+    resolved = resolve(video_id, audio_only=audio_only, profile=profile)
+    if not resolved:
+        _clear_resolve_slot()
+        kodi.infoDialog(ui.text(30179, 'Unable to obtain a playable video.'))
+        _resolve_failure()
+        return
+
+    # A progressive file is given straight to Kodi. A HLS manifest is given
+    # straight to inputstream.adaptive, avoiding both normal-file demux latency
+    # and the former PluginsGR localhost proxy.
+    is_hls = bool(resolved.get('hls'))
+    log('NewPipe: reprodução direta selecionada ({0})'.format(
+        'HLS adaptive' if is_hls else 'arquivo A/V'))
+    directory.resolve(
+        resolved.get('url'), meta={'title': title}, icon=image,
+        dash=is_hls,
+        manifest_type='hls' if is_hls else None,
+        inputstream_type='adaptive',
+        mimetype='application/x-mpegURL' if is_hls else None,
+    )

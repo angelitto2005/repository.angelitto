@@ -1,0 +1,158 @@
+[B]1.4.20a MOD[/B]
+- Fix Kodi 21 crash
+[B]1.4.20 MOD[/B]
+- Adds a selectable interface language; menus and messages can follow content language or use a fixed language
+- Adds complete NewPipe MOD language packs for Portuguese (PT/BR), English, Spanish, French, German, Italian, Dutch, Romanian, Turkish, Japanese and Korean
+- New installations start with English interface/content defaults; existing settings are preserved
+[B]1.4.19 MOD[/B]
+- Localizes Browse and Live category queries for every configured content language, including Romanian
+[B]1.4.18 MOD[/B]
+- Replaces 4:3 hqdefault thumbnails with YouTube's native 16:9 mqdefault thumbnails for full landscape cards
+[B]1.4.17 MOD[/B]
+- Declares video cards as landscape instead of posters, filling Arctic Fuse horizontal cards without black side bars
+[B]1.4.16 MOD[/B]
+- Uses video fanart to crop-fill wide cards in skins that otherwise show black side bars
+[B]1.4.15 MOD[/B]
+- Replaces the incompatible Android progress dialog with an immediate native synchronization notification
+[B]1.4.14 MOD[/B]
+- Shows an immediate progress window while YouTube subscriptions are synchronizing
+[B]1.4.13 MOD[/B]
+- After YouTube authorization, closes the QR submenu and opens My YouTube with the explicit Sync subscriptions action
+[B]1.4.12 MOD[/B]
+- Confirms self-contained ZIP installation: no Kodi repository, prior kit or external script.module add-on is needed
+[B]1.4.11 MOD[/B]
+- Uses NewPipe MOD identity throughout the account-link implementation and documentation
+- Adds a framed, high-contrast QR activation card and a clear three-step login submenu
+[B]1.4.10 MOD[/B]
+- Cleans inactive Android-component references from metadata and documentation
+[B]1.4.9 MOD[/B]
+- Original creator/upstream: Twilight0
+- MOD: @TrainAgain2
+[B]1.4.8[/B]
+- Displays subscribed-channel profile photos instead of Kodi's generic folder icon
+- Normalizes the protocol-relative YouTube profile URLs and caches transparent circular avatar PNGs locally when the optional Kodi PIL module is available
+- Uses the original HTTPS profile photo as a safe fallback; a failed avatar never blocks a sync or channel folder
+[B]1.4.7[/B]
+- Corrects Subscribed channels for the current YouTube TV / NewPipe MOD response: extracts each channel's UC ID from the authenticated subscription-tab parameters
+- Keeps the original channel avatar and title; selecting a channel opens its public videos through the existing NewPipe channel view
+[B]1.4.6[/B]
+- Selects the linked YouTube/brand account through the YouTube TV account endpoint and sends its required X-Goog-Pageid identity
+- Matches NewPipe MOD's TVHTML5 Cobalt client context, including browser identity and TV surface flags
+- Reads current TVHTML5 tileRenderer subscription cards in addition to legacy video cards
+- Reports an actionable error instead of claiming a successful empty anonymous subscription import
+[B]1.4.5[/B]
+- Adds the My YouTube hub modeled on the official Kodi YouTube account folders: My subscriptions, subscribed channels, Watch Later, saved playlists and history
+- Saves an authenticated YouTube TV library snapshot only after an explicit sync; opening account folders makes no network call
+- Keeps device linking in the background service but removes automatic post-login synchronization, avoiding Kodi freezes after QR approval
+[B]1.4.4[/B]
+- Corrects the NewPipe MOD TV channel-tab parser (endpoint.browseEndpoint)
+- Sends the required YouTube TV visitorData and X-Goog-Visitor-Id headers when importing subscriptions
+- Keeps the Subscriptions screen responsive; synchronization runs only from its explicit action
+[B]1.4.3[/B]
+- Refreshes the authenticated channel list automatically when opening Subscriptions or Subscribed channels
+- Shows the imported channel cards below the NewPipe MOD-style navigation menu
+[B]1.4.2[/B]
+- Adds a NewPipe MOD-style subscriptions hub: subscribed channels, subscription feed, sync and disconnect
+- Imports channel tabs returned by the authenticated YouTube TV subscriptions screen
+[B]1.4.1[/B]
+- Uses the authenticated YouTube TV subscription feed instead of the unavailable YouTube Data API v3 project
+- Keeps a successful TV account link even when a later subscription import needs to be retried
+- Shows a Sync YouTube subscriptions action for an account that is already linked
+[B]1.4.0[/B]
+- Replaces the generic Google device code with NewPipe MOD's YouTube TV V2 flow
+- Generates a genuine YouTube TV QR at youtube.com/qr/activate/&lt;code&gt; and manual code at yt.be/activate
+- Obtains the current public YouTube TV client dynamically; no Google Cloud project, Client ID or secret is configured in Settings
+- Removes the legacy generic OAuth state that could show an unrelated app identity
+[B]1.3.5[/B]
+- Uses Google's unmodified device verification URL in the QR code
+- Removes the YouTube-TV QR route that could show another application's identity
+[B]1.3.4[/B]
+- Uses only the OAuth client configured by the user; no fallback to a legacy client
+[B]1.3.3[/B]
+- Uses a fresh image filename per device code, preventing Kodi QR thumbnail cache errors
+- Opens a new-code submenu from Settings
+[B]1.3.2[/B]
+- Rebuilds a pending QR with the current YouTube activation link
+[B]1.3.1[/B]
+- QR opens the YouTube activation page with the device code pre-filled
+[B]1.3.0[/B]
+- Keeps the QR authorization pending while Google returns HTTP 428
+[B]1.2.9[/B]
+- Requires the Google TV client secret before generating an activation code
+[B]1.2.8[/B]
+- Automatically recovers a stale Android/Kodi OAuth client setting
+[B]1.2.7[/B]
+- Supports public Google TV OAuth clients with Client ID only
+[B]1.2.6[/B]
+- Own Google OAuth client and official limited-input device authorization
+- Read-only YouTube subscription synchronization
+[B]1.2.5[/B]
+- Treat the YouTube TV HTTP 428 response as authorization pending instead of deleting the QR code
+- Open Connect YouTube account as a real Kodi folder submenu
+[B]1.2.4[/B]
+- Open YouTube login as a NewPipe submenu with QR, manual code, status check and cancel actions
+- Use Kodi's native picture viewer for the QR so it is always fully visible
+[B]1.2.3[/B]
+- Use Kodi WindowDialog's fixed 1280x720 coordinate canvas for a centered QR dialog
+[B]1.2.2[/B]
+- Correct QR login dialog sizing for Android high-resolution panels
+[B]1.2.1[/B]
+- Fix Android service startup for the automatic YouTube subscription sync
+- Display the short-lived YouTube activation QR code directly inside NewPipe's Kodi dialog
+[B]1.2.0[/B]
+- Bundle Tulip, URL dispatcher, Scrapetube, Unicache, requests, Kodi Six and the YouTube resolver inside the add-on
+- No external script.module add-on is required during ZIP installation
+- Use the bundled standard-library transport instead of ResolveURL / PluginsGR add-ons
+[B]1.1.1[/B]
+- Replace the Client ID setup with the direct NewPipe MOD-compatible TV login: Login, code and yt.be/activate
+- Show the generated QR activation link with the one-time TV code; sync starts automatically after browser approval
+- Do not embed credentials in the package
+[B]1.1.0[/B]
+[B]1.0.14[/B]
+- Add Trailers as a search type, using the selected trailer language/version and quality profile
+- Add a visible, confirmed Delete all watch history button and a separate Remove from watch history action per item
+[B]1.0.13[/B]
+- Add an independent Trailer quality setting: 720p, 1080p, 1440p or 2160p/4K
+- Trailer selections request the chosen resolution without changing normal-video playback quality
+[B]1.0.12[/B]
+- Add a Trailers folder with a configurable language/version: Portuguese dubbed, Portuguese subtitled, English original, Spanish or Romanian
+- Trailer queries use their chosen language terms and do not add a country suffix
+[B]1.0.11[/B]
+- Choose default Trending and Live categories in settings; opening those folders no longer displays a category dialog
+- Add Romania (RO) and Romanian (ro) to the country and language selectors
+[B]1.0.10[/B]
+- Separate Portuguese (Portugal, pt-PT) from Portuguese (Brazil, pt-BR); legacy generic pt follows the selected country
+[B]1.0.9[/B]
+- Remove the pending-playback notification and its 35-second click lock
+- Qualify Portuguese/African Portuguese built-in categories with the selected country (e.g. "Música Portugal") so local results do not default to Brazil
+[B]1.0.8[/B]
+- Open direct YouTube HLS manifests through inputstream.adaptive instead of waiting for Kodi's ordinary file demuxer; no localhost proxy is used
+- Present content country and language as clear pickers, with optional custom ISO/YouTube codes for any unlisted country or language
+- Correct the direct-quality labels so numeric values are not interpreted as Kodi language-string ids
+[B]1.0.7[/B]
+- Limit each direct-playback attempt to one iOS client group; do not probe anonymous-blocked TV clients after it
+- Cache valid direct stream URLs locally for fast replays, and prevent concurrent demuxer starts while a video is opening
+- Add Fast start (on by default), preferring a 360/480p combined stream when available; it can be disabled in settings
+- Fetch every search, Trending and Live page once instead of twice; channel context-menu enrichment no longer delays browsing
+[B]1.0.6[/B]
+- Prioritize the complete iOS and Android native clients before TV/test clients, avoiding unstable direct streams and anonymous TV sign-in errors
+- Add a concise `[NewPipe] stream direto` log line with the selected format (no media URL is logged)
+[B]1.0.5[/B]
+- Use the native PluginsGR resolver in progressive mode: one direct audio/video stream, without DASH, MPD or localhost proxy
+- Do not use plugin.video.youtube or bundled yt-dlp
+- Keep the direct playback quality limit (720p by default) and preferred audio-track selection
+[B]1.0.4[/B]
+- Replaced the prior playback implementation; superseded by 1.0.5
+[B]1.0.3[/B]
+- Replace global English Trending/Live keywords with Brazilian Portuguese category queries and relevance ordering
+- Convert saved version 1.0.2 category links (Music, Movies, etc.) to the localized equivalents automatically
+[B]1.0.2[/B]
+- Add explicit NewPipe-style YouTube content country (gl) and content language (hl) for all browsing requests
+- Default content localization is Brazil (BR) and Portuguese (pt); both values can be changed in the add-on settings
+- Include the configured hl/gl values in continuation requests and cache keys
+[B]1.0.1[/B]
+- Use direct YouTube thumbnails for video cards instead of the add-on fanart fallback
+- Add page navigation to video, channel and playlist listings; the default is 25 results per page
+- Preserve route state for channel tabs and subsequent result pages
+[B]1.0.0[/B]
+- Initial release: search, channels (videos/shorts/live/playlists), playlists, local subscriptions with feed, local watch/search history, audio-only mode

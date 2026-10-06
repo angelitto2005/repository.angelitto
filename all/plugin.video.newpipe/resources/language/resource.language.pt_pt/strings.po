@@ -1,0 +1,705 @@
+# Addon Name: NewPipe MOD
+# Addon id: plugin.video.newpipe
+# Original Provider: Twilight0 | MOD: @TrainAgain2
+msgid ""
+msgstr ""
+"Project-Id-Version: NewPipe MOD\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: pt_PT\n"
+
+msgctxt "#30001"
+msgid "Search"
+msgstr "Pesquisar"
+
+msgctxt "#30002"
+msgid "Subscriptions"
+msgstr "Inscrições"
+
+msgctxt "#30003"
+msgid "Subscription feed"
+msgstr "Feed de inscrições"
+
+msgctxt "#30004"
+msgid "Watch history"
+msgstr "Histórico de visualizações"
+
+msgctxt "#30005"
+msgid "Settings"
+msgstr "Definições"
+
+msgctxt "#30006"
+msgid "New search..."
+msgstr "Nova pesquisa..."
+
+msgctxt "#30007"
+msgid "Clear history"
+msgstr "Limpar histórico"
+
+msgctxt "#30008"
+msgid "Forget this search"
+msgstr "Esquecer esta pesquisa"
+
+msgctxt "#30010"
+msgid "Videos"
+msgstr "Vídeos"
+
+msgctxt "#30011"
+msgid "Channels"
+msgstr "Canais"
+
+msgctxt "#30012"
+msgid "Playlists"
+msgstr "Listas de reprodução"
+
+msgctxt "#30013"
+msgid "Subscribe"
+msgstr "Subscrever"
+
+msgctxt "#30014"
+msgid "Subscribed"
+msgstr "Inscrito"
+
+msgctxt "#30015"
+msgid "Unsubscribe"
+msgstr "Cancelar subscrição"
+
+msgctxt "#30016"
+msgid "Videos"
+msgstr "Vídeos"
+
+msgctxt "#30017"
+msgid "Shorts"
+msgstr "Shorts"
+
+msgctxt "#30018"
+msgid "Live"
+msgstr "Em direto"
+
+msgctxt "#30020"
+msgid "General"
+msgstr "Geral"
+
+msgctxt "#30021"
+msgid "Results per page"
+msgstr "Resultados por página"
+
+msgctxt "#30022"
+msgid "Feed items per channel"
+msgstr "Itens do feed por canal"
+
+msgctxt "#30023"
+msgid "Audio only"
+msgstr "Apenas áudio"
+
+msgctxt "#30024"
+msgid "Debug (disable cache)"
+msgstr "Depurar (desativar cache)"
+
+msgctxt "#30025"
+msgid "Trending"
+msgstr "Em alta"
+
+msgctxt "#30026"
+msgid "Go to channel"
+msgstr "Ir para o canal"
+
+msgctxt "#30027"
+msgid "Bookmarks"
+msgstr "Marcadores"
+
+msgctxt "#30028"
+msgid "Bookmark"
+msgstr "Adicionar marcador"
+
+msgctxt "#30029"
+msgid "Remove bookmark"
+msgstr "Remover marcador"
+
+msgctxt "#30030"
+msgid "Bookmarked"
+msgstr "Marcado"
+
+msgctxt "#30031"
+msgid "Clear cache"
+msgstr "Limpar cache"
+
+msgctxt "#30032"
+msgid "Cache cleared"
+msgstr "Cache limpo"
+
+msgctxt "#30033"
+msgid "Cache clear failed"
+msgstr "Falha ao limpar o cache"
+
+msgctxt "#30034"
+msgid "Next page"
+msgstr "Página seguinte"
+
+msgctxt "#30035"
+msgid "Content country (ISO 3166-1)"
+msgstr "País de conteúdo (ISO 3166-1)"
+
+msgctxt "#30036"
+msgid "Content language (YouTube code)"
+msgstr "Idioma de conteúdo (código YouTube)"
+
+msgctxt "#30037"
+msgid "Direct playback maximum resolution"
+msgstr "Resolução máxima de reprodução direta"
+
+msgctxt "#30038"
+msgid "Uses one direct audio/video stream and avoids the failing DASH proxy."
+msgstr "Utiliza uma única stream áudio/vídeo direta e evita o proxy DASH com falhas."
+
+msgctxt "#30039"
+msgid "Fast start"
+msgstr "Início rápido"
+
+msgctxt "#30040"
+msgid "Prefer a 360p/480p direct stream when available. Disable this to prefer the highest selected resolution."
+msgstr "Preferir uma stream direta em 360p/480p quando disponível. Desative isto para preferir a maior resolução selecionada."
+
+msgctxt "#30041"
+msgid "Custom country code (optional)"
+msgstr "Código de país personalizado (opcional)"
+
+msgctxt "#30042"
+msgid "Enter any two-letter ISO 3166-1 country code. It overrides the country picker."
+msgstr "Introduza um código de país ISO 3166-1 de duas letras. Isto substitui o seletor de país."
+
+msgctxt "#30043"
+msgid "Custom language code (optional)"
+msgstr "Código de idioma personalizado (opcional)"
+
+msgctxt "#30044"
+msgid "Enter a YouTube language code such as pt, pt-PT, en or es. It overrides the language picker."
+msgstr "Introduza um código de idioma do YouTube como pt, pt-PT, en ou es. Isto substitui o seletor de idioma."
+
+msgctxt "#30045"
+msgid "Select the country used by YouTube to localize results."
+msgstr "Selecione o país que o YouTube usa para localizar os resultados."
+
+msgctxt "#30046"
+msgid "Select the language used by YouTube to localize titles and results."
+msgstr "Selecione o idioma que o YouTube usa para localizar títulos e resultados."
+
+msgctxt "#30047"
+msgid "Default Trending category"
+msgstr "Categoria padrão de Em alta"
+
+msgctxt "#30048"
+msgid "Choose the category that opens immediately when selecting Trending."
+msgstr "Escolha a categoria que abre imediatamente ao selecionar Em alta."
+
+msgctxt "#30049"
+msgid "Default Live category"
+msgstr "Categoria padrão de Em direto"
+
+msgctxt "#30050"
+msgid "Choose the category that opens immediately when selecting Live."
+msgstr "Escolha a categoria que abre imediatamente ao selecionar Em direto."
+
+msgctxt "#30051"
+msgid "Trailers"
+msgstr "Trailers"
+
+msgctxt "#30052"
+msgid "Trailer language/version"
+msgstr "Idioma/versão do trailer"
+
+msgctxt "#30053"
+msgid "Choose how trailers are searched. This is independent of the selected content country."
+msgstr "Escolha como os trailers são pesquisados. Isto é independente do país de conteúdo selecionado."
+
+msgctxt "#30054"
+msgid "Trailer maximum resolution"
+msgstr "Resolução máxima dos trailers"
+
+msgctxt "#30055"
+msgid "Choose the resolution requested for trailers. 4K depends on availability, device decoding and InputStream Adaptive settings."
+msgstr "Escolha a resolução solicitada para os trailers. O 4K depende da disponibilidade, decodificação do dispositivo e das definições do InputStream Adaptive."
+
+msgctxt "#30056"
+msgid "Delete all watch history"
+msgstr "Eliminar todo o histórico de visualizações"
+
+msgctxt "#30057"
+msgid "Remove from watch history"
+msgstr "Remover do histórico de visualizações"
+
+msgctxt "#30058"
+msgid "Delete all watched videos from the local history?"
+msgstr "Eliminar todos os vídeos vistos do histórico local?"
+
+msgctxt "#30059"
+msgid "YouTube account"
+msgstr "Conta do YouTube"
+
+msgctxt "#30060"
+msgid "Connect YouTube account"
+msgstr "Ligar conta do YouTube"
+
+msgctxt "#30061"
+msgid "Sync YouTube subscriptions"
+msgstr "Sincronizar inscrições do YouTube"
+
+msgctxt "#30062"
+msgid "Disconnect YouTube account"
+msgstr "Desligar conta do YouTube"
+
+msgctxt "#30064"
+msgid "YouTube authorization is pending"
+msgstr "A autorização do YouTube está pendente"
+
+msgctxt "#30065"
+msgid "Open this address in a browser:"
+msgstr "Abra este endereço num navegador:"
+
+msgctxt "#30066"
+msgid "Enter this code:"
+msgstr "Introduza este código:"
+
+msgctxt "#30067"
+msgid "Connection setup failed"
+msgstr "Falha na configuração da ligação"
+
+msgctxt "#30068"
+msgid "After authorization, NewPipe synchronizes automatically."
+msgstr "Após a autorização, o NewPipe sincroniza automaticamente."
+
+msgctxt "#30069"
+msgid "YouTube subscriptions synchronized: {0}"
+msgstr "Inscrições do YouTube sincronizadas: {0}"
+
+msgctxt "#30070"
+msgid "YouTube sync failed: {0}"
+msgstr "Falha na sincronização do YouTube: {0}"
+
+msgctxt "#30071"
+msgid "The YouTube authorization code expired. Start again."
+msgstr "O código de autorização do YouTube expirou. Comece novamente."
+
+msgctxt "#30072"
+msgid "Disconnect from YouTube? Local subscriptions remain."
+msgstr "Desligar do YouTube? As inscrições locais permanecem."
+
+msgctxt "#30073"
+msgid "YouTube account disconnected"
+msgstr "Conta do YouTube desligada"
+
+msgctxt "#30074"
+msgid "YouTube TV login method"
+msgstr "Método de início de sessão do YouTube TV"
+
+msgctxt "#30075"
+msgid "Uses the current public YouTube TV client data, following NewPipe MOD's activation flow."
+msgstr "Utiliza os dados do cliente público atual do YouTube TV, seguindo o fluxo de ativação do NewPipe MOD."
+
+msgctxt "#30076"
+msgid "Creates a YouTube TV activation code and QR. Authorize it with your Google account on another device."
+msgstr "Cria um código de ativação e um QR do YouTube TV. Autorize-o com a sua conta Google noutro dispositivo."
+
+msgctxt "#30077"
+msgid "Imports the current account subscriptions after YouTube TV authorization."
+msgstr "Importa as inscrições da conta atual após a autorização do YouTube TV."
+
+msgctxt "#30078"
+msgid "Removes the local OAuth token only. It never changes your YouTube subscriptions."
+msgstr "Remove apenas o token OAuth local. Nunca altera as suas inscrições do YouTube."
+
+msgctxt "#30079"
+msgid "YouTube account is already connected"
+msgstr "A conta do YouTube já está ligada"
+
+msgctxt "#30080"
+msgid "QR link:"
+msgstr "Link QR:"
+
+msgctxt "#30081"
+msgid "No Google Cloud client configuration is required"
+msgstr "Não é necessária qualquer configuração de cliente Google Cloud"
+
+msgctxt "#30082"
+msgid "The public YouTube TV client is fetched when a new activation code is created and cached only in the local addon profile."
+msgstr "O cliente público do YouTube TV é obtido quando um novo código de ativação é criado e é guardado em cache apenas no perfil local do addon."
+
+msgctxt "#30083"
+msgid "Subscribed channels"
+msgstr "Canais subscritos"
+
+msgctxt "#30084"
+msgid "My YouTube"
+msgstr "O meu YouTube"
+
+msgctxt "#30085"
+msgid "My subscriptions"
+msgstr "As minhas inscrições"
+
+msgctxt "#30086"
+msgid "Watch Later"
+msgstr "Ver mais tarde"
+
+msgctxt "#30087"
+msgid "Saved playlists"
+msgstr "Listas de reprodução guardadas"
+
+msgctxt "#30088"
+msgid "Add to Watch Later"
+msgstr "Adicionar a 'Ver mais tarde'"
+
+msgctxt "#30089"
+msgid "Remove from Watch Later"
+msgstr "Remover de 'Ver mais tarde'"
+
+msgctxt "#30090"
+msgid "Local watch history"
+msgstr "Histórico de visualizações local"
+
+msgctxt "#30091"
+msgid "Step 1 — Scan QR code"
+msgstr "Passo 1 — Digitalizar o código QR"
+
+msgctxt "#30092"
+msgid "Step 2 — Use manual code: {0}"
+msgstr "Passo 2 — Use o código manual: {0}"
+
+msgctxt "#30093"
+msgid "Step 3 — Confirm connection"
+msgstr "Passo 3 — Confirmar ligação"
+
+msgctxt "#30094"
+msgid "Generate new code"
+msgstr "Gerar novo código"
+
+msgctxt "#30095"
+msgid "Cancel connection"
+msgstr "Cancelar ligação"
+
+msgctxt "#30096"
+msgid "Interface language"
+msgstr "Idioma da interface"
+
+msgctxt "#30097"
+msgid "Choose the language used by NewPipe MOD menus and messages. Settings labels follow Kodi interface language."
+msgstr "Escolha o idioma usado pelos menus e mensagens do NewPipe MOD. As etiquetas das definições seguem o idioma da interface do Kodi."
+
+msgctxt "#30098"
+msgid "Same as content language"
+msgstr "Igual ao idioma de conteúdo"
+
+msgctxt "#30099"
+msgid "Kodi interface language"
+msgstr "Idioma da interface do Kodi"
+
+msgctxt "#30100"
+msgid "Portuguese — Portugal (pt-PT)"
+msgstr "Português — Portugal (pt-PT)"
+
+msgctxt "#30101"
+msgid "Portuguese — Brazil (pt-BR)"
+msgstr "Português — Brasil (pt-BR)"
+
+msgctxt "#30102"
+msgid "English (en)"
+msgstr "Inglês (en)"
+
+msgctxt "#30103"
+msgid "Spanish (es)"
+msgstr "Espanhol (es)"
+
+msgctxt "#30104"
+msgid "French (fr)"
+msgstr "Francês (fr)"
+
+msgctxt "#30105"
+msgid "German (de)"
+msgstr "Alemão (de)"
+
+msgctxt "#30106"
+msgid "Italian (it)"
+msgstr "Italiano (it)"
+
+msgctxt "#30107"
+msgid "Dutch (nl)"
+msgstr "Holandês (nl)"
+
+msgctxt "#30108"
+msgid "Romanian (ro)"
+msgstr "Romeno (ro)"
+
+msgctxt "#30109"
+msgid "Turkish (tr)"
+msgstr "Turco (tr)"
+
+msgctxt "#30110"
+msgid "Japanese (ja)"
+msgstr "Japonês (ja)"
+
+msgctxt "#30111"
+msgid "Korean (ko)"
+msgstr "Coreano (ko)"
+
+msgctxt "#30120"
+msgid "Brazil (BR)"
+msgstr "Brasil (BR)"
+
+msgctxt "#30121"
+msgid "Portugal (PT)"
+msgstr "Portugal (PT)"
+
+msgctxt "#30122"
+msgid "Angola (AO)"
+msgstr "Angola (AO)"
+
+msgctxt "#30123"
+msgid "Mozambique (MZ)"
+msgstr "Moçambique (MZ)"
+
+msgctxt "#30124"
+msgid "Cabo Verde (CV)"
+msgstr "Cabo Verde (CV)"
+
+msgctxt "#30125"
+msgid "United States (US)"
+msgstr "Estados Unidos (US)"
+
+msgctxt "#30126"
+msgid "Canada (CA)"
+msgstr "Canadá (CA)"
+
+msgctxt "#30127"
+msgid "United Kingdom (GB)"
+msgstr "Reino Unido (GB)"
+
+msgctxt "#30128"
+msgid "Ireland (IE)"
+msgstr "Irlanda (IE)"
+
+msgctxt "#30129"
+msgid "Spain (ES)"
+msgstr "Espanha (ES)"
+
+msgctxt "#30130"
+msgid "France (FR)"
+msgstr "França (FR)"
+
+msgctxt "#30131"
+msgid "Germany (DE)"
+msgstr "Alemanha (DE)"
+
+msgctxt "#30132"
+msgid "Italy (IT)"
+msgstr "Itália (IT)"
+
+msgctxt "#30133"
+msgid "Netherlands (NL)"
+msgstr "Países Baixos (NL)"
+
+msgctxt "#30134"
+msgid "Belgium (BE)"
+msgstr "Bélgica (BE)"
+
+msgctxt "#30135"
+msgid "Switzerland (CH)"
+msgstr "Suíça (CH)"
+
+msgctxt "#30136"
+msgid "Austria (AT)"
+msgstr "Áustria (AT)"
+
+msgctxt "#30137"
+msgid "Sweden (SE)"
+msgstr "Suécia (SE)"
+
+msgctxt "#30138"
+msgid "Norway (NO)"
+msgstr "Noruega (NO)"
+
+msgctxt "#30139"
+msgid "Denmark (DK)"
+msgstr "Dinamarca (DK)"
+
+msgctxt "#30140"
+msgid "Finland (FI)"
+msgstr "Finlândia (FI)"
+
+msgctxt "#30141"
+msgid "Poland (PL)"
+msgstr "Polónia (PL)"
+
+msgctxt "#30142"
+msgid "Romania (RO)"
+msgstr "Roménia (RO)"
+
+msgctxt "#30143"
+msgid "Turkey (TR)"
+msgstr "Turquia (TR)"
+
+msgctxt "#30144"
+msgid "Greece (GR)"
+msgstr "Grécia (GR)"
+
+msgctxt "#30145"
+msgid "India (IN)"
+msgstr "Índia (IN)"
+
+msgctxt "#30146"
+msgid "Japan (JP)"
+msgstr "Japão (JP)"
+
+msgctxt "#30147"
+msgid "South Korea (KR)"
+msgstr "Coreia do Sul (KR)"
+
+msgctxt "#30148"
+msgid "Indonesia (ID)"
+msgstr "Indonésia (ID)"
+
+msgctxt "#30149"
+msgid "Philippines (PH)"
+msgstr "Filipinas (PH)"
+
+msgctxt "#30150"
+msgid "Australia (AU)"
+msgstr "Austrália (AU)"
+
+msgctxt "#30151"
+msgid "New Zealand (NZ)"
+msgstr "Nova Zelândia (NZ)"
+
+msgctxt "#30152"
+msgid "Mexico (MX)"
+msgstr "México (MX)"
+
+msgctxt "#30153"
+msgid "Argentina (AR)"
+msgstr "Argentina (AR)"
+
+msgctxt "#30154"
+msgid "Chile (CL)"
+msgstr "Chile (CL)"
+
+msgctxt "#30155"
+msgid "Colombia (CO)"
+msgstr "Colômbia (CO)"
+
+msgctxt "#30156"
+msgid "Peru (PE)"
+msgstr "Peru (PE)"
+
+msgctxt "#30157"
+msgid "South Africa (ZA)"
+msgstr "África do Sul (ZA)"
+
+msgctxt "#30160"
+msgid "Music"
+msgstr "Música"
+
+msgctxt "#30161"
+msgid "Gaming"
+msgstr "Jogos"
+
+msgctxt "#30162"
+msgid "News"
+msgstr "Notícias"
+
+msgctxt "#30163"
+msgid "Movies"
+msgstr "Filmes"
+
+msgctxt "#30164"
+msgid "Live"
+msgstr "Em direto"
+
+msgctxt "#30165"
+msgid "Sports"
+msgstr "Desporto"
+
+msgctxt "#30166"
+msgid "Podcasts"
+msgstr "Podcasts"
+
+msgctxt "#30170"
+msgid "Portuguese dubbed"
+msgstr "Dublado em português"
+
+msgctxt "#30171"
+msgid "Portuguese subtitled"
+msgstr "Legendado em português"
+
+msgctxt "#30172"
+msgid "English original"
+msgstr "Original em inglês"
+
+msgctxt "#30173"
+msgid "Spanish"
+msgstr "Espanhol"
+
+msgctxt "#30174"
+msgid "Romanian"
+msgstr "Romeno"
+
+msgctxt "#30175"
+msgid "Low — 360p"
+msgstr "Baixa — 360p"
+
+msgctxt "#30176"
+msgid "Medium — 480p"
+msgstr "Média — 480p"
+
+msgctxt "#30177"
+msgid "High — 720p"
+msgstr "Alta — 720p"
+
+msgctxt "#30178"
+msgid "Very high — 1080p"
+msgstr "Muito alta — 1080p"
+
+msgctxt "#30179"
+msgid "Unable to obtain a playable video."
+msgstr "Não foi possível obter um vídeo reproduzível."
+
+msgctxt "#30180"
+msgid "Activation code expired. Start again."
+msgstr "Código de ativação expirou. Comece novamente."
+
+msgctxt "#30181"
+msgid "Sign in to YouTube"
+msgstr "Iniciar sessão no YouTube"
+
+msgctxt "#30182"
+msgid "Open: {0}\n\nEnter the code:\n[B]{1}[/B]\n\nAfter authorizing, return to this submenu and choose “Step 3 — Confirm connection”."
+msgstr "Abra: {0}\n\nIntroduza o código:\n[B]{1}[/B]\n\nApós a autorização, volte a este submenu e escolha “Passo 3 — Confirmar ligação”."
+
+msgctxt "#30183"
+msgid "{0} channels, {1} videos"
+msgstr "{0} canais, {1} vídeos"
+
+msgctxt "#30184"
+msgid "Synchronizing YouTube subscriptions…"
+msgstr "A sincronizar inscrições do YouTube…"
+
+msgctxt "#30185"
+msgid "Unknown error"
+msgstr "Erro desconhecido"
+
+msgctxt "#30186"
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgctxt "#30187"
+msgid "HD — 720p"
+msgstr "HD — 720p"
+
+msgctxt "#30188"
+msgid "Full HD — 1080p"
+msgstr "Full HD — 1080p"
+
+msgctxt "#30189"
+msgid "Quad HD — 1440p"
+msgstr "Quad HD — 1440p"
+
+msgctxt "#30190"
+msgid "Ultra HD — 2160p (4K)"
+msgstr "Ultra HD — 2160p (4K)"

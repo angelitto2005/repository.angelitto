@@ -1,0 +1,1 @@
+ytresolver from PluginsGR / plugin.video.youtube — GPL-2.0-only; used only for direct YouTube stream resolution.

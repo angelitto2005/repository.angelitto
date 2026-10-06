@@ -1,0 +1,32 @@
+# -*- coding: utf-8 -*-
+
+'''
+    PluginsGR Module - vendored YouTube resolver engine notes
+
+    Source: ResolveURL-standalone
+        lib/resolveurl/ytresolver/ (kodion port of anxdpanic/plugin.video.youtube)
+    Upstream engine: https://github.com/anxdpanic/plugin.video.youtube
+
+    License of this directory: GPL-2.0-only (preserved from upstream files).
+    NOTE: the surrounding addon is GPL-3.0-only; combining GPL-2.0-only code
+    into a GPL-3.0-only work is legally delicate. This mirrors what the rest
+    of the Kodi ecosystem (and ResolveURL-standalone itself) already does,
+    but confirm you are comfortable with it.
+
+    Vendoring patches applied on top of the pristine engine (strict
+    requirement: ResolveURL net.py is the ONLY HTTP layer, no `requests`,
+    no `urllib3` anywhere in the import graph):
+
+    1. kodion/network/netpy.py (NEW FILE): `BaseRequestsClass` /
+       `InvalidJSONError` reimplemented on `resolveurl.lib.net.Net`
+       (same `.request()` contract incl. response/error hooks, cookie jar
+       via shared Net, JSON bodies, params, per-request Cookie header).
+    2. kodion/network/__init__.py: export from `.netpy` instead of `.requests`.
+    3. kodion/network/ip_api.py: `from .netpy import BaseRequestsClass`.
+    4. kodion/network/http_server.py: `from .netpy import BaseRequestsClass`
+       and `from .netpy import NetpyHTTPError as HTTPError`.
+    5. kodion/network/requests.py: DELETED (nothing may import it back).
+
+    When re-syncing with the engine upstream, re-apply 2-5 and keep
+    `requests.py` out of the tree.
+'''
