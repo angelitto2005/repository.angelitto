@@ -1643,6 +1643,12 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if ADDON.getSetting('show_cm_youtube') != 'false':
         cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{urlencode(yt_params_dict)})"))
 
+    # Ultima optiune. Container.Update ca lista sa inlocuiasca pagina (Back revine aici).
+    if content_type == 'movie' and ADDON.getSetting('show_cm_detonate') != 'false':
+        det_params_dict = {'mode': 'detonate_search', 'query': title, 'tmdb_id': tmdb_id,
+                           'title': title, 'year': year}
+        cm.append(('[B][COLOR FFCCCCFF]Search Detonate[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{urlencode(det_params_dict)})"))
+
     return cm
 
 def _safe_set_prop(li, key, value):

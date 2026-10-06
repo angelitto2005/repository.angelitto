@@ -75,6 +75,7 @@
         <setting id="all_providers_menu" type="bool" label="Show [B][COLOR pink]All [/COLOR][COLOR FF00CED1]Pro[/COLOR][COLOR lightskyblue]vid[/COLOR][COLOR mediumpurple]ers[/COLOR][/B] in context menu (batch: TMDb + Trakt + MDBList + Simkl + PunchPlay)" default="false"/>
         <setting id="show_cm_youtube" type="bool" label="Show [B][COLOR FFF70D1A]Search Youtube[/COLOR][/B] in context menu" default="true"/>
         <setting id="youtube_autoplay" type="bool" label="   └─ [B][COLOR FFF70D1A]Youtube Autoplay[/COLOR][/B] (keep playing suggested videos)" default="false"/>
+        <setting id="show_cm_detonate" type="bool" label="Show [B][COLOR FFCCCCFF]Search Detonate[/COLOR][/B] in context menu" default="true"/>
         <setting id="show_cm_my_plays" type="bool" label="Show [B][COLOR FFFF69B4]My Plays[/COLOR][/B] in context menu" default="true"/>
 
         <setting type="lsep" label="[B][COLOR FFFF69B4]My Plays[/COLOR][/B] (choose which players appear in menu)"/>
@@ -335,33 +336,32 @@
 		<setting id="speedapp_username" type="text" label="      Username" default="" visible="eq(-1,true) + eq(-18,true)"/>
 		<setting id="speedapp_password" type="text" label="      Password" default="" option="hidden" visible="eq(-2,true) + eq(-19,true)"/>
 		<setting id="speedapp_passkey" type="text" label="      Passkey (for .torrent download)" default="" option="hidden" visible="eq(-3,true) + eq(-20,true)"/>
-		<setting id="speedapp_fallback_name" type="bool" label="      Fallback Search by Name" default="true" visible="eq(-4,true) + eq(-21,true)"/>
-		<setting id="speedapp_use_api" type="bool" label="      Search via API (faster, all channels)" default="false" visible="eq(-5,true) + eq(-22,true)"/>
-		<setting id="use_p2p_seedpool" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [COLOR FFFF8C00]SeedPool[/COLOR][/B]" default="false" visible="eq(-23,true)"/>
-		<setting id="seedpool_username" type="text" label="      Username" default="" visible="eq(-1,true) + eq(-24,true)"/>
-		<setting id="seedpool_password" type="text" label="      Password" default="" option="hidden" visible="eq(-2,true) + eq(-25,true)"/>
-		<setting id="seedpool_fallback_name" type="bool" label="      Fallback Search by Name" default="true" visible="eq(-3,true) + eq(-26,true)"/>
+		<setting id="speedapp_search_name" type="bool" label="      Also search by name (adds results)" default="true" visible="eq(-4,true) + eq(-21,true)"/>
+		<setting id="use_p2p_seedpool" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [COLOR FFFF8C00]SeedPool[/COLOR][/B]" default="false" visible="eq(-22,true)"/>
+		<setting id="seedpool_username" type="text" label="      Username" default="" visible="eq(-1,true) + eq(-23,true)"/>
+		<setting id="seedpool_password" type="text" label="      Password" default="" option="hidden" visible="eq(-2,true) + eq(-24,true)"/>
+		<setting id="seedpool_fallback_name" type="bool" label="      Fallback Search by Name" default="true" visible="eq(-3,true) + eq(-25,true)"/>
 		
 		<setting type="label" label="[B][COLOR yellow]                          ─── P2P Custom Stremio Addons ───[/COLOR][/B]"/>
-		<setting id="use_p2p_custom1" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 1[/COLOR][/B]" default="false" visible="eq(-28,true)"/>
-		<setting id="p2p_custom1_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-29,true)"/>
-		<setting id="p2p_custom1_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-30,true)"/>
+		<setting id="use_p2p_custom1" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 1[/COLOR][/B]" default="false" visible="eq(-27,true)"/>
+		<setting id="p2p_custom1_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-28,true)"/>
+		<setting id="p2p_custom1_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-29,true)"/>
 		
-		<setting id="use_p2p_custom2" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 2[/COLOR][/B]" default="false" visible="eq(-31,true)"/>
-		<setting id="p2p_custom2_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-32,true)"/>
-		<setting id="p2p_custom2_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-33,true)"/>
+		<setting id="use_p2p_custom2" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 2[/COLOR][/B]" default="false" visible="eq(-30,true)"/>
+		<setting id="p2p_custom2_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-31,true)"/>
+		<setting id="p2p_custom2_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-32,true)"/>
 		
-		<setting id="use_p2p_custom3" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 3[/COLOR][/B]" default="false" visible="eq(-34,true)"/>
-		<setting id="p2p_custom3_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-35,true)"/>
-		<setting id="p2p_custom3_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-36,true)"/>
+		<setting id="use_p2p_custom3" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 3[/COLOR][/B]" default="false" visible="eq(-33,true)"/>
+		<setting id="p2p_custom3_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-34,true)"/>
+		<setting id="p2p_custom3_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-35,true)"/>
 		
-		<setting id="use_p2p_custom4" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 4[/COLOR][/B]" default="false" visible="eq(-37,true)"/>
-		<setting id="p2p_custom4_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-38,true)"/>
-		<setting id="p2p_custom4_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-39,true)"/>
+		<setting id="use_p2p_custom4" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 4[/COLOR][/B]" default="false" visible="eq(-36,true)"/>
+		<setting id="p2p_custom4_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-37,true)"/>
+		<setting id="p2p_custom4_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-38,true)"/>
 		
-		<setting id="use_p2p_custom5" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 5[/COLOR][/B]" default="false" visible="eq(-40,true)"/>
-		<setting id="p2p_custom5_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-41,true)"/>
-		<setting id="p2p_custom5_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-42,true)"/>
+		<setting id="use_p2p_custom5" type="bool" label="[B][COLOR FFCCCCFF]└─ Enable [B][COLOR FFFF8C00]P2P Custom 5[/COLOR][/B]" default="false" visible="eq(-39,true)"/>
+		<setting id="p2p_custom5_name" type="text" label="      Name" default="" subsetting="true" visible="eq(-1,true) + eq(-40,true)"/>
+		<setting id="p2p_custom5_manifest.0" type="text" label="      URL manifest.json" default="" subsetting="true" visible="eq(-2,true) + eq(-41,true)"/>
     </category>
 
     <!-- 7. ACCOUNTS -->

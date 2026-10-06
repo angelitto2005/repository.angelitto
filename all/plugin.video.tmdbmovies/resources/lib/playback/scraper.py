@@ -6809,8 +6809,7 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
     username = ADDON.getSetting('speedapp_username').strip()
     password = ADDON.getSetting('speedapp_password').strip()
     passkey = ADDON.getSetting('speedapp_passkey').strip()
-    fallback_enabled = ADDON.getSetting('speedapp_fallback_name') == 'true'
-    use_api = ADDON.getSetting('speedapp_use_api') == 'true'
+    fallback_enabled = ADDON.getSetting('speedapp_search_name') == 'true'
 
     if not username or not password:
         xbmc.log("[TMDb Movies] [SpeedApp] missing username or password", xbmc.LOGERROR)
@@ -6822,166 +6821,32 @@ def scrape_speedapp(imdb_id, content_type, season=None, episode=None, title_quer
     base_url = 'https://speedapp.io'
     ua = get_random_ua()
 
-    # === API MODE ===
-    if use_api:
-        xbmc.log("[TMDb Movies] [SpeedApp] using API mode", xbmc.LOGERROR)
-        try:
-            session = requests.Session()
-            api_resp = session.post(base_url + '/api/login',
-                json={'username': username, 'password': password},
-                headers={"User-Agent": ua, "Content-Type": "application/json"},
-                timeout=15)
-            if api_resp.status_code == 201:
-                token = api_resp.json().get('token')
-                if token:
-                    auth_headers = {"User-Agent": ua, "Authorization": "Bearer " + token}
-                    api_streams = _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fallback_enabled, title_query, year_query)
-                    if api_streams is not None and len(api_streams) > 0:
-                        if content_type == 'tv' and (season is not None):
-                            api_streams = _filter_tv_packs(api_streams, season, episode)
-                        if api_streams is not None and len(api_streams) > 0:
-                            xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned via API" % len(api_streams), xbmc.LOGERROR)
-                            return api_streams
-            xbmc.log("[TMDb Movies] [SpeedApp] API failed (HTTP %d), falling back to HTML scrape" % api_resp.status_code, xbmc.LOGERROR)
-        except Exception as e:
-            xbmc.log("[TMDb Movies] [SpeedApp] API error: %s, falling back to HTML scrape" % str(e), xbmc.LOGERROR)
+    search_imdb = imdb_id
+    xbmc.log("[TMDb Movies] [SpeedApp] cautare API (imdb=%s, nume=%s, titlu=%r)" % (
+        bool(search_imdb), bool(fallback_enabled), title_query), xbmc.LOGERROR)
 
-    # === HTML SCRAPE MODE (default / fallback) ===
-    xbmc.log("[TMDb Movies] [SpeedApp] using HTML scrape mode", xbmc.LOGERROR)
-    session = requests.Session()
     try:
-        login_resp = session.get(base_url + '/login',
-            headers={"User-Agent": ua, "Accept-Language": "en-US,en;q=0.5"},
-            timeout=15)
-        token_match = re.search(r'_csrf_token.+?value="(.+?)"', login_resp.text)
-        if not token_match:
-            xbmc.log("[TMDb Movies] [SpeedApp] no CSRF token found", xbmc.LOGERROR)
+        session = requests.Session()
+        token = _speedapp_auth(session, ua, username, password, base_url)
+        if not token:
+            xbmc.log("[TMDb Movies] [SpeedApp] fara token API", xbmc.LOGERROR)
             return None
-        csrf_token = token_match.group(1)
-        login_post = session.post(base_url + '/login', data={
-                'email': username, 'password': password, '_remember_me': 'on', '_csrf_token': csrf_token
-            }, headers={"User-Agent": ua, "Origin": base_url, "Referer": base_url + '/login'}, timeout=15)
-        if 'logout' not in login_post.text:
-            xbmc.log("[TMDb Movies] [SpeedApp] login failed", xbmc.LOGERROR)
-            return None
+        auth_headers = {"User-Agent": ua, "Authorization": "Bearer " + token}
+        api_streams = _speedapp_api_search(session, auth_headers, base_url, search_imdb, passkey,
+                                          fallback_enabled, title_query, year_query)
     except Exception as e:
-        xbmc.log("[TMDb Movies] [SpeedApp] login error: %s" % str(e), xbmc.LOGERROR)
+        xbmc.log("[TMDb Movies] [SpeedApp] API error: %s" % str(e), xbmc.LOGERROR)
         return None
 
-    def fetch_page(search_url):
-        try:
-            resp = session.get(search_url, headers={"User-Agent": ua}, timeout=15)
-            return resp.text if resp.status_code == 200 else None
-        except:
-            return None
-
-    def parse_html(html):
-        streams = []
-        blocks = re.split(r'<div class="separator separator-dashed"></div>\s*<div class="row mx-0 py-3">', html)
-        if len(blocks) > 1:
-            blocks = blocks[1:]
-        for block in blocks:
-            try:
-                if 'href="/torrents/' not in block:
-                    continue
-                name_match = re.search(r'<a class="text-reset fw-bold" href="[^"]+">(.+?)</a>', block, re.DOTALL)
-                if not name_match:
-                    continue
-                name = name_match.group(1).strip()
-                if not name:
-                    continue
-                junk_pattern = r'(?i)\b(trailer|sample|cam|camrip|hdts|hdtc|ts|telesync|scr|screener|preair|clip|preview|tc|hc)\b'
-                if re.search(junk_pattern, name):
-                    continue
-                dl_match = re.search(r'href="(/torrents/(\d+)/[^"]+\.torrent)"', block)
-                if not dl_match:
-                    continue
-                tid = dl_match.group(2)
-                size_match = re.search(r'<div class="col-6 col-sm-4 col-md-1 text-center text-muted"(?! data-bs-toggle)>([^<]+)</div>', block)
-                size_str = size_match.group(1).strip() if size_match else ''
-                seeds_match = re.search(r'<span class="text-success">(\d+)<span class="d-md-none"> seeders', block)
-                seeders = int(seeds_match.group(1)) if seeds_match else 0
-                leech_match = re.search(r'<span class="text-danger[^"]*">(\d+)<span class="d-md-none"> leechers', block)
-                leechers = int(leech_match.group(1)) if leech_match else 0
-                freeleech = 1 if 'Descarcarea acestui torrent este gratuita' in block else 0
-                doubleup = 1 if 'Uploadul pe acest torrent se va contoriza dublu.' in block else 0
-                halfdw = 1 if 'Descarcarea acestui torrent este redusa la jumatate.' in block else 0
-                is_internal = 1 if 'Intern' in block else 0
-                cat_match = re.search(r'href="/browse\?categories%5B0%5D=(\d+)"', block)
-                cat_id = cat_match.group(1) if cat_match else ''
-                cat_names = {
-                    '3': 'Anime/Hentai', '43': 'Seriale HDTV', '44': 'Seriale HDTV-Ro',
-                    '17': 'Filme BluRay', '24': 'Filme BluRay-Ro',
-                    '7': 'Filme DVD', '2': 'Filme DVD-Ro',
-                    '8': 'Filme HD', '29': 'Filme HD-Ro',
-                    '61': 'Filme 4K(2160p)', '57': 'Filme 4K-RO(2160p)',
-                    '10': 'Filme SD', '35': 'Filme SD-Ro',
-                    '45': 'Seriale TV', '46': 'Seriale TV-Ro',
-                    '9': 'Documentare', '63': 'Documentare-Ro',
-                    '22': 'Sport', '58': 'Sport-Ro',
-                    '38': 'Movies Packs', '41': 'TV Packs', '66': 'TV Packs-Ro',
-                    '59': 'Filme Romanesti', '60': 'Seriale Romanesti',
-                    '62': 'Desene Animate', '64': 'Videoclipuri'
-                }
-                category_name = cat_names.get(cat_id, '')
-                q_label = 'SD'
-                name_upper = name.upper()
-                if '2160P' in name_upper or '4K' in name_upper:
-                    q_label = '4K'
-                elif '1080P' in name_upper:
-                    q_label = '1080p'
-                elif '720P' in name_upper:
-                    q_label = '720p'
-                elif '480P' in name_upper or 'SD' in name_upper:
-                    q_label = 'SD'
-                download_link = "%s/rss/download/%s/%s.torrent?passkey=%s" % (base_url, tid, quote(name), passkey)
-                streams.append({
-                    'url': download_link,
-                    'name': name + " [S: %d P: %d]" % (seeders, leechers),
-                    'title': name,
-                    'quality': q_label,
-                    'size': size_str,
-                    'info': {
-                        'seeders': seeders, 'peers': leechers, 'indexer': category_name,
-                        'freeleech': freeleech, 'doubleup': doubleup, 'halfdw': halfdw,
-                        'internal': is_internal, 'quality': q_label,
-                        'releaseGroup': _extract_release_group(name),
-                    },
-                    'provider_id': 'p2p_speedapp'
-                })
-            except:
-                continue
-        return streams
-
-    all_streams = []
-    if imdb_id and str(imdb_id).startswith('tt'):
-        for page in [1, 2]:
-            html = fetch_page(base_url + "/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=%d" % (imdb_id, page))
-            if html:
-                streams = parse_html(html)
-                all_streams.extend(streams)
-                if len(streams) < 50:
-                    break
-            else:
-                break
-    if not all_streams and fallback_enabled and title_query:
-        search_term = title_query + (" " + year_query if year_query else "")
-        for page in [1, 2]:
-            html = fetch_page(base_url + "/browse?search=%s&submit=&sort=torrent.seeders&direction=desc&page=%d" % (quote(search_term), page))
-            if html:
-                streams = parse_html(html)
-                all_streams.extend(streams)
-                if len(streams) < 50:
-                    break
-            else:
-                break
-
-    if content_type == 'tv' and (season is not None) and all_streams:
-        all_streams = _filter_tv_packs(all_streams, season, episode)
-    if all_streams:
-        xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned" % len(all_streams), xbmc.LOGERROR)
-    return all_streams if all_streams else None
-
+    if api_streams:
+        if content_type == 'tv' and season is not None:
+            api_streams = _filter_tv_packs(api_streams, season, episode)
+        if api_streams:
+            xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned via API" % len(api_streams), xbmc.LOGERROR)
+            return api_streams
+        xbmc.log("[TMDb Movies] [SpeedApp] %d rezultate, toate filtrate de sezon/episod" % len(api_streams), xbmc.LOGERROR)
+    xbmc.log("[TMDb Movies] [SpeedApp] niciun rezultat", xbmc.LOGERROR)
+    return None
 
 # --- SeedPool (UNIT3D private tracker) ---
 _SEEDPOOL_BASE = 'https://seedpool.org'
@@ -7321,6 +7186,41 @@ def scrape_seedpool(imdb_id, content_type, season=None, episode=None, title_quer
 _speedapp_channel_lock = threading.Lock()
 _speedapp_channel_ids = None
 
+# /api/login are rate-limit agresiv (429 cu zeci de minute) -> cache JWT + backoff la esec
+_speedapp_auth_lock = threading.Lock()
+_speedapp_token = None
+_speedapp_token_ts = 0
+_speedapp_auth_fail = 0
+
+def _speedapp_auth(session, ua, username, password, base_url, force=False):
+    global _speedapp_token, _speedapp_token_ts, _speedapp_auth_fail
+    with _speedapp_auth_lock:
+        if _speedapp_auth_fail and (time.time() - _speedapp_auth_fail) < 600:
+            return _speedapp_token
+        if not force and _speedapp_token and (time.time() - _speedapp_token_ts) < 12 * 86400:
+            return _speedapp_token
+        try:
+            r = session.post(base_url + '/api/login',
+                json={'username': username, 'password': password},
+                headers={"User-Agent": ua, "Content-Type": "application/json"}, timeout=15)
+        except Exception as e:
+            _speedapp_auth_fail = time.time()
+            xbmc.log("[TMDb Movies] [SpeedApp] login error: %s" % str(e), xbmc.LOGERROR)
+            return _speedapp_token
+        if r.status_code != 201:
+            _speedapp_auth_fail = time.time()
+            xbmc.log("[TMDb Movies] [SpeedApp] login HTTP %d (pauza 10 min): %s" % (r.status_code, r.text[:110]), xbmc.LOGERROR)
+            return _speedapp_token
+        tok = None
+        try:
+            tok = r.json().get('token')
+        except Exception:
+            pass
+        if tok:
+            _speedapp_token = tok
+            _speedapp_token_ts = time.time()
+        return _speedapp_token
+
 def _speedapp_get_channel_ids(session, auth_headers):
     global _speedapp_channel_ids
     if _speedapp_channel_ids is not None:
@@ -7407,11 +7307,133 @@ def _speedapp_torrent_to_stream(t, passkey, base_url):
     except:
         return None
 
+def _speedapp_norm(s):
+    """Normalizeaza un titlu pentru comparatie: numele de scene au puncte ('Vocea.Romaniei'),
+    iar title_query vine cu spatii -> substringul brut ar respinge toate rezultatele."""
+    return re.sub(r'[^a-z0-9]+', ' ', (s or '').lower()).strip()
+
+def _speedapp_name_match(title_query, t_name):
+    tq = _speedapp_norm(title_query)
+    if not tq:
+        return True
+    return tq in _speedapp_norm(t_name)
+
+def _speedapp_normalize_new_api(t):
+    """Noul API (/api/torrents) foloseste camelCase; il convertim la forma veche snake_case
+    ca sa reutilizam _speedapp_torrent_to_stream si maparea categoriilor existenta."""
+    cat = t.get('category') or {}
+    try:
+        size = int(t.get('size') or 0)
+    except Exception:
+        size = 0
+    freeleech = bool(t.get('isFreeleech'))
+    doubleup = bool(t.get('isDoubleUpload'))
+    return {
+        'id': t.get('id'),
+        'name': t.get('name') or '',
+        'imdb_id': '',
+        'seeders': t.get('seeders') or 0,
+        'leechers': t.get('leechers') or 0,
+        'size': size,
+        'times_completed': t.get('timesCompleted') or 0,
+        'is_freeleech': freeleech,
+        'is_double_upload': doubleup,
+        'is_half_download': bool(t.get('isHalfDownload')),
+        'is_internal': bool(t.get('isInternal')),
+        'download_volume_factor': 0 if freeleech else 1,
+        'upload_volume_factor': 2 if doubleup else 1,
+        'category': {'id': cat.get('id'), 'name': cat.get('name') or '',
+                     'canonicalName': cat.get('canonicalName') or ''},
+        'tags': t.get('tags') or [],
+        'description': '',
+    }
+
+_speedapp_quota_logged = False
+
+def _speedapp_new_api_search(session, auth_headers, base_url, imdb_id, passkey, fallback_enabled, title_query, year_query):
+    """Fallback pe noul API JSON-LD (/api/torrents) cand endpointul legacy /api/torrent pica.
+    Interoga scope-ul normal SI scope=internal, pentru aceeasi acoperire ca endpointul legacy."""
+    global _speedapp_quota_logged
+    queries = []
+    if imdb_id and str(imdb_id).startswith('tt'):
+        queries.append((str(imdb_id), False))
+    if fallback_enabled and title_query:
+        queries.append(((title_query + (" " + year_query if year_query else "")).strip(), True))
+    if not queries:
+        return None
+    out = []
+    seen = set()
+    for q, is_title in queries:
+        for scope in (None, 'internal'):
+            params = {'search': q, 'itemsPerPage': 100, 'sort': 'seeders', 'direction': 'desc'}
+            if scope:
+                params['scope'] = scope
+            try:
+                r = session.get(base_url + '/api/torrents', params=params, headers=auth_headers, timeout=20)
+            except Exception as e:
+                xbmc.log("[TMDb Movies] [SpeedApp] noul API %s error: %s" % (scope or 'browse', str(e)), xbmc.LOGERROR)
+                continue
+            if not _speedapp_quota_logged:
+                try:
+                    xbmc.log("[TMDb Movies] [SpeedApp] rate-limit noul API: %s/%s ramase" % (
+                        r.headers.get('x-ratelimit-remaining'), r.headers.get('x-ratelimit-limit')), xbmc.LOGERROR)
+                    _speedapp_quota_logged = True
+                except Exception:
+                    pass
+            if r.status_code != 200:
+                xbmc.log("[TMDb Movies] [SpeedApp] noul API %s -> HTTP %s: %s" % (
+                    scope or 'browse', r.status_code, r.text[:110]), xbmc.LOGERROR)
+                continue
+            try:
+                data = r.json()
+            except Exception:
+                continue
+            items = (data.get('member') or []) if isinstance(data, dict) else (data or [])
+            has_year = bool(year_query) and any(year_query in (x.get('name') or '') for x in items)
+            got = 0
+            for t in items:
+                tid = t.get('id')
+                if tid is None or tid in seen:
+                    continue
+                # legacy API filtra client-side la cautarea pe nume; noul search e fuzzy
+                if is_title:
+                    t_name = t.get('name') or ''
+                    if not _speedapp_name_match(title_query, t_name):
+                        continue
+                    if has_year and year_query not in t_name:
+                        continue
+                seen.add(tid)
+                stream = _speedapp_torrent_to_stream(_speedapp_normalize_new_api(t), passkey, base_url)
+                if stream:
+                    out.append(stream)
+                    got += 1
+            xbmc.log("[TMDb Movies] [SpeedApp] noul API (%s) %d din %d torrente" % (
+                scope or 'browse', got, len(items)), xbmc.LOGERROR)
+    return out or None
+
+
 def _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fallback_enabled, title_query, year_query):
     channel_ids = _speedapp_get_channel_ids(session, auth_headers)
     if not channel_ids:
         return None
     all_streams = []
+    seen_tids = set()
+
+    def _collect(rows):
+        added = 0
+        for t in rows:
+            tid = t.get('id')
+            if tid is not None and tid in seen_tids:
+                continue
+            stream = _speedapp_torrent_to_stream(t, passkey, base_url)
+            if not stream:
+                continue
+            if tid is not None:
+                seen_tids.add(tid)
+            all_streams.append(stream)
+            added += 1
+        return added
+
     if imdb_id and str(imdb_id).startswith('tt'):
         for attempt_channels in [channel_ids, [1, 6, 15, 49]]:
             try:
@@ -7421,20 +7443,20 @@ def _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fall
                 if r.status_code == 200:
                     data = r.json()
                     items = data.get('data', []) if isinstance(data, dict) else data
-                    for t in items:
-                        stream = _speedapp_torrent_to_stream(t, passkey, base_url)
-                        if stream:
-                            all_streams.append(stream)
-                    xbmc.log("[TMDb Movies] [SpeedApp] %d torrents from IMDb API" % len(items), xbmc.LOGERROR)
+                    added = _collect(items)
+                    xbmc.log("[TMDb Movies] [SpeedApp] %d torrents from IMDb API" % added, xbmc.LOGERROR)
                     if all_streams:
-                        return all_streams
-                xbmc.log("[TMDb Movies] [SpeedApp] API search HTTP %d with channels %s" % (r.status_code, attempt_channels), xbmc.LOGERROR)
-                if r.status_code != 403:
-                    break
+                        break
+                else:
+                    xbmc.log("[TMDb Movies] [SpeedApp] API search HTTP %d with channels %s" % (r.status_code, attempt_channels), xbmc.LOGERROR)
             except Exception as e:
                 xbmc.log("[TMDb Movies] [SpeedApp] API search error: %s" % str(e), xbmc.LOGERROR)
                 break
-    if not all_streams and fallback_enabled and title_query:
+    # "Search by name" ADAUGA rezultatele pe nume peste cele IMDb (nu le inlocuieste):
+    # cele doua indexuri sunt complementare (pe un film, cautarea pe nume poate aduce
+    # torrente pe care cautarea dupa IMDb nu le returneaza). Gunoiul e taiat de filtrul
+    # de titlu normalizat + an, iar duplicatele de aceleasi id-uri sunt eliminate.
+    if fallback_enabled and title_query:
         search_term = title_query + (" " + year_query if year_query else "")
         for attempt_channels in [channel_ids, [1, 6, 15, 49]]:
             try:
@@ -7445,22 +7467,38 @@ def _speedapp_api_search(session, auth_headers, base_url, imdb_id, passkey, fall
                     data = r.json()
                     items = data.get('data', []) if isinstance(data, dict) else data
                     has_year = year_query and any(year_query in x.get('name', '') for x in items)
+                    kept = []
                     for t in items:
                         t_name = t.get('name', '')
-                        if title_query.lower() not in t_name.lower():
+                        if not _speedapp_name_match(title_query, t_name):
                             continue
                         if has_year and year_query not in t_name:
                             continue
-                        stream = _speedapp_torrent_to_stream(t, passkey, base_url)
-                        if stream:
-                            all_streams.append(stream)
-                    xbmc.log("[TMDb Movies] [SpeedApp] %d torrents from name API" % len(items), xbmc.LOGERROR)
-                    break
-                if r.status_code != 403:
-                    break
+                        kept.append(t)
+                    added = _collect(kept)
+                    xbmc.log("[TMDb Movies] [SpeedApp] %d torrents from name API (adaugate peste IMDb)" % added, xbmc.LOGERROR)
+                    if kept:
+                        break
+                else:
+                    xbmc.log("[TMDb Movies] [SpeedApp] API name search HTTP %d with channels %s" % (r.status_code, attempt_channels), xbmc.LOGERROR)
             except Exception as e:
                 xbmc.log("[TMDb Movies] [SpeedApp] API name search error: %s" % str(e), xbmc.LOGERROR)
-    return all_streams or None
+                break
+    if all_streams:
+        return all_streams
+
+    # === FALLBACK: noul API JSON-LD /api/torrents ===
+    xbmc.log("[TMDb Movies] [SpeedApp] legacy /api/torrent fara rezultate, incerc noul API", xbmc.LOGERROR)
+    try:
+        new_streams = _speedapp_new_api_search(session, auth_headers, base_url, imdb_id, passkey,
+                                               fallback_enabled, title_query, year_query)
+    except Exception as e:
+        xbmc.log("[TMDb Movies] [SpeedApp] noul API error: %s" % str(e), xbmc.LOGERROR)
+        new_streams = None
+    if new_streams:
+        xbmc.log("[TMDb Movies] [SpeedApp] %d streams returned via noul API (fallback)" % len(new_streams), xbmc.LOGERROR)
+        return new_streams
+    return None
 
 
 def scrape_knaben(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):

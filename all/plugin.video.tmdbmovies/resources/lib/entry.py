@@ -9,7 +9,7 @@ import os
 import json
 import time
 from urllib.parse import parse_qsl, urlencode, quote, unquote
-from resources.lib.core.config import provider_title, ADDON_PATH as CONFIG_ADDON_PATH
+from resources.lib.core.config import provider_title, PROVIDER_ICONS, ADDON_PATH as CONFIG_ADDON_PATH
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZA
@@ -840,6 +840,12 @@ def run_plugin():
         play_movie(params.get('link', ''), params.get('tmdb_id', ''))
         return
 
+    if mode == 'detonate_search':
+        from resources.lib.cloud.detonate import search_and_list
+        search_and_list(params.get('query', ''), params.get('tmdb_id', ''),
+                        params.get('title', ''), params.get('year', ''))
+        return
+
     if mode == 'detonate_clear_cache':
         from resources.lib.cloud.detonate import clear_detonate_cache
         ok = clear_detonate_cache()
@@ -1634,7 +1640,7 @@ def run_plugin():
 
     if mode == 'mdblist_mark_dropped':
         from resources.lib.providers.mdblist_sync import drop_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+        _icon = PROVIDER_ICONS['mdblist']
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('mdblist'), "Show dropped", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1643,7 +1649,7 @@ def run_plugin():
 
     if mode == 'mdblist_unmark_dropped':
         from resources.lib.providers.mdblist_sync import restore_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'mdblist.png')
+        _icon = PROVIDER_ICONS['mdblist']
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('mdblist'), "Show restored", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1710,7 +1716,7 @@ def run_plugin():
 
     if mode == 'simkl_mark_dropped':
         from resources.lib.providers.simkl_sync import drop_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+        _icon = PROVIDER_ICONS['simkl']
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('simkl'), "Show dropped", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1719,7 +1725,7 @@ def run_plugin():
 
     if mode == 'simkl_unmark_dropped':
         from resources.lib.providers.simkl_sync import restore_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'simkl.png')
+        _icon = PROVIDER_ICONS['simkl']
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('simkl'), "Show restored", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1781,7 +1787,7 @@ def run_plugin():
 
     if mode == 'punchplay_mark_dropped':
         from resources.lib.providers.punchplay_sync import drop_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
+        _icon = PROVIDER_ICONS['punchplay']
         if drop_show(params.get('tmdb_id'), params.get('title', '')):
             xbmcgui.Dialog().notification(provider_title('punchplay'), "Show dropped", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1790,7 +1796,7 @@ def run_plugin():
 
     if mode == 'punchplay_unmark_dropped':
         from resources.lib.providers.punchplay_sync import restore_show
-        _icon = os.path.join(addon.getAddonInfo('path'), 'resources', 'media', 'punchplay.png')
+        _icon = PROVIDER_ICONS['punchplay']
         if restore_show(params.get('tmdb_id')):
             xbmcgui.Dialog().notification(provider_title('punchplay'), "Show restored", _icon, 3000, False)
             xbmc.sleep(1000)
@@ -1948,7 +1954,6 @@ def run_plugin():
 
     if mode == 'remove_progress':
         from resources.lib.providers.watched_provider import dispatch_remove_progress
-        import threading
         content_type = params.get('type', 'movie')
         tmdb_id = params.get('tmdb_id')
         season = params.get('season')
@@ -2164,8 +2169,7 @@ def run_plugin():
         season = params.get('season')
         episode = params.get('episode')
         
-        addon = xbmcaddon.Addon()
-        icon_path = os.path.join(addon.getAddonInfo('path'), 'icon.png')
+        icon_path = os.path.join(CONFIG_ADDON_PATH, 'icon.png')
         
         dialog = xbmcgui.Dialog()
         opts = [f"Clear cache for: [B][COLOR FF6AFB92]{title}[/COLOR][/B]", "[B][COLOR red]Clear ALL sources cache[/COLOR][/B]"]

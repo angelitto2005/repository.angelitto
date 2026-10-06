@@ -1,6 +1,10 @@
+1.1.309
+- Fix Speedapp
+- Added Search Detoate in Context Menu
+
 1.1.308
 - Fixed: NetMirror
-- Fixed: VOE links now resolve again.
+- Fixed: VOE links now resolve again
 - Massive internal cleanup
 
 1.1.307

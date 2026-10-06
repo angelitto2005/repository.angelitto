@@ -1090,6 +1090,145 @@ def list_folder(weblink):
 
 
 # =============================================================================
+# Search (din context menu) - potrivire locala, fara retea in afara de TMDb
+# =============================================================================
+
+_MATCH_LIMIT = 15
+
+
+def _collect_files(entries):
+    """Toate filmele din cache, deduplicate dupa weblink.
+    Returneaza ({weblink: entry}, {nume_fisier: entry})."""
+    out = {}
+    by_name = {}
+    for link in entries or {}:
+        listing = (entries.get(link) or {}).get('listing') or []
+        for it in listing:
+            if it.get('kind') != 'file':
+                continue
+            name = it.get('name', '')
+            if not _is_video(name):
+                continue
+            wl = it.get('weblink') or ''
+            if wl:
+                out[wl] = it
+                by_name.setdefault(name, it)
+    return out, by_name
+
+
+def _match_score(file_title, file_year, q_norm, q_year):
+    """Scor 0 = nu se potriveste. An potrivit +3, an diferit explicit -4."""
+    fn = _norm_title(file_title)
+    if not fn or not q_norm:
+        return 0
+    if fn == q_norm:
+        score = 10
+    elif fn.startswith(q_norm) or q_norm.startswith(fn):
+        score = 6
+    elif q_norm in fn:
+        score = 3
+    else:
+        return 0
+    if q_year and file_year:
+        if str(file_year) == str(q_year):
+            score += 3
+        else:
+            score -= 4
+    return score
+
+
+def _add_message(handle, label, params):
+    url = _base_url() + '?' + urlencode(params)
+    li = xbmcgui.ListItem(label=label)
+    icon = _media_icon('movies.png')
+    li.setArt({'icon': icon, 'thumb': icon, 'poster': icon})
+    xbmcplugin.addDirectoryItem(handle, url, li, isFolder=True)
+
+
+@_safe_end
+def search_and_list(query, tmdb_id='', title='', year=''):
+    """Cauta un film in cache-ul Detonate si listeaza doar ce gaseste."""
+    handle = _config.HANDLE
+    query = (query or title or '').strip()
+    title = (title or query).strip()
+    self_params = {'mode': 'detonate_search', 'query': query,
+                   'tmdb_id': tmdb_id, 'title': title, 'year': year}
+
+    links = get_links()
+    if not links:
+        _add_message(handle, '[B][COLOR FFFF5555]No cloud.mail.ru links configured[/COLOR][/B]',
+                     {'mode': 'detonate'})
+        xbmcplugin.endOfDirectory(handle)
+        return
+
+    cache = _load_cache()
+    entries = cache.get('entries') or {}
+    if not entries:
+        try:
+            xbmcgui.Dialog().notification('Detonate', 'Building cache, please wait...',
+                                          xbmcgui.NOTIFICATION_INFO, 8000)
+        except Exception:
+            pass
+        entries = _ensure_cache(links)
+        cache = _load_cache()
+
+    meta_cache = cache.get('meta') or {}
+    files, files_by_name = _collect_files(entries)
+    _dbg("Search '{}': {} files in cache".format(title, len(files)))
+
+    hits = []
+    used_exact = False
+
+    if tmdb_id:
+        tid = str(tmdb_id).strip()
+        for fname, meta in meta_cache.items():
+            if not isinstance(meta, dict):
+                continue
+            if str(meta.get('id') or '') != tid:
+                continue
+            ent = files_by_name.get(fname)
+            if ent is not None:
+                hits.append(ent)
+        if hits:
+            used_exact = True
+            _dbg("Search: {} exact TMDb match(es) for {}".format(len(hits), tid))
+
+    if not used_exact:
+        q_norm = _norm_title(title)
+        scored = []
+        for ent in files.values():
+            f_title, f_year = clean_title(ent.get('name', ''))
+            sc = _match_score(f_title, f_year, q_norm, year)
+            if sc >= 3:
+                scored.append((sc, ent))
+        scored.sort(key=lambda x: (-x[0], x[1].get('name', '').lower()))
+        hits = [e for _sc, e in scored[:_MATCH_LIMIT]]
+        _dbg("Search: {} fuzzy match(es) for '{}'".format(len(hits), title))
+
+    xbmcplugin.setContent(handle, 'movies')
+
+    if not hits:
+        _add_message(handle, '[B][COLOR FFCCCCFF]No match in Detonate for "[/COLOR][B][COLOR FFFFDBD01]'
+                    + title + '[/COLOR][B][COLOR FFCCCCFF]"[/COLOR][/B]', self_params)
+        _add_folder(handle, '[B][COLOR FFCCCCFF]Browse Detonate[/COLOR][/B]',
+                    {'mode': 'detonate'}, icon='movies.png',
+                    title='Detonate', plot='Browse all Detonate movies')
+    else:
+        for ent in hits:
+            try:
+                _add_movie(handle, ent, meta_cache.get(ent.get('name', '')))
+            except Exception as e:
+                _log("Render error (" + ent.get('name', '') + "): " + repr(e))
+
+    xbmcplugin.endOfDirectory(handle)
+    try:
+        from resources.lib.core import views
+        views.apply_view('cloud', 'movies')
+    except Exception:
+        pass
+
+
+# =============================================================================
 # Playback
 # =============================================================================
 

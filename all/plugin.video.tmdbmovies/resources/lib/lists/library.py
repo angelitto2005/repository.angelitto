@@ -1923,7 +1923,6 @@ def _export_mdblist_favorites(dest, pbg, hdg, media_type):
         db_mt = 'movie' if media_type == 'movie' else 'show'
         try:
             from resources.lib.providers.mdblist_sync import get_connection, DB_PATH
-            import os
             if os.path.exists(DB_PATH):
                 conn = get_connection()
                 rows = conn.execute("SELECT tmdb_id FROM mdblist_collection WHERE media_type=?", (db_mt,)).fetchall()
