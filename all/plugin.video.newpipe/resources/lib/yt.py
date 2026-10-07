@@ -7,6 +7,8 @@
 # are cache-keyed by language/country. Video listings deliberately perform one
 # YouTube request chain only: prior builds fetched each page twice merely to add
 # a channel context-menu link, which made page changes unnecessarily slow.
+import xbmc
+
 from scrapetube.wrapper import (
     list_search,
     list_channel_videos,
@@ -26,7 +28,10 @@ def configure():
 @cache_function(cache_duration(15))
 def _search(query, limit=25, sort='relevance', locale='pt:BR'):
     localization.configure()
-    return list_search(query, limit=limit, sleep=0, sort_by=sort) or []
+    results = list_search(query, limit=limit, sleep=0, sort_by=sort) or []
+    xbmc.log('[NewPipePagina] scrape cerut={0} primit={1} sort={2} limba={3}'.format(
+        limit, len(results), sort, locale), xbmc.LOGINFO)
+    return results
 
 
 def search(query, limit=25, sort='relevance'):
@@ -94,14 +99,18 @@ def live_videos(query, limit=25):
 
 
 @cache_function(cache_duration(15))
-def _trailer_videos(query, limit=25, locale='pt:BR'):
+def _trailer_videos(query, limit=25, sort='upload_date', locale='pt:BR'):
     # Trailer language is expressed in the query itself. Do not append the
-    # configured country suffix used for broad Trending categories.
-    return _video_results(query, limit, 'relevance', locale)
+    # configured country suffix used for broad Trending categories.  Search by
+    # upload date so newly released trailers always appear before old results.
+    # ``sort`` is explicit in the cached function signature to prevent a
+    # relevance-ordered cache entry from an older build being reused.
+    return _video_results(query, limit, sort, locale)
 
 
 def trailer_videos(query, limit=25):
-    return _trailer_videos(query, limit=limit, locale=configure())
+    return _trailer_videos(
+        query, limit=limit, sort='upload_date', locale=configure())
 
 
 @cache_function(cache_duration(30))

@@ -14,7 +14,21 @@ import scrapetube.scrapetube as _scrapetube
 _DEFAULT_LANGUAGE = 'pt'
 _DEFAULT_COUNTRY = 'BR'
 _LANGUAGE_RE = re.compile(r'^[a-z]{2,3}(?:-[A-Z]{2})?$')
-_COUNTRY_RE = re.compile(r'^[A-Z]{2}$')
+# YouTube silently answers with a truncated first page (no usable continuation
+# token) when ``gl`` is not a real country, so accept only ISO 3166-1 alpha-2.
+_COUNTRY_CODES = frozenset((
+    'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI '
+    'BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN '
+    'CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK '
+    'FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM '
+    'HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN '
+    'KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK '
+    'ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP '
+    'NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW '
+    'SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF '
+    'TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI '
+    'VN VU WF WS YE YT ZA ZM ZW'
+).split())
 
 _original_get_session = None
 _original_get_ajax_data = None
@@ -85,12 +99,6 @@ def _setting(name, default):
     return str(value or default).strip()
 
 
-def _custom_or_setting(custom_name, setting_name, default):
-    """Prefer an optional manually entered code over the visible picker."""
-    custom = _setting(custom_name, '')
-    return custom or _setting(setting_name, default)
-
-
 def content_language():
     """Return a safe YouTube ``hl`` code; default to Portuguese."""
     custom = _setting('content_language_custom', '')
@@ -111,11 +119,11 @@ def content_language():
 
 def content_country():
     """Return a safe YouTube ``gl`` country code; default to Brazil."""
-    value = _custom_or_setting(
-        'content_country_custom', 'content_country', _DEFAULT_COUNTRY).upper()
-    if not _COUNTRY_RE.match(value):
-        return _DEFAULT_COUNTRY
-    return value
+    for setting_name in ('content_country_custom', 'content_country'):
+        value = str(_setting(setting_name, '')).strip().upper()
+        if value in _COUNTRY_CODES:
+            return value
+    return _DEFAULT_COUNTRY
 
 
 def cache_key():

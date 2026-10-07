@@ -23,6 +23,8 @@ _SEARCHES = 'search_history.json'
 _YOUTUBE_OAUTH = 'youtube_oauth.json'
 _WATCH_LATER = 'watch_later.json'
 _YOUTUBE_LIBRARY = 'youtube_library.json'
+_LOCAL_LIBRARY = 'local_library.json'
+_LOCAL_STATE = 'local_state.json'
 
 _SUBS_CAP = 2000
 _HISTORY_CAP = 100
@@ -184,6 +186,30 @@ def clear_youtube_library():
         os.remove(_path(_YOUTUBE_LIBRARY))
     except OSError:
         pass
+
+
+def get_local_library(name):
+    """Read an add-on-only local collection such as the Random music pool."""
+    value = _load_object(_LOCAL_LIBRARY).get(str(name or ''))
+    return value if isinstance(value, list) else []
+
+
+def set_local_library(name, entries):
+    library = _load_object(_LOCAL_LIBRARY)
+    library[str(name or '')] = list(entries or [])
+    _save_object(_LOCAL_LIBRARY, library)
+
+
+def get_local_state(name):
+    """Read small private playback state without exposing it to account sync."""
+    value = _load_object(_LOCAL_STATE).get(str(name or ''))
+    return value if isinstance(value, dict) else {}
+
+
+def set_local_state(name, value):
+    state = _load_object(_LOCAL_STATE)
+    state[str(name or '')] = dict(value or {})
+    _save_object(_LOCAL_STATE, state)
 
 
 def get_youtube_device_id():

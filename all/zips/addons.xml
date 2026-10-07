@@ -99,7 +99,7 @@
       <fanart>fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.20a" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.32a" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>

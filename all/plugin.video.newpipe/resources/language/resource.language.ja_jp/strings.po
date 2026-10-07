@@ -703,3 +703,23 @@ msgstr "クアッドHD — 1440p"
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr "ウルトラHD — 2160p (4K)"
+
+msgctxt "#30191"
+msgid "ランダム音楽"
+msgstr ""
+
+msgctxt "#30192"
+msgid "ランダム音楽を自動再生"
+msgstr ""
+
+msgctxt "#30193"
+msgid "現在の曲が終了すると、認識された別の音楽動画をランダムに自動再生します。予告編、ライブ配信、通常の動画は変更されません。"
+msgstr ""
+
+msgctxt "#30195"
+msgid "次のランダム曲を読み込んでいます…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "次: {0}"
+msgstr ""

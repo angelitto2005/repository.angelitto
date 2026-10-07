@@ -703,3 +703,23 @@ msgstr ""
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr ""
+
+msgctxt "#30191"
+msgid "Random music"
+msgstr ""
+
+msgctxt "#30192"
+msgid "Auto-play random music"
+msgstr ""
+
+msgctxt "#30193"
+msgid "Automatically starts another recognized music video at random when the current track ends. Trailers, live streams and regular videos are unchanged."
+msgstr ""
+
+msgctxt "#30195"
+msgid "Loading next random track…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "Up next: {0}"
+msgstr ""

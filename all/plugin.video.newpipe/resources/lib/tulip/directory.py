@@ -400,7 +400,8 @@ def playlist_maker(items=None, argv=None):
 
 def resolve(
         url, meta=None, icon=None, dash=False, manifest_type=None, inputstream_type='adaptive', headers=None,
-        mimetype=None, resolved_mode=True, live=False, verify=True, licence_type=None, licence_key=None
+        mimetype=None, resolved_mode=True, live=False, verify=True, licence_type=None, licence_key=None,
+        inputstream_properties=None
 ):
 
     """
@@ -419,6 +420,7 @@ def resolve(
     :param inputstream_type: String 99.9% of the time it is adaptive
     :param headers: dictionary or urlencoded string
     :param mimetype: String
+    :param inputstream_properties: Dictionary of InputStream listitem properties
     :return: None
     """
 
@@ -487,9 +489,19 @@ def resolve(
 
         item.setContentLookup(False)
         item.setMimeType('{0}'.format(mimetype))
-        item.setProperty(inputstream_property, 'inputstream.{}'.format(inputstream_type))
-        if kodi.kodi_version() < 21:
+        # Kodi 21's InputStream Adaptive explicitly declares ``manifest_type``
+        # as a ListItem property. Set it before selecting the inputstream so
+        # every HLS-specific property is present at instance creation.
+        if manifest_type:
             item.setProperty('inputstream.{0}.manifest_type'.format(inputstream_type), manifest_type)
+
+        # Some HLS manifests carry multiple qualities.  Let callers apply an
+        # explicit per-item chooser limit instead of relying on the Android
+        # screen resolution, which may be much higher than the add-on setting.
+        if isinstance(inputstream_properties, dict):
+            for property_name, property_value in inputstream_properties.items():
+                if property_name and property_value is not None:
+                    item.setProperty(str(property_name), str(property_value))
 
         if headers:
 
@@ -502,6 +514,8 @@ def resolve(
                 item.setProperty('inputstream.adaptive.stream_params', headers)
             elif kodi.kodi_version() > 19:
                 item.setProperty('inputstream.adaptive.manifest_headers', headers)
+
+        item.setProperty(inputstream_property, 'inputstream.{}'.format(inputstream_type))
 
         if licence_key and licence_type:
             if licence_type == 'org.w3.clearkey':

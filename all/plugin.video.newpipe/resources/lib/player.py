@@ -32,6 +32,14 @@ _DIRECT_CLIENT_ATTEMPTS = (
     ('iOS', ('ios',)),
     ('iOS compatibility', ('ios_testsuite_params',)),
 )
+# The Android compatibility client returns the standard combined MP4 stream
+# (normally 360p/480p) for music videos.  It avoids YouTube's pseudo-live HLS
+# manifest, whose pending segment request can keep Kodi's Stop screen open for
+# many seconds on Android.  HLS remains a fallback when no MP4 is available.
+_MUSIC_CLIENT_ATTEMPTS = (
+    ('Android compatibility', ('android_testsuite_params',)),
+    ('iOS compatibility', ('ios_testsuite_params',)),
+)
 _SAFE_HEADERS = (
     'User-Agent',
     'Referer',
@@ -43,8 +51,9 @@ _SAFE_HEADERS = (
 )
 _STREAM_CACHE_TTL = 15 * 60
 _STREAM_CACHE_CAP = 30
-_STREAM_CACHE_VERSION = 3
+_STREAM_CACHE_VERSION = 5
 _RESOLVE_LOCK_TTL = 35
+_HLS_STREAM_CACHE_TTL = 60
 
 
 def _error(message):
@@ -107,7 +116,12 @@ def _write_state(name, value):
 
 
 def _playback_profile(profile):
-    return 'trailer' if str(profile or '').lower() == 'trailer' else 'default'
+    value = str(profile or '').lower()
+    if value == 'trailer':
+        return 'trailer'
+    if value == 'music':
+        return 'music'
+    return 'default'
 
 
 def _quality_value(profile='default'):
@@ -116,9 +130,13 @@ def _quality_value(profile='default'):
     default = '1080' if profile == 'trailer' else '720'
     value = kodi.setting(setting) or default
     try:
-        return int(value)
+        height = int(value)
     except (TypeError, ValueError):
-        return int(default)
+        height = int(default)
+    # This profile is private to Random music.  YouTube's compatible Android
+    # client exposes a far more reliable combined MP4 stream at 480p, which
+    # lets native Kodi Stop close immediately instead of waiting on HLS.
+    return min(height, 480) if profile == 'music' else height
 
 
 def _quality_index(max_height):
@@ -142,10 +160,10 @@ def _cache_key(video_id, audio_only, profile):
         int(_fast_start_enabled()))
 
 
-def _stream_expiry(stream, now):
+def _stream_expiry(stream, now, cache_ttl=_STREAM_CACHE_TTL):
     """Return a conservative local expiry, respecting YouTube URL expiry if present."""
 
-    expires = now + _STREAM_CACHE_TTL
+    expires = now + cache_ttl
     try:
         query = parse_qs(urlparse(stream.split('|', 1)[0]).query)
         remote = int((query.get('expire') or ['0'])[0])
@@ -174,7 +192,10 @@ def _save_stream(video_id, audio_only, profile, resolved):
     if not stream:
         return
     now = int(time.time())
-    expires = _stream_expiry(stream, now)
+    # HLS manifests contain short-lived signed chunk URLs.  Do not retain one
+    # after a transient 403: a subsequent play should obtain a fresh manifest.
+    cache_ttl = _HLS_STREAM_CACHE_TTL if resolved.get('hls') else _STREAM_CACHE_TTL
+    expires = _stream_expiry(stream, now, cache_ttl=cache_ttl)
     if expires <= now:
         return
     payload = _read_state('progressive_streams.json', {'items': {}})
@@ -277,6 +298,26 @@ def _is_hls_stream(item, url):
     return container in ('hls', 'm3u8') or '.m3u8' in base_url or '/manifest/hls' in base_url
 
 
+def _inputstream_quality_properties(max_height):
+    """Constrain HLS selections to the same quality chosen in NewPipe settings.
+
+    InputStream Adaptive otherwise uses the Android screen size (3120x1440 on
+    the test device) and selected YouTube's 1080p HLS ladder although the add-on
+    was configured for 720p.  Its documented chooser values use resolution
+    families, so 360p is deliberately capped at the nearest supported 480p
+    family instead of falling back to the unrestricted display resolution.
+    """
+    try:
+        height = int(max_height)
+    except (TypeError, ValueError):
+        height = 720
+    family = 480 if height <= 480 else 720 if height <= 720 else 1080
+    return {
+        'inputstream.adaptive.stream_selection_type': 'fixed-res',
+        'inputstream.adaptive.chooser_resolution_max': '{0}p'.format(family),
+    }
+
+
 def _pick_progressive(streams, audio_only, fast_start):
     if audio_only:
         candidates = [
@@ -310,6 +351,11 @@ def _pick_progressive(streams, audio_only, fast_start):
     return max(candidates, key=key) if candidates else None
 
 
+def _client_attempts(profile):
+    """Choose the bounded mobile client sequence for the playback profile."""
+    return _MUSIC_CLIENT_ATTEMPTS if _playback_profile(profile) == 'music' else _DIRECT_CLIENT_ATTEMPTS
+
+
 def _resolve_from_mobile_clients(video_id, audio_only, profile):
     """Resolve from one mobile-client group at a time, never probing TV clients."""
 
@@ -319,7 +365,7 @@ def _resolve_from_mobile_clients(video_id, audio_only, profile):
     max_height = _quality_value(profile)
     fast_start = profile != 'trailer' and _fast_start_enabled()
     failures = []
-    for label, client_names in _DIRECT_CLIENT_ATTEMPTS:
+    for label, client_names in _client_attempts(profile):
         try:
             client = YouTubePlayerClient(
                 context=_engine_context(max_height), clients=client_names)
@@ -398,12 +444,18 @@ def play(video_id, title='', image='', profile='default'):
     # straight to inputstream.adaptive, avoiding both normal-file demux latency
     # and the former PluginsGR localhost proxy.
     is_hls = bool(resolved.get('hls'))
+    max_height = _quality_value(profile)
     log('NewPipe: reprodução direta selecionada ({0})'.format(
         'HLS adaptive' if is_hls else 'arquivo A/V'))
+    inputstream_properties = _inputstream_quality_properties(max_height) if is_hls else None
+    if is_hls:
+        _info('HLS entregue ao InputStream com limite {0}'.format(
+            inputstream_properties.get('inputstream.adaptive.chooser_resolution_max')))
     directory.resolve(
         resolved.get('url'), meta={'title': title}, icon=image,
         dash=is_hls,
         manifest_type='hls' if is_hls else None,
         inputstream_type='adaptive',
         mimetype='application/x-mpegURL' if is_hls else None,
+        inputstream_properties=inputstream_properties,
     )

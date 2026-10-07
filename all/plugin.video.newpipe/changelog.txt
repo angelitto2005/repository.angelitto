@@ -1,5 +1,49 @@
-[B]1.4.20a MOD[/B]
-- Fix Kodi 21 crash
+[B]1.4.32a MOD[/B]
+- Fix Kodi 21 (Omega) startup crash: vendored libraries pinned to Python 3.8 (requests 2.32.3, urllib3 1.26.20, charset_normalizer 3.3.2, idna 3.7, certifi 2023.7.22, qrcode 7.4.2, pypng 0.0.21)
+- Licenses consolidated in LICENSES/ (GPL-2.0-only and GPL-3.0 texts added; third-party texts kept outside pip metadata)
+- Changelog moved from addon.xml <news> to changelog.txt
+[B]1.4.32 MOD[/B]
+- Trailer results are always sorted by upload date, with the most recent releases first
+- The same newest-first order also applies to Trailer searches
+[B]1.4.31 MOD — TEST[/B]
+- Random music now prefers Android's stable combined MP4 stream (up to 480p)
+- Stop no longer depends on a pseudo-live HLS segment when that MP4 stream is available
+- This stability profile is isolated to Random music; normal video, trailer and live playback are unchanged
+- Kodi 21 HLS properties are applied before InputStream Adaptive starts
+[B]1.4.30 MOD — TEST[/B]
+- HLS playback now applies the selected NewPipe quality directly to InputStream Adaptive
+- Prevents Android 1440p screens from selecting the unstable 1080p HLS ladder when NewPipe is set to 720p
+- HLS stream cache is shortened so a failed signed manifest is refreshed quickly
+[B]1.4.29 MOD — TEST[/B]
+- Replaces one-by-one PlayMedia transitions with one native Kodi playlist for the entire Random music session
+- Keeps playback inside the active playlist between tracks; no search, file browser or search-type menu should open during advance
+- The playlist starts only after the selected plugin card exits, preventing duplicated Android streams
+[B]1.4.28 MOD — TEST[/B]
+- Recognizes the YouTube artist/track “Artist - Track (Video)” format as music
+- Artist searches with two recognised music videos now arm Random music for every non-trailer result on that page
+[B]1.4.27 MOD — TEST[/B]
+- Fixes Random music detection for YouTube titles containing invisible non-breaking spaces, including “Official Video” labels
+- These cards now correctly arm AutoPlay instead of returning to search when the video ends
+[B]1.4.26 MOD — TEST[/B]
+- Restores normal playable music cards; no folder/search keyboard is opened after a music video ends
+- Replaces the embedded playlist launch with a delayed Kodi player transition, avoiding overlapping Android HLS decoders
+- Stop immediately cancels the pending Random music transition
+[B]1.4.25 MOD — TEST[/B]
+- Previous stability test build; superseded by the direct card transition above
+[B]1.4.24 MOD — TEST[/B]
+- Adds Kodi's native "Up next" mini window, showing the next random music title and artwork around 15 seconds before the current song finishes
+- The mini window is isolated to the Random music queue and never appears for normal videos, trailers or live streams
+[B]1.4.23 MOD — TEST[/B]
+- Recognizes clear music-video titles in normal YouTube search, channel and playlist results and starts the native Kodi shuffle queue from the selected music card
+- Keeps trailers, live streams and ordinary video cards on standard direct playback
+[B]1.4.22 MOD — TEST[/B]
+- Replaces the experimental playback-end callback with a native Kodi shuffled playlist of 50 music videos
+- The selected Random music card is always first; Kodi advances to the next queued card on completion or stream failure
+- Uses a dedicated random_music_play route so Android Kodi cannot lose the mode flag on playable cards
+- Normal videos, trailers, live streams, films and series remain outside the music playlist
+[B]1.4.21 MOD — TEST[/B]
+- Adds a dedicated Random music folder: choose a music video there and a different random music video starts when it ends
+- Random continuation is local-only, can be disabled in Settings and never affects regular videos, trailers, live streams, films or series
 [B]1.4.20 MOD[/B]
 - Adds a selectable interface language; menus and messages can follow content language or use a fixed language
 - Adds complete NewPipe MOD language packs for Portuguese (PT/BR), English, Spanish, French, German, Italian, Dutch, Romanian, Turkish, Japanese and Korean

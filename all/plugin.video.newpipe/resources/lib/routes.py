@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # See LICENSES/GPL-3.0-only for more information.
 # All routes registered on urldispatcher; main.py only dispatches.
+import re
+import unicodedata
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import xbmc
@@ -16,6 +18,7 @@ from urldispatcher import urldispatcher
 
 from . import player as playback
 from . import qr_login
+from . import random_music as music_radio
 from . import storage
 from . import yt
 from . import youtube_sync
@@ -235,7 +238,88 @@ def _next_page(action, current_page, **params):
     )
 
 
-def _build_paged(fetch, item_builder, action, route_params=None, page=1, content='videos'):
+def _entry_video(entry):
+    """Return the video dictionary from a NewPipe listing entry."""
+    if isinstance(entry, (tuple, list)):
+        return entry[0] if entry else {}
+    return entry if isinstance(entry, dict) else {}
+
+
+def _random_music_enabled():
+    return str(_setting('random_music_autoplay', 'true')).lower() != 'false'
+
+
+_MUSIC_EXCLUSIONS = (
+    'trailer', 'teaser', 'film clip', 'movie clip', 'episode',
+    'documentary', 'gameplay', 'walkthrough',
+)
+
+
+def _music_text(value):
+    """Fold YouTube's varied Unicode whitespace before music matching."""
+    return re.sub(r'\s+', ' ', unicodedata.normalize(
+        'NFKC', str(value or '')).casefold()).strip()
+
+
+def _music_excluded(item):
+    item = item or {}
+    return bool(item.get('is_live')) or any(
+        token in _music_text(item.get('title', '')) for token in _MUSIC_EXCLUSIONS)
+
+
+def _is_music_video(item, search_hint=''):
+    """Conservatively identify music cards outside the dedicated music folder.
+
+    YouTube search does not expose a reliable public category field through
+    Scrapetube. Use clear music-specific metadata in title/query instead of
+    making every ordinary video a radio item. Trailers and live streams always
+    remain ordinary playback.
+    """
+    item = item or {}
+    if _music_excluded(item):
+        return False
+    # YouTube commonly inserts a non-breaking space in labels such as
+    # "Official Video". Normalize every Unicode whitespace variant before
+    # matching; otherwise those clearly musical cards incorrectly use action
+    # ``play`` and never arm the Random music session.
+    title = _music_text(item.get('title', ''))
+    hint = _music_text(search_hint)
+    text = '{0} {1}'.format(title, hint)
+    # Artist - Track (Video) is YouTube's normal music-video title format.
+    # It covers catalogue clips which do not include "Official" or "Music"
+    # in their title (for example Modern Talking - Geronimo's Cadillac).
+    if re.search(r'\s[-–—]\s.+\(\s*(?:official\s+)?(?:music\s+)?video\s*\)', title):
+        return True
+    markers = (
+        'music video', 'official video', 'official audio', 'official lyric',
+        'lyric video', 'lyrics', 'audio oficial', 'vídeo musical',
+        'video musical', 'música', 'musica', 'canción', 'cancion', 'song',
+        'bachata', 'reggaeton', 'reggaetón', 'salsa', 'merengue', 'remix',
+        'mix ', ' mix', 'dj set', 'album completo', 'full album',
+    )
+    return any(marker in text for marker in markers)
+
+
+def _save_music_pool(source, predicate):
+    """Save only candidate music cards for a future native Kodi playlist."""
+    candidates = []
+    for entry in source:
+        item = _entry_video(entry)
+        try:
+            included = bool(predicate(entry))
+        except Exception:
+            included = False
+        if included and item:
+            candidates.append({
+                'url': _video_id(item.get('url', '')),
+                'title': item.get('title', ''),
+                'image': _video_thumbnail(item),
+            })
+    music_radio.save_pool(candidates)
+
+
+def _build_paged(fetch, item_builder, action, route_params=None, page=1, content='videos',
+                 music_filter=None):
     """Build one page of results, loading one extra item to detect a next page."""
     page = _page_number(page)
     per_page = _limit()
@@ -245,6 +329,12 @@ def _build_paged(fetch, item_builder, action, route_params=None, page=1, content
     except Exception as exc:
         log('NewPipe page {0} failed: {1}'.format(page, exc))
         source = []
+
+    if music_filter and _random_music_enabled():
+        _save_music_pool(source, music_filter)
+
+    xbmc.log('[NewPipePagina] pagina={0} setare={1} cerut={2} primit={3}'.format(
+        page, per_page, requested, len(source)), xbmc.LOGINFO)
 
     start = (page - 1) * per_page
     end = start + per_page
@@ -263,7 +353,7 @@ def _channel_cm(channel_url, channel_title=''):
     }]
 
 
-def _video_item(item, channel_url='', channel_title='', profile='default'):
+def _video_item(item, channel_url='', channel_title='', profile='default', music_random=False):
     video_id = _video_id(item.get('url', ''))
     title = item.get('title') or _text(30186, 'Unknown')
     if item.get('is_live'):
@@ -291,7 +381,10 @@ def _video_item(item, channel_url='', channel_title='', profile='default'):
     image = _video_thumbnail(item)
     entry = {
         'title': title,
-        'action': 'play',
+        # A dedicated action, instead of a nested query flag, is necessary on
+        # Android Kodi/skin combinations that resolve a playable row without
+        # retaining its ``query`` field.
+        'action': 'random_music_play' if music_random else 'play',
         'url': video_id,
         'image': image,
         # Video cards are landscape artwork. No poster is sent: forcing a
@@ -300,13 +393,14 @@ def _video_item(item, channel_url='', channel_title='', profile='default'):
         'artwork': _video_artwork(image),
         'fanart': image,
         'duration': item.get('duration') or 0,
+        # Music cards remain normal playable video cards. The radio session is
+        # armed by its route and the first stream is resolved through this same
+        # click, so Kodi never falls back to a folder/search window.
         'isFolder': 'False',
         'isPlayable': 'True',
         'cm': cm,
     }
     if profile == 'trailer':
-        # Tulip preserves the compact query on playable items; main.py expands
-        # it before dispatching the play route.
         entry['query'] = _state(profile='trailer')
     return entry
 
@@ -336,6 +430,8 @@ def root():
         {'title': 30001, 'action': 'search', 'icon': _icon('search'), 'image': _icon('search'),
          'isFolder': 'True', 'isPlayable': 'False'},
         {'title': 30025, 'action': 'trending', 'icon': _icon('trending'), 'image': _icon('trending'),
+         'isFolder': 'True', 'isPlayable': 'False'},
+        {'title': 30191, 'action': 'random_music', 'icon': _icon('trending'), 'image': _icon('trending'),
          'isFolder': 'True', 'isPlayable': 'False'},
         {'title': 30018, 'action': 'live', 'icon': _icon('live'), 'image': _icon('live'),
          'isFolder': 'True', 'isPlayable': 'False'},
@@ -403,14 +499,44 @@ def trending(query=None, page=1):
         # Links made with version 1.0.2 must not preserve the old global
         # English query after this localized-category update.
         query = _LEGACY_TRENDING_QUERIES.get(query, query)
+    music_context = str(query).strip().lower() == 'music' and _random_music_enabled()
     query = localization.category_query(query)
     _build_paged(
         lambda limit: yt.trending_videos(query, limit=limit),
-        lambda entry: _video_item(*entry),
+        lambda entry: _video_item(*entry, music_random=music_context),
         'trending',
         {'query': query},
         page=page,
+        music_filter=(lambda entry: music_context),
     )
+
+
+@urldispatcher.register('random_music', kwargs=['page'])
+def random_music(page=1):
+    """Dedicated music folder whose cards launch a native Kodi shuffle queue."""
+    page = _page_number(page)
+    per_page = _limit()
+    # Keep a sufficiently large local source pool even when the user displays
+    # only 25 cards. The playlist itself still begins with the selected card.
+    requested = max(page * per_page + 1, 60)
+    query = localization.category_query('music')
+    try:
+        source = list(yt.trending_videos(query, limit=requested) or [])
+    except Exception as exc:
+        log('NewPipe random music failed: {0}'.format(exc))
+        source = []
+    music_radio.save_pool([
+        {'url': _video_id(entry[0].get('url', '')),
+         'title': entry[0].get('title', ''),
+         'image': _video_thumbnail(entry[0])}
+        for entry in source if entry and entry[0]
+    ])
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = [_video_item(*entry, music_random=True) for entry in source[start:end]]
+    if len(source) > end:
+        items.append(_next_page('random_music', page))
+    _build(items, content='videos')
 
 
 def _live_results(query, limit):
@@ -523,12 +649,35 @@ def search_results(url, kind=None, page=1):
             page=page,
         )
     else:
+        music_search = {'active': False}
+
+        def fetch_search(limit):
+            results = list(yt.search_videos(url, limit=limit) or [])
+            # Searches for artists often contain plain ``Artist - Track
+            # (Video)`` catalogue titles. Once two clear music cards are
+            # found, make the remaining non-trailer results part of the same
+            # Random music session instead of leaving the selected track as a
+            # one-off video that returns to the search-type menu.
+            clear_music_cards = sum(
+                1 for entry in results
+                if _is_music_video(_entry_video(entry), search_hint=url)
+            )
+            music_search['active'] = clear_music_cards >= 2
+            return results
+
+        def is_music_result(entry):
+            item = _entry_video(entry)
+            if not _random_music_enabled() or _music_excluded(item):
+                return False
+            return music_search['active'] or _is_music_video(item, search_hint=url)
+
         _build_paged(
-            lambda limit: yt.search_videos(url, limit=limit),
-            lambda entry: _video_item(*entry),
+            fetch_search,
+            lambda entry: _video_item(*entry, music_random=is_music_result(entry)),
             'search_results',
             {'url': url, 'kind': 'video'},
             page=page,
+            music_filter=is_music_result,
         )
 
 
@@ -576,13 +725,19 @@ def channel_videos(url, tab='videos', page=1, query=None):
     tab = query or tab or 'videos'
     subscriptions = storage.get_subscriptions()
     known = next((sub for sub in subscriptions if sub.get('url') == url), None)
+
+    def is_music_result(entry):
+        return _random_music_enabled() and _is_music_video(_entry_video(entry))
+
     _build_paged(
         lambda limit: yt.channel_videos(url, tab=tab, limit=limit),
         lambda video: _video_item(video, channel_url=url,
-                                  channel_title=known.get('title') if known else ''),
+                                  channel_title=known.get('title') if known else '',
+                                  music_random=is_music_result(video)),
         'channel_videos',
         {'url': url, 'tab': tab},
         page=page,
+        music_filter=is_music_result,
     )
 
 
@@ -599,12 +754,16 @@ def channel_playlists(url, page=1):
 
 @urldispatcher.register('playlist', kwargs=['url', 'page'])
 def playlist(url, page=1):
+    def is_music_result(entry):
+        return _random_music_enabled() and _is_music_video(_entry_video(entry))
+
     _build_paged(
         lambda limit: yt.playlist_videos(url, limit=limit),
-        _video_item,
+        lambda entry: _video_item(entry, music_random=is_music_result(entry)),
         'playlist',
         {'url': url},
         page=page,
+        music_filter=is_music_result,
     )
 
 
@@ -1050,8 +1209,48 @@ def remove_history(url):
     kodi.refresh()
 
 
-@urldispatcher.register('play', kwargs=['url', 'title', 'image', 'profile'])
-def play(url, title='', image='', profile='default'):
+@urldispatcher.register('play', kwargs=['url', 'title', 'image', 'profile', 'music_random'])
+def play(url, title='', image='', profile='default', music_random=''):
+    # A normal video click deliberately closes the private music queue preview.
+    music_radio.cancel()
     video_id = _video_id(url)
+    storage.add_history({'video_id': video_id, 'title': title or video_id, 'image': image or ''})
+    playback.play(video_id, title=title, image=image, profile=profile)
+
+
+@urldispatcher.register('random_music_queue_play', kwargs=['url', 'title', 'image', 'profile'])
+def random_music_queue_play(url, title='', image='', profile='default'):
+    """Resolve one native-Kodi Random music queue item without clearing it.
+
+    The private music profile prefers Android's combined MP4 response, so a
+    Stop action is not held by a pseudo-live HLS segment. Normal videos,
+    trailers and live streams retain their existing profile unchanged.
+    """
+    video_id = _video_id(url)
+    storage.add_history({'video_id': video_id, 'title': title or video_id, 'image': image or ''})
+    playback.play(video_id, title=title, image=image, profile='music')
+
+
+@urldispatcher.register('random_music_play', kwargs=['url', 'title', 'image', 'profile'])
+def random_music_play(url, title='', image='', profile='default'):
+    """Prepare one native Kodi playlist from a recognised music card."""
+    video_id = _video_id(url)
+    enabled = _random_music_enabled()
+    if enabled:
+        try:
+            queued = music_radio.start(video_id)
+            if queued >= 2:
+                # The service starts the native playlist after this playable
+                # plugin route finishes. Calling Player.play here is what
+                # previously reopened the source card and returned Kodi to
+                # the search/folder window between tracks.
+                log('NewPipe Random music: playlist preparada com {0} faixas'.format(queued))
+                return
+            log('NewPipe Random music: pool insuficiente; reprodução individual')
+        except Exception as exc:
+            log('NewPipe Random music: não iniciou playlist: {0}'.format(exc))
+    # The setting remains an explicit opt-out: a card in the folder can still
+    # be watched normally without creating any playlist.
+    music_radio.cancel()
     storage.add_history({'video_id': video_id, 'title': title or video_id, 'image': image or ''})
     playback.play(video_id, title=title, image=image, profile=profile)

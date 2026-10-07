@@ -703,3 +703,23 @@ msgstr "Quad HD — 1440p"
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr "Ultra HD — 2160p (4K)"
+
+msgctxt "#30191"
+msgid "랜덤 음악"
+msgstr ""
+
+msgctxt "#30192"
+msgid "랜덤 음악 자동 재생"
+msgstr ""
+
+msgctxt "#30193"
+msgid "현재 트랙이 끝나면 인식된 다른 음악 동영상을 무작위로 자동 재생합니다. 예고편, 라이브 방송 및 일반 동영상은 변경되지 않습니다."
+msgstr ""
+
+msgctxt "#30195"
+msgid "다음 랜덤 트랙을 불러오는 중…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "다음: {0}"
+msgstr ""

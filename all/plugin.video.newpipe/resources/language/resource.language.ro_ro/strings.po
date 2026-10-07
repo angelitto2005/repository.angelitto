@@ -703,3 +703,23 @@ msgstr "Quad HD — 1440p"
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr "Ultra HD — 2160p (4K)"
+
+msgctxt "#30191"
+msgid "Muzică aleatorie"
+msgstr ""
+
+msgctxt "#30192"
+msgid "Redare automată muzică aleatorie"
+msgstr ""
+
+msgctxt "#30193"
+msgid "Pornește automat un alt videoclip muzical recunoscut aleatoriu când se termină piesa curentă. Trailerele, transmisiunile live și videoclipurile obișnuite rămân neschimbate."
+msgstr ""
+
+msgctxt "#30195"
+msgid "Se încarcă următoarea piesă aleatorie…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "Urmează: {0}"
+msgstr ""

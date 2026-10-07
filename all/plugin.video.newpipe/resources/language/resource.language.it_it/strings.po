@@ -703,3 +703,23 @@ msgstr "Quad HD — 1440p"
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr "Ultra HD — 2160p (4K)"
+
+msgctxt "#30191"
+msgid "Musica casuale"
+msgstr ""
+
+msgctxt "#30192"
+msgid "Riproduci automaticamente musica casuale"
+msgstr ""
+
+msgctxt "#30193"
+msgid "Avvia automaticamente un altro video musicale riconosciuto in modo casuale quando termina il brano corrente. Trailer, dirette e video normali non vengono modificati."
+msgstr ""
+
+msgctxt "#30195"
+msgid "Caricamento del prossimo brano casuale…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "Prossimo: {0}"
+msgstr ""

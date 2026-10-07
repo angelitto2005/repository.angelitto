@@ -199,12 +199,17 @@
 					</constraints>
 					<control type="list" format="string"/>
 				</setting>
-				<setting id="fast_start" type="boolean" label="30039" help="30040">
-					<level>0</level>
-					<default>true</default>
-					<control type="toggle"/>
-				</setting>
-				<setting id="debug" type="boolean" label="30024">
+					<setting id="fast_start" type="boolean" label="30039" help="30040">
+						<level>0</level>
+						<default>true</default>
+						<control type="toggle"/>
+					</setting>
+					<setting id="random_music_autoplay" type="boolean" label="30192" help="30193">
+						<level>0</level>
+						<default>true</default>
+						<control type="toggle"/>
+					</setting>
+					<setting id="debug" type="boolean" label="30024">
 					<level>2</level>
 					<default>false</default>
 					<control type="toggle"/>

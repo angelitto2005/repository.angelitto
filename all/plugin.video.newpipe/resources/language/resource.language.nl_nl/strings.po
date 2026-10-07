@@ -703,3 +703,23 @@ msgstr "Quad HD — 1440p"
 msgctxt "#30190"
 msgid "Ultra HD — 2160p (4K)"
 msgstr "Ultra HD — 2160p (4K)"
+
+msgctxt "#30191"
+msgid "Willekeurige muziek"
+msgstr ""
+
+msgctxt "#30192"
+msgid "Willekeurige muziek automatisch afspelen"
+msgstr ""
+
+msgctxt "#30193"
+msgid "Start automatisch een andere herkende muziekvideo willekeurig wanneer het huidige nummer eindigt. Trailers, livestreams en gewone video’s blijven ongewijzigd."
+msgstr ""
+
+msgctxt "#30195"
+msgid "Volgend willekeurig nummer laden…"
+msgstr ""
+
+msgctxt "#30196"
+msgid "Volgende: {0}"
+msgstr ""
