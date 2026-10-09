@@ -72,8 +72,10 @@ def _show_up_next(player, shown):
     remaining = _remaining_seconds(player)
     if remaining is None or remaining <= 0 or remaining > _UP_NEXT_SECONDS:
         return shown, remaining
+    import lists
     message = '{}: [COLOR yellow]{}[/COLOR]'.format(
-        _UP_LABEL, upcoming.get('title') or upcoming.get('video_id') or '')
+        _UP_LABEL, lists.clean_title(upcoming.get('title'))
+        or upcoming.get('video_id') or '')
     notify(message, upcoming.get('image') or '')
     config.log('UP Next announced at {:.1f}s remaining: {}'.format(
         remaining, upcoming.get('video_id')))
@@ -82,6 +84,65 @@ def _show_up_next(player, shown):
 
 def _refill_music_queue(player, position=None):
     return
+
+
+def _sync_library_bg():
+    try:
+        from account import youtube_sync
+        summary = youtube_sync.sync_library()
+    except Exception as exc:
+        notify('Sync failed: {}'.format(str(exc)[:120]))
+        return
+    notify('Synced: {0} channels, {1} videos'.format(
+        summary.get('channels', 0), summary.get('videos', 0)),
+        time_ms=6000)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+def _sync_after_connect():
+    thread = threading.Thread(target=_sync_library_bg, daemon=True)
+    thread.start()
+
+
+def _maybe_periodic_sync(syncing):
+    if syncing['busy']:
+        return
+    try:
+        import time
+        import store
+        from account import youtube_sync
+        if not youtube_sync.status().get('connected'):
+            return
+        try:
+            last = int(store.get_state('last_yt_sync').get('ts') or 0)
+        except (TypeError, ValueError):
+            last = 0
+        if time.time() - last < 24 * 3600:
+            return
+        syncing['busy'] = True
+        thread = threading.Thread(target=_periodic_sync_bg, args=(syncing,),
+                                  daemon=True)
+        thread.start()
+    except Exception as exc:
+        config.log('periodic sync start failed: {}'.format(exc))
+
+
+def _periodic_sync_bg(syncing):
+    try:
+        from account import youtube_sync
+        summary = youtube_sync.sync_library()
+    except Exception as exc:
+        config.log('periodic sync failed: {}'.format(str(exc)[:120]))
+        syncing['busy'] = False
+        return
+    syncing['busy'] = False
+    config.log('periodic sync done: {0} channels, {1} videos'.format(
+        summary.get('channels', 0), summary.get('videos', 0)))
+    try:
+        if 'my_youtube' in (xbmc.getInfoLabel('Container.FolderPath') or ''):
+            xbmc.executebuiltin('Container.Refresh')
+    except Exception:
+        pass
 
 
 def queue_active():
@@ -421,10 +482,22 @@ def run():
         pass
     watching = os.path.exists(_oauth_file())
     last_poll = 0.0
+    last_periodic = 0.0
+    syncing = {'busy': False}
     locale_key = _locale_key()
     del _LOCALE_SEEN[:]
     _LOCALE_SEEN.append(locale_key)
     _LAST_FLAGS.update(_settings_snapshot())
+    try:
+        import time
+        import store
+        _last_ts = int(store.get_state('last_yt_sync').get('ts') or 0)
+        _age_h = (time.time() - _last_ts) / 3600 if _last_ts else -1
+        config.log('periodic sync: last run {} (next in {})'.format(
+            '{:.1f}h ago'.format(_age_h) if _age_h >= 0 else 'never',
+            '{:.1f}h'.format(max(0.0, 24 - _age_h)) if _age_h >= 0 else 'now'))
+    except Exception:
+        pass
     try:
         from playback import tmdb_autoplay_active
     except Exception:
@@ -467,7 +540,14 @@ def run():
                 state = result.get('state')
                 if state == 'authorized':
                     watching = False
-                    notify('YouTube account connected. Opening My YouTube.')
+                    try:
+                        if xbmc.getCondVisibility('Window.IsActive(slideshow)'):
+                            xbmc.executebuiltin('Action(Back)')
+                            xbmc.sleep(500)
+                    except Exception:
+                        pass
+                    notify('YouTube account connected. Syncing...')
+                    _sync_after_connect()
                     xbmc.executebuiltin(
                         'Container.Update({}?mode=my_youtube,replace)'.format(
                             'plugin://tmdbm.trailers/'))
@@ -477,6 +557,13 @@ def run():
                            else 'Account activation failed')
         except Exception as exc:
             config.log('login watcher: {}'.format(str(exc)[:120]))
+        try:
+            import time
+            if time.time() - last_periodic >= 1800:
+                last_periodic = time.time()
+                _maybe_periodic_sync(syncing)
+        except Exception as exc:
+            config.log('periodic sync check failed: {}'.format(str(exc)[:120]))
         if monitor.waitForAbort(wait):
             break
     del observer

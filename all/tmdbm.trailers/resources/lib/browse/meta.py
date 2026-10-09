@@ -4,6 +4,7 @@ import random
 import xbmc
 
 import config
+from .constants import cache_function
 
 _IOS_UA = ('com.google.ios.youtube/20.20.7'
            ' (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)')
@@ -32,7 +33,7 @@ def _context():
 
 def _post(endpoint, payload, timeout=20):
     import requests
-    body = {'context': {'client': _context()},
+    body = {'context': _context(),
             'cpn': ''.join(random.choice(
                 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_')
                 for _ in range(16))}
@@ -70,6 +71,20 @@ def _duration(value):
     for number in numbers:
         seconds = seconds * 60 + number
     return seconds
+
+
+def _short_views(value):
+    try:
+        total = int(str(value).replace(',', '').strip())
+    except (TypeError, ValueError):
+        return ''
+    if total < 0:
+        return ''
+    for divider, suffix in ((1000000000, 'B'), (1000000, 'M'), (1000, 'K')):
+        if total >= divider:
+            number = ('%.1f' % (total / divider)).rstrip('0').rstrip('.')
+            return '{}{} views'.format(number, suffix)
+    return '{} views'.format(total)
 
 
 def _walk(node):
@@ -194,5 +209,50 @@ def video_meta(video_id):
         'channel_id': details.get('channelId') or '',
         'duration': int(details.get('lengthSeconds') or 0),
         'published': _text(micro.get('publishDate') or micro.get('uploadDate')),
-        'views': _text(micro.get('viewCount')),
+        'views': _short_views(details.get('viewCount')) or _text(micro.get('viewCount')),
     }
+
+
+@cache_function(7 * 24 * 60)
+def video_meta_cached(video_id):
+    data = video_meta(video_id)
+    if not data:
+        raise ValueError('empty video meta')
+    return data
+
+
+@cache_function(7 * 24 * 60)
+def watch_upload_date(video_id):
+    import re as _re
+    import requests as _rq
+    try:
+        response = _rq.get(
+            'https://www.youtube.com/watch?v={}'.format(video_id),
+            headers={'User-Agent': _HEADERS['User-Agent'],
+                     'Accept-Language': 'en-US,en;q=0.9'},
+            cookies={'CONSENT': 'YES+cb'}, timeout=15)
+    except Exception:
+        raise ValueError('watch page unreachable')
+    if response.status_code != 200:
+        raise ValueError('watch page HTTP {}'.format(response.status_code))
+    match = _re.search(r'"uploadDate"\s*:\s*"(\d{4}-\d{2}-\d{2})',
+                       response.text or '')
+    if not match:
+        raise ValueError('no uploadDate')
+    return match.group(1)
+
+
+def full_entry_meta(video_id):
+    try:
+        info = video_meta_cached(video_id)
+    except Exception:
+        info = {}
+    if not info:
+        return {}
+    out = dict(info)
+    if not out.get('published'):
+        try:
+            out['published'] = watch_upload_date(video_id)
+        except Exception:
+            pass
+    return out

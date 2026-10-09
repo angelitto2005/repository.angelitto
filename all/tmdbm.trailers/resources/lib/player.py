@@ -1714,7 +1714,11 @@ def _youtube_info_plot(channel='', views='', vdate='', dur=0, snippet=''):
     if stats:
         lines.append(' - '.join(stats))
     head = '\n'.join(lines)
-    body = str(snippet or '').strip()
+    try:
+        from lists import clean_title
+        body = clean_title(snippet, single_line=False)
+    except Exception:
+        body = str(snippet or '').strip()
     if body:
         return (head + '\n\n' + body) if head else body
     return head
@@ -1829,6 +1833,11 @@ def play_youtube(video_id, title=None, genre=None, year=None,
 
     li = xbmcgui.ListItem()
     display_title = (data or {}).get('title') or title or 'Trailer'
+    try:
+        from lists import clean_title
+        display_title = clean_title(display_title) or display_title
+    except Exception:
+        pass
     tag = li.getVideoInfoTag()
     tag.setTitle(display_title)
     tag.setOriginalTitle(display_title)
@@ -1850,8 +1859,19 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     _thumb = 'https://i.ytimg.com/vi/{}/hqdefault.jpg'.format(video_id)
     li.setArt({'thumb': _thumb, 'poster': _thumb, 'fanart': _thumb})
     yt_plot = _youtube_info_plot(channel, views, vdate, dur, snippet)
+    try:
+        from lists import clean_title
+    except Exception:
+        clean_title = None
+
+    def _cleaned(text):
+        try:
+            return clean_title(text, single_line=False) if clean_title else text
+        except Exception:
+            return text
+
     if plot:
-        tag.setPlot(plot)
+        tag.setPlot(_cleaned(plot))
     elif yt_plot:
         tag.setPlot(yt_plot)
     if studio:
@@ -1884,11 +1904,11 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 _ep = _req('tv/{}/season/{}/episode/{}'.format(tmdb_id, season, episode_num))
                 if _ep.get('overview'):
                     tag.setPlot('[COLOR FF20B2AA]S{:02d}E{:02d}[/COLOR]  {}'.format(
-                        season, episode_num, _ep['overview']))
+                        season, episode_num, _cleaned(_ep['overview'])))
             else:
                 _se = _req('tv/{}/season/{}'.format(tmdb_id, season))
                 if _se.get('overview'):
-                    tag.setPlot(_se['overview'])
+                    tag.setPlot(_cleaned(_se['overview']))
         except Exception as _e:
             _log('Season/episode plot error: {}'.format(str(_e)[:120]), xbmc.LOGWARNING)
     elif (not plot or not studio) and tmdb_id:
@@ -1902,7 +1922,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 _head = '[B][COLOR yellow]' + _dtg + '[/COLOR][/B]\n'
             elif _gns:
                 _head = '[B][COLOR FF00CED1]' + _gns + '[/COLOR][/B]\n'
-            tag.setPlot(_head + _dov)
+            tag.setPlot(_head + _cleaned(_dov))
         if _dst and not studio:
             tag.setStudios([_dst])
     try:

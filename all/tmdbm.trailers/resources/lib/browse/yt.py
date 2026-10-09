@@ -119,4 +119,79 @@ def _playlist(playlist_id, limit, locale):
 
 
 def playlist_videos(playlist_id, limit=50):
-    return _playlist(playlist_id, limit, configure())
+    entries = _playlist(playlist_id, limit, configure())
+    if entries:
+        _unmark_private_playlist(playlist_id)
+        return entries
+    entries = _authed_playlist_videos(playlist_id, limit)
+    if entries:
+        _mark_private_playlist(playlist_id)
+    return entries
+
+
+def _playlist_privacy():
+    try:
+        import store
+        return store.get_state('playlist_privacy')
+    except Exception:
+        return {}
+
+
+def _mark_private_playlist(playlist_id):
+    try:
+        import store
+        privacy = store.get_state('playlist_privacy')
+        if playlist_id and playlist_id not in privacy:
+            privacy[str(playlist_id)] = 'private'
+            store.set_state('playlist_privacy', privacy)
+    except Exception:
+        pass
+
+
+def _unmark_private_playlist(playlist_id):
+    try:
+        import store
+        privacy = store.get_state('playlist_privacy')
+        if str(playlist_id) in privacy:
+            del privacy[str(playlist_id)]
+            store.set_state('playlist_privacy', privacy)
+    except Exception:
+        pass
+
+
+def is_private_playlist(playlist_id):
+    return bool(_playlist_privacy().get(str(playlist_id or '')))
+
+
+def _authed_playlist_videos(playlist_id, limit=50):
+    try:
+        from account import youtube_sync
+        if not youtube_sync.status().get('connected'):
+            return []
+        token = youtube_sync.access_token()
+        entries = []
+        seen = set()
+        continuation = ''
+        for _ in range(10):
+            if continuation:
+                response = youtube_sync._tv_request(
+                    token, youtube_sync._TV_BROWSE_URL, '',
+                    extra={'continuation': continuation})
+            else:
+                response = youtube_sync._browse(
+                    token, 'VL' + str(playlist_id), '')
+            for entry in youtube_sync._videos(response):
+                vid = entry.get('video_id')
+                if vid and vid not in seen:
+                    seen.add(vid)
+                    entries.append(entry)
+                    if len(entries) >= limit:
+                        return entries
+            nxt = youtube_sync.playlist_continuation(response)
+            if not nxt or nxt == continuation:
+                break
+            continuation = nxt
+        return entries
+    except Exception as exc:
+        config.log('authed playlist failed: {}'.format(str(exc)[:120]))
+        return []

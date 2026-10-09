@@ -218,7 +218,7 @@
           <level>0</level>
           <data>RunPlugin(plugin://tmdbm.trailers/?mode=clear_cache)</data>
           <constraints><allowempty>true</allowempty></constraints>
-          <control type="button" format="action"/>
+          <control type="button" format="action"><close>true</close></control>
         </setting>
       </group>
     </category>
@@ -228,13 +228,13 @@
           <level>0</level>
           <data>ActivateWindow(Videos,plugin://tmdbm.trailers/?mode=login,return)</data>
           <constraints><allowempty>true</allowempty></constraints>
-          <control type="button" format="action"/>
+          <control type="button" format="action"><close>true</close></control>
         </setting>
         <setting id="disconnect_account" type="action" label="32027" help="32057">
           <level>0</level>
           <data>RunPlugin(plugin://tmdbm.trailers/?mode=logout)</data>
           <constraints><allowempty>true</allowempty></constraints>
-          <control type="button" format="action"/>
+          <control type="button" format="action"><close>true</close></control>
         </setting>
       </group>
     </category>

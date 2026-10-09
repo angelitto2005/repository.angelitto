@@ -372,11 +372,11 @@ def channel(handle, params):
         else ('subscribe', '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]')
     items = [
         lists.folder_item('Videos', 'channel_videos', config.icon('search'),
-                          {'url': url, 'tab': 'videos'}),
+                          {'url': url, 'tab': 'videos', 'title': name}),
         lists.folder_item('Shorts', 'channel_videos', config.icon('search'),
-                          {'url': url, 'tab': 'shorts'}),
+                          {'url': url, 'tab': 'shorts', 'title': name}),
         lists.folder_item('Live', 'channel_videos', config.icon('live'),
-                          {'url': url, 'tab': 'streams'}),
+                          {'url': url, 'tab': 'streams', 'title': name}),
         lists.folder_item('Playlists', 'channel_playlists',
                           config.icon('bookmarks'), {'url': url}),
         lists.action_item(toggle[1], toggle[0], config.icon('subscriptions'),
@@ -389,16 +389,26 @@ def channel(handle, params):
 @route('channel_videos')
 def channel_videos(handle, params):
     import lists
-    from browse import yt
+    from browse import constants, yt
     from music import detect
     url = params.get('url') or ''
     tab = params.get('tab') or 'videos'
     page = _page(params)
+    requested = page * constants.results_per_page() + 1
+    try:
+        source = yt.channel_videos(url, tab=tab, limit=requested)
+    except Exception as exc:
+        config.log('channel_videos page {} failed: {}'.format(page, exc))
+        source = []
+    source = lists.fill_missing_meta(source)
 
     def fetch(limit):
-        return yt.channel_videos(url, tab=tab, limit=limit)
+        return source
 
     def builder(entry):
+        entry = dict(entry or {})
+        if not entry.get('channel'):
+            entry['channel'] = params.get('title') or ''
         mode = 'music_play' if detect.looks_like_music(entry) else 'play'
         return lists.video_item(entry, mode)
     items, content = lists.paged(fetch, builder, 'channel_videos',
@@ -425,11 +435,21 @@ def channel_playlists(handle, params):
 @route('playlist')
 def playlist(handle, params):
     import lists
-    from browse import yt
+    from browse import constants, yt
     url = params.get('url') or ''
     page = _page(params)
+    requested = page * constants.results_per_page() + 1
+    try:
+        source = yt.playlist_videos(url, limit=requested)
+    except Exception as exc:
+        config.log('playlist page {} failed: {}'.format(page, exc))
+        source = []
+    source = lists.fill_missing_meta(source)
+
+    def fetch(limit):
+        return source
     items, content = lists.paged(
-        lambda limit: yt.playlist_videos(url, limit=limit),
+        fetch,
         lambda entry: lists.video_item(entry, 'play'),
         'playlist', {'url': url}, page=page)
     build(handle, items, content=content)
@@ -518,6 +538,7 @@ def watch_later(handle, params):
     from browse import constants
     entries = _merge_remote(store.get_watch_later(),
                             store.get_library('watch_later_remote'))
+    entries = lists.fill_missing_meta(entries)
     page = _page(params)
     per_page = constants.results_per_page()
     start = (page - 1) * per_page
@@ -551,6 +572,7 @@ def history(handle, params):
     from browse import constants
     entries = _merge_remote(store.get_history(),
                             store.get_library('remote_history'))
+    entries = lists.fill_missing_meta(entries)
     page = _page(params)
     per_page = constants.results_per_page()
     start = (page - 1) * per_page
@@ -607,7 +629,7 @@ def my_youtube(handle, params):
         items.append(lists.folder_item(
             'Watch Later', 'watch_later', config.icon('bookmarks')))
         items.append(lists.folder_item(
-            'Saved playlists', 'saved_playlists', config.icon('bookmarks')))
+            'My Playlists', 'saved_playlists', config.icon('bookmarks')))
         items.append(lists.folder_item(
             'Watch history', 'history', config.icon('history')))
         items.append(lists.action_item(
@@ -635,6 +657,7 @@ def subscription_feed(handle, params):
     import store
     from browse.constants import results_per_page
     entries = store.get_library('subscription_feed')
+    entries = lists.fill_missing_meta(entries)
     page = _page(params)
     per_page = results_per_page()
     start = (page - 1) * per_page
@@ -673,13 +696,27 @@ def subscribed_channels(handle, params):
 def saved_playlists(handle, params):
     import lists
     from browse.constants import results_per_page
+    from browse import yt
     import store
     entries = store.get_library('saved_playlists')
     page = _page(params)
     per_page = results_per_page()
     start = (page - 1) * per_page
     end = start + per_page
-    items = [lists.folder_item(entry['title'], 'playlist',
+
+    def _label(entry):
+        title = entry.get('title') or ''
+        try:
+            count = int(entry.get('count') or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if count > 0:
+            title += ' [B][COLOR FFFFA500]({})[/COLOR][/B]'.format(count)
+        if yt.is_private_playlist(entry.get('playlist_id')):
+            title += ' [B][COLOR FFFF5555](Privat)[/COLOR][/B]'
+        return title
+
+    items = [lists.folder_item(_label(entry), 'playlist',
                                entry.get('image'),
                                {'url': entry.get('playlist_id')})
              for entry in entries[start:end]]
@@ -867,8 +904,13 @@ def store_clear_queue(queue):
 @route('logout')
 def logout(handle, params):
     from account import youtube_sync
-    if xbmcgui.Dialog().yesno('Disconnect YouTube account?', nolabel='Cancel',
-                              yeslabel='Disconnect'):
+    account = youtube_sync.status()
+    if not account.get('connected') and not account.get('pending'):
+        _notify('No YouTube account connected')
+        return
+    if xbmcgui.Dialog().yesno('Disconnect YouTube account?',
+                               'Disconnect the linked account? Local subscriptions remain.',
+                               nolabel='Cancel', yeslabel='Disconnect'):
         youtube_sync.disconnect()
         _notify('YouTube account disconnected')
     xbmc.executebuiltin('Container.Refresh')

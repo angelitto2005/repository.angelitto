@@ -482,6 +482,21 @@ def _channel_details(renderer):
     return channel_id, _text(renderer.get('channelTitle')) or channel_id
 
 
+def _tile_lines(tile):
+    metadata = _nested(tile, 'metadata', 'tileMetadataRenderer')
+    rows = []
+    for line in metadata.get('lines') or []:
+        items = ((line or {}).get('lineRenderer') or {}).get('items') or []
+        texts = []
+        for item in items:
+            text = _text(((item or {}).get('lineItemRenderer') or {}).get('text'))
+            if text:
+                texts.append(text)
+        if texts:
+            rows.append(texts)
+    return rows
+
+
 def _tile_video(tile):
     video_id = ''
     for node in _walk(tile):
@@ -510,16 +525,31 @@ def _tile_video(tile):
         if isinstance(browse, dict) and str(browse.get('browseId') or '').startswith('UC'):
             channel_id = str(browse['browseId'])
             break
+    rows = _tile_lines(tile)
+    channel = rows[0][0] if rows and rows[0] else ''
+    views = ''
+    vdate = ''
+    if len(rows) > 1:
+        for text in rows[1]:
+            low = text.lower()
+            if 'live' in low:
+                live = True
+            elif 'view' in low or 'vizion' in low or 'vizualiz' in low:
+                views = views or text
+            elif text.strip() not in ('', '•', '·', '|', '-', '–', '—'):
+                vdate = vdate or text
     return {
         'video_id': video_id,
         'title': _text(metadata.get('title')) or _text(header.get('title')) or video_id,
         'image': _thumbnail(header) or _thumbnail(tile),
         'duration': _duration(label),
         'is_live': live,
-        'channel': '',
+        'channel': channel,
         'channel_id': channel_id,
         'channel_url': ('https://www.youtube.com/channel/' + channel_id
                         if channel_id else ''),
+        'views': views,
+        'vdate': vdate,
     }
 
 
@@ -592,9 +622,46 @@ def _channels(payload):
     return list(found.values())
 
 
+def playlist_continuation(payload):
+    for node in _walk(payload):
+        if not isinstance(node, dict):
+            continue
+        data = node.get('nextContinuationData')
+        if isinstance(data, dict) and data.get('continuation'):
+            return data['continuation']
+    return ''
+
+
 def _playlists(payload):
     found = {}
     for parent in _walk(payload):
+        tile = parent.get('tileRenderer')
+        if isinstance(tile, dict) and tile.get(
+                'contentType') == 'TILE_CONTENT_TYPE_PLAYLIST':
+            playlist_id = str(tile.get('contentId') or '')
+            if playlist_id and playlist_id not in found:
+                metadata = _nested(tile, 'metadata', 'tileMetadataRenderer')
+                header = _nested(tile, 'header', 'tileHeaderRenderer')
+                count = 0
+                for overlay in header.get('thumbnailOverlays') or []:
+                    status = (overlay or {}).get(
+                        'thumbnailOverlayTimeStatusRenderer') or {}
+                    icon = status.get('icon') or {}
+                    if str(icon.get('iconType') or '') != 'PLAYLISTS':
+                        continue
+                    digits = ''.join(
+                        ch for ch in _text(status.get('text')) if ch.isdigit())
+                    try:
+                        count = int(digits or 0)
+                    except (TypeError, ValueError):
+                        count = 0
+                    break
+                found[playlist_id] = {
+                    'title': _text(metadata.get('title')) or str(playlist_id),
+                    'playlist_id': str(playlist_id),
+                    'image': _thumbnail(header) or _thumbnail(tile),
+                    'count': count}
+            continue
         for key in _PLAYLIST_RENDERER_KEYS:
             renderer = parent.get(key)
             if not isinstance(renderer, dict):
@@ -748,6 +815,7 @@ def sync_library():
             _log('optional {0} failed: {1}'.format(name, str(exc)[:90]),
                  xbmc.LOGWARNING)
     store.merge_youtube_subscriptions(channels)
+    store.set_state('last_yt_sync', {'ts': int(time.time())})
     return {'channels': len(channels), 'videos': len(feed)}
 
 

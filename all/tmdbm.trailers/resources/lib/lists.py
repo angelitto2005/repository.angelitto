@@ -10,6 +10,89 @@ from browse.constants import results_per_page
 
 THUMBNAIL_URL = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'
 CHANNEL_ART_URL = 'https://yt3.googleusercontent.com/{}=s176-c-k-c0x00ffffff-no-rj'
+
+_BAD_RANGES = (
+    (0x1F000, 0x1FAFF),
+    (0x1D100, 0x1D1FF),
+    (0x2300, 0x23FF), (0x2460, 0x24FF),
+    (0x2700, 0x27BF), (0x2B00, 0x2BFF),
+    (0x3200, 0x33FF),
+    (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF),
+    (0x20000, 0x2FFFF),
+    (0x3040, 0x30FF), (0x1100, 0x11FF),
+    (0x3130, 0x318F), (0xAC00, 0xD7AF),
+    (0xE000, 0xF8FF), (0xE0000, 0xE007F),
+)
+_SILENT_RANGES = (
+    (0x200B, 0x200F), (0x2028, 0x2029), (0x20D0, 0x20FF),
+    (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
+)
+_BAD_SINGLE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+_BAD_COLLAPSE = re.compile(r'\|\s*\|')
+
+
+def _is_bad(code):
+    for low, high in _BAD_RANGES:
+        if low <= code <= high:
+            return True
+    return False
+
+
+def _is_silent(code):
+    for low, high in _SILENT_RANGES:
+        if low <= code <= high:
+            return True
+    return False
+
+
+def clean_title(value, single_line=True):
+    return _clean_lines(str(value or ''), single_line)
+
+
+def _clean_lines(text, single_line):
+    if single_line:
+        return _clean_run(text)
+    return '\n'.join(_clean_run(line) for line in text.split('\n'))
+
+
+def _clean_run(text):
+    text = _BAD_SINGLE.sub('', text)
+    out = []
+    bad_run = False
+    for char in text:
+        code = ord(char)
+        if _is_silent(code):
+            continue
+        if _is_bad(code):
+            bad_run = True
+            continue
+        if bad_run:
+            out.append('|')
+            bad_run = False
+        out.append(char)
+    if bad_run:
+        out.append('|')
+    return _BAD_COLLAPSE.sub(
+        '|', re.sub(r'\s+', ' ', ''.join(out))).strip().strip('|').strip()
+
+_SUB_NAMES = {}
+
+
+def _sub_channel_name(channel_id):
+    if not channel_id:
+        return ''
+    if not _SUB_NAMES:
+        try:
+            subs = store.get_subscriptions() or []
+        except Exception:
+            subs = []
+        for sub in subs:
+            cid = sub.get('youtube_subscription_id') or ''
+            if not cid and sub.get('url'):
+                cid = sub['url'].rstrip('/').rsplit('/', 1)[-1]
+            if cid:
+                _SUB_NAMES.setdefault(cid, sub.get('title') or '')
+    return _SUB_NAMES.get(channel_id, '')
 _CLEAN_RE = re.compile(r'\[/?(?:B|I)\]|\[COLOR[^\]]*\]|\[/COLOR\]')
 
 
@@ -75,8 +158,9 @@ def queue_play_url(entry):
 
 
 def playlist_item(entry):
+    entry = entry or {}
     vid = video_id(entry.get('video_id'))
-    title = entry.get('title') or vid or ''
+    title = clean_title(entry.get('title')) or vid or ''
     li = xbmcgui.ListItem(label=title)
     image = entry.get('image') or thumbnail(vid)
     if image:
@@ -107,6 +191,61 @@ def _queue_entry(entry):
         'vdate': entry_date(entry),
         'snippet': entry.get('snippet') or '',
     }
+
+
+def fill_missing_meta(entries, timeout=5.0):
+    from browse import meta
+    from concurrent.futures import ThreadPoolExecutor, wait
+    entries = list(entries or [])
+    pending = [dict(entry or {}) for entry in entries
+               if (entry or {}).get('video_id')
+               and (not (entry or {}).get('channel')
+                    or not (entry or {}).get('snippet')
+                    or not entry_date(entry or {}))]
+    if not pending:
+        return entries
+    try:
+        pool = ThreadPoolExecutor(max_workers=10)
+    except Exception:
+        return list(entries or [])
+    try:
+        futures = {pool.submit(meta.full_entry_meta,
+                               video_id(entry.get('video_id'))): entry
+                   for entry in pending}
+        done, _ = wait(set(futures), timeout=timeout)
+    finally:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    filled = {}
+    failed = 0
+    for future in done:
+        entry = futures.get(future)
+        try:
+            info = future.result() or {}
+        except Exception:
+            failed += 1
+            continue
+        if not info:
+            failed += 1
+            continue
+        merged = dict(entry)
+        merged['channel'] = merged.get('channel') or info.get('channel') or ''
+        merged['channel_id'] = merged.get('channel_id') or info.get('channel_id') or ''
+        merged['views'] = merged.get('views') or info.get('views') or ''
+        merged['vdate'] = entry_date(merged) or info.get('published') or ''
+        if not merged.get('duration'):
+            try:
+                merged['duration'] = int(info.get('duration') or 0)
+            except (TypeError, ValueError):
+                pass
+        merged['snippet'] = merged.get('snippet') or info.get('description') or ''
+        filled[merged['video_id']] = merged
+    config.log('meta fill: {}/{} filled, {} failed'.format(
+        len(filled), len(pending), failed))
+    return [filled.get(video_id(entry.get('video_id')), entry)
+            for entry in entries]
 
 
 def fetch_listing_page(listing, per_page):
@@ -242,7 +381,7 @@ def video_info(entry):
     if stats:
         lines.append(' - '.join(stats))
     head = '\n'.join(lines)
-    snippet = str(entry.get('snippet') or '')
+    snippet = clean_title(entry.get('snippet'), single_line=False)
     if snippet:
         return (head + '\n\n' + snippet) if head else snippet
     return head
@@ -262,7 +401,7 @@ def history_entry(params):
         'channel': params.get('channel') or '',
         'channel_id': params.get('channel_id') or '',
         'views': params.get('views') or '',
-        'vdate': params.get('vdate') or '',
+        'vdate': params.get('vdate') or params.get('year') or '',
         'duration': duration,
         'snippet': params.get('snippet') or '',
     }
@@ -275,8 +414,11 @@ def run_plugin(mode, params=None):
 
 
 def video_item(entry, mode='play', cm=None, in_watch_later=False):
+    entry = dict(entry or {})
+    if not entry.get('channel') and entry.get('channel_id'):
+        entry['channel'] = _sub_channel_name(entry['channel_id'])
     vid = video_id(entry.get('video_id'))
-    title = entry.get('title') or vid
+    title = clean_title(entry.get('title')) or vid
     if entry.get('is_live'):
         title = '[COLOR FFFF4500][LIVE][/COLOR] {}'.format(title)
     image = entry.get('image') or thumbnail(vid)
