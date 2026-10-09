@@ -531,7 +531,7 @@ def _yt_results_params(query, ctx):
     return rp
 
 
-def _youtube_autoplay_loop(seen_ids, order):
+def _youtube_autoplay_loop(seen_ids, order, titles):
     import time
     try:
         _ap = xbmc.Player()
@@ -539,6 +539,7 @@ def _youtube_autoplay_loop(seen_ids, order):
         _rel_cache = {}
         _idle = 0
         _cool = 0
+        _ann = ''
         xbmc.log(f"[TMDb Movies] [YOUTUBE] autoplay loop started ({len(order)} queued)", xbmc.LOGINFO)
         while True:
             if xbmc.getInfoLabel('Window(10000).Property(TMDbMovies.YoutubeAutoplay)') != 'true':
@@ -562,6 +563,28 @@ def _youtube_autoplay_loop(seen_ids, order):
             except:
                 time.sleep(5)
                 continue
+            try:
+                _pf = _ap.getPlayingFile() or ''
+            except:
+                _pf = ''
+            if 0 <= _pos < len(order) and order[_pos] and order[_pos] in _pf:
+                try:
+                    _rem = float(_ap.getTotalTime()) - float(_ap.getTime())
+                except:
+                    _rem = None
+                if _rem is not None and 0 < _rem <= 15 and _pos + 1 < len(order):
+                    _nid = order[_pos + 1]
+                    _nkey = f"{_pos}:{_nid}"
+                    if _nkey != _ann:
+                        _ann = _nkey
+                        xbmc.log(f"[TMDb Movies] [YOUTUBE] UP Next announced: {_nid}", xbmc.LOGINFO)
+                        try:
+                            xbmcgui.Dialog().notification(
+                                '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+                                'UP Next: [B]{}[/B]'.format(titles.get(_nid) or _nid),
+                                _yt_icon(), 15000)
+                        except:
+                            pass
             if _pos < 0 or _size - (_pos + 1) > 3:
                 time.sleep(5)
                 continue
@@ -600,6 +623,7 @@ def _youtube_autoplay_loop(seen_ids, order):
                         continue
                     seen_ids.add(_rv)
                     order.append(_rv)
+                    titles[_rv] = (_rd.get('title') if isinstance(_rd, dict) else '') or _rv
                     try:
                         _entry = _youtube_queue_entry(_rv, _rd.get('title'), _rd.get('views'), _rd.get('date'), _rd.get('duration'))
                         if not _entry:
@@ -1094,6 +1118,7 @@ def run_plugin():
             xbmcplugin.setResolvedUrl(handle, True, xbmcgui.ListItem(path=_yp_first))
             _yp_seen = set([_yp_vid])
             _yp_order = [_yp_vid]
+            _yp_titles = {_yp_vid: params.get('title') or _yp_vid}
             try:
                 from resources.lib.context.extended_info_mod import get_youtube_related
                 _yp_rel = get_youtube_related(_yp_vid, 10)
@@ -1113,6 +1138,7 @@ def run_plugin():
                                 _yp_seen.add(_rv)
                                 _yp_order.append(_rv)
                                 _yp_want.append(_rd)
+                                _yp_titles[_rv] = (_rd.get('title') if isinstance(_rd, dict) else '') or _rv
                         _yp_fm = {_yp_ex.submit(_youtube_queue_entry, _rd.get('id'), _rd.get('title'), _rd.get('views'), _rd.get('date'), _rd.get('duration')): _rd.get('id') for _rd in _yp_want}
                         _yp_dn, _ = wait(set(_yp_fm), timeout=15)
                     finally:
@@ -1123,8 +1149,16 @@ def run_plugin():
                 except:
                     _yp_dn = set()
                     _yp_fm = {}
+                _yp_by_id = {}
                 for _f in _yp_dn:
                     _rv = _yp_fm.get(_f, '')
+                    if _rv:
+                        _yp_by_id[_rv] = _f
+                for _rd in _yp_want:
+                    _rv = (_rd.get('id') or '') if isinstance(_rd, dict) else ''
+                    _f = _yp_by_id.get(_rv)
+                    if not _f:
+                        continue
                     try:
                         _entry = _f.result()
                     except:
@@ -1142,7 +1176,7 @@ def run_plugin():
                 pass
             xbmcgui.Window(10000).setProperty('TMDbMovies.YoutubeAutoplay', 'true')
             import threading as _yt_threading
-            _yt_threading.Thread(target=_youtube_autoplay_loop, args=(_yp_seen, _yp_order), daemon=True).start()
+            _yt_threading.Thread(target=_youtube_autoplay_loop, args=(_yp_seen, _yp_order, _yp_titles), daemon=True).start()
             return
         _yp_url = get_trailer_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
         if _yp_url:

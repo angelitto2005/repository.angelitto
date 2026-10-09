@@ -190,7 +190,7 @@
 		<news>INFO: For latest changes see Changelog within add-on.</news>
 		<assets><icon>salts.png</icon><fanart>salts_fanart.jpg</fanart></assets>
 	</extension>
-</addon><addon id="plugin.video.tmdbmovies" version="1.1.309" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.310" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
@@ -1365,19 +1365,19 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
       <fanart>icon.png</fanart>
     </assets>
   </extension>
-</addon><addon id="tmdbm.trailers" version="1.0.17" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="tmdbm.trailers" version="1.0.18" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
         <import addon="script.module.requests" version="2.22.0" />
     </requires>
-    <extension point="xbmc.python.script" library="resources/lib/default.py">
-        <provides>executable</provides>
+    <extension point="xbmc.python.pluginsource" library="resources/lib/default.py">
+        <provides>video audio</provides>
     </extension>
-    <extension point="xbmc.python.pluginsource" library="resources/lib/default.py" />
+    <extension point="xbmc.service" library="resources/service.py" start="login" />
     <extension point="xbmc.addon.metadata">
-        <description lang="en">[B][COLOR FF009900]Player for YouTube trailers[/COLOR][/B]
-[COLOR FFFFFFFF]Pure-Python playback - no third-party binaries, no runtime installed. Original audio, up to 4K.[/COLOR]</description>
-        <summary lang="en">Standalone YouTube trailer player. Direct Python extraction - nothing is installed on your system.</summary>
+        <description lang="en">[B][COLOR FF00CED1]YouTube browser and player[/COLOR][/B]
+[COLOR FFFFFFFF]Search, Trending, Live, Trailers, random music with autoplay and My YouTube (QR login). Pure-Python playback - no third-party binaries, original audio, up to 4K.[/COLOR]</description>
+        <summary lang="en">Full YouTube browser with search, categories, music queue, account sync and pure-Python playback.</summary>
         <reuselanguageinvoker>true</reuselanguageinvoker>
         <language />
         <license>MIT</license>

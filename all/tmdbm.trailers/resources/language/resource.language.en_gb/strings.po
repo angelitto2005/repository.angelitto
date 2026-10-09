@@ -1,0 +1,234 @@
+# Kodi Media Center language file
+# Addon Name: TMDbM Trailers
+# Addon id: tmdbm.trailers
+msgid ""
+msgstr ""
+"Project-Id-Version: TMDbM Trailers\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "General"
+
+msgctxt "#32001"
+msgid "YouTube Account"
+msgstr "YouTube Account"
+
+msgctxt "#32002"
+msgid "Video"
+msgstr "Video"
+
+msgctxt "#32003"
+msgid "Localisation"
+msgstr "Localisation"
+
+msgctxt "#32004"
+msgid "Categories"
+msgstr "Categories"
+
+msgctxt "#32005"
+msgid "Playback"
+msgstr "Playback"
+
+msgctxt "#32006"
+msgid "Maintenance"
+msgstr "Maintenance"
+
+msgctxt "#32007"
+msgid "Account"
+msgstr "Account"
+
+msgctxt "#32010"
+msgid "[B]Maximum video resolution[/B]"
+msgstr "[B]Maximum video resolution[/B]"
+
+msgctxt "#32011"
+msgid "Subtitles"
+msgstr "Subtitles"
+
+msgctxt "#32012"
+msgid "Subtitle language override (optional)"
+msgstr "Subtitle language override (optional)"
+
+msgctxt "#32013"
+msgid "Content country (ISO 3166-1)"
+msgstr "Content country (ISO 3166-1)"
+
+msgctxt "#32014"
+msgid "Custom country code (optional)"
+msgstr "Custom country code (optional)"
+
+msgctxt "#32015"
+msgid "Content language"
+msgstr "Content language"
+
+msgctxt "#32016"
+msgid "Custom language code (optional)"
+msgstr "Custom language code (optional)"
+
+msgctxt "#32017"
+msgid "Default Trending category"
+msgstr "Default Trending category"
+
+msgctxt "#32018"
+msgid "Default Live category"
+msgstr "Default Live category"
+
+msgctxt "#32019"
+msgid "Trailer audio"
+msgstr "Trailer audio"
+
+msgctxt "#32020"
+msgid "[B]Autoplay next video[/B]"
+msgstr "[B]Autoplay next video[/B]"
+
+msgctxt "#32021"
+msgid "Shuffle play"
+msgstr "Shuffle play"
+
+msgctxt "#32022"
+msgid "Results per page"
+msgstr "Results per page"
+
+msgctxt "#32023"
+msgid "Feed items per channel"
+msgstr "Feed items per channel"
+
+msgctxt "#32024"
+msgid "Debug logging (disables cache)"
+msgstr "Debug logging (disables cache)"
+
+msgctxt "#32025"
+msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+
+msgctxt "#32026"
+msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+
+msgctxt "#32027"
+msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+
+msgctxt "#32040"
+msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+
+msgctxt "#32041"
+msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+
+msgctxt "#32042"
+msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+
+msgctxt "#32043"
+msgid "Country used for search, Trending, Live and Trailers results."
+msgstr "Country used for search, Trending, Live and Trailers results."
+
+msgctxt "#32044"
+msgid "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+
+msgctxt "#32045"
+msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+
+msgctxt "#32046"
+msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+
+msgctxt "#32047"
+msgid "Category listed when Trending is opened without a choice."
+msgstr "Category listed when Trending is opened without a choice."
+
+msgctxt "#32048"
+msgid "Category listed when Live is opened without a choice."
+msgstr "Category listed when Live is opened without a choice."
+
+msgctxt "#32049"
+msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+
+msgctxt "#32050"
+msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+
+msgctxt "#32051"
+msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+
+msgctxt "#32052"
+msgid "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "How many videos a list page shows. Larger pages build longer playlists."
+
+msgctxt "#32053"
+msgid "How many videos each subscribed channel contributes to the feed."
+msgstr "How many videos each subscribed channel contributes to the feed."
+
+msgctxt "#32054"
+msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+
+msgctxt "#32055"
+msgid "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Deletes the downloaded listings, the music pool and the queue state."
+
+msgctxt "#32056"
+msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+
+msgctxt "#32057"
+msgid "Removes the linked YouTube account and its local snapshot."
+msgstr "Removes the linked YouTube account and its local snapshot."
+
+msgctxt "#32060"
+msgid "Off"
+msgstr "Off"
+
+msgctxt "#32061"
+msgid "Original"
+msgstr "Original"
+
+msgctxt "#32062"
+msgid "Preferred language"
+msgstr "Preferred language"
+
+msgctxt "#32063"
+msgid "Music"
+msgstr "Music"
+
+msgctxt "#32064"
+msgid "Gaming"
+msgstr "Gaming"
+
+msgctxt "#32065"
+msgid "News"
+msgstr "News"
+
+msgctxt "#32066"
+msgid "Movies"
+msgstr "Movies"
+
+msgctxt "#32067"
+msgid "Live"
+msgstr "Live"
+
+msgctxt "#32068"
+msgid "Games"
+msgstr "Games"
+
+msgctxt "#32069"
+msgid "Sports"
+msgstr "Sports"
+
+msgctxt "#32070"
+msgid "Podcasts"
+msgstr "Podcasts"
+
+msgctxt "#32071"
+msgid "Localized"
+msgstr "Localized"

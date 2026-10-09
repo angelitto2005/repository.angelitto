@@ -109,9 +109,75 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     _mpd_headers = None
     _segment_headers = None
     _session = None
+    _subs_cache_dir = None
+    _SUBS_CACHE_TTL = 30 * 86400
+    _SUBS_CACHE_CAP = 200
 
     def log_message(self, format, *args):
         pass
+
+    @classmethod
+    def _subs_cache_path(cls, url):
+        try:
+            import re as _re
+            from urllib.parse import urlparse as _up, parse_qs as _pq
+            query = _pq(_up(url).query)
+            vid = (query.get('v', ['']) or [''])[0]
+            vid = _re.sub(r'[^A-Za-z0-9_-]', '', vid)[:16]
+            lang = (query.get('tlang') or query.get('lang') or ['und'])[0]
+            lang = _re.sub(r'[^A-Za-z-]', '', lang)[:12] or 'und'
+            if not vid:
+                return ''
+            if cls._subs_cache_dir is None:
+                cls._subs_cache_dir = xbmcvfs.translatePath('special://temp/yt_subs')
+            try:
+                os.makedirs(cls._subs_cache_dir, exist_ok=True)
+            except OSError:
+                pass
+            return os.path.join(cls._subs_cache_dir, '{}_{}.vtt'.format(vid, lang))
+        except Exception:
+            return ''
+
+    def _serve_cached_subs(self, path):
+        try:
+            if not path or not os.path.isfile(path):
+                return False
+            if time.time() - os.path.getmtime(path) > _ProxyHandler._SUBS_CACHE_TTL:
+                return False
+            with open(path, 'rb') as handle:
+                payload = handle.read()
+            if not payload:
+                return False
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/vtt')
+            self.send_header('Content-Length', str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            _log('Subtitle served from cache')
+            return True
+        except Exception:
+            return False
+
+    def _store_cached_subs(self, path, payload):
+        try:
+            if not path or not payload:
+                return
+            tmp_path = path + '.tmp'
+            with open(tmp_path, 'wb') as handle:
+                handle.write(payload)
+            os.replace(tmp_path, path)
+            try:
+                entries = [(os.path.getmtime(os.path.join(self._subs_cache_dir, name)), name)
+                           for name in os.listdir(self._subs_cache_dir)]
+            except OSError:
+                return
+            for _, name in sorted(entries)[:-self._SUBS_CACHE_CAP]:
+                try:
+                    os.remove(os.path.join(self._subs_cache_dir, name))
+                except OSError:
+                    pass
+        except Exception:
+            pass
 
     def do_GET(self):
         global _proxy_last_req
@@ -141,6 +207,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
 
+        subs_path = ''
+        if '/api/timedtext' in url:
+            subs_path = _ProxyHandler._subs_cache_path(url)
+            if subs_path and self._serve_cached_subs(subs_path):
+                return
+
         max_attempts = 5
         backoff = (0.3, 0.6, 1.2, 2.4)
         for attempt in range(max_attempts):
@@ -157,13 +229,12 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 range_header = self.headers.get('Range')
                 if range_header:
                     headers['Range'] = range_header
+                headers['Accept-Encoding'] = 'identity'
 
                 resp = _ProxyHandler._session.get(url, headers=headers, timeout=120, stream=True)
-                # googlevideo intermittently rejects (403/429) requests into a
-                # "penalty window" that lasts seconds-to-minutes; retrying with
-                # backoff rides out short windows so ISA never sees the failure.
                 do_retry = attempt < max_attempts - 1 and (
-                    (resp.status_code in (403, 429) and 'googlevideo.com' in url)
+                    (resp.status_code in (403, 429)
+                     and ('googlevideo.com' in url or 'youtube.com' in url))
                     or resp.status_code >= 500)
                 if do_retry:
                     _log('Proxy HTTP {} retry {}/{} (Range: {})'.format(
@@ -174,13 +245,33 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 if resp.status_code >= 400:
                     _log('Proxy segment HTTP {} (Range: {}) for {}'.format(
                         resp.status_code, range_header or '-', url[:140]), xbmc.LOGWARNING)
+                if subs_path and resp.status_code == 200 and not range_header:
+                    try:
+                        payload = resp.content
+                    except Exception:
+                        payload = b''
+                    if payload.startswith(b'WEBVTT'):
+                        self._store_cached_subs(subs_path, payload)
+                    try:
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'text/vtt')
+                        self.send_header('Content-Length', str(len(payload)))
+                        self.end_headers()
+                        self.wfile.write(payload)
+                    except ConnectionError:
+                        _log('Proxy client aborted during response (Range: {})'.format(
+                            range_header or '-'))
+                    finally:
+                        resp.close()
+                    return
                 try:
                     self.send_response(resp.status_code)
                     with_lower = {k.lower() for k in resp.headers}
                     has_content_range = 'content-range' in with_lower
                     for key, value in resp.headers.items():
                         kl = key.lower()
-                        if kl in ('transfer-encoding', 'connection'):
+                        if kl in ('transfer-encoding', 'connection',
+                                  'content-encoding'):
                             continue
                         if not has_content_range and kl == 'content-length':
                             continue
@@ -523,6 +614,7 @@ def _extract_innertube_ios(video_id):
         'title': vd.get('title'),
         'duration': int(vd.get('lengthSeconds') or 0),
         'manifest_url': sd.get('hlsManifestUrl'),
+        'captions': _collect_captions(body),
     }
 
 
@@ -543,7 +635,316 @@ def _fast_extract(video_id):
     return data
 
 
+_TV_UA = ('Mozilla/5.0 (Linux armeabi-v7a; Android 7.1.2; Fire OS 6.0) '
+          'Cobalt/22.lts.3.306369-gold (unlike Gecko) v8/8.8.278.8-jit gles '
+          'Starboard/13, Amazon_ATV_mediatek8695_2019/NS6294 '
+          '(Amazon, AFTMM, Wireless) com.amazon.firetv.youtube/22.3.r2.v66.0')
+
+
+def _account_connected():
+    try:
+        from account import youtube_sync
+        return bool(youtube_sync.status().get('connected'))
+    except Exception:
+        return False
+
+
+def _extract_innertube_tv_auth(video_id):
+    """Last resort extraction with the linked YouTube TV account.
+
+    Only reached when the anonymous client is rejected by YouTube's anti bot
+    gate, which is an IP level decision. The TV client pair is the one already
+    discovered at activation time, so no credential is embedded here. The
+    returned dict has the same shape as _extract_innertube_ios, so the MPD
+    builder, the progressive fallback and the resolution cap are untouched.
+    """
+    import re as _re
+    import requests as _rq
+    import store as _store
+    from account import youtube_sync
+    provider = youtube_sync.tv_provider()
+    token = youtube_sync.access_token()
+    page_id = (_store.get_oauth_token() or {}).get('page_id') or ''
+    version = provider.get('tv_client_version') or '7.20260901.15.00'
+    visitor_data = provider.get('visitor_data') or ''
+    payload = {
+        'context': {
+            'client': {
+                'clientName': 'TVHTML5',
+                'clientVersion': version,
+                'clientScreen': 'WATCH',
+                'userAgent': _TV_UA,
+                'browserName': 'Cobalt',
+                'browserVersion': '22.lts.3.306369-gold',
+                'tvAppInfo': {'appQuality': 'TV_APP_QUALITY_FULL_ANIMATION',
+                              'zylonLeftNav': True},
+                'webpSupport': False,
+                'animatedWebpSupport': True,
+                'visitorData': visitor_data,
+            },
+            'user': {'lockedSafetyMode': False},
+        },
+        'videoId': video_id,
+        'contentCheckOk': True,
+        'racyCheckOk': True,
+    }
+    if page_id:
+        payload['context']['user']['pageId'] = page_id
+    headers = {
+        'Authorization': 'Bearer {}'.format(token),
+        'Origin': 'https://www.youtube.com',
+        'Referer': 'https://www.youtube.com/tv',
+        'User-Agent': _TV_UA,
+        'X-Youtube-Client-Name': '7',
+        'X-Youtube-Client-Version': version,
+        'Content-Type': 'application/json',
+    }
+    if visitor_data:
+        headers['X-Goog-Visitor-Id'] = visitor_data
+    if page_id:
+        headers['X-Goog-Pageid'] = page_id
+    r = _rq.post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+                 data=json.dumps(payload), headers=headers, timeout=25)
+    body = r.json()
+    status = ((body.get('playabilityStatus') or {}).get('status') or '')
+    if status != 'OK':
+        reason = (body.get('playabilityStatus') or {}).get('reason') or ''
+        raise Exception('playability {} {}'.format(status, reason)[:120])
+    vd = body.get('videoDetails') or {}
+    sd = body.get('streamingData') or {}
+    raw = list(sd.get('formats') or []) + list(sd.get('adaptiveFormats') or [])
+    formats = []
+    for f in raw:
+        if not f.get('url'):
+            continue
+        mime = f.get('mimeType', '')
+        match = _re.search(r'codecs="([^"]+)"', mime)
+        codecs = match.group(1) if match else ''
+        kind = mime.split('/', 1)[0]
+        sub = mime.split('/', 1)[1].split(';')[0].strip() if '/' in mime else ''
+        fmt = {
+            'format_id': str(f.get('itag')),
+            'url': f['url'],
+            'width': f.get('width', 0) or 0,
+            'height': f.get('height', 0) or 0,
+            'fps': f.get('fps'),
+            'bitrate': f.get('bitrate') or f.get('averageBitrate'),
+            'ext': sub,
+            'protocol': 'https',
+        }
+        if f.get('contentLength'):
+            fmt['filesize'] = int(f['contentLength'])
+        if f.get('approxDurationMs'):
+            try:
+                fmt['duration'] = int(int(f['approxDurationMs']) / 1000)
+            except Exception:
+                pass
+        ir = f.get('indexRange')
+        ini = f.get('initRange')
+        if ir and ini:
+            fmt['indexRange'] = {'start': int(ir['start']), 'end': int(ir['end'])}
+            fmt['initRange'] = {'start': int(ini['start']), 'end': int(ini['end'])}
+        if ',' in codecs:
+            vc, _, ac = codecs.partition(',')
+            fmt['container'] = sub
+            fmt['vcodec'] = vc.strip()
+            fmt['acodec'] = ac.strip()
+        elif kind == 'video' and sub == 'mp4':
+            fmt['container'] = 'mp4_dash'
+            fmt['vcodec'] = codecs or 'unknown'
+            fmt['acodec'] = 'none'
+        elif kind == 'audio' and sub == 'mp4':
+            fmt['container'] = 'm4a_dash'
+            fmt['vcodec'] = 'none'
+            fmt['acodec'] = codecs or 'unknown'
+            at_id = (f.get('audioTrack') or {}).get('id') or ''
+            fmt['_arole'] = at_id.rsplit('.', 1)[-1] if '.' in at_id else '4'
+        else:
+            continue
+        formats.append(fmt)
+    if not formats:
+        raise Exception('TV client returned no usable format')
+    orig_audio = [f for f in formats
+                  if f.get('container') == 'm4a_dash' and f.get('_arole') == '4']
+    if orig_audio:
+        kept = set(id(f) for f in orig_audio)
+        formats = [f for f in formats
+                   if f.get('container') != 'm4a_dash' or id(f) in kept]
+    _log('authenticated TV extraction OK: {} formats'.format(len(formats)))
+    return {
+        'formats': formats,
+        'title': vd.get('title'),
+        'duration': int(vd.get('lengthSeconds') or 0),
+        'manifest_url': sd.get('hlsManifestUrl'),
+        'captions': _collect_captions(body),
+        'authenticated': True,
+    }
+
+
+def _authenticated_extract(video_id):
+    """Run the TV extraction and keep it only when the URLs really serve."""
+    try:
+        data = _extract_innertube_tv_auth(video_id)
+    except Exception as exc:
+        _log('authenticated extraction failed: {}'.format(str(exc)[:150]),
+             xbmc.LOGWARNING)
+        return None
+    try:
+        ok, bad = _check_urls_servable(data)
+    except Exception:
+        ok = False
+    if not ok:
+        _log('authenticated URLs tainted on {}; discarding'.format(bad),
+             xbmc.LOGWARNING)
+        return None
+    return data
+
+
 _TMDB_API_KEY = '8ad3c21a92a64da832c559d58cc63ab4'
+
+SUBTITLE_OFF = 0
+SUBTITLE_ORIGINAL = 1
+SUBTITLE_PREFERRED = 2
+# Mirrors the Content language enum in settings.xml. Kept local so this module
+# never depends on the browsing package.
+_CONTENT_LANGUAGES = ('pt-PT', 'pt-BR', 'en', 'es', 'fr', 'de', 'it', 'nl',
+                      'ro', 'tr', 'ja', 'ko')
+
+
+def _subtitle_mode():
+    raw = str(_get_setting('subtitles', '') or '').strip().lower()
+    if raw in ('original', '1'):
+        return SUBTITLE_ORIGINAL
+    if raw in ('preferred language', 'preferred', '2'):
+        return SUBTITLE_PREFERRED
+    try:
+        return int(raw) if int(raw) in (SUBTITLE_ORIGINAL, SUBTITLE_PREFERRED) else SUBTITLE_OFF
+    except (TypeError, ValueError):
+        return SUBTITLE_OFF
+
+
+def _preferred_subtitle_lang():
+    custom = str(_get_setting('subtitle_language', '') or '').strip().replace('_', '-')
+    if not custom:
+        custom = str(_get_setting('content_language_custom', '') or '').strip().replace('_', '-')
+    if not custom:
+        raw = str(_get_setting('content_language', '') or '').strip()
+        if raw in _CONTENT_LANGUAGES:
+            custom = raw
+        else:
+            try:
+                index = int(raw)
+                if 0 <= index < len(_CONTENT_LANGUAGES):
+                    custom = _CONTENT_LANGUAGES[index]
+            except (TypeError, ValueError):
+                custom = 'en'
+    return custom or 'en'
+
+
+def _subtitle_label(track):
+    name = ((track or {}).get('name') or {})
+    if isinstance(name.get('simpleText'), str) and name['simpleText']:
+        return name['simpleText']
+    runs = name.get('runs') or []
+    label = ''.join(str(run.get('text') or '') for run in runs
+                    if isinstance(run, dict)).strip()
+    if label:
+        return label
+    return (track or {}).get('languageCode') or ''
+
+
+def _subtitle_url(track, translate_to=''):
+    base = (track or {}).get('baseUrl') or ''
+    if not base:
+        return ''
+    base = base.replace('&amp;', '&')
+    if 'xosf' in base:
+        parts = [part for part in base.split('&') if not part.startswith('xosf=')]
+        base = '&'.join(parts)
+    joiner = '&' if '?' in base else '?'
+    url = '{}{}fmt=vtt'.format(base, joiner)
+    if translate_to:
+        url = '{}&tlang={}'.format(url, translate_to)
+    return url
+
+
+def _collect_captions(body):
+    """Pick the subtitle tracks to expose, following the Subtitles setting.
+
+    Mirrors plugin.video.youtube: fmt=vtt is requested so Kodi receives plain
+    WebVTT with no conversion, and tlang asks YouTube for its own automatic
+    translation when the uploader has no track in that language.
+    """
+    mode = _subtitle_mode()
+    if mode == SUBTITLE_OFF:
+        return []
+    try:
+        renderer = ((body.get('captions') or {})
+                    .get('playerCaptionsTracklistRenderer') or {})
+        tracks = renderer.get('captionTracks') or []
+    except AttributeError:
+        return []
+    if not tracks:
+        return []
+    preferred = _preferred_subtitle_lang()
+    picked = []
+
+    def add(track, translate_to='', default=False):
+        url = _subtitle_url(track, translate_to)
+        if not url:
+            return
+        lang = track.get('languageCode') or ''
+        if translate_to:
+            label = '{} (auto)'.format(translate_to)
+            lang = translate_to
+        else:
+            label = _subtitle_label(track)
+        if track.get('kind') == 'asr':
+            label = '{} (auto)'.format(label)
+        picked.append({'url': url, 'lang': lang or 'und',
+                       'label': label or lang,
+                       'default': bool(default)})
+
+    def base_lang(track):
+        return str(track.get('languageCode') or '').lower()
+
+    exact = None
+    asr = None
+    original = None
+    translatable = None
+    for track in tracks:
+        lang = base_lang(track)
+        if lang == preferred.lower() or lang.split('-')[0] == preferred.lower().split('-')[0]:
+            if track.get('kind') == 'asr':
+                asr = asr or track
+            else:
+                exact = exact or track
+        if track.get('audioTrackType') == 'default' and not original:
+            original = track
+        if track.get('isTranslatable') and not translatable:
+            translatable = track
+    if original is None:
+        original = next((t for t in tracks if t.get('kind') != 'asr'), tracks[0])
+
+    if mode == SUBTITLE_ORIGINAL:
+        add(original, default=True)
+        return picked
+    if exact:
+        add(exact, default=True)
+    elif asr:
+        add(asr, default=True)
+    elif translatable:
+        add(translatable, translate_to=preferred, default=True)
+    if not picked and original:
+        add(original, default=True)
+    if original is not None and len(picked) < 4:
+        for track in tracks:
+            if any(item['url'] == _subtitle_url(track) for item in picked):
+                continue
+            add(track)
+            if len(picked) >= 4:
+                break
+    return picked
 
 
 def _is_permanent_error(msg):
@@ -553,8 +954,27 @@ def _is_permanent_error(msg):
     if not msg:
         return False
     low = msg.lower()
-    return any(h in low for h in ('unplayable', 'login_required', 'not available',
-                                   'unavailable', 'private', 'deleted', 'removed')) or 'country' in low
+    if _is_bot_gate(msg):
+        return False
+    return any(h in low for h in ('unplayable', 'not available',
+                                  'unavailable', 'private', 'deleted',
+                                  'removed')) or 'country' in low
+
+
+def _is_bot_gate(msg):
+    """True for YouTube's IP level anti bot challenge.
+
+    LOGIN_REQUIRED carrying "not a bot" is not permanent: it clears after a
+    pause, an alternate video is gated exactly the same way, and an
+    authenticated client is accepted. Retrying with a longer pause is worth
+    more than switching trailer.
+    """
+    if not msg:
+        return False
+    low = msg.lower()
+    if 'not a bot' in low or 'confirm you' in low or 'are not a bot' in low:
+        return True
+    return 'login_required' in low and 'sign in' in low
 
 # Clip/spot alternative videos shorter than this (seconds) are deprioritized
 # in favor of real trailer-length clips.
@@ -890,31 +1310,37 @@ def _screen_height():
     return 0
 
 
+_RES_HEIGHTS = {'720p': 720, '1080p': 1080, '2160p': 2160,
+                 '2160p (4k)': 2160}
+
+
 def _max_res_height():
     """User-selected maximum trailer resolution.
-    Enum order: 0=Auto, 1=720p, 2=1080p, 3=4K.
-    'Auto' follows the TV's native resolution (falls back to 1080p when
-    the display size is unknown)."""
-    try:
-        idx = int(_get_setting('trailer_max_res', '0') or 0)
-    except Exception:
-        idx = 0
+
+    Stored either as text (Auto, 720p, 1080p, 2160p) or as the previous
+    enum index (0=Auto, 1=720p, 2=1080p, 3=4K). Auto follows the TV's native
+    resolution and falls back to 1080p when the display size is unknown."""
+    raw = str(_get_setting('trailer_max_res', '') or '').strip()
+    low = raw.lower()
+    if low in _RES_HEIGHTS:
+        height = _RES_HEIGHTS[low]
+    else:
+        try:
+            idx = int(raw)
+        except (TypeError, ValueError):
+            idx = 0
+        height = {1: 720, 2: 1080, 3: 2160}.get(idx, 0)
     h = _screen_height()
-    _log('max_res: idx={} screen={}'.format(idx, h), getattr(xbmc, 'LOGDEBUG', 4))
-    if idx == 0:
-        # Auto: snap the panel height onto our quality ladder
-        if h >= 2160:
-            return 2160
-        if h >= 1080:
-            return 1080
-        if h > 0:
-            return 720
+    _log('max_res: raw={} screen={}'.format(raw, h), getattr(xbmc, 'LOGDEBUG', 4))
+    if height:
+        return height
+    if h >= 2160:
+        return 2160
+    if h >= 1080:
         return 1080
-    if idx == 1:
+    if h > 0:
         return 720
-    if idx == 2:
-        return 1080
-    return 2160
+    return 1080
 
 
 _RANGE_CACHE = {}
@@ -1004,7 +1430,8 @@ def _build_mpd(data, proxy_base='', video_id=''):
     # Auto (0) keeps the full ladder below the cap (adaptive).
     fixed_mode = False
     try:
-        fixed_mode = int(_get_setting('trailer_max_res', '0') or 0) != 0
+        raw = str(_get_setting('trailer_max_res', '') or '').strip()
+        fixed_mode = raw.lower() in _RES_HEIGHTS or raw in ('1', '2', '3')
     except Exception:
         fixed_mode = False
 
@@ -1122,6 +1549,28 @@ def _build_mpd(data, proxy_base='', video_id=''):
 
     if not written_sets:
         return None, {}
+
+    captions = (data or {}).get('captions') or []
+    for index, track in enumerate(captions):
+        url = fix_url(proxy_base + track['url'])
+        flag = 'yes' if track.get('default') else 'no'
+        label = track.get('label') or track.get('lang') or ''
+        mpd += ('\n<AdaptationSet id="subs_{i}" contentType="text" '
+                'mimeType="text/vtt" lang="{lang}" name="[B]{label}[/B]" '
+                'original="{flag}" default="{flag}">\n'
+                '    <Label>{label}</Label>\n'
+                '    <Role schemeIdUri="urn:mpeg:dash:role:2011" '
+                'value="subtitle"/>\n'
+                '    <Representation id="subs_{i}" codecs="wvtt" '
+                'mimeType="text/vtt">\n'
+                '        <BaseURL>{url}</BaseURL>\n'
+                '    </Representation>\n'
+                '</AdaptationSet>').format(i=written_sets + index,
+                                          lang=track.get('lang') or 'und',
+                                          label=label, flag=flag, url=url)
+        written_sets += 1
+    if captions:
+        _log('MPD subtitle sets: {}'.format(len(captions)))
     mpd += '\n</Period>\n</MPD>'
     return mpd, headers
 
@@ -1236,9 +1685,64 @@ def _tmdb_details_plot(tmdb_id, dbtype):
         return '', '', '', []
 
 
+def _youtube_info_plot(channel='', views='', vdate='', dur=0, snippet=''):
+    """Info panel block, identical to the TMDb Movies one."""
+    views = views or ''
+    import config
+    vdate = config.relative_date(vdate)
+    if vdate and vdate in views:
+        vdate = ''
+    lines = []
+    if channel:
+        lines.append('[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(channel))
+    stats = []
+    if views:
+        stats.append('[B][COLOR FFFFD700]{}[/COLOR][/B]'.format(views))
+    if vdate:
+        stats.append('[B][COLOR FFFF69B4]{}[/COLOR][/B]'.format(vdate))
+    if dur:
+        try:
+            seconds = int(dur)
+        except (TypeError, ValueError):
+            seconds = 0
+        if seconds > 0:
+            hours, rest = divmod(seconds, 3600)
+            minutes, secs = divmod(rest, 60)
+            label = ('{}:{:02d}:{:02d}'.format(hours, minutes, secs) if hours
+                     else '{}:{:02d}'.format(minutes, secs))
+            stats.append('[B][COLOR FF87CEEB]{}[/COLOR][/B]'.format(label))
+    if stats:
+        lines.append(' - '.join(stats))
+    head = '\n'.join(lines)
+    body = str(snippet or '').strip()
+    if body:
+        return (head + '\n\n' + body) if head else body
+    return head
+
+
+def _set_progressive_subtitles(li, captions, port):
+    """External subtitle tracks for the non DASH playback paths."""
+    if not captions:
+        return
+    base = 'http://127.0.0.1:{}/'.format(port) if port else ''
+    urls = []
+    for track in captions:
+        url = unquote(track.get('url') or '')
+        if not url:
+            continue
+        urls.append(base + url)
+    if urls:
+        try:
+            li.setSubtitles(urls)
+            _log('External subtitle tracks attached: {}'.format(len(urls)))
+        except Exception as exc:
+            _log('setSubtitles failed: {}'.format(str(exc)[:90]), xbmc.LOGWARNING)
+
+
 def play_youtube(video_id, title=None, genre=None, year=None,
                  tmdb_id=None, dbtype=None, season=None, episode_num=None,
-                 plot=None, studio=None, tagline=None, lang=None):
+                 plot=None, studio=None, tagline=None, lang=None,
+                 channel=None, views=None, vdate=None, dur=None, snippet=None):
     _cleanup_old_mpd()
 
     # Rate-limit: random delay between extractions to avoid bot detection
@@ -1262,6 +1766,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     raw_tainted = None
     last_err = ''
     permanent = False
+    gated = False
     for attempt in range(3):
         data = _fast_extract(video_id)
         if data:
@@ -1271,11 +1776,19 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         except Exception as _e:
             last_err = str(_e)
             raw_tainted = None
+        gated = _is_bot_gate(last_err)
         permanent = _is_permanent_error(last_err)
         if permanent:
             _log('Permanent unavailability (private/geo-block); skipping retries',
                  xbmc.LOGWARNING)
             break
+        if gated:
+            # IP level penalty: seconds matter far more than milliseconds.
+            _pause = 8000 + int(random.random() * 4000)
+            _log('YouTube anti bot gate; retrying in {}ms (attempt {}/3)'.format(
+                _pause, attempt + 1), xbmc.LOGWARNING)
+            xbmc.sleep(_pause)
+            continue
         _log('Extraction attempt {} failed; retrying ({}/3)'.format(
             attempt + 1, attempt + 1), xbmc.LOGWARNING)
         xbmc.sleep(int(1500 + random.random() * 2000))
@@ -1286,9 +1799,20 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         if fallback_fmt:
             _log('All DASH extractions tainted; falling back to progressive itag {}'.format(
                 fallback_fmt.get('format_id')), xbmc.LOGWARNING)
+        elif gated and _account_connected():
+            # Alternate trailers are gated exactly the same way, so go straight
+            # to the account instead of burning more requests.
+            _log('Bot gate active and no alternate trailer; trying the linked account')
+            data = _authenticated_extract(video_id)
+            if data:
+                gated = False
+        elif gated:
+            _log('Bot gate active and no account linked; cannot recover',
+                 xbmc.LOGWARNING)
+            raise Exception('YouTube blocked this IP ("Sign in to confirm you are '
+                            'not a bot"). Link your YouTube account in My YouTube '
+                            'to keep playing, or try another network.')
         else:
-            # Permanent unavailability (private/geo-block etc.) -> try an
-            # alternate trailer automatically so playback still works.
             permanent = _is_permanent_error(last_err)
             if permanent:
                 alt = _try_alt_trailer(video_id, title, year, tmdb_id, dbtype,
@@ -1317,6 +1841,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 tag.setEpisode(int(episode_num))
         except Exception:
             pass
+    genres_list = []
     if genre:
         genres_list = [g.strip() for g in genre.replace('/', ',').split(',') if g.strip()]
         tag.setGenres(genres_list)
@@ -1324,10 +1849,18 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         tag.setTagLine(tagline)
     _thumb = 'https://i.ytimg.com/vi/{}/hqdefault.jpg'.format(video_id)
     li.setArt({'thumb': _thumb, 'poster': _thumb, 'fanart': _thumb})
+    yt_plot = _youtube_info_plot(channel, views, vdate, dur, snippet)
     if plot:
         tag.setPlot(plot)
+    elif yt_plot:
+        tag.setPlot(yt_plot)
     if studio:
         tag.setStudios([studio])
+    try:
+        if dur and int(dur) > 0:
+            tag.setDuration(int(dur))
+    except (TypeError, ValueError):
+        pass
     if dbtype and (dbtype.lower() in ('episode', 'season')) and tmdb_id and season is not None and not plot:
         # Episoade: overview-ul EPISODULUI cu eticheta SxxEyy (plotul serialului
         # e separat si derutant, ex "The Chronicle of 1812"). Sezoane:
@@ -1400,6 +1933,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         if hdr:
             li.setProperty('inputstream.adaptive.stream_headers', hdr)
         li.setProperty(IA_PROP, 'inputstream.adaptive')
+        _set_progressive_subtitles(li, (data or {}).get('captions') or [], port)
         return li
 
     if mpd:

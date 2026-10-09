@@ -1,6 +1,242 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<settings>
-    <category label="General">
-        <setting id="trailer_max_res" type="enum" label="Maximum trailer resolution" values="Auto (based on display)|720p|1080p|2160p (4K)" default="0" help="Auto = the addon detects the TV's native resolution and limits the maximum trailer resolution accordingly (up to 4K on a 4K TV, up to 1080p on a Full HD TV). Video quality then automatically adapts to the available internet speed. 720p / 1080p / 2160p = a fixed maximum resolution, regardless of the display (useful on low-performance devices with a 4K panel)."/>
+<?xml version="1.0" encoding="utf-8"?>
+<settings version="2">
+  <section id="tmdbm.trailers">
+    <category id="general" label="32000">
+      <group id="video" label="32002">
+        <setting id="trailer_max_res" type="string" label="32010" help="32040">
+          <level>0</level>
+          <default>Auto (based on display)</default>
+          <constraints>
+            <options>
+              <option>Auto (based on display)</option>
+              <option>720p</option>
+              <option>1080p</option>
+              <option>2160p (4K)</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="subtitles" type="string" label="32011" help="32041">
+          <level>0</level>
+          <default>off</default>
+          <constraints>
+            <options>
+              <option label="32060">off</option>
+              <option label="32061">original</option>
+              <option label="32062">preferred language</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="subtitle_language" type="string" label="32012" help="32042">
+          <level>2</level>
+          <default></default>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="edit" format="string"/>
+        </setting>
+      </group>
+      <group id="localisation" label="32003">
+        <setting id="content_country" type="string" label="32013" help="32043">
+          <level>0</level>
+          <default>US</default>
+          <constraints>
+            <options>
+              <option>AO</option>
+              <option>AR</option>
+              <option>AT</option>
+              <option>AU</option>
+              <option>BE</option>
+              <option>BR</option>
+              <option>CA</option>
+              <option>CH</option>
+              <option>CL</option>
+              <option>CO</option>
+              <option>CV</option>
+              <option>DK</option>
+              <option>ES</option>
+              <option>FI</option>
+              <option>FR</option>
+              <option>GB</option>
+              <option>GR</option>
+              <option>ID</option>
+              <option>IE</option>
+              <option>IN</option>
+              <option>IT</option>
+              <option>JP</option>
+              <option>KR</option>
+              <option>MX</option>
+              <option>MZ</option>
+              <option>NL</option>
+              <option>NO</option>
+              <option>NZ</option>
+              <option>PE</option>
+              <option>PH</option>
+              <option>PL</option>
+              <option>PT</option>
+              <option>RO</option>
+              <option>SE</option>
+              <option>TR</option>
+              <option>US</option>
+              <option>ZA</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="content_country_custom" type="string" label="32014" help="32044">
+          <level>2</level>
+          <default></default>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="edit" format="string"/>
+        </setting>
+        <setting id="content_language" type="string" label="32015" help="32045">
+          <level>0</level>
+          <default>en</default>
+          <constraints>
+            <options>
+              <option>pt-PT</option>
+              <option>pt-BR</option>
+              <option>en</option>
+              <option>es</option>
+              <option>fr</option>
+              <option>de</option>
+              <option>it</option>
+              <option>nl</option>
+              <option>ro</option>
+              <option>tr</option>
+              <option>ja</option>
+              <option>ko</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="content_language_custom" type="string" label="32016" help="32046">
+          <level>2</level>
+          <default></default>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="edit" format="string"/>
+        </setting>
+      </group>
+      <group id="categories" label="32004">
+        <setting id="trending_category" type="string" label="32017" help="32047">
+          <level>0</level>
+          <default>music</default>
+          <constraints>
+            <options>
+              <option label="32063">music</option>
+              <option label="32064">gaming</option>
+              <option label="32065">news</option>
+              <option label="32066">movies</option>
+              <option label="32067">live</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="live_category" type="string" label="32018" help="32048">
+          <level>0</level>
+          <default>news</default>
+          <constraints>
+            <options>
+              <option label="32065">news</option>
+              <option label="32063">music</option>
+              <option label="32068">gaming</option>
+              <option label="32069">sports</option>
+              <option label="32070">podcasts</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="trailer_audio" type="string" label="32019" help="32049">
+          <level>0</level>
+          <default>original</default>
+          <constraints>
+            <options>
+              <option label="32061">original</option>
+              <option label="32071">localized</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+      </group>
+      <group id="playback" label="32005">
+        <setting id="autoplay_next" type="boolean" label="32020" help="32050">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="shuffle_play" type="boolean" label="32021" help="32051">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="results_per_page" type="string" label="32022" help="32052">
+          <level>0</level>
+          <default>25</default>
+          <constraints>
+            <options>
+              <option>5</option>
+              <option>10</option>
+              <option>15</option>
+              <option>20</option>
+              <option>25</option>
+              <option>30</option>
+              <option>35</option>
+              <option>40</option>
+              <option>45</option>
+              <option>50</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+        <setting id="feed_per_channel" type="string" label="32023" help="32053">
+          <level>0</level>
+          <default>5</default>
+          <constraints>
+            <options>
+              <option>1</option>
+              <option>2</option>
+              <option>3</option>
+              <option>4</option>
+              <option>5</option>
+              <option>6</option>
+              <option>8</option>
+              <option>10</option>
+              <option>12</option>
+              <option>15</option>
+              <option>20</option>
+            </options>
+          </constraints>
+          <control type="list" format="string"/>
+        </setting>
+      </group>
+      <group id="maintenance" label="32006">
+        <setting id="debug" type="boolean" label="32024" help="32054">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="clear_cache" type="action" label="32025" help="32055">
+          <level>0</level>
+          <data>RunPlugin(plugin://tmdbm.trailers/?mode=clear_cache)</data>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="button" format="action"/>
+        </setting>
+      </group>
     </category>
+    <category id="account" label="32001">
+      <group id="account" label="32007">
+        <setting id="connect_account" type="action" label="32026" help="32056">
+          <level>0</level>
+          <data>ActivateWindow(Videos,plugin://tmdbm.trailers/?mode=login,return)</data>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="button" format="action"/>
+        </setting>
+        <setting id="disconnect_account" type="action" label="32027" help="32057">
+          <level>0</level>
+          <data>RunPlugin(plugin://tmdbm.trailers/?mode=logout)</data>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="button" format="action"/>
+        </setting>
+      </group>
+    </category>
+  </section>
 </settings>
