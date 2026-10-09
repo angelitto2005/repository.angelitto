@@ -1042,10 +1042,14 @@ def sync_subscriptions():
 
 
 def disconnect():
-    """Forget local session data without changing the YouTube account itself."""
+    """Forget local account data while preserving manually added channels."""
     storage.clear_youtube_oauth_pending()
     storage.clear_youtube_oauth_token()
     storage.clear_youtube_library()
+    storage.clear_youtube_auth_provider()
+    removed = storage.clear_youtube_subscriptions()
+    _log('conta desconectada: {0} canais importados removidos'.format(removed))
+    return {'removed_channels': removed}
 
 
 def cancel_device_link():

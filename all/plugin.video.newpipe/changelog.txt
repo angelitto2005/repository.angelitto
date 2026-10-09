@@ -1,7 +1,15 @@
-[B]1.4.32a MOD[/B]
+[B]1.4.34a MOD[/B]
 - Fix Kodi 21 (Omega) startup crash: vendored libraries pinned to Python 3.8 (requests 2.32.3, urllib3 1.26.20, charset_normalizer 3.3.2, idna 3.7, certifi 2023.7.22, qrcode 7.4.2, pypng 0.0.21)
+- Pagination fix: an invalid content country code (for example a language code in Content country custom) made YouTube answer with the first page only, so the country is now validated against ISO 3166-1 alpha-2
 - Licenses consolidated in LICENSES/ (GPL-2.0-only and GPL-3.0 texts added; third-party texts kept outside pip metadata)
 - Changelog moved from addon.xml <news> to changelog.txt
+[B]1.4.34 MOD[/B]
+- Direct playback now prioritizes the creator's original audio track instead of inheriting the linked account/UI language
+- Portuguese dubbed or auto-dubbed audio is selected only when NewPipe Content language is explicitly set to Portuguese (Brazil) / pt-BR
+- Audio-stream cache is separated by this preference, so switching the setting immediately requests the correct track
+[B]1.4.33 MOD — TEST[/B]
+- Disconnect now removes the linked YouTube account token, library snapshots and account-imported subscriptions
+- Manually added subscriptions remain after disconnecting
 [B]1.4.32 MOD[/B]
 - Trailer results are always sorted by upload date, with the most recent releases first
 - The same newest-first order also applies to Trailer searches

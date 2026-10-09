@@ -99,7 +99,7 @@
       <fanart>fanart.jpg</fanart>
     </assets>
   </extension>
-</addon><addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.32a" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.34a" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
     </requires>
@@ -109,8 +109,8 @@
     <extension point="xbmc.service" library="resources/service.py" start="login" />
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>
-        <summary lang="en">Browse and watch YouTube videos</summary>
-        <description lang="en" />
+        <summary lang="en">NewPipe MOD — Original creator: Twilight0 | MOD: @TrainAgain2</summary>
+        <description lang="en">NewPipe MOD. Original creator and upstream: Twilight0 (https://github.com/Twilight0/plugin.video.newpipe). MOD: @TrainAgain2. This is a self-contained ZIP: no external Kodi repository or script.module add-on is required. Browse and watch YouTube without an account. Search, channels, playlists and local subscriptions stay on your device. Optionally, sign in through the NewPipe MOD YouTube TV activation flow at yt.be/activate; the add-on creates a genuine YouTube TV code and QR from current public TV client data, then synchronizes account subscriptions. Playback uses the bundled native engine to obtain one direct progressive audio/video stream, without a local proxy or plugin.video.youtube.</description>
         <disclaimer lang="en">This addon does not host or distribute any content; it only browses publicly available YouTube pages. Optional account linking stores its session token only in the local Kodi add-on profile.</disclaimer>
         <language>en</language>
         <license>GPL-3.0-only</license>

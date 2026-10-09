@@ -114,6 +114,31 @@ def sync_youtube_subscriptions(remote_subscriptions):
     return len(remote)
 
 
+def clear_youtube_subscriptions():
+    """Remove account-imported channels while preserving manual subscriptions.
+
+    A channel with ``source == 'youtube'`` came only from the linked YouTube
+    account and must disappear with that account.  A ``both`` channel was also
+    added manually by the person using Kodi, so retain it as a local channel
+    after dropping YouTube-only metadata.
+    """
+    kept = []
+    removed = 0
+    for entry in get_subscriptions():
+        item = dict(entry)
+        source = item.get('source', 'local')
+        if source == 'youtube':
+            removed += 1
+            continue
+        if source == 'both':
+            item.pop('youtube_subscription_id', None)
+            item.pop('synced', None)
+            item['source'] = 'local'
+        kept.append(item)
+    _save(_SUBS, kept[:_SUBS_CAP])
+    return removed
+
+
 def get_youtube_oauth_token():
     return _load_object(_YOUTUBE_OAUTH).get('token') or {}
 

@@ -20,6 +20,7 @@ from tulip import directory, kodi
 from tulip.log import log
 
 from . import ui
+from . import localization
 
 
 # The lightweight YouTube resolver is bundled in resources/lib/ytresolver.
@@ -51,7 +52,7 @@ _SAFE_HEADERS = (
 )
 _STREAM_CACHE_TTL = 15 * 60
 _STREAM_CACHE_CAP = 30
-_STREAM_CACHE_VERSION = 5
+_STREAM_CACHE_VERSION = 6
 _RESOLVE_LOCK_TTL = 35
 _HLS_STREAM_CACHE_TTL = 60
 
@@ -150,14 +151,32 @@ def _fast_start_enabled():
     return (kodi.setting('fast_start') or 'true').lower() != 'false'
 
 
+def _audio_preference():
+    """Map the NewPipe content-language setting to an audio-selection policy.
+
+    YouTube can provide translated/dubbed tracks alongside the creator's audio.
+    The direct resolver used by this add-on must not inherit the account or UI
+    language as an implicit instruction to choose a dub.  Original audio is
+    therefore the standard policy.  Portuguese dubs are deliberately enabled
+    only when the user explicitly selects Brazilian Portuguese as the NewPipe
+    content language.
+    """
+    configured = localization.content_language().replace('_', '-').casefold()
+    if configured == 'pt-br':
+        return 'pt-br', 'pt', True
+    return 'original', 'original', False
+
+
 def _cache_key(video_id, audio_only, profile):
-    return 'v{0}:{1}:{2}:{3}:{4}:{5}'.format(
+    audio_mode, _language, _prefer_default = _audio_preference()
+    return 'v{0}:{1}:{2}:{3}:{4}:{5}:{6}'.format(
         _STREAM_CACHE_VERSION,
         video_id,
         int(bool(audio_only)),
         _playback_profile(profile),
         _quality_value(profile),
-        int(_fast_start_enabled()))
+        int(_fast_start_enabled()),
+        audio_mode)
 
 
 def _stream_expiry(stream, now, cache_ttl=_STREAM_CACHE_TTL):
@@ -248,11 +267,20 @@ def _pluginsgr_path():
     return path
 
 
-def _engine_context(max_height):
+def _engine_context(max_height, audio_language, prefer_default_audio):
     """Create an isolated PluginsGR engine context configured without MPD."""
 
     _pluginsgr_path()
     from ytresolver.kodion.context.standalone import StandaloneContext
+
+    class NewPipePlaybackContext(StandaloneContext):
+        """Standalone engine context with NewPipe's explicit audio policy."""
+
+        def get_player_language(self):
+            # The bundled resolver expects ``(language, prefer_default)``.
+            # Its stock standalone context returns the bare string ``en`` and
+            # thus turns an English account/UI into an unintended dub bias.
+            return audio_language, prefer_default_audio
 
     try:
         temp_dir = kodi.transPath('special://temp/newpipe-progressive/')
@@ -267,7 +295,7 @@ def _engine_context(max_height):
     os.makedirs(temp_dir, exist_ok=True)
     os.makedirs(profile_dir, exist_ok=True)
 
-    context = StandaloneContext(
+    context = NewPipePlaybackContext(
         data_dir=temp_dir,
         config_file=os.path.join(profile_dir, 'ytresolver-progressive.json'),
         # H.264/AAC is the safest combined stream for the Android device.
@@ -318,18 +346,69 @@ def _inputstream_quality_properties(max_height):
     }
 
 
-def _pick_progressive(streams, audio_only, fast_start):
+def _audio_track_priority(item, audio_mode):
+    """Rank a progressive stream by the requested audio policy.
+
+    ``audioTrack.id`` is provided by YouTube in the form ``language.role``.
+    Role 4/-1 identifies original/main audio, while 3 and 10 are respectively
+    published and automatically generated dubs.  Unknown single-track formats
+    remain a valid fallback but never outrank a confirmed original track.
+    """
+    track = item.get('audio_track') or {}
+    if not isinstance(track, dict):
+        track = {}
+    track_id = str(track.get('id') or '').casefold().replace('_', '-')
+    language, _separator, role = track_id.partition('.')
+    name = str(track.get('name') or '').casefold()
+    is_default = bool(track.get('is_default'))
+    is_original = role in ('4', '-1') or 'original' in name
+    is_dub = role in ('3', '10') or 'dub' in name
+
+    if audio_mode == 'pt-br':
+        if language == 'pt-br':
+            language_rank = 2
+        elif language == 'pt' or language.startswith('pt-'):
+            language_rank = 1
+        else:
+            language_rank = 0
+        if language_rank:
+            return (4, language_rank, int(is_original), int(is_default))
+        # An unmarked one-track response is safer than a known non-Portuguese
+        # dub when Brazilian Portuguese was explicitly requested.
+        return (2, 0, 0, 0) if not track else (0, 0, 0, 0)
+
+    if is_original:
+        return (4, int(is_default), 0, 0)
+    if not track:
+        return (2, 0, 0, 0)
+    # A default flag can be useful when no original track is exposed, but a
+    # declared translated/dubbed track must be the last fallback.
+    return (1 if is_default and not is_dub else 0, 0, 0, 0)
+
+
+def _prefer_audio_candidates(candidates, audio_mode):
+    if not candidates:
+        return candidates
+    ranked = [(_audio_track_priority(item, audio_mode), item) for item in candidates]
+    best = max(rank for rank, _item in ranked)
+    return [item for rank, item in ranked if rank == best]
+
+
+def _pick_progressive(streams, audio_only, fast_start, audio_mode='original'):
     if audio_only:
         candidates = [
             item for item in streams
             if item.get('url') and item.get('audio') and not item.get('video')
         ]
-        key = lambda item: (item.get('audio') or {}).get('bitrate', 0)
     else:
         candidates = [
             item for item in streams
             if item.get('url') and item.get('video') and item.get('audio')
         ]
+    candidates = _prefer_audio_candidates(candidates, audio_mode)
+    if audio_only:
+        key = lambda item: (item.get('audio') or {}).get('bitrate', 0)
+    else:
         # Prefer a true progressive file when a client also returns HLS; HLS
         # remains a valid fallback when it is the only combined stream.
         regular = [item for item in candidates
@@ -364,11 +443,14 @@ def _resolve_from_mobile_clients(video_id, audio_only, profile):
 
     max_height = _quality_value(profile)
     fast_start = profile != 'trailer' and _fast_start_enabled()
+    audio_mode, audio_language, prefer_default_audio = _audio_preference()
     failures = []
     for label, client_names in _client_attempts(profile):
         try:
             client = YouTubePlayerClient(
-                context=_engine_context(max_height), clients=client_names)
+                context=_engine_context(
+                    max_height, audio_language, prefer_default_audio),
+                clients=client_names)
             # `clients=` only inserts a custom group; without this override the
             # engine still continues into TV/test/VR groups after the iOS call.
             client._client_groups = (('newpipe_direct', client_names),)
@@ -377,7 +459,8 @@ def _resolve_from_mobile_clients(video_id, audio_only, profile):
                 use_mpd=False,
                 audio_only=audio_only,
             )
-            selected = _pick_progressive(list(streams), audio_only, fast_start)
+            selected = _pick_progressive(
+                list(streams), audio_only, fast_start, audio_mode=audio_mode)
             if not selected:
                 failures.append('{0}: sem stream A/V direto'.format(label))
                 continue
@@ -391,7 +474,7 @@ def _resolve_from_mobile_clients(video_id, audio_only, profile):
                 continue
 
             hls = _is_hls_stream(selected, url)
-            _info('stream direto via {0} para {1}: itag={2}, formato={3}, altura={4}, hls={5}, perfil={6}, limite={7}p'.format(
+            _info('stream direto via {0} para {1}: itag={2}, formato={3}, altura={4}, hls={5}, perfil={6}, limite={7}p, áudio={8}'.format(
                 label,
                 video_id,
                 selected.get('itag', '?'),
@@ -399,7 +482,8 @@ def _resolve_from_mobile_clients(video_id, audio_only, profile):
                 (selected.get('video') or {}).get('height', '?'),
                 hls,
                 profile,
-                max_height))
+                max_height,
+                audio_mode))
             return {
                 'url': _stream_with_headers(url, selected.get('headers') or {}),
                 'hls': hls,

@@ -1363,6 +1363,15 @@ class YouTubePlayerClient(YouTubeDataClient):
                     track_id = audio_track['id']
                     track_name = audio_track['displayName']
                     is_default = audio_track['audioIsDefault']
+                    # Preserve YouTube's multi-audio identity for the
+                    # lightweight NewPipe direct-player selector.  Its
+                    # progressive stream choice happens after this resolver
+                    # returns, so only the format metadata reaches it.
+                    yt_format['audio_track'] = {
+                        'id': track_id,
+                        'name': track_name,
+                        'is_default': bool(is_default),
+                    }
                     itag = '.'.join((
                         itag,
                         track_id,
