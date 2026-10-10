@@ -11,6 +11,45 @@ def channel_videos(url, tab='videos', limit=None):
                             content_type=tab))
 
 
+def channel_albums(url, limit=None):
+    from .scrapetube.scrapetube import (get_initial_data, get_session,
+                                        search_dict, _extract_yt_initial_data)
+    session = get_session()
+    html = get_initial_data(session, url)
+    data = _extract_yt_initial_data(html)
+    if data is None:
+        return []
+    found = {}
+    for node in search_dict(data, 'lockupViewModel'):
+        if not isinstance(node, dict):
+            continue
+        if node.get('contentType') != 'LOCKUP_CONTENT_TYPE_ALBUM':
+            continue
+        content_id = node.get('contentId') or ''
+        if not content_id or content_id in found:
+            continue
+        metadata = ((node.get('metadata') or {}).get('lockupMetadataViewModel')
+                    or {})
+        title = ((metadata.get('title') or {}).get('content') or '') or content_id
+        found[content_id] = {'playlist_id': content_id, 'title': title,
+                             'image': _album_thumb(node)}
+        if limit and len(found) >= limit:
+            break
+    return list(found.values())
+
+
+def _album_thumb(lockup_view):
+    content_image = lockup_view.get('contentImage', {})
+    collection = (content_image.get('collectionThumbnailViewModel') or {}).get(
+        'primaryThumbnail', {})
+    sources = ((collection.get('thumbnailViewModel') or {}).get('image') or {}).get('sources', [])
+    if not sources:
+        sources = ((content_image.get('thumbnailViewModel') or {}).get('image') or {}).get('sources', [])
+    if sources:
+        return sources[-1].get('url')
+    return _thumbnail(lockup_view)
+
+
 def channel_playlists(url, limit=None):
     return list(get_channel(channel_url=url, limit=limit, sleep=0,
                             content_type='playlists'))

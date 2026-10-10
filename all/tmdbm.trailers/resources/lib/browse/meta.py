@@ -251,6 +251,12 @@ def full_entry_meta(video_id):
         return {}
     out = dict(info)
     if not out.get('published'):
+        import re as _re2
+        match = _re2.search(r'Released on:\s*(\d{4}-\d{2}-\d{2})',
+                            out.get('description') or '')
+        if match:
+            out['published'] = match.group(1)
+    if not out.get('published'):
         try:
             out['published'] = watch_upload_date(video_id)
         except Exception:

@@ -19,8 +19,10 @@ if not os.path.isdir(ADDON_PROFILE):
         pass
 
 
-def log(msg, level=xbmc.LOGINFO):
+def log(msg, level=xbmc.LOGINFO, always=False):
     try:
+        if level == xbmc.LOGINFO and not always and not get_bool('debug', False):
+            level = xbmc.LOGDEBUG
         xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
     except Exception:
         pass
@@ -30,13 +32,48 @@ def debug(msg):
     log(msg, xbmc.LOGDEBUG)
 
 
-def get_setting(name, default=''):
+SNAPSHOT_PROP = 'tmdbm.trailers.settings'
+SNAPSHOT_KEYS = ('content_country', 'content_language',
+                 'content_country_custom', 'content_language_custom',
+                 'trending_category', 'live_category', 'trailer_audio',
+                 'trailer_max_res', 'subtitles', 'subtitle_language',
+                 'results_per_page', 'feed_per_channel', 'autoplay_next',
+                 'shuffle_play', 'debug')
+_SNAP_RAW = ['']
+_SNAP_DATA = [None]
+
+
+def _snapshot():
+    try:
+        import xbmcgui as _xg
+        raw = _xg.Window(10000).getProperty(SNAPSHOT_PROP) or ''
+    except Exception:
+        return None
+    if raw == _SNAP_RAW[0]:
+        return _SNAP_DATA[0]
+    _SNAP_RAW[0] = raw
+    try:
+        data = json.loads(raw)
+    except Exception:
+        data = None
+    _SNAP_DATA[0] = data if isinstance(data, dict) else None
+    return _SNAP_DATA[0]
+
+
+def get_setting(name, default='', _use_snapshot=True):
     """Read a setting fresh at call time.
 
     With reuselanguageinvoker the single ADDON object caches values at import
     time, so settings changed while the interpreter stays alive are not seen.
     Reading through JSON-RPC (Settings Manager) bypasses that stale C++ cache.
     """
+    if _use_snapshot:
+        try:
+            snap = _snapshot()
+            if snap is not None and name in snap:
+                return str(snap[name])
+        except Exception:
+            pass
     try:
         res = xbmc.executeJSONRPC(
             '{{"jsonrpc":"2.0","method":"Settings.GetSettingValue",'

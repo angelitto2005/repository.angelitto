@@ -72,7 +72,13 @@ class AccountError(Exception):
     pass
 
 
-def _log(message, level=xbmc.LOGINFO):
+def _log(message, level=xbmc.LOGINFO, always=False):
+    if level == xbmc.LOGINFO and not always:
+        try:
+            if not config.get_bool('debug', False):
+                level = xbmc.LOGDEBUG
+        except Exception:
+            pass
     xbmc.log('[tmdbm.trailers] [YT] {0}'.format(message), level)
 
 
@@ -779,7 +785,8 @@ def _update_identity(token):
         stored['page_id'] = page_id
         stored['account_ready'] = bool(accounts)
         store.set_oauth_token(stored)
-    _log('identity resolved: {0} account(s)'.format(len(accounts)))
+    _log('identity resolved: {0} account(s)'.format(len(accounts)),
+         always=True)
     return page_id
 
 
@@ -798,7 +805,8 @@ def sync_library():
     subscriptions = _browse(token, 'FEsubscriptions')
     channels = _channels(subscriptions)
     feed = _videos(subscriptions)
-    _log('sync: {0} channels, {1} videos'.format(len(channels), len(feed)))
+    _log('sync: {0} channels, {1} videos'.format(len(channels), len(feed)),
+         always=True)
     if not channels and not feed and _contains(subscriptions, 'genericPromoRenderer'):
         raise AccountError('YouTube TV did not accept the linked account')
     store.set_library('subscription_feed', feed)

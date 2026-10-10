@@ -1,6 +1,6 @@
 import config
 
-from . import localization, rich
+from . import charts, localization, rich
 from .constants import cache_duration, cache_function
 
 
@@ -157,6 +157,18 @@ def _unmark_private_playlist(playlist_id):
             store.set_state('playlist_privacy', privacy)
     except Exception:
         pass
+
+
+def chart_sections():
+    return charts.chart_sections(localization.content_country())
+
+
+def chart_tracks(playlist_id, limit=100):
+    return charts.chart_tracks(playlist_id, limit=limit)
+
+
+def chart_artists():
+    return charts.chart_artists(localization.content_country())
 
 
 def is_private_playlist(playlist_id):

@@ -215,7 +215,8 @@ def search_results(handle, params):
             fetch, lambda entry: lists.folder_item(
                 entry['title'], 'playlist', entry['image'],
                 {'url': entry['playlist_id']},
-                description=' '.join(x for x in (entry['channel'], entry['count']) if x)),
+                description=' '.join(x for x in (entry['channel'], entry['count']) if x))
+            if entry.get('playlist_id') else None,
             'search_results', {'q': query, 'kind': 'playlist'}, page=page)
     elif kind == 'trailer':
         search_query = '{} {}'.format(query, localization.trailer_query()).strip()
@@ -310,6 +311,61 @@ def trailers(handle, params):
     build(handle, items, content=content)
 
 
+@route('charts')
+def charts(handle, params):
+    import lists
+    from browse import yt
+    sections = yt.chart_sections()
+    items = [lists.folder_item(
+        'Top Artists', 'chart_artists', config.icon('subscriptions'), {})]
+    items += [lists.folder_item(entry['title'], 'chart_videos',
+                                entry.get('image') or config.icon('music'),
+                                {'url': entry.get('playlist_id'),
+                                 'title': entry.get('title')})
+              for entry in sections if entry.get('playlist_id')]
+    build(handle, [item[0:3] for item in items], content=None)
+
+
+@route('chart_artists')
+def chart_artists(handle, params):
+    import lists
+    from browse import yt
+    items = [lists.folder_item(
+        entry['title'], 'channel', entry.get('image') or config.icon('subscriptions'),
+        {'url': entry.get('url'), 'title': entry.get('title')},
+        description=entry.get('subs', ''))
+        for entry in yt.chart_artists() if entry.get('url')]
+    build(handle, [item[0:3] for item in items], content=None)
+
+
+@route('chart_videos')
+def chart_videos(handle, params):
+    import lists
+    from browse import constants, yt
+    from music import detect
+    url = params.get('url') or ''
+    title = params.get('title') or ''
+    page = _page(params)
+    per_page = constants.results_per_page()
+    requested = page * per_page + 1
+    try:
+        source = yt.chart_tracks(url, limit=requested)
+    except Exception as exc:
+        config.log('chart_videos page {} failed: {}'.format(page, exc))
+        source = []
+    source = lists.fill_missing_meta(source)
+
+    def fetch(limit):
+        return source
+
+    def builder(entry):
+        mode = 'music_play' if detect.looks_like_music(entry) else 'play'
+        return lists.video_item(entry, mode)
+    items, content = lists.paged(fetch, builder, 'chart_videos',
+                                 {'url': url, 'title': title}, page=page)
+    build(handle, items, content=content)
+
+
 @route('random_music')
 def random_music(handle, params):
     import lists
@@ -400,6 +456,22 @@ def channel_videos(handle, params):
     except Exception as exc:
         config.log('channel_videos page {} failed: {}'.format(page, exc))
         source = []
+    if not source and tab == 'videos':
+        try:
+            from browse import rich
+            albums = rich.channel_albums(url, limit=requested)
+        except Exception as exc:
+            config.log('channel_albums failed: {}'.format(str(exc)[:100]))
+            albums = []
+        if albums:
+            start = (page - 1) * constants.results_per_page()
+            items = [lists.folder_item(
+                entry['title'], 'chart_videos', config.icon('music'),
+                {'url': entry['playlist_id'], 'title': entry['title']})
+                for entry in albums[start:start + constants.results_per_page()]
+                if entry.get('playlist_id')]
+            build(handle, [item[0:3] for item in items], content=None)
+            return
     source = lists.fill_missing_meta(source)
 
     def fetch(limit):
@@ -416,20 +488,44 @@ def channel_videos(handle, params):
     build(handle, items, content=content)
 
 
+def _playlist_id(value):
+    """Accept a bare playlist id or any URL carrying ?list=; else ''."""
+    value = (value or '').strip()
+    if not value:
+        return ''
+    if value.startswith(('PL', 'OL', 'RD', 'UU', 'FL', 'LL')) and '://' not in value:
+        return value
+    try:
+        from urllib.parse import urlparse, parse_qs
+        query = parse_qs(urlparse(value).query)
+        listed = (query.get('list') or [''])[0].strip()
+        if listed:
+            return listed
+    except Exception:
+        pass
+    return ''
+
+
 @route('channel_playlists')
 def channel_playlists(handle, params):
     import lists
     from browse import yt
     url = params.get('url') or ''
     page = _page(params)
+
+    def builder(entry):
+        entry = entry or {}
+        if not entry.get('playlist_id'):
+            return None
+        return lists.folder_item(entry.get('title') or entry['playlist_id'],
+                                 'playlist', entry.get('image'),
+                                 {'url': entry['playlist_id']},
+                                 description=entry.get('count', ''))
+
     items, content = lists.paged(
         lambda limit: yt.channel_playlists(url, limit=limit),
-        lambda entry: lists.folder_item(entry['title'], 'playlist',
-                                        entry['image'],
-                                        {'url': entry['playlist_id']},
-                                        description=entry.get('count', '')),
-        'channel_playlists', {'url': url}, page=page)
-    build(handle, items, content=content)
+        builder, 'channel_playlists', {'url': url}, page=page)
+    build(handle, items, content=content, cache=False)
 
 
 @route('playlist')
@@ -437,10 +533,14 @@ def playlist(handle, params):
     import lists
     from browse import constants, yt
     url = params.get('url') or ''
+    pid = _playlist_id(url)
     page = _page(params)
     requested = page * constants.results_per_page() + 1
+    if not pid:
+        build(handle, [], content='videos')
+        return
     try:
-        source = yt.playlist_videos(url, limit=requested)
+        source = yt.playlist_videos(pid, limit=requested)
     except Exception as exc:
         config.log('playlist page {} failed: {}'.format(page, exc))
         source = []
@@ -471,7 +571,13 @@ def play(handle, params):
 @route('music_play')
 def music_play(handle, params):
     import playback
-    playback.start_queue(handle, params)
+    from browse import constants
+    from music import queue
+    video_id = params.get('video_id') or ''
+    if video_id and constants.autoplay_next() and video_id not in queue.blocked():
+        playback.start_queue(handle, params)
+        return
+    playback.resolve_play(handle, params)
 
 
 @route('related_play')
@@ -657,6 +763,8 @@ def subscription_feed(handle, params):
     import store
     from browse.constants import results_per_page
     entries = store.get_library('subscription_feed')
+    if not entries:
+        return feed(handle, params)
     entries = lists.fill_missing_meta(entries)
     page = _page(params)
     per_page = results_per_page()
@@ -669,6 +777,52 @@ def subscription_feed(handle, params):
         items.append(lists.folder_item(
             '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
             'subscription_feed', config.icon('nextpage'), {'page': page + 1}))
+    build(handle, items, content='videos', cache=False)
+
+
+@route('feed')
+def feed(handle, params):
+    import lists
+    import store
+    from browse import constants, yt
+    from music import detect
+    page = _page(params)
+    per_page = constants.results_per_page()
+    per_channel = constants.feed_per_channel()
+    need = (page + 1) * per_page + 1
+    collected = []
+    exhausted = True
+    for sub in store.get_subscriptions():
+        if len(collected) >= need:
+            exhausted = False
+            break
+        url = sub.get('url') or ''
+        name = sub.get('title') or url
+        if not url:
+            continue
+        try:
+            videos = yt.channel_videos(url, limit=per_channel)[:per_channel]
+        except Exception as exc:
+            config.log('feed {} failed: {}'.format(url, str(exc)[:100]))
+            continue
+        for entry in videos:
+            item = dict(entry or {})
+            if not item.get('video_id'):
+                continue
+            item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
+            item['channel'] = item.get('channel') or name
+            collected.append(item)
+    collected = lists.fill_missing_meta(collected)
+    lists.set_context(collected)
+    start = (page - 1) * per_page
+    end = start + per_page
+    items = [lists.video_item(
+        entry, 'music_play' if detect.looks_like_music(entry) else 'play')
+        for entry in collected[start:end]]
+    if not exhausted or len(collected) > end:
+        items.append(lists.folder_item(
+            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            'feed', config.icon('nextpage'), {'page': page + 1}))
     build(handle, items, content='videos', cache=False)
 
 
@@ -921,7 +1075,9 @@ add_root('Trending', 'trending', config.icon('music'))
 add_root('Random music', 'random_music', config.icon('music'))
 add_root('Live', 'live', config.icon('live'))
 add_root('Trailers', 'trailers', config.icon('play'))
+add_root('Charts', 'charts', config.icon('music'))
 add_root('My YouTube', 'my_youtube', config.icon('subscriptions'))
+add_root('Feed', 'feed', config.icon('feed'))
 add_root('Watch Later', 'watch_later', config.icon('bookmarks'))
 add_root('History', 'history', config.icon('history'))
 add_root('Settings', 'open_settings', config.icon('settings'), folder=False)

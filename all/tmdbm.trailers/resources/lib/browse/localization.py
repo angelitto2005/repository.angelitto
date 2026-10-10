@@ -26,6 +26,30 @@ _original_get_ajax_data = None
 _active_language = 'en'
 _active_country = 'US'
 
+LOCALE_PROP = 'tmdbm.trailers.locale'
+
+
+def _prop_raw():
+    try:
+        import xbmcgui
+        raw = xbmcgui.Window(10000).getProperty(LOCALE_PROP) or ''
+    except Exception:
+        return None
+    parts = raw.split('|')
+    if len(parts) != 4 or not parts[0] or not parts[1]:
+        return None
+    return {'content_country': parts[0],
+            'content_language': parts[1],
+            'content_country_custom': parts[2],
+            'content_language_custom': parts[3]}
+
+
+def _raw_setting(name, default=''):
+    prop = _prop_raw()
+    if prop is not None and name in prop:
+        return prop[name]
+    return str(config.get_setting(name, default) or '')
+
 _COUNTRY_CATEGORY_SUFFIX = {
     'PT': 'Portugal',
     'AO': 'Angola',
@@ -81,10 +105,10 @@ _TRAILER_TERMS = {
 
 
 def content_language():
-    custom = str(config.get_setting('content_language_custom', '') or '').strip()
+    custom = _raw_setting('content_language_custom').strip()
     if custom and _LANGUAGE_RE.match(custom.replace('_', '-')):
         return custom.replace('_', '-')
-    raw = str(config.get_setting('content_language', '') or '').strip()
+    raw = _raw_setting('content_language').strip()
     if raw in LANGUAGES:
         return raw
     try:
@@ -102,10 +126,10 @@ def content_language():
 
 
 def content_country():
-    custom = str(config.get_setting('content_country_custom', '') or '').strip().upper()
+    custom = _raw_setting('content_country_custom').strip().upper()
     if custom and _COUNTRY_RE.match(custom) and custom in _COUNTRY_CODES:
         return custom
-    raw = str(config.get_setting('content_country', '') or '').strip().upper()
+    raw = _raw_setting('content_country').strip().upper()
     if _COUNTRY_RE.match(raw) and raw in _COUNTRY_CODES:
         return raw
     try:

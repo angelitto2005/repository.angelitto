@@ -29,6 +29,11 @@ def _get_setting(name, default=''):
     stays alive are not seen. Reading through JSON-RPC (Settings Manager)
     bypasses that stale C++ cache; falls back to the cached getter."""
     try:
+        import config as _cfg
+        return _cfg.get_setting(name, default)
+    except Exception:
+        pass
+    try:
         import xbmc as _x
         res = _x.executeJSONRPC(
             '{{"jsonrpc":"2.0","method":"Settings.GetSettingValue",'
@@ -65,7 +70,12 @@ _proxy_port = None
 
 
 def _log(msg, level=xbmc.LOGINFO):
-    xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
+    try:
+        import config
+    except Exception:
+        xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
+        return
+    config.log(msg, level)
 
 
 def _cleanup_old_mpd():

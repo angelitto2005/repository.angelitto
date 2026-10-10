@@ -87,8 +87,11 @@ def top_up_pool(anchor, limit=40):
     if not fresh:
         return []
     save_pool(pool() + fresh)
-    xbmc.log('[tmdbm.trailers] music pool topped up with {} tracks'.format(
-        len(fresh)))
+    try:
+        import config
+        config.log('music pool topped up with {} tracks'.format(len(fresh)))
+    except Exception:
+        pass
     return fresh
 
 

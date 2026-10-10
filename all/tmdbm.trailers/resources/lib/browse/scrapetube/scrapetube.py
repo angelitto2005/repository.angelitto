@@ -19,7 +19,8 @@ except ImportError:
 type_property_map = {
     "videos": "videoRenderer",
     "streams": "videoRenderer",
-    "shorts": "reelWatchEndpoint"
+    "shorts": "reelWatchEndpoint",
+    "playlists": "playlistRenderer"
 }
 
 def get_channel(
@@ -251,9 +252,13 @@ def get_videos(
     while True:
         if is_first:
             html = get_initial_data(session, url)
-            client = json.loads(
-                get_json_from_html(html, "INNERTUBE_CONTEXT", 2, '"}},') + '"}}'
-            )["client"]
+            context = _extract_innertube_context(html)
+            if not context:
+                client = json.loads(
+                    get_json_from_html(html, "INNERTUBE_CONTEXT", 2, '"}},') + '"}}'
+                )["client"]
+            else:
+                client = context.get("client", {})
             api_key = get_json_from_html(html, "innertubeApiKey", 3)
             session.headers["X-YouTube-Client-Name"] = "1"
             session.headers["X-YouTube-Client-Version"] = client["clientVersion"]
@@ -414,7 +419,35 @@ def get_ajax_data(
         api_endpoint, params={"key": api_key}, json=data,
         headers=_get_auth_headers(session),
     )
-    return response.json()
+    text = response.text
+    if text.startswith(")]}'"):
+        text = text[4:].lstrip('\r\n')
+    try:
+        return json.loads(text)
+    except ValueError:
+        raise
+
+def _extract_innertube_context(html: str) -> dict:
+    """Parse INNERTUBE_CONTEXT with balanced braces instead of fixed offsets.
+
+    The legacy get_json_from_html slicing assumes an exact '"}},' ending;
+    any layout shift yields garbage that fails deep in json with confusing
+    offsets. raw_decode consumes exactly one object whatever follows it.
+    """
+    try:
+        pos = html.find('INNERTUBE_CONTEXT')
+        if pos == -1:
+            return {}
+        start = html.find('{', pos)
+        if start == -1:
+            return {}
+        obj, _ = json.JSONDecoder().raw_decode(html[start:])
+        if isinstance(obj, dict):
+            return obj
+    except (ValueError, TypeError):
+        pass
+    return {}
+
 
 def _extract_yt_initial_data(html: str):
     """Parse embedded page data across YouTube layouts.

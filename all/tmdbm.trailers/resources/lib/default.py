@@ -17,7 +17,7 @@ ADDON_ID = config.ADDON_ID
 
 
 def _log(msg, level=xbmc.LOGDEBUG):
-    xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
+    config.log(msg, level)
 
 
 def _int_or_none(value):

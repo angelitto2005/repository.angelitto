@@ -358,10 +358,10 @@ def _extend_playlist_bg(started):
 def _locale_key():
     """Raw localisation settings, without importing the scraper stack."""
     return '{}|{}|{}|{}'.format(
-        config.get_setting('content_country', '35'),
-        config.get_setting('content_language', '2'),
-        config.get_setting('content_country_custom', ''),
-        config.get_setting('content_language_custom', ''))
+        config.get_setting('content_country', '35', _use_snapshot=False),
+        config.get_setting('content_language', '2', _use_snapshot=False),
+        config.get_setting('content_country_custom', '', _use_snapshot=False),
+        config.get_setting('content_language_custom', '', _use_snapshot=False))
 
 
 def _watch_locale(previous):
@@ -385,12 +385,21 @@ def _settings_snapshot():
         return {}
 
 
+_LAST_LOCALE_RESET = [0.0]
+
+
 def _reset_browse_state(current):
     try:
         from browse import constants
         constants.reset_cache()
     except Exception as exc:
         config.log('locale cache reset failed: {}'.format(exc))
+    try:
+        from browse import charts as _charts
+        _charts._visitor['value'] = ''
+        _charts._visitor['ts'] = 0.0
+    except Exception as exc:
+        config.log('locale visitor reset failed: {}'.format(exc))
     try:
         import store
         from music import queue
@@ -404,15 +413,44 @@ def _reset_browse_state(current):
     xbmc.executebuiltin('Container.Refresh')
 
 
+def _publish_locale(current):
+    try:
+        import xbmcgui
+        xbmcgui.Window(10000).setProperty('tmdbm.trailers.locale', current)
+    except Exception as exc:
+        config.log('locale publish failed: {}'.format(exc))
+
+
+def _publish_settings():
+    try:
+        import json as _js
+        import xbmcgui
+        data = {}
+        for key in config.SNAPSHOT_KEYS:
+            try:
+                data[key] = str(config.get_setting(key, '', _use_snapshot=False))
+            except Exception:
+                data[key] = ''
+        xbmcgui.Window(10000).setProperty(
+            config.SNAPSHOT_PROP, _js.dumps(data, separators=(',', ':')))
+    except Exception as exc:
+        config.log('settings snapshot failed: {}'.format(exc))
+
+
 class _LocaleMonitor(xbmc.Monitor):
 
     def onSettingsChanged(self):
         current = _locale_key()
+        _publish_locale(current)
+        _publish_settings()
         if not _LOCALE_SEEN:
             _LOCALE_SEEN.append(current)
         elif current != _LOCALE_SEEN[0]:
             _LOCALE_SEEN[0] = current
-            _reset_browse_state(current)
+            import time as _time2
+            if _time2.time() - _LAST_LOCALE_RESET[0] >= 3:
+                _LAST_LOCALE_RESET[0] = _time2.time()
+                _reset_browse_state(current)
         snap = _settings_snapshot()
         previous = _LAST_FLAGS.get('shuffle')
         _LAST_FLAGS.update(snap)
@@ -474,6 +512,8 @@ def run():
     observer.was_playing = False
     shown = ''
     config.log('Service started')
+    _publish_locale(_locale_key())
+    _publish_settings()
     try:
         from music import queue
         if not player.isPlayingVideo():
@@ -495,7 +535,8 @@ def run():
         _age_h = (time.time() - _last_ts) / 3600 if _last_ts else -1
         config.log('periodic sync: last run {} (next in {})'.format(
             '{:.1f}h ago'.format(_age_h) if _age_h >= 0 else 'never',
-            '{:.1f}h'.format(max(0.0, 24 - _age_h)) if _age_h >= 0 else 'now'))
+            '{:.1f}h'.format(max(0.0, 24 - _age_h)) if _age_h >= 0 else 'now'),
+            always=True)
     except Exception:
         pass
     try:

@@ -165,13 +165,8 @@ def playlist_item(entry):
     image = entry.get('image') or thumbnail(vid)
     if image:
         li.setArt({'icon': image, 'thumb': image, 'fanart': image})
-    info = {'title': title, 'mediatype': 'video'}
-    plot = video_info(entry)
-    if plot:
-        info['plot'] = plot
-    if entry.get('duration'):
-        info['duration'] = int(entry['duration'])
-    li.setInfo('video', info)
+    info = video_info(entry)
+    _set_video_info(li, title, info, entry.get('duration'))
     li.setProperty('IsPlayable', 'true')
     return li
 
@@ -242,8 +237,12 @@ def fill_missing_meta(entries, timeout=5.0):
                 pass
         merged['snippet'] = merged.get('snippet') or info.get('description') or ''
         filled[merged['video_id']] = merged
-    config.log('meta fill: {}/{} filled, {} failed'.format(
-        len(filled), len(pending), failed))
+    if failed:
+        config.log('meta fill: {}/{} filled, {} failed'.format(
+            len(filled), len(pending), failed))
+    else:
+        config.debug('meta fill: {}/{} filled'.format(len(filled),
+                                                     len(pending)))
     return [filled.get(video_id(entry.get('video_id')), entry)
             for entry in entries]
 
@@ -292,7 +291,16 @@ def fetch_listing_page(listing, per_page):
                                      tab=params.get('tab') or 'videos',
                                      limit=page * per_page + 1)[start:end]
         if mode == 'playlist':
-            return yt.playlist_videos(params.get('url') or '',
+            pid = params.get('url') or ''
+            try:
+                from urllib.parse import urlparse, parse_qs
+                if '://' in pid:
+                    pid = (parse_qs(urlparse(pid).query).get('list') or [''])[0].strip()
+            except Exception:
+                pass
+            if not pid:
+                return []
+            return yt.playlist_videos(pid,
                                       limit=page * per_page + 1)[start:end]
         if mode in ('watch_later', 'history', 'subscription_feed'):
             if mode == 'watch_later':
@@ -427,13 +435,8 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     if image:
         li.setArt({'icon': image, 'thumb': image, 'landscape': image,
                    'banner': image, 'fanart': image})
-    info = {'title': title, 'mediatype': 'video'}
-    plot = video_info(entry)
-    if plot:
-        info['plot'] = plot
-    if entry.get('duration'):
-        info['duration'] = int(entry['duration'])
-    li.setInfo('video', info)
+    info = video_info(entry)
+    _set_video_info(li, title, info, entry.get('duration'))
     li.setProperty('IsPlayable', 'true')
     li.setProperty('video_id', vid)
 
@@ -473,24 +476,36 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     return url, li, False
 
 
-def _set_folder_info(li, label, description=''):
-    title = _CLEAN_RE.sub('', label)
+def _set_video_info(li, title, plot='', duration=0):
+    try:
+        length = int(duration or 0)
+    except (TypeError, ValueError):
+        length = 0
     try:
         tag = li.getVideoInfoTag()
     except Exception:
         tag = None
     if tag is not None:
         try:
+            tag.setMediaType('video')
             tag.setTitle(title)
-            if description:
-                tag.setPlot(description)
+            if plot:
+                tag.setPlot(plot)
+            if length:
+                tag.setDuration(length)
             return
         except Exception:
             pass
-    info = {'title': title}
-    if description:
-        info['plot'] = description
+    info = {'title': title, 'mediatype': 'video'}
+    if plot:
+        info['plot'] = plot
+    if length:
+        info['duration'] = length
     li.setInfo('video', info)
+
+
+def _set_folder_info(li, label, description=''):
+    _set_video_info(li, _CLEAN_RE.sub('', label), description)
 
 
 def folder_item(label, mode, image, params=None, description='', cm=None,
@@ -540,7 +555,8 @@ def paged(fetch, builder, mode, params=None, page=1, content='videos'):
     end = start + per_page
     set_context(source)
     set_listing(mode, params, page)
-    items = [builder(entry) for entry in source[start:end]]
+    items = [built for built in
+             (builder(entry) for entry in source[start:end]) if built]
     if len(source) > end:
         next_params = dict(params or {})
         next_params['page'] = page + 1
