@@ -373,7 +373,33 @@ class AutoSubsPlayer(xbmc.Player):
     # ==========================================================================
     # METODA ACTUALIZATA PENTRU ACTIVARE SUBTITRARE
     # ==========================================================================
-    
+
+    def _current_subtitle_state(self):
+        current_index = -1
+        enabled = xbmc.getCondVisibility('Player.SubtitlesEnabled')
+
+        try:
+            query = {
+                "jsonrpc": "2.0",
+                "method": "Player.GetProperties",
+                "params": {
+                    "playerid": 1,
+                    "properties": ["currentsubtitle"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            data = json.loads(response)
+
+            if "result" in data:
+                subtitle = data["result"].get("currentsubtitle", {})
+                if isinstance(subtitle, dict):
+                    current_index = subtitle.get("index", -1)
+        except:
+            pass
+
+        return current_index, bool(enabled)
+
     def force_internal_subtitle(self, target_langs, allow_unknown=False):
         """
         Activeaza subtitrarea interna potrivita.
@@ -428,9 +454,16 @@ class AutoSubsPlayer(xbmc.Player):
                         break
 
             if idx_to_select >= 0:
-                log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
-                self.setSubtitleStream(idx_to_select)
-                xbmc.executebuiltin('ShowSubtitles')
+                cur_idx, enabled = self._current_subtitle_state()
+                if cur_idx == idx_to_select:
+                    log("Subtitrarea index %d (%s) e deja activa - nu comut fluxul" %
+                        (idx_to_select, available[idx_to_select]))
+                    if not enabled:
+                        self.showSubtitles(True)
+                else:
+                    log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
+                    self.setSubtitleStream(idx_to_select)
+                    xbmc.executebuiltin('ShowSubtitles')
                 if __addon__.getSetting('notify_found') == 'true':
                     xbmcgui.Dialog().notification(
                         "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
