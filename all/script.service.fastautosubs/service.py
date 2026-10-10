@@ -428,9 +428,16 @@ class AutoSubsPlayer(xbmc.Player):
                         break
 
             if idx_to_select >= 0:
-                log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
-                self.setSubtitleStream(idx_to_select)
-                xbmc.executebuiltin('ShowSubtitles')
+                cur_idx, enabled = self._current_subtitle_state()
+                if cur_idx == idx_to_select:
+                    log("Subtitrarea index %d (%s) e deja activa - nu comut fluxul" %
+                        (idx_to_select, available[idx_to_select]))
+                    if not enabled:
+                        self.showSubtitles(True)
+                else:
+                    log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
+                    self.setSubtitleStream(idx_to_select)
+                    xbmc.executebuiltin('ShowSubtitles')
                 if __addon__.getSetting('notify_found') == 'true':
                     xbmcgui.Dialog().notification(
                         "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
