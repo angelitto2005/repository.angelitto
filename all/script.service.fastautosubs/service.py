@@ -373,7 +373,33 @@ class AutoSubsPlayer(xbmc.Player):
     # ==========================================================================
     # METODA ACTUALIZATA PENTRU ACTIVARE SUBTITRARE
     # ==========================================================================
-    
+
+    def _current_subtitle_state(self):
+        current_index = -1
+        enabled = xbmc.getCondVisibility('Player.SubtitlesEnabled')
+
+        try:
+            query = {
+                "jsonrpc": "2.0",
+                "method": "Player.GetProperties",
+                "params": {
+                    "playerid": 1,
+                    "properties": ["currentsubtitle"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            data = json.loads(response)
+
+            if "result" in data:
+                subtitle = data["result"].get("currentsubtitle", {})
+                if isinstance(subtitle, dict):
+                    current_index = subtitle.get("index", -1)
+        except:
+            pass
+
+        return current_index, bool(enabled)
+
     def force_internal_subtitle(self, target_langs, allow_unknown=False):
         """
         Activeaza subtitrarea interna potrivita.
