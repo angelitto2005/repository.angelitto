@@ -1,3 +1,7 @@
+1.0.21
+- Nu mai comuta fluxul de subtitrare daca Kodi a activat deja subtitrarea corecta (fix prebuffer/seek la start pe Kodi 22).
+- Doua notificari distincte cu notify_found: activata real vs deja activa.
+
 1.0.20
 - Skip subtitle search for TMDbM Trailers and YouTube CDN playback (proxy MPD and googlevideo URLs).
 

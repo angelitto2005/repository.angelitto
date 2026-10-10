@@ -189,7 +189,7 @@ class AutoSubsPlayer(xbmc.Player):
             if __addon__.getSetting('notify_found') == 'true':
                 xbmcgui.Dialog().notification(
                     "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
-                    "Activată subtitrarea externă existentă!",
+                    "Activata subtitrarea externa existenta!",
                     FAS_ICON,
                     3000
                 )
@@ -373,7 +373,30 @@ class AutoSubsPlayer(xbmc.Player):
     # ==========================================================================
     # METODA ACTUALIZATA PENTRU ACTIVARE SUBTITRARE
     # ==========================================================================
-    
+
+    def _current_subtitle_state(self):
+        current_index = -1
+        enabled = xbmc.getCondVisibility('Player.SubtitlesEnabled')
+        try:
+            query = {
+                "jsonrpc": "2.0",
+                "method": "Player.GetProperties",
+                "params": {
+                    "playerid": 1,
+                    "properties": ["currentsubtitle"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            data = json.loads(response)
+            if "result" in data:
+                subtitle = data["result"].get("currentsubtitle", {})
+                if isinstance(subtitle, dict):
+                    current_index = subtitle.get("index", -1)
+        except:
+            pass
+        return current_index, bool(enabled)
+
     def force_internal_subtitle(self, target_langs, allow_unknown=False):
         """
         Activeaza subtitrarea interna potrivita.
@@ -428,16 +451,29 @@ class AutoSubsPlayer(xbmc.Player):
                         break
 
             if idx_to_select >= 0:
-                log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
-                self.setSubtitleStream(idx_to_select)
-                xbmc.executebuiltin('ShowSubtitles')
-                if __addon__.getSetting('notify_found') == 'true':
-                    xbmcgui.Dialog().notification(
-                        "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
-                        "Activată subtitrarea existentă!",
-                        FAS_ICON,
-                        2000
-                    )
+                cur_idx, enabled = self._current_subtitle_state()
+                if cur_idx == idx_to_select:
+                    log("Subtitrarea index %d (%s) e deja activa - nu comut fluxul" % (idx_to_select, available[idx_to_select]))
+                    if not enabled:
+                        self.showSubtitles(True)
+                    if __addon__.getSetting('notify_found') == 'true':
+                        xbmcgui.Dialog().notification(
+                            "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
+                            "Subtitrare existenta deja activa!",
+                            FAS_ICON,
+                            2000
+                        )
+                else:
+                    log("Activare subtitrare interna index: %d (%s)" % (idx_to_select, available[idx_to_select]))
+                    self.setSubtitleStream(idx_to_select)
+                    xbmc.executebuiltin('ShowSubtitles')
+                    if __addon__.getSetting('notify_found') == 'true':
+                        xbmcgui.Dialog().notification(
+                            "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
+                            "Activata subtitrarea existenta!",
+                            FAS_ICON,
+                            2000
+                        )
         except Exception as e:
             log("Eroare la force_internal_subtitle: %s" % str(e))
 
@@ -592,7 +628,7 @@ class AutoSubsPlayer(xbmc.Player):
             try:
                 xbmcgui.Dialog().notification(
                     "[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]",
-                    "Adăugate: [B][COLOR yellow]%d[/COLOR][/B] [B][COLOR orange]%s[/COLOR][/B] — [B][COLOR FF00BFFF]OpenSubtitles[/COLOR][/B]%s" % (len(downloaded), target_lang.upper(), " + [B][COLOR lime]%d local[/COLOR][/B]" % len(local_subs) if local_subs else ""),
+                    "Adaugate: [B][COLOR yellow]%d[/COLOR][/B] [B][COLOR orange]%s[/COLOR][/B] - [B][COLOR FF00BFFF]OpenSubtitles[/COLOR][/B]%s" % (len(downloaded), target_lang.upper(), " + [B][COLOR lime]%d local[/COLOR][/B]" % len(local_subs) if local_subs else ""),
                     FAS_ICON,
                     4000
                 )
