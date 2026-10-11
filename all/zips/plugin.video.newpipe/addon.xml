@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.34a" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+<addon id="plugin.video.newpipe" name="NewPipe MOD" version="1.4.35" provider-name="Twilight0, TrainAgain2, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
     <extension point="xbmc.python.pluginsource" library="main.py">
-        <provides>video audio</provides>
+        <provides>video</provides>
     </extension>
     <extension point="xbmc.service" library="resources/service.py" start="login" />
     <extension point="xbmc.addon.metadata">

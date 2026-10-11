@@ -1,4 +1,4 @@
-[B]1.4.34a MOD[/B]
+[B]1.4.35 MOD[/B]
 - Fix Kodi 21 (Omega) startup crash: vendored libraries pinned to Python 3.8 (requests 2.32.3, urllib3 1.26.20, charset_normalizer 3.3.2, idna 3.7, certifi 2023.7.22, qrcode 7.4.2, pypng 0.0.21)
 - Pagination fix: an invalid content country code (for example a language code in Content country custom) made YouTube answer with the first page only, so the country is now validated against ISO 3166-1 alpha-2
 - Licenses consolidated in LICENSES/ (GPL-2.0-only and GPL-3.0 texts added; third-party texts kept outside pip metadata)
