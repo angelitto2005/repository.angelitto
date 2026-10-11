@@ -419,6 +419,46 @@ def get_torrserver_credentials():
     except:
         return ('', '')
 
+def is_remote_download_path(path):
+    try:
+        _p = str(path or '').strip().lower()
+        return _p.startswith('smb://') or _p.startswith('nfs://')
+    except:
+        return False
+
+def get_default_downloads_root():
+    return os.path.join(ADDON_DATA_DIR, 'Downloads')
+
+def get_downloads_root():
+    try:
+        _loc = ADDON.getSetting('download_location') or '0'
+        _raw = str(ADDON.getSetting('download_custom_path') or '')
+    except:
+        _loc, _raw = '0', ''
+    xbmc.log(f"[DOWNLOAD] Settings: location={_loc} custom={_raw.strip()}", xbmc.LOGINFO)
+    try:
+        if _loc == '1' and _raw.strip():
+            return xbmcvfs.translatePath(_raw.strip())
+    except Exception as e:
+        xbmc.log(f"[DOWNLOAD] Custom path error: {e}", xbmc.LOGERROR)
+    return get_default_downloads_root()
+
+def join_download_path(base, *parts):
+    try:
+        if is_remote_download_path(base):
+            _b = str(base).replace('\\', '/').rstrip('/')
+            _ps = [str(p).replace('\\', '/').strip('/') for p in parts if str(p)]
+            return _b + '/' + '/'.join(_ps)
+    except:
+        pass
+    return os.path.join(base, *[str(p) for p in parts])
+
+def get_download_file_size(path):
+    try:
+        return os.path.getsize(path)
+    except:
+        return xbmcvfs.Stat(path).st_size()
+
 def get_stream_headers(url=None):
     ua = get_random_ua()
     headers = {

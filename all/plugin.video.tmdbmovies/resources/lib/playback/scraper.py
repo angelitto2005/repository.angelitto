@@ -5212,8 +5212,12 @@ def scrape_torrentio(imdb_id, content_type, season=None, episode=None):
 # =============================================================================
 # SCRAPER PRIMESRC.ME ([PSM])
 # =============================================================================
-THRAX_KEY = "7d9f4987bcd1a2026e6a422931bd7dbff0060977d189f37fa5727d9288b4abbb"
-THRAX_HEADERS = {"X-Thrax-Key": THRAX_KEY}
+def _thrax_headers():
+    try:
+        from resources.lib.playback.thrax_auth import headers as _thrax_headers_fn
+        return _thrax_headers_fn()
+    except Exception:
+        return {}
 
 
 
@@ -5308,11 +5312,8 @@ def scrape_primesrcme(imdb_id, content_type, season=None, episode=None, title_qu
 
 
 def resolve_primesrcme(url, tmdb_id=None):
-    """Extrage key-ul din URL si il rezolva prin Thrax API (FlareSolverr server-side).
-    If tmdb_id is specified, it is passed to Thrax for automatic caching."""
     from urllib.parse import urlparse, parse_qs
     _THRAX = 'https://api.derzis.xyz'
-    
     qs = parse_qs(urlparse(url).query)
     key = (qs.get('key') or [''])[0]
     if not key:
@@ -5322,8 +5323,17 @@ def resolve_primesrcme(url, tmdb_id=None):
         params = {'key': key}
         if tmdb_id:
             params['tmdb_id'] = tmdb_id
-        r = requests.get(f'{_THRAX}/primesrcme/resolve', params=params, timeout=90,
-                         headers={**THRAX_HEADERS, 'Accept-Encoding': 'gzip, deflate'})
+        for _attempt in range(2):
+            r = requests.get(f'{_THRAX}/primesrcme/resolve', params=params, timeout=90,
+                             headers={**_thrax_headers(), 'Accept-Encoding': 'gzip, deflate'})
+            if r.status_code == 401 and _attempt == 0:
+                try:
+                    from resources.lib.playback.thrax_auth import uita as _thrax_forget
+                    _thrax_forget()
+                except Exception:
+                    pass
+                continue
+            break
         if not r.ok:
             log(f'[PRIMESRC] Thrax /primesrcme/resolve HTTP {r.status_code}', xbmc.LOGWARNING)
             return None
@@ -5332,7 +5342,6 @@ def resolve_primesrcme(url, tmdb_id=None):
         if not link:
             log(f'[PRIMESRC] Thrax: campul link lipsa: {data}', xbmc.LOGWARNING)
             return None
-        
         return link
     except Exception as e:
         log(f'[PRIMESRC] resolve_primesrcme eroare: {e}', xbmc.LOGWARNING)

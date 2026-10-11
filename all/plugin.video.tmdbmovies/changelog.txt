@@ -1,3 +1,8 @@
+1.1.311
+- New Downloads tab in Settings: save to Addon Data (default) or a custom folder (local drive or SMB share)
+- Download info panel option moved from General into the Downloads tab, so Defaults resets only download settings.
+- Download writes are verified by a probe file and logged step by step (settings, folder, system error).
+
 1.1.310
 - Fixed TMDbM Trailers autoplay UP Next
 

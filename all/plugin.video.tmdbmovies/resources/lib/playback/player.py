@@ -2890,20 +2890,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         log(f"[PLAYER] VOE Resolve error: {e}")
                         is_valid = False
                 
-                # RESOLVE VSEMBED via ResolveURL (fallback Thrax)
-                if provider_id == 'vsembed' and resolveurl:
-                    try:
-                        log(f"[PLAYER] Incercam ResolveURL pentru VSembed: {base_url[:60]}...")
-                        final_link = resolveurl.resolve(url)
-                        if final_link:
-                            url = final_link
-                            base_url = url.split('|')[0]
-                            log(f"[PLAYER] ResolveURL succes: {base_url[:60]}...")
-                    except Exception as re_err:
-                        log(f"[PLAYER] ResolveURL eroare: {re_err}")
-                
-                # RESOLVE PRIMESRC.ME (Move outside AIO block)
-                if provider_id == 'primesrcme' or 'primesrc.me/api/v1/l' in base_url.lower():
+                # RESOLVE VSEMBED / PRIMESRC.ME via Thrax (ambele folosesc primesrc.me/api/v1/l?key=)
+                if provider_id in ('vsembed', 'primesrcme') or 'primesrc.me/api/v1/l' in base_url.lower():
                     try:
                         log("[PLAYER] Resolving PrimeSrc.me link...")
                         from resources.lib.playback.scraper import resolve_primesrcme
@@ -2912,13 +2900,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                             url = resolved_url
                             base_url = url.split('|')[0]
                             log(f"[PLAYER] PrimeSrc Resolved to: {base_url[:60]}...")
-                            
-                            # Adaugam referer pentru a ajuta rezolvarea/redarea
-                            if '|' not in url:
-                                url = f"{url}|Referer=https://streamta.site/"
-                                base_url = url.split('|')[0]
-                            
-                            # Daca e un link de tip embed, incercam sa-l rezolvam prin resolveurl
+
                             if resolveurl:
                                 log(f"[PLAYER] Incercam ResolveURL pentru: {url}")
                                 try:
@@ -2927,12 +2909,10 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                                         url = final_link
                                         base_url = url.split('|')[0]
                                         log(f"[PLAYER] ResolveURL succes: {base_url[:60]}...")
-                                        
-                                        # Suport InputStream Adaptive pentru m3u8 (HLS)
 
                                 except Exception as re_err:
                                     log(f"[PLAYER] ResolveURL eroare: {re_err}")
-                            
+
                             is_valid = True
                         else:
                             log("[PLAYER] PrimeSrc Resolve FAILED")

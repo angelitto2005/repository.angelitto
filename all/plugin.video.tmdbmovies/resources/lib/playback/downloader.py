@@ -7,7 +7,7 @@ import requests
 import time
 import re
 from urllib.parse import parse_qsl, urljoin
-from resources.lib.core.config import ADDON
+from resources.lib.core.config import ADDON, get_downloads_root, join_download_path, get_download_file_size
 from resources.lib.core.utils import clean_text
 
 # Definim iconita local
@@ -56,24 +56,46 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     window = xbmcgui.Window(10000)
     
     # 1. Path Configuration
-    base_dir = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-    downloads_dir = os.path.join(base_dir, 'Downloads')
-    
+    downloads_dir = get_downloads_root()
+
     folder_title = clean_text(title)
     is_tv = season and episode and str(season) != '0' and str(episode) != '0'
-    
+
     if year and str(year).strip() not in ('', 'None'):
         folder_name = f"{folder_title} ({year})"
     else:
         folder_name = folder_title
-    
+
     if is_tv:
-        content_dir = os.path.join(downloads_dir, 'TV Shows', folder_name, f"Season {int(season)}")
+        content_dir = join_download_path(downloads_dir, 'TV Shows', folder_name, f"Season {int(season)}")
     else:
-        content_dir = os.path.join(downloads_dir, 'Movies', folder_name)
-    
+        content_dir = join_download_path(downloads_dir, 'Movies', folder_name)
+
     if not xbmcvfs.exists(content_dir):
         xbmcvfs.mkdirs(content_dir)
+    xbmc.log(f"[DOWNLOAD] Dir: {content_dir} exists={xbmcvfs.exists(content_dir)}", xbmc.LOGINFO)
+
+    try:
+        _probe_path = join_download_path(content_dir, '.writetest')
+        _probe = xbmcvfs.File(_probe_path, 'w')
+        _probe.write('ok')
+        _probe.close()
+        _writable = True
+    except Exception as e:
+        xbmc.log(f"[DOWNLOAD] Write probe failed in {content_dir}: {e}", xbmc.LOGERROR)
+        _writable = False
+    if _writable:
+        try:
+            xbmcvfs.delete(_probe_path)
+        except:
+            pass
+
+    if not _writable:
+        xbmc.log(f"[DOWNLOAD] Cannot write to folder: {content_dir}", xbmc.LOGERROR)
+        xbmcgui.Dialog().notification("Download Failed", "Cannot write to the download folder. Check the path and permissions.", xbmcgui.NOTIFICATION_ERROR)
+        window.clearProperty(unique_id)
+        window.clearProperty(f"{unique_id}_stop")
+        return
         
     # Filename
     if release_name:
@@ -90,7 +112,7 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
         else:
             final_filename = f"{folder_title} ({year}).mkv"
         
-    file_path = os.path.join(content_dir, final_filename)
+    file_path = join_download_path(content_dir, final_filename)
     
     # 2. Parsare URL
     real_url = url.split('|')[0]
@@ -192,8 +214,10 @@ def perform_cleanup_if_stopped(window, unique_id, file_path, bg):
 def _remove_folder_if_empty(file_path):
     try:
         parent_dir = os.path.dirname(file_path)
-        downloads_dir = os.path.join(xbmcvfs.translatePath(ADDON.getAddonInfo('profile')), 'Downloads')
-        while parent_dir and parent_dir.startswith(downloads_dir) and parent_dir != downloads_dir:
+        downloads_dir = get_downloads_root()
+        _norm = lambda p: str(p).replace('\\', '/').rstrip('/')
+        _root = _norm(downloads_dir)
+        while parent_dir and _norm(parent_dir).startswith(_root) and _norm(parent_dir) != _root:
             dirs, files = xbmcvfs.listdir(parent_dir)
             if not dirs and not files:
                 xbmcvfs.rmdir(parent_dir)
@@ -207,8 +231,7 @@ def _remove_folder_if_empty(file_path):
 def cleanup_empty_download_folders():
     """Recursively removes empty folders inside Downloads directory."""
     try:
-        base_dir = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
-        downloads_dir = os.path.join(base_dir, 'Downloads')
+        downloads_dir = get_downloads_root()
         if not xbmcvfs.exists(downloads_dir):
             xbmcvfs.mkdirs(downloads_dir)
             return
@@ -234,7 +257,7 @@ def _prune_empty_dirs(path, root):
 
 def _validate_and_finish(file_path, filename):
     try:
-        size = os.path.getsize(file_path)
+        size = get_download_file_size(file_path)
         if size < MIN_FILE_SIZE:
             xbmc.log(f"[DOWNLOAD] File too small ({size} bytes). Deleting invalid file.", xbmc.LOGWARNING)
             xbmcvfs.delete(file_path)

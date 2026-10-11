@@ -32,8 +32,6 @@
 		<setting type="lsep" label="AutoPlay [COLOR gray]Windows[/COLOR] vs [COLOR gray]Android[/COLOR]"/>
 		<setting id="auto_play" type="bool" label="Auto-play the most recommended source." default="false"/>
         <setting id="autoplay_profile" type="enum" label="System and Quality" values="Windows 1080p|Android 4K|Android 1080p" default="0" visible="eq(-1,true)"/>
-		<setting type="lsep" label="Download"/>
-		<setting id="show_download_progress" type="bool" label="Show info panel (top-right) during download" default="true"/>
 		<setting type="lsep" label="Colors"/>
 		<setting id="source_theme" type="enum" label="Source window appearance" values="Multicolor|Simple|Mono|Custom" default="0"/>
 		<setting id="color_4k" type="action" label="  4K Color" subsetting="true" visible="eq(-1,3)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=color_picker&amp;setting=color_4k)"/>
@@ -487,7 +485,33 @@
         <setting id="osv3_langs" type="text" label="Languages (comma separated, e.g. ro,en)" default="ro"/>
     </category>
 
-    <!-- 10. MAINTENANCE -->
+    <!-- 10. DOWNLOADS -->
+    <category label="Downloads">
+        <setting type="lsep" label="Download Location"/>
+        <setting id="download_location" type="enum" label="Save downloads to" values="Addon Data (default)|Custom Folder" default="0"/>
+        <setting id="download_custom_path" type="folder" label="Custom Folder" source="auto" option="writeable" default="" subsetting="true" visible="eq(-1,1)"/>
+        <setting type="lsep" label="Display"/>
+        <setting id="show_download_progress" type="bool" label="Show info panel (top-right) during download" default="true"/>
+    </category>
+
+    <!-- 11. MY DEBRID CLOUD -->
+    <category label="[B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B]">
+        <setting type="lsep" label="TorBox Account"/>
+        <setting id="torbox_api_key" type="text" option="hidden" visible="false" label="TorBox API Key" default=""/>
+        <setting label="Status:" type="text" id="torbox_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Real-Debrid Account"/>
+        <setting id="rd_api_key" type="text" option="hidden" visible="false" label="Real-Debrid API Key" default=""/>
+        <setting label="Status:" type="text" id="rd_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Premiumize Account"/>
+        <setting id="pm_api_key" type="text" option="hidden" visible="false" label="Premiumize API Key" default=""/>
+        <setting label="Status:" type="text" id="pm_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Offcloud Account"/>
+        <setting id="oc_api_key" type="text" option="hidden" visible="false" label="Offcloud API Key" default=""/>
+        <setting label="Status:" type="text" id="oc_status" enable="false" default="Disconnected"/>
+        <setting type="lsep" label="Connect from the [B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B] directory in the main menu"/>
+    </category>
+
+    <!-- 12. MAINTENANCE -->
     <category label="Maintenance">
 		<setting type="lsep" label="Troubleshooting"/>
         <setting id="debug_enabled" type="bool" label="Enable Detailed Logging (Debug)" default="true"/>
@@ -510,26 +534,9 @@
         <setting label="[B][COLOR lightskyblue]Create Manual Backup Now[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=manual_mdblist_backup)"/>
         <!-- ============================ -->
 
-        <!-- NEW LOG & DONATIONS SECTION -->
+        <!-- DONATIONS SECTION -->
         <setting type="lsep" label="Support"/>
         <setting label="[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=show_donate)"/>
-        
     </category>
 
-    <!-- 11. MY DEBRID CLOUD -->
-    <category label="[B][COLOR FF00E5FF]My Debrid Cloud[/COLOR][/B]">
-        <setting type="lsep" label="TorBox Account"/>
-        <setting id="torbox_api_key" type="text" option="hidden" visible="false" label="TorBox API Key" default=""/>
-        <setting label="Status:" type="text" id="torbox_status" enable="false" default="Disconnected"/>
-        <setting type="lsep" label="Real-Debrid Account"/>
-        <setting id="rd_api_key" type="text" option="hidden" visible="false" label="Real-Debrid API Key" default=""/>
-        <setting label="Status:" type="text" id="rd_status" enable="false" default="Disconnected"/>
-        <setting type="lsep" label="Premiumize Account"/>
-        <setting id="pm_api_key" type="text" option="hidden" visible="false" label="Premiumize API Key" default=""/>
-        <setting label="Status:" type="text" id="pm_status" enable="false" default="Disconnected"/>
-        <setting type="lsep" label="Offcloud Account"/>
-        <setting id="oc_api_key" type="text" option="hidden" visible="false" label="Offcloud API Key" default=""/>
-        <setting label="Status:" type="text" id="oc_status" enable="false" default="Disconnected"/>
-        <setting type="lsep" label="Connect from the [B][COLOR FF8A2BE2]My Debrid Cloud[/COLOR][/B] directory in the main menu"/>
-    </category>
 </settings>

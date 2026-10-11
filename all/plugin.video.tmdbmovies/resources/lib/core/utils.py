@@ -12,7 +12,7 @@ import glob
 from urllib.parse import quote, unquote, urlencode # NOU
 
 # Import WITHOUT HEADERS (which is now a function)
-from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP
+from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP, get_downloads_root
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
@@ -1386,8 +1386,7 @@ def build_downloads_list(params):
     except:
         handle = -1
 
-    addon_id = ADDON.getAddonInfo('id')
-    base_path = f"special://profile/addon_data/{addon_id}/Downloads/"
+    base_path = get_downloads_root()
     
     current_folder = params.get('folder')
     path_to_list = unquote(current_folder) if current_folder else base_path
