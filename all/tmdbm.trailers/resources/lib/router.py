@@ -128,7 +128,7 @@ def search(handle, params):
     for query in store.get_searches():
         items.append(lists.folder_item(
             query, 'search_results',
-            config.icon('play') or config.addon_icon() or config.icon('search'),
+            config.icon('trailers') or config.addon_icon() or config.icon('search'),
             {'q': query, 'kind': 'video'},
             cm=[('[B][COLOR FFFF5555]Delete[/COLOR][/B]',
                  lists.run_plugin('forget_search', {'q': query}))][0:3]))
@@ -174,15 +174,15 @@ def search_types(handle, params):
     query = params.get('q') or ''
     items = [
         lists.folder_item('Videos', 'search_results',
-                          config.icon('search'), {'q': query, 'kind': 'video'}),
+                          config.icon('videos'), {'q': query, 'kind': 'video'}),
         lists.folder_item('Channels', 'search_results',
-                          config.icon('subscriptions'),
+                          config.icon('subscribedch'),
                           {'q': query, 'kind': 'channel'}),
         lists.folder_item('Playlists', 'search_results',
-                          config.icon('bookmarks'),
+                          config.icon('playlists'),
                           {'q': query, 'kind': 'playlist'}),
         lists.folder_item('Trailers', 'search_results',
-                          config.icon('play'),
+                          config.icon('trailers'),
                           {'q': query, 'kind': 'trailer'}),
     ]
     build(handle, [item[0:3] for item in items], content=None)
@@ -317,9 +317,9 @@ def charts(handle, params):
     from browse import yt
     sections = yt.chart_sections()
     items = [lists.folder_item(
-        'Top Artists', 'chart_artists', config.icon('subscriptions'), {})]
+        'Top Artists', 'chart_artists', config.icon('topartists'), {})]
     items += [lists.folder_item(entry['title'], 'chart_videos',
-                                entry.get('image') or config.icon('music'),
+                                entry.get('image') or config.icon('charts'),
                                 {'url': entry.get('playlist_id'),
                                  'title': entry.get('title')})
               for entry in sections if entry.get('playlist_id')]
@@ -331,7 +331,7 @@ def chart_artists(handle, params):
     import lists
     from browse import yt
     items = [lists.folder_item(
-        entry['title'], 'channel', entry.get('image') or config.icon('subscriptions'),
+        entry['title'], 'channel', entry.get('image') or config.icon('topartists'),
         {'url': entry.get('url'), 'title': entry.get('title')},
         description=entry.get('subs', ''))
         for entry in yt.chart_artists() if entry.get('url')]
@@ -374,13 +374,15 @@ def random_music(handle, params):
     category = localization.category_query('music')
     page = _page(params)
     entries = yt.trending_videos(category,
-                                limit=max(page * constants.results_per_page() + 1, 60))
+                                 limit=max(page * constants.results_per_page() + 1, 60))
+    import random as _random
+    _random.SystemRandom().shuffle(entries)
     queue.save_pool(entries)
     items, content = lists.paged(
         lambda limit: entries,
         lambda entry: lists.video_item(entry, 'music_play'),
         'random_music', {}, page=page)
-    build(handle, items, content=content)
+    build(handle, items, content=content, cache=False)
 
 
 @route('go_channel')
@@ -427,15 +429,16 @@ def channel(handle, params):
     toggle = ('unsubscribe', '[B][COLOR FF00CED1]Unsubscribe[/COLOR][/B]') if known \
         else ('subscribe', '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]')
     items = [
-        lists.folder_item('Videos', 'channel_videos', config.icon('search'),
+        lists.folder_item('Videos', 'channel_videos', config.icon('videos'),
                           {'url': url, 'tab': 'videos', 'title': name}),
-        lists.folder_item('Shorts', 'channel_videos', config.icon('search'),
+        lists.folder_item('Shorts', 'channel_videos', config.icon('shorts'),
                           {'url': url, 'tab': 'shorts', 'title': name}),
         lists.folder_item('Live', 'channel_videos', config.icon('live'),
                           {'url': url, 'tab': 'streams', 'title': name}),
         lists.folder_item('Playlists', 'channel_playlists',
-                          config.icon('bookmarks'), {'url': url}),
-        lists.action_item(toggle[1], toggle[0], config.icon('subscriptions'),
+                          config.icon('playlists'), {'url': url}),
+        lists.action_item(toggle[1], toggle[0],
+                          config.icon('unsubscribe' if known else 'subscribe'),
                           {'url': url, 'title': name,
                            'image': (known or {}).get('image', '')}),
     ]
@@ -466,7 +469,7 @@ def channel_videos(handle, params):
         if albums:
             start = (page - 1) * constants.results_per_page()
             items = [lists.folder_item(
-                entry['title'], 'chart_videos', config.icon('music'),
+                entry['title'], 'chart_videos', config.icon('albums'),
                 {'url': entry['playlist_id'], 'title': entry['title']})
                 for entry in albums[start:start + constants.results_per_page()]
                 if entry.get('playlist_id')]
@@ -728,30 +731,30 @@ def my_youtube(handle, params):
     items = []
     if account.get('connected'):
         items.append(lists.folder_item(
-            'My subscriptions', 'subscription_feed', config.icon('feed')))
+            'My subscriptions', 'subscription_feed', config.icon('mysubscriptions')))
         items.append(lists.folder_item(
             'Subscribed channels', 'subscribed_channels',
-            config.icon('subscriptions')))
+            config.icon('subscribedch')))
         items.append(lists.folder_item(
-            'Watch Later', 'watch_later', config.icon('bookmarks')))
+            'Watch Later', 'watch_later', config.icon('watchlater')))
         items.append(lists.folder_item(
-            'My Playlists', 'saved_playlists', config.icon('bookmarks')))
+            'My Playlists', 'saved_playlists', config.icon('playlists')))
         items.append(lists.folder_item(
             'Watch history', 'history', config.icon('history')))
         items.append(lists.action_item(
             '[B][COLOR FF00CED1]Sync now[/COLOR][/B]', 'sync_now',
-            config.icon('subscriptions'), folder=False))
+            config.icon('sync'), folder=False))
         items.append(lists.action_item(
             '[B][COLOR FFFF5555]Disconnect[/COLOR][/B]', 'logout',
-            config.icon('subscriptions'), folder=False))
+            config.icon('disconnect'), folder=False))
     elif account.get('pending'):
         items.append(lists.folder_item(
             '[B][COLOR FFFF4500]Finish activation[/COLOR][/B]', 'login',
-            config.icon('subscriptions')))
+            config.icon('subscribe')))
     else:
         items.append(lists.action_item(
             '[B][COLOR FF00CED1]Connect YouTube account (QR code)[/COLOR][/B]',
-            'login', config.icon('subscriptions'),
+            'login', config.icon('subscribe'),
             description='Link your YouTube account to browse subscriptions, '
                         'Watch Later, playlists and history.'))
     build(handle, [item[0:3] for item in items], content=None)
@@ -930,16 +933,16 @@ def login_menu(handle, params):
         lists.action_item(
             '[B][COLOR FF00CED1]Step 2 - Manual code: {}[/COLOR][/B]'.format(
                 pending.get('user_code', '')),
-            'show_code', config.icon('subscriptions'), {}, folder=False),
+            'show_code', config.icon('myyoutube'), {}, folder=False),
         lists.action_item(
             '[B][COLOR FFFF4500]Generate a new code[/COLOR][/B]', 'new_code',
-            config.icon('history'), {}),
+            config.icon('sync'), {}),
         lists.action_item(
             '[B][COLOR FF00CED1]Step 3 - Confirm connection[/COLOR][/B]',
-            'sync_now', config.icon('subscriptions'), {}),
+            'sync_now', config.icon('sync'), {}),
         lists.action_item(
             '[B][COLOR FFFF5555]Cancel[/COLOR][/B]', 'cancel_login',
-            config.icon('history'), {}),
+            config.icon('disconnect'), {}),
     ]
     build(handle, [item[0:3] for item in items], content=None, cache=False)
 
@@ -1071,13 +1074,13 @@ def logout(handle, params):
 
 
 add_root('Search', 'search', config.icon('search'))
-add_root('Trending', 'trending', config.icon('music'))
-add_root('Random music', 'random_music', config.icon('music'))
+add_root('Trending', 'trending', config.icon('trending'))
+add_root('Random music', 'random_music', config.icon('random'))
 add_root('Live', 'live', config.icon('live'))
-add_root('Trailers', 'trailers', config.icon('play'))
-add_root('Charts', 'charts', config.icon('music'))
-add_root('My YouTube', 'my_youtube', config.icon('subscriptions'))
+add_root('Trailers', 'trailers', config.icon('trailers'))
+add_root('Charts', 'charts', config.icon('charts'))
+add_root('My YouTube', 'my_youtube', config.icon('myyoutube'))
 add_root('Feed', 'feed', config.icon('feed'))
-add_root('Watch Later', 'watch_later', config.icon('bookmarks'))
+add_root('Watch Later', 'watch_later', config.icon('watchlater'))
 add_root('History', 'history', config.icon('history'))
 add_root('Settings', 'open_settings', config.icon('settings'), folder=False)

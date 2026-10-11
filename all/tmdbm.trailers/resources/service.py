@@ -161,6 +161,12 @@ class _Observer(xbmc.Player):
         self.was_playing = False
 
     def onPlayBackEnded(self):
+        try:
+            from music import queue as _q
+            if (_q.active() or {}).get('mode') == 'pending':
+                return
+        except Exception:
+            pass
         if not queue_active():
             return
         if _native_active():
@@ -178,6 +184,14 @@ class _Observer(xbmc.Player):
         try:
             from music import queue
             if not queue.is_active():
+                return
+            state = queue.active() or {}
+            try:
+                age = time.time() - float(state.get('started') or 0)
+            except (TypeError, ValueError):
+                age = 1e9
+            if state.get('mode') == 'pending' or age < 10:
+                config.log('Stop ignored, queue switching')
                 return
             if time.time() - self._advanced_at < 20:
                 config.log('Stop ignored, the queue continues')
