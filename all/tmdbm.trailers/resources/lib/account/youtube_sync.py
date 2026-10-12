@@ -472,6 +472,28 @@ def _is_live(renderer):
     return False
 
 
+def _is_shorts(renderer):
+    try:
+        for node in _walk(renderer):
+            if not isinstance(node, dict):
+                continue
+            if 'reelWatchEndpoint' in node or 'reelItemRenderer' in node:
+                return True
+            endpoint = node.get('navigationEndpoint') or {}
+            url = ((endpoint.get('commandMetadata') or {}).get('webCommandMetadata') or {}).get('url') or ''
+            if '/shorts/' in str(url):
+                return True
+            for overlay in node.get('thumbnailOverlays') or []:
+                status = (overlay or {}).get('thumbnailOverlayTimeStatusRenderer') or {}
+                text = _text(status.get('text')).lower()
+                style = str(status.get('style') or '').lower()
+                if 'shorts' in text or style == 'shorts':
+                    return True
+    except Exception:
+        pass
+    return False
+
+
 def _channel_details(renderer):
     for field in ('shortBylineText', 'longBylineText', 'ownerText'):
         value = renderer.get(field)
@@ -515,6 +537,7 @@ def _tile_video(tile):
             break
     if not video_id:
         return {}
+    shorts = _is_shorts(tile)
     metadata = _nested(tile, 'metadata', 'tileMetadataRenderer')
     header = _nested(tile, 'header', 'tileHeaderRenderer')
     overlays = _nested(tile, 'header', 'tileHeaderRenderer').get('thumbnailOverlays') or []
@@ -550,6 +573,7 @@ def _tile_video(tile):
         'image': _thumbnail(header) or _thumbnail(tile),
         'duration': _duration(label),
         'is_live': live,
+        'is_shorts': shorts,
         'channel': channel,
         'channel_id': channel_id,
         'channel_url': ('https://www.youtube.com/channel/' + channel_id
@@ -576,6 +600,7 @@ def _videos(payload):
                 'image': _thumbnail(renderer),
                 'duration': _duration(renderer.get('lengthText')),
                 'is_live': _is_live(renderer),
+                'is_shorts': _is_shorts(renderer),
                 'channel': channel_title,
                 'channel_id': channel_id,
                 'channel_url': ('https://www.youtube.com/channel/' + channel_id
@@ -803,12 +828,37 @@ def sync_library():
     token = access_token()
     _update_identity(token)
     subscriptions = _browse(token, 'FEsubscriptions')
-    channels = _channels(subscriptions)
     feed = _videos(subscriptions)
-    _log('sync: {0} channels, {1} videos'.format(len(channels), len(feed)),
-         always=True)
+    channels = _channels(subscriptions)
     if not channels and not feed and _contains(subscriptions, 'genericPromoRenderer'):
         raise AccountError('YouTube TV did not accept the linked account')
+    continuation = playlist_continuation(subscriptions)
+    seen_videos = {entry.get('video_id') for entry in feed}
+    seen_channels = {entry.get('url') for entry in channels}
+    pages = 0
+    while continuation and len(feed) < 100 and pages < 3:
+        pages += 1
+        try:
+            payload = _tv_request(token, _TV_BROWSE_URL, '',
+                                  extra={'continuation': continuation})
+        except Exception as exc:
+            _log('feed continuation failed: {}'.format(str(exc)[:90]),
+                 xbmc.LOGWARNING)
+            break
+        for entry in _videos(payload):
+            vid = entry.get('video_id')
+            if vid and vid not in seen_videos:
+                seen_videos.add(vid)
+                feed.append(entry)
+        for entry in _channels(payload):
+            url = entry.get('url')
+            if url and url not in seen_channels:
+                seen_channels.add(url)
+                channels.append(entry)
+        continuation = playlist_continuation(payload)
+    feed = feed[:100]
+    _log('sync: {0} channels, {1} videos'.format(len(channels), len(feed)),
+         always=True)
     store.set_library('subscription_feed', feed)
     store.set_library('subscribed_channels', channels)
     optional = (

@@ -270,7 +270,7 @@ def trending(handle, params):
     from browse import constants, localization, yt
     from music import detect, queue
     category_id = constants.trending_category()
-    category = localization.category_query(category_id)
+    category = localization.trending_query(category_id)
     music_folder = category_id == 'music'
     page = _page(params)
     entries = yt.trending_videos(category, limit=page * constants.results_per_page() + 1)
@@ -601,7 +601,22 @@ def no_autoplay(handle, params):
     video_id = params.get('video_id') or ''
     if video_id:
         queue.block(video_id)
+    xbmcgui.Dialog().notification(
+        '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+        'Blocked from autoplay', config.addon_icon(), time=2500, sound=False)
     cancel(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('unblock')
+def unblock(handle, params):
+    from music import queue
+    queue.unblock(params.get('video_id') or '')
+    xbmcgui.Dialog().notification(
+        '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+        'Unblocked', config.addon_icon(), time=2500, sound=False)
+    cancel(handle)
+    xbmc.executebuiltin('Container.Refresh')
 
 
 # ----------------------------------------------------------------------- library
@@ -613,7 +628,7 @@ def subscribe(handle, params):
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         'Subscribed to {}'.format(params.get('title') or ''),
-        config.addon_icon(), time=2500)
+        config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
 
@@ -624,7 +639,7 @@ def unsubscribe(handle, params):
     store.unsubscribe(params.get('url') or '')
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Unsubscribed', config.addon_icon(), time=2500)
+        'Unsubscribed', config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
 
@@ -636,7 +651,7 @@ def watch_later_add(handle, params):
     store.add_watch_later(lists.history_entry(params))
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Added to Watch Later', config.addon_icon(), time=2500)
+        'Added to Watch Later', config.addon_icon(), time=2500, sound=False)
     cancel(handle)
 
 
@@ -672,6 +687,201 @@ def watch_later_remove(handle, params):
     store.remove_watch_later(params.get('video_id') or '')
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
+
+
+# ----------------------------------------------------------------------- local playlists
+@route('local_playlists')
+def local_playlists(handle, params):
+    import lists
+    import store
+    items = []
+    for entry in store.get_local_playlists():
+        count = len(store.get_local_playlist_tracks(entry.get('id')))
+        items.append(lists.folder_item(
+            '{} [B][COLOR FFFFA500]({})[/COLOR][/B]'.format(
+                entry.get('name') or 'Playlist', count),
+            'local_playlist', config.icon('playlists'),
+            {'pid': entry.get('id'), 'title': entry.get('name') or ''},
+            cm=[('[B][COLOR FF00CED1]Play[/COLOR][/B]',
+                 lists.run_plugin('local_playlist_play',
+                                  {'pid': entry.get('id')})),
+                ('[B][COLOR FF00CED1]Rename playlist[/COLOR][/B]',
+                 lists.run_plugin('local_playlist_rename',
+                                  {'pid': entry.get('id'),
+                                   'title': entry.get('name') or ''})),
+                ('[B][COLOR FFFF5555]Delete playlist[/COLOR][/B]',
+                 lists.run_plugin('local_playlist_delete',
+                                  {'pid': entry.get('id'),
+                                   'title': entry.get('name') or ''}))]))
+    items.append(lists.action_item(
+        '[B][COLOR FF00CED1]New playlist[/COLOR][/B]', 'local_playlist_create',
+        config.icon('playlists'), {}, folder=False))
+    build(handle, [item[0:3] for item in items], content=None)
+
+
+@route('local_playlist')
+def local_playlist(handle, params):
+    import lists
+    import store
+    from browse import constants
+    pid = params.get('pid') or ''
+    name = params.get('title') or ''
+    entries = lists.fill_missing_meta(store.get_local_playlist_tracks(pid))
+    page = _page(params)
+    per_page = constants.results_per_page()
+    start = (page - 1) * per_page
+    end = start + per_page
+    lists.set_listing('local_playlist', {'pid': pid}, page)
+    lists.set_context(entries)
+
+    def builder(entry):
+        return lists.video_item(entry, 'music_play', cm=[
+            ('[B][COLOR FFFF5555]Remove from this playlist[/COLOR][/B]',
+             lists.run_plugin('local_playlist_remove',
+                              {'pid': pid,
+                               'video_id': entry.get('video_id')}))])
+
+    items, content = lists.paged(lambda limit: entries, builder,
+                                 'local_playlist', {'pid': pid}, page=page)
+    items.append(lists.action_item(
+        '[B][COLOR FF00CED1]Rename playlist[/COLOR][/B]',
+        'local_playlist_rename', config.icon('playlists'),
+        {'pid': pid, 'title': name}, folder=False))
+    items.append(lists.action_item(
+        '[B][COLOR FFFF5555]Delete playlist[/COLOR][/B]',
+        'local_playlist_delete', config.icon('disconnect'),
+        {'pid': pid, 'title': name}, folder=False))
+    build(handle, [item[0:3] if len(item) > 3 else item for item in items],
+          content=content)
+
+
+@route('local_playlist_play')
+def local_playlist_play(handle, params):
+    import lists
+    import playback
+    import store
+    pid = params.get('pid') or ''
+    entries = store.get_local_playlist_tracks(pid)
+    if not entries:
+        cancel(handle)
+        return
+    lists.set_listing('local_playlist', {'pid': pid}, 1)
+    lists.set_context(entries)
+    playback.start_queue(handle, lists.entry_params(entries[0]))
+
+
+@route('local_playlist_create')
+def local_playlist_create(handle, params):
+    import store
+    name = xbmcgui.Dialog().input('Playlist name') or ''
+    name = name.strip()
+    if name:
+        store.create_local_playlist(name)
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+            'Created [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name),
+            config.addon_icon(), time=2500, sound=False)
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('local_playlist_add')
+def local_playlist_add(handle, params):
+    import lists
+    import store
+    track = lists.history_entry(params)
+    if not track.get('video_id'):
+        cancel(handle)
+        return
+    video_id = track.get('video_id')
+    all_playlists = store.get_local_playlists()
+    options = []
+    member_of = []
+    for entry in all_playlists:
+        name = entry.get('name') or 'Playlist'
+        tracks = store.get_local_playlist_tracks(entry.get('id'))
+        member = any(track.get('video_id') == video_id for track in tracks)
+        member_of.append(member)
+        count = '[B][COLOR FFFFA500]({})[/COLOR][/B]'.format(len(tracks))
+        if member:
+            options.append('[B][COLOR FFFF5555]- {}[/COLOR][/B] {}'.format(name, count))
+        else:
+            options.append('[B][COLOR FF00FF7F]+ {}[/COLOR][/B] {}'.format(name, count))
+    choice = xbmcgui.Dialog().select(
+        'Add to playlist', options + ['+ New playlist'])
+    if choice is None or choice < 0:
+        cancel(handle)
+        return
+    if choice == len(options):
+        name = xbmcgui.Dialog().input('Playlist name') or ''
+        name = name.strip()
+        if not name:
+            cancel(handle)
+            return
+        pid = store.create_local_playlist(name)
+        picked = name
+        result = store.add_to_local_playlist(pid, track)
+    else:
+        pid = all_playlists[choice].get('id')
+        picked = all_playlists[choice].get('name') or 'Playlist'
+        if member_of[choice]:
+            store.remove_from_local_playlist(pid, video_id)
+            result = 'removed'
+        else:
+            result = store.add_to_local_playlist(pid, track)
+    shown = '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(picked)
+    if result == 'added':
+        message = 'Added to {}'.format(shown)
+    elif result == 'removed':
+        message = 'Removed from {}'.format(shown)
+    elif result == 'duplicate':
+        message = 'Already in {}'.format(shown)
+    elif result == 'full':
+        message = '{} is full (200)'.format(shown)
+    else:
+        message = 'Could not add video'
+    xbmcgui.Dialog().notification(
+        '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+        message, config.addon_icon(), time=2500, sound=False)
+    cancel(handle)
+
+
+@route('local_playlist_remove')
+def local_playlist_remove(handle, params):
+    import store
+    store.remove_from_local_playlist(params.get('pid') or '',
+                                     params.get('video_id') or '')
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('local_playlist_rename')
+def local_playlist_rename(handle, params):
+    import store
+    pid = params.get('pid') or ''
+    name = xbmcgui.Dialog().input(
+        'Playlist name', params.get('title') or '') or ''
+    name = name.strip()
+    if name:
+        store.rename_local_playlist(pid, name)
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('local_playlist_delete')
+def local_playlist_delete(handle, params):
+    import store
+    name = params.get('title') or 'playlist'
+    if xbmcgui.Dialog().yesno(
+            'Delete playlist?', 'Delete [B][COLOR FFFFA500]{}[/COLOR][/B] and its tracks?'.format(name)):
+        store.delete_local_playlist(params.get('pid') or '')
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+            'Deleted [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name),
+            config.addon_icon(), time=2500, sound=False)
+    finish(handle)
+    xbmc.executebuiltin('Container.Update({}?mode=local_playlists,replace)'.format(
+        BASE_URL))
 
 
 @route('history')
@@ -720,7 +930,7 @@ def clear_history(handle, params):
 def _notify(message, time_ms=4000):
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        message, config.addon_icon(), time=time_ms)
+        message, config.addon_icon(), time=time_ms, sound=False)
 
 
 @route('my_youtube')
@@ -769,6 +979,15 @@ def subscription_feed(handle, params):
     if not entries:
         return feed(handle, params)
     entries = lists.fill_missing_meta(entries)
+    try:
+        _hide_shorts = bool(config.get_bool('hide_shorts', False))
+    except Exception:
+        _hide_shorts = False
+    if _hide_shorts:
+        entries = [entry for entry in entries if not entry.get('is_shorts')]
+    entries = sorted(entries,
+                     key=lambda entry: (not (entry.get('channel') or ''),
+                                        (entry.get('channel') or '').lower()))
     page = _page(params)
     per_page = results_per_page()
     start = (page - 1) * per_page
@@ -816,6 +1035,12 @@ def feed(handle, params):
             item['channel'] = item.get('channel') or name
             collected.append(item)
     collected = lists.fill_missing_meta(collected)
+    try:
+        _hide_all = bool(config.get_bool('hide_shorts', False))
+    except Exception:
+        _hide_all = False
+    if _hide_all:
+        collected = [item for item in collected if not item.get('is_shorts')]
     lists.set_context(collected)
     start = (page - 1) * per_page
     end = start + per_page
@@ -1083,4 +1308,5 @@ add_root('My YouTube', 'my_youtube', config.icon('myyoutube'))
 add_root('Feed', 'feed', config.icon('feed'))
 add_root('Watch Later', 'watch_later', config.icon('watchlater'))
 add_root('History', 'history', config.icon('history'))
+add_root('Local Playlists', 'local_playlists', config.icon('playlists'))
 add_root('Settings', 'open_settings', config.icon('settings'), folder=False)

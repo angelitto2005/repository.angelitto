@@ -169,6 +169,13 @@ def _category_identifier(value):
     return ''
 
 
+def trending_query(category_id):
+    custom = _raw_setting('trending_query_custom').strip()
+    if custom:
+        return regional_category_query(custom)
+    return category_query(category_id)
+
+
 def category_query(category, live=False):
     original = str(category or '').strip()
     identifier = _category_identifier(original)

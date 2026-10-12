@@ -159,6 +159,72 @@ def remove_watch_later(video_id):
                           if item.get('video_id') != video_id])
 
 
+_LOCAL_PLAYLISTS = 'local_playlists'
+_LOCAL_PREFIX = 'local_playlist_'
+_LOCAL_TRACK_CAP = 200
+
+
+def remove_library(name):
+    library = _read_obj(_LIBRARY)
+    library.pop(str(name or ''), None)
+    _write_obj(_LIBRARY, library)
+
+
+def get_local_playlists():
+    return [item for item in get_library(_LOCAL_PLAYLISTS)
+            if isinstance(item, dict) and item.get('id')]
+
+
+def create_local_playlist(name):
+    pid = uuid.uuid4().hex[:12]
+    items = get_local_playlists()
+    items.append({'id': pid, 'name': name,
+                  'created': int(time.time())})
+    set_library(_LOCAL_PLAYLISTS, items)
+    return pid
+
+
+def rename_local_playlist(pid, name):
+    items = get_local_playlists()
+    for item in items:
+        if item.get('id') == pid:
+            item['name'] = name
+    set_library(_LOCAL_PLAYLISTS, items)
+
+
+def delete_local_playlist(pid):
+    set_library(_LOCAL_PLAYLISTS,
+                [item for item in get_local_playlists()
+                 if item.get('id') != pid])
+    remove_library(_LOCAL_PREFIX + str(pid or ''))
+
+
+def get_local_playlist_tracks(pid):
+    return get_library(_LOCAL_PREFIX + str(pid or ''))
+
+
+def add_to_local_playlist(pid, entry):
+    entry = dict(entry or {})
+    video_id = entry.get('video_id') or ''
+    if not video_id:
+        return None
+    entry['video_id'] = video_id
+    tracks = get_local_playlist_tracks(pid)
+    if any(track.get('video_id') == video_id for track in tracks):
+        return 'duplicate'
+    if len(tracks) >= _LOCAL_TRACK_CAP:
+        return 'full'
+    tracks.append(entry)
+    set_library(_LOCAL_PREFIX + str(pid or ''), tracks)
+    return 'added'
+
+
+def remove_from_local_playlist(pid, video_id):
+    set_library(_LOCAL_PREFIX + str(pid or ''),
+                [track for track in get_local_playlist_tracks(pid)
+                 if track.get('video_id') != video_id])
+
+
 def get_library(name):
     value = _read_obj(_LIBRARY).get(str(name or ''))
     return value if isinstance(value, list) else []

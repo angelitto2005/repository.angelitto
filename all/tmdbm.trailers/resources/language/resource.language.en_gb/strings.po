@@ -240,3 +240,39 @@ msgstr "Extraction cache"
 msgctxt "#32058"
 msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
 msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+
+msgctxt "#32029"
+msgid "Custom trending search"
+msgstr "Custom trending search"
+
+msgctxt "#32059"
+msgid "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+
+msgctxt "#32030"
+msgid "Hide Shorts"
+msgstr "Hide Shorts"
+
+msgctxt "#32072"
+msgid "Hide vertical short videos from subscription lists"
+msgstr "Hide vertical short videos from subscription lists"
+
+msgctxt "#32031"
+msgid "Up Next"
+msgstr "Up Next"
+
+msgctxt "#32073"
+msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+
+msgctxt "#32074"
+msgid "In order"
+msgstr "In order"
+
+msgctxt "#32075"
+msgid "Shuffled"
+msgstr "Shuffled"
+
+msgctxt "#32076"
+msgid "Similar songs"
+msgstr "Similar songs"

@@ -34,6 +34,11 @@
           <constraints><allowempty>true</allowempty></constraints>
           <control type="edit" format="string"/>
         </setting>
+        <setting id="hide_shorts" type="boolean" label="32030" help="32072">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
       </group>
       <group id="localisation" label="32003">
         <setting id="content_country" type="string" label="32013" help="32043">
@@ -156,6 +161,12 @@
           </constraints>
           <control type="list" format="string"/>
         </setting>
+        <setting id="trending_query_custom" type="string" label="32029" help="32059">
+          <level>0</level>
+          <default></default>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="edit" format="string"/>
+        </setting>
       </group>
       <group id="playback" label="32005">
         <setting id="autoplay_next" type="boolean" label="32020" help="32050">
@@ -163,11 +174,19 @@
           <default>true</default>
           <control type="toggle"/>
         </setting>
-        <setting id="shuffle_play" type="boolean" label="32021" help="32051">
+        <setting id="playback_mode" type="string" label="32031" help="32073">
           <level>0</level>
-          <default>false</default>
-          <control type="toggle"/>
+          <default>off</default>
+          <constraints>
+            <options>
+              <option label="32074">off</option>
+              <option label="32075">shuffle</option>
+              <option label="32076">related</option>
+            </options>
+          </constraints>
+          <control type="spinner" format="string"/>
         </setting>
+
         <setting id="results_per_page" type="string" label="32022" help="32052">
           <level>0</level>
           <default>25</default>

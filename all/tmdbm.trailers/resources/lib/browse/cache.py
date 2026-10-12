@@ -25,6 +25,14 @@ MINUTES = 60
 
 # Functions below shamelessly taken and adapted from ResolveURL, so thanks to all of its contributors
 
+def _debug_bypass():
+    try:
+        import config
+        return bool(config.get_bool('debug', False))
+    except Exception:
+        return False
+
+
 class FunctionCache:
 
     def __init__(self, path, protocol=pickle.HIGHEST_PROTOCOL):
@@ -128,12 +136,13 @@ class FunctionCache:
                     name = func.__name__
                     rargs = args
 
-                cached, payload = self._load(name, rargs, kwargs, limit=limit)
+                eff = 0 if _debug_bypass() else limit
+                cached, payload = self._load(name, rargs, kwargs, limit=eff)
                 if cached:
                     return payload
 
                 payload = func(*args, **kwargs)
-                if ENABLED and limit > 0:
+                if ENABLED and eff > 0:
                     self._save(name, rargs, kwargs, payload)
 
                 return payload
@@ -159,12 +168,13 @@ class FunctionCache:
             def memoizer(*args, **kwargs):
                 name = func.__name__
 
-                cached, payload = self._load(name, args, kwargs, limit=limit)
+                eff = 0 if _debug_bypass() else limit
+                cached, payload = self._load(name, args, kwargs, limit=eff)
                 if cached:
                     return payload
 
                 payload = func(*args, **kwargs)
-                if ENABLED and limit > 0:
+                if ENABLED and eff > 0:
                     self._save(name, args, kwargs, payload)
 
                 return payload

@@ -101,6 +101,35 @@ def _is_live(raw):
     return False
 
 
+def _is_shorts(raw):
+    try:
+        raw = raw if isinstance(raw, dict) else {}
+        stack = [raw]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                if 'reelWatchEndpoint' in node or 'reelItemRenderer' in node:
+                    return True
+                endpoint = node.get('navigationEndpoint') or {}
+                url = ((endpoint.get('commandMetadata') or {}).get('webCommandMetadata') or {}).get('url') or ''
+                if '/shorts/' in str(url):
+                    return True
+                for overlay in node.get('thumbnailOverlays') or []:
+                    status = (overlay or {}).get('thumbnailOverlayTimeStatusRenderer') or {}
+                    if 'shorts' in (_text(status.get('text')) or '').lower():
+                        return True
+                    if str(status.get('style') or '').lower() == 'shorts':
+                        return True
+                stack.extend(value for value in node.values()
+                             if isinstance(value, (dict, list)))
+            elif isinstance(node, list):
+                stack.extend(value for value in node
+                             if isinstance(value, (dict, list)))
+    except Exception:
+        pass
+    return False
+
+
 def video(raw):
     raw = raw if isinstance(raw, dict) else {}
     video_id = raw.get('videoId') or ''
@@ -125,6 +154,7 @@ def video(raw):
         'image': _thumbnail(raw),
         'duration': duration_converter(_text(raw.get('lengthText'))),
         'is_live': _is_live(raw),
+        'is_shorts': _is_shorts(raw),
         'channel': _text(owner) if owner else '',
         'channel_id': channel_id if str(channel_id).startswith('UC') else '',
         'views': _text(raw.get('viewCountText')) or _text(raw.get('shortViewCountText')),

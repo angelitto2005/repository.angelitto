@@ -26,7 +26,8 @@ _POLL_SECONDS_NEAR_END = 0.25
 def notify(message, image='', time_ms=_UP_NEXT_DURATION):
     try:
         xbmcgui.Dialog().notification(_HEADING, message,
-                                      image or config.addon_icon(), time_ms)
+                                      image or config.addon_icon(), time_ms,
+                                      sound=False)
     except Exception as exc:
         config.log('notification failed: {}'.format(exc))
 
@@ -63,7 +64,13 @@ def _show_up_next(player, shown):
     except Exception:
         return shown, None
     index = queue.position()
-    upcoming = queue.next_after(index)
+    mode = _repeat_mode()
+    if mode == 'one' and 0 <= index < len(tracks):
+        upcoming = tracks[index]
+    else:
+        upcoming = queue.next_after(index)
+        if not upcoming and tracks and mode == 'all':
+            upcoming = tracks[0]
     if not upcoming:
         return shown, None
     key = '{}:{}'.format(index, upcoming.get('video_id'))
@@ -73,7 +80,7 @@ def _show_up_next(player, shown):
     if remaining is None or remaining <= 0 or remaining > _UP_NEXT_SECONDS:
         return shown, remaining
     import lists
-    message = '{}: [COLOR yellow]{}[/COLOR]'.format(
+    message = '{}: [COLOR yellow][B]{}[/B][/COLOR]'.format(
         _UP_LABEL, lists.clean_title(upcoming.get('title'))
         or upcoming.get('video_id') or '')
     notify(message, upcoming.get('image') or '')
@@ -153,6 +160,25 @@ def queue_active():
         return False
 
 
+_last_recover = [0.0]
+
+
+def _error_stop(observer=None):
+    try:
+        if xbmc.getCondVisibility('Window.IsActive(okdialog)'):
+            return True
+    except Exception:
+        pass
+    try:
+        if observer is not None and observer.was_playing:
+            total = float(observer.getTotalTime() or 0.0)
+            if total <= 0:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 class _Observer(xbmc.Player):
 
     def __init__(self):
@@ -196,6 +222,11 @@ class _Observer(xbmc.Player):
             if time.time() - self._advanced_at < 20:
                 config.log('Stop ignored, the queue continues')
                 return
+            if _error_stop(self) and time.time() - _last_recover[0] > 30:
+                _last_recover[0] = time.time()
+                config.log('Stop looks like a failed open, skipping ahead')
+                _play_next(self, 'error-skip')
+                return
             queue.cancel()
             config.log('Queue cleared by Stop')
         except Exception as exc:
@@ -206,13 +237,43 @@ def _oauth_file():
     return os.path.join(config.ADDON_PROFILE, 'youtube_oauth.json')
 
 
+def _repeat_mode():
+    try:
+        if xbmc.getCondVisibility('Playlist.IsRepeatOne'):
+            return 'one'
+        if xbmc.getCondVisibility('Playlist.IsRepeat'):
+            return 'all'
+    except Exception:
+        pass
+    return ''
+
+
 def _play_next(observer, why):
     """Start the next track of the queue. Used by the callback and by the poll
     loop, so autoplay does not depend on the playback-ended event alone."""
     from music import queue
     if not queue.is_active():
         return False
+    state = queue.active() or {}
+    prev_tracks = list(state.get('tracks') or [])
+    try:
+        prev_pos = int(state.get('pos') or 0)
+    except (TypeError, ValueError):
+        prev_pos = 0
     upcoming = queue.advance()
+    tag = ''
+    if not upcoming and prev_tracks:
+        mode = _repeat_mode()
+        if mode == 'one' and 0 <= prev_pos < len(prev_tracks):
+            queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
+                             pos=prev_pos, listing=state.get('listing'))
+            upcoming = prev_tracks[prev_pos]
+            tag = ' (repeat one)'
+        elif mode == 'all':
+            queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
+                             pos=0, listing=state.get('listing'))
+            upcoming = prev_tracks[0]
+            tag = ' (repeat all)'
     if not upcoming:
         config.log('Queue finished ({})'.format(why))
         return False
@@ -224,8 +285,9 @@ def _play_next(observer, why):
         query['mode'] = 'queue_play'
         xbmc.executebuiltin('PlayMedia(plugin://tmdbm.trailers/?{})'.format(
             urlencode(query)))
-        config.log('Queue advanced to {} ({})'.format(
-            upcoming.get('video_id'), why))
+        config.log('Queue advanced to {} ({}{})'.format(
+            upcoming.get('video_id'), why, tag))
+        _maybe_inject_related(upcoming)
         return True
     except Exception as exc:
         config.log('queue advance failed: {}'.format(exc))
@@ -295,12 +357,31 @@ def _start_pending_playlist():
     if not tracks:
         return False
     try:
+        pos = int(queue.position())
+    except (TypeError, ValueError):
+        pos = 0
+    try:
         import lists
         playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
         playlist.clear()
+        items = []
         for track in tracks:
-            playlist.add(lists.queue_play_url(track), lists.playlist_item(track))
-        xbmc.Player().play(playlist)
+            li = lists.playlist_item(track)
+            playlist.add(lists.queue_play_url(track), li)
+            items.append(li)
+        if 0 < pos < len(items):
+            import json as _js
+            opened = xbmc.executeJSONRPC(_js.dumps({
+                'jsonrpc': '2.0', 'id': 1, 'method': 'Player.Open',
+                'params': {'item': {'playlistid': 1, 'position': pos}}}))
+            try:
+                _ok = _js.loads(opened).get('result') == 'OK'
+            except Exception:
+                _ok = False
+            if not _ok:
+                xbmc.Player().play(playlist)
+        else:
+            xbmc.Player().play(playlist)
         config.log('Native playlist started: {} tracks'.format(len(tracks)))
         return True
     except Exception as exc:
@@ -393,13 +474,14 @@ _LAST_FLAGS = {}
 def _settings_snapshot():
     try:
         from browse import constants
-        return {'shuffle': bool(constants.shuffle_play()),
+        return {'mode': constants.playback_mode(),
                 'autoplay': bool(constants.autoplay_next())}
     except Exception:
         return {}
 
 
 _LAST_LOCALE_RESET = [0.0]
+_LAST_REFRESH = [0.0]
 
 
 def _reset_browse_state(current):
@@ -451,12 +533,58 @@ def _publish_settings():
         config.log('settings snapshot failed: {}'.format(exc))
 
 
+def _adopt_native_order():
+    try:
+        import json as _js
+        res = xbmc.executeJSONRPC(_js.dumps({
+            'jsonrpc': '2.0', 'id': 1, 'method': 'Playlist.GetItems',
+            'params': {'playlistid': 1, 'properties': ['file']}}))
+        items = (_js.loads(res).get('result') or {}).get('items') or []
+    except Exception:
+        return
+    from urllib.parse import urlparse, parse_qs
+    native_ids = []
+    for item in items:
+        try:
+            query = parse_qs(urlparse(item.get('file') or '').query)
+            native_ids.append((query.get('video_id') or [''])[0])
+        except Exception:
+            native_ids.append('')
+    try:
+        pos = int(xbmc.PlayList(xbmc.PLAYLIST_VIDEO).getposition())
+    except Exception:
+        return
+    try:
+        from music import queue
+        if queue.adopt_order(native_ids, pos):
+            config.log('adopted native playlist order')
+    except Exception as exc:
+        config.log('adopt native order failed: {}'.format(exc))
+
+
 class _LocaleMonitor(xbmc.Monitor):
+
+    def onNotification(self, sender, method, data):
+        try:
+            if method != 'Player.OnPropertyChanged':
+                return
+            import json as _js
+            payload = _js.loads(data or '{}')
+            props = payload.get('property') or {}
+            if 'shuffled' not in props:
+                return
+            player = payload.get('player') or {}
+            if 'playerid' in player and int(player['playerid']) != 1:
+                return
+        except Exception:
+            return
+        _adopt_native_order()
 
     def onSettingsChanged(self):
         current = _locale_key()
         _publish_locale(current)
         _publish_settings()
+        did_reset = False
         if not _LOCALE_SEEN:
             _LOCALE_SEEN.append(current)
         elif current != _LOCALE_SEEN[0]:
@@ -464,14 +592,82 @@ class _LocaleMonitor(xbmc.Monitor):
             import time as _time2
             if _time2.time() - _LAST_LOCALE_RESET[0] >= 3:
                 _LAST_LOCALE_RESET[0] = _time2.time()
+                _LAST_REFRESH[0] = _time2.time()
                 _reset_browse_state(current)
+                did_reset = True
         snap = _settings_snapshot()
-        previous = _LAST_FLAGS.get('shuffle')
+        previous = _LAST_FLAGS.get('mode')
         _LAST_FLAGS.update(snap)
-        if previous is not None and snap.get('shuffle') != previous:
-            config.log('Shuffle flipped to {}'.format(
-                'ON' if snap.get('shuffle') else 'OFF'))
-            _apply_shuffle_live(bool(snap.get('shuffle')))
+        if previous is not None and snap.get('mode') != previous:
+            config.log('Playback mode changed to {}'.format(snap.get('mode')))
+            _apply_mode_live(snap.get('mode'))
+        if not did_reset:
+            import time as _time3
+            if _time3.time() - _LAST_REFRESH[0] >= 3:
+                _LAST_REFRESH[0] = _time3.time()
+                xbmc.executebuiltin('Container.Refresh')
+
+
+def _apply_mode_live(mode):
+    if mode == 'shuffle':
+        _apply_shuffle_live(True)
+    elif mode == 'off':
+        _apply_shuffle_live(False)
+    elif mode == 'related':
+        _seed_related_live()
+
+
+def _seed_related_live():
+    from music import queue
+    state = queue.active()
+    tracks = state.get('tracks') or []
+    if not tracks or (state.get('listing') or {}).get('mode') == 'local_playlist':
+        return
+    try:
+        pos = int(state.get('pos') or 0)
+    except (TypeError, ValueError):
+        pos = 0
+    current = tracks[pos] if 0 <= pos < len(tracks) else tracks[0]
+    old_tail = tracks[pos + 1:]
+    fresh = queue.replace_tail(current.get('video_id'), size=10)
+    if not fresh:
+        return
+    try:
+        import lists
+        playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+        for track in reversed(old_tail):
+            try:
+                playlist.remove(lists.queue_play_url(track))
+            except Exception:
+                pass
+        for track in fresh:
+            playlist.add(lists.queue_play_url(track), lists.playlist_item(track))
+        config.log('Related live: {} tracks replace {}'.format(len(fresh), len(old_tail)))
+    except Exception as exc:
+        config.log('related live failed: {}'.format(exc))
+
+
+def _maybe_inject_related(upcoming):
+    try:
+        from browse import constants
+        if constants.playback_mode() != 'related':
+            return
+        import store
+        from music import queue
+        if (store.get_state('list_route') or {}).get('mode') == 'local_playlist':
+            return
+        state = queue.active() or {}
+        if (state.get('listing') or {}).get('mode') == 'local_playlist':
+            return
+        fresh = queue.inject_related((upcoming or {}).get('video_id'))
+        if not fresh:
+            return
+        import lists
+        playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+        for track in fresh:
+            playlist.add(lists.queue_play_url(track), lists.playlist_item(track))
+    except Exception as exc:
+        config.log('related inject failed: {}'.format(exc))
 
 
 def _apply_shuffle_live(shuffle_on):

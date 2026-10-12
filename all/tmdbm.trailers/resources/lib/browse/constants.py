@@ -63,9 +63,16 @@ def autoplay_next():
     return config.get_bool('autoplay_next', True)
 
 
-def shuffle_play():
-    """Shuffle switch: random order instead of the list order."""
-    return config.get_bool('shuffle_play', False)
+def playback_mode():
+    raw = str(config.get_setting('playback_mode', '') or '').strip().lower()
+    if raw in ('off', 'shuffle', 'related'):
+        return raw
+    try:
+        if config.get_bool('shuffle_play', False):
+            return 'shuffle'
+    except Exception:
+        pass
+    return 'off'
 
 
 def subtitles_enabled():

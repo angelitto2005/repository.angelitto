@@ -169,7 +169,57 @@ def playlist_item(entry):
     info = video_info(entry)
     _set_video_info(li, title, info, entry.get('duration'))
     li.setProperty('IsPlayable', 'true')
+    menus = _song_menus(entry, vid)
+    if menus:
+        li.addContextMenuItems(menus)
     return li
+
+
+def _song_menus(entry, vid, in_watch_later=False):
+    entry = entry or {}
+    menus = []
+    channel_url = ''
+    if entry.get('channel_id'):
+        channel_url = 'https://www.youtube.com/channel/' + entry['channel_id']
+        menus.append((
+            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
+            'ActivateWindow(Videos,{})'.format(
+                router.BASE_URL + '?' + urlencode(
+                    {'mode': 'channel', 'url': channel_url,
+                     'title': entry.get('channel') or ''}))))
+        known = store.is_subscribed(channel_url)
+        menus.append((
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
+                'Unsubscribe' if known else 'Subscribe'),
+            run_plugin('unsubscribe' if known else 'subscribe',
+                       {'url': channel_url,
+                        'title': entry.get('channel') or '',
+                        'image': CHANNEL_ART_URL.format(entry['channel_id'])})))
+    elif vid:
+        menus.append((
+            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
+            run_plugin('go_channel', {'video_id': vid})))
+        menus.append((
+            '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]',
+            run_plugin('sub_channel', {'video_id': vid})))
+    if vid:
+        if not in_watch_later:
+            menus.append(('[B][COLOR FF00CED1]Add to Watch Later[/COLOR][/B]',
+                          run_plugin('watch_later_add', entry_params(entry))))
+        menus.append(('[B][COLOR yellow]Local Playlists[/COLOR][/B]',
+                      run_plugin('local_playlist_add', entry_params(entry))))
+        try:
+            from music import queue as _queue
+            _is_blocked = vid in _queue.blocked()
+        except Exception:
+            _is_blocked = False
+        if _is_blocked:
+            menus.append(('[B][COLOR FFFF5555]Unblock this video[/COLOR][/B]',
+                          run_plugin('unblock', {'video_id': vid})))
+        else:
+            menus.append(('[B][COLOR FFFF5555]No autoplay for this video[/COLOR][/B]',
+                          run_plugin('no_autoplay', {'video_id': vid})))
+    return menus
 
 
 def _queue_entry(entry):
@@ -265,7 +315,7 @@ def fetch_listing_page(listing, per_page):
     end = start + per_page
     try:
         if mode == 'trending':
-            category = localization.category_query(constants.trending_category())
+            category = localization.trending_query(constants.trending_category())
             return yt.trending_videos(category, limit=page * per_page + 1)[start:end]
         if mode == 'live':
             category = localization.category_query(constants.live_category(), live=True)
@@ -303,6 +353,11 @@ def fetch_listing_page(listing, per_page):
                 return []
             return yt.playlist_videos(pid,
                                       limit=page * per_page + 1)[start:end]
+        if mode == 'local_playlist':
+            pid = params.get('pid') or ''
+            if not pid:
+                return []
+            return store.get_local_playlist_tracks(pid)[start:end]
         if mode in ('watch_later', 'history', 'subscription_feed'):
             if mode == 'watch_later':
                 entries = store.get_watch_later()
@@ -430,6 +485,13 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     title = clean_title(entry.get('title')) or vid
     if entry.get('is_live'):
         title = '[COLOR FFFF4500][LIVE][/COLOR] {}'.format(title)
+    try:
+        from music import queue as _queue
+        _is_blocked = bool(vid) and vid in _queue.blocked()
+    except Exception:
+        _is_blocked = False
+    if _is_blocked:
+        title = '{} [COLOR FFFF5555][blocked][/COLOR]'.format(title)
     image = entry.get('image') or thumbnail(vid)
     url = play_url(entry, mode)
     li = xbmcgui.ListItem(label=title, path=url)
@@ -441,37 +503,7 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     li.setProperty('IsPlayable', 'true')
     li.setProperty('video_id', vid)
 
-    menus = list(cm or [])
-    channel_url = ''
-    if entry.get('channel_id'):
-        channel_url = 'https://www.youtube.com/channel/' + entry['channel_id']
-        menus.append((
-            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
-            'Container.Update({}?{})'.format(
-                router.BASE_URL,
-                urlencode({'mode': 'channel', 'url': channel_url,
-                           'title': entry.get('channel') or ''}))))
-        known = store.is_subscribed(channel_url)
-        menus.append((
-            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
-                'Unsubscribe' if known else 'Subscribe'),
-            run_plugin('unsubscribe' if known else 'subscribe',
-                       {'url': channel_url,
-                        'title': entry.get('channel') or '',
-                        'image': CHANNEL_ART_URL.format(entry['channel_id'])})))
-    elif vid:
-        menus.append((
-            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
-            run_plugin('go_channel', {'video_id': vid})))
-        menus.append((
-            '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]',
-            run_plugin('sub_channel', {'video_id': vid})))
-    if vid:
-        if not in_watch_later:
-            menus.append(('[B][COLOR FF00CED1]Add to Watch Later[/COLOR][/B]',
-                          run_plugin('watch_later_add', entry_params(entry))))
-        menus.append(('[B][COLOR FF00CED1]No autoplay for this video[/COLOR][/B]',
-                      run_plugin('no_autoplay', {'video_id': vid})))
+    menus = list(cm or []) + _song_menus(entry, vid, in_watch_later)
     if menus:
         li.addContextMenuItems(menus)
     return url, li, False

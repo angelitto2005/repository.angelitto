@@ -53,6 +53,12 @@ def blocked():
     return set(store.get_state(_BLOCKED_KEY).get('ids') or [])
 
 
+def unblock(video_id):
+    state = store.get_state(_BLOCKED_KEY)
+    ids = [item for item in (state.get('ids') or []) if item != video_id]
+    store.set_state(_BLOCKED_KEY, {'ids': ids, 'ts': time.time()})
+
+
 def top_up_pool(anchor, limit=40):
     """Grow a thin pool with fresh music from the same artist."""
     from browse import yt
@@ -173,6 +179,68 @@ def build_related_queue(video_id, size=_RELATED_SIZE):
     return entries[:size]
 
 
+def inject_related(current_id, minimum=3):
+    """Top up the tail with songs related to the current one.
+
+    Related playback mode only: keeps similar songs flowing without ever
+    running dry. Returns the fresh tracks (possibly []).
+    """
+    state = active()
+    if state.get('mode') != 'active':
+        return []
+    tracks = state.get('tracks') or []
+    try:
+        pos = int(state.get('pos') or 0)
+    except (TypeError, ValueError):
+        pos = 0
+    if len(tracks) - (pos + 1) >= minimum:
+        return []
+    try:
+        related = build_related_queue(current_id, size=minimum + 5)
+    except Exception:
+        return []
+    seen = {track.get('video_id') for track in tracks}
+    fresh = [item for item in related
+             if item.get('video_id') and item['video_id'] not in seen]
+    fresh = fresh[:max(0, minimum - (len(tracks) - (pos + 1)))]
+    if not fresh:
+        return []
+    state['tracks'] = tracks + [_compact(track) for track in fresh]
+    store.set_state(_QUEUE_KEY, state)
+    return fresh
+
+
+def replace_tail(current_id, size=10):
+    """Swap the whole upcoming tail for songs related to the current one.
+
+    Used when switching into related mode: the old list disappears, the
+    playing song keeps going, related songs follow. Returns fresh tracks.
+    """
+    state = active()
+    if state.get('mode') != 'active':
+        return []
+    tracks = state.get('tracks') or []
+    try:
+        pos = int(state.get('pos') or 0)
+    except (TypeError, ValueError):
+        pos = 0
+    if pos < 0 or pos >= len(tracks):
+        return []
+    try:
+        related = build_related_queue(current_id, size=size + 5)
+    except Exception:
+        return []
+    seen = {track.get('video_id') for track in tracks}
+    fresh = [item for item in related
+             if item.get('video_id') and item['video_id'] not in seen]
+    fresh = fresh[:size]
+    if not fresh:
+        return []
+    state['tracks'] = tracks[:pos + 1] + [_compact(track) for track in fresh]
+    store.set_state(_QUEUE_KEY, state)
+    return fresh
+
+
 def set_active(tracks, kind='music', pos=0, listing=None):
     store.set_state(_QUEUE_KEY, {
         'kind': kind,
@@ -275,6 +343,34 @@ def set_position(pos):
     if pos != state.get('pos'):
         state['pos'] = pos
         store.set_state(_QUEUE_KEY, state)
+
+
+def adopt_order(video_ids, pos):
+    """Reorder active tracks to match an externally shuffled playlist.
+
+    Used when the user shuffles from Kodi's own controls: the native order
+    is the truth, our announce/advance follow it from here on.
+    """
+    state = active()
+    tracks = state.get('tracks') or []
+    by_id = {}
+    for track in tracks:
+        by_id.setdefault(track.get('video_id'), track)
+    video_ids = list(video_ids or [])
+    if len(video_ids) != len(tracks):
+        return False
+    if any(not vid or vid not in by_id for vid in video_ids):
+        return False
+    try:
+        pos = int(pos)
+    except (TypeError, ValueError):
+        return False
+    if pos < 0 or pos >= len(video_ids):
+        return False
+    state['tracks'] = [by_id[vid] for vid in video_ids]
+    state['pos'] = pos
+    store.set_state(_QUEUE_KEY, state)
+    return True
 
 
 def extend_tracks(entries, started):

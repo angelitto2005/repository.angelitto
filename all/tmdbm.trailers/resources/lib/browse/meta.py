@@ -158,15 +158,97 @@ def related(video_id, limit=20):
         return []
     found = []
     seen = set()
+
+    def _push(vid, title='', image='', duration=0, channel='', views='',
+              vdate=''):
+        if not vid or vid == video_id or vid in seen:
+            return False
+        seen.add(vid)
+        found.append(_compact({
+            'video_id': vid,
+            'title': title,
+            'image': image,
+            'duration': duration,
+            'is_live': False,
+            'channel': channel,
+            'views': views,
+            'vdate': vdate,
+        }))
+        return len(found) >= limit
+
+    def _meta_rows_texts(vwd):
+        texts = []
+        try:
+            vd = (vwd.get('videoData') or {})
+            meta = ((vd.get('lockupMetadata') or {}).get('lockupMetadataViewModel') or {})
+            rows = ((meta.get('metadata') or {}).get('contentMetadataViewModel') or {}).get('metadataRows') or []
+            for row in rows:
+                for part in (row.get('metadataParts') or []):
+                    content = ((part.get('text') or {}).get('content')) or ''
+                    if content:
+                        texts.append(content.strip())
+        except Exception:
+            pass
+        return texts
+
     for node in _walk(payload):
+        vwd = node.get('videoWithContextData')
+        if isinstance(vwd, dict):
+            try:
+                vd = vwd.get('videoData') or {}
+                durl = vd.get('dragAndDropUrl') or ''
+                vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                if len(vid) != 11:
+                    vid = ''
+                title = ''
+                try:
+                    title = vd['lockupMetadata']['lockupMetadataViewModel']['title']['content'] or ''
+                except Exception:
+                    pass
+                if not title:
+                    try:
+                        title = vwd['onTap']['innertubeCommand']['coWatchWatchEndpointWrapperCommand']['videoTitle'] or ''
+                    except Exception:
+                        pass
+                thumbs = (((vd.get('thumbnail') or {}).get('image') or {}).get('sources') or [])
+                image = thumbs[-1].get('url') if thumbs else ''
+                ts = (vd.get('thumbnail') or {}).get('timestampText') or ''
+                channel = ''
+                views = ''
+                vdate = ''
+                try:
+                    tap = vwd['onTap']['innertubeCommand']['coWatchWatchEndpointWrapperCommand']
+                    owner = tap.get('ownerDisplayName') or ''
+                except Exception:
+                    owner = ''
+                for text in _meta_rows_texts(vwd):
+                    if '\u00b7' in text:
+                        parts = [part.strip() for part in text.split('\u00b7')]
+                        if len(parts) >= 3:
+                            channel, views, vdate = parts[0], parts[1], parts[2]
+                        elif len(parts) == 2:
+                            views, vdate = parts
+                        break
+                if not channel:
+                    channel = owner
+                if _push(vid, title=title, image=image,
+                         duration=_duration(ts), channel=channel,
+                         views=views, vdate=vdate):
+                    break
+                continue
+            except Exception:
+                pass
         renderer = None
-        for key in ('compactVideoRenderer', 'videoRenderer', 'gridVideoRenderer'):
+        for key in ('compactVideoRenderer', 'videoRenderer', 'gridVideoRenderer',
+                    'autoplayVideoRenderer', 'nextVideoRenderer'):
             if isinstance(node.get(key), dict):
                 renderer = node[key]
                 break
         if not renderer:
             continue
         endpoint = renderer.get('watchEndpoint') or {}
+        if not endpoint:
+            endpoint = ((renderer.get('navigationEndpoint') or {}).get('watchEndpoint') or {})
         vid = endpoint.get('videoId') or renderer.get('videoId') or ''
         if not vid or vid == video_id or vid in seen:
             continue

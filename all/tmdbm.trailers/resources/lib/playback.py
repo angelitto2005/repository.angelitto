@@ -62,7 +62,7 @@ def is_external_play(params):
 
 def _shuffled(kept):
     from browse import constants
-    if constants.shuffle_play() and len(kept) > 1:
+    if constants.playback_mode() == 'shuffle' and len(kept) > 1:
         import random
         random.SystemRandom().shuffle(kept)
         return True
@@ -189,6 +189,82 @@ def resolve_play(handle, params, extra=None, arm=True):
         return None
 
 
+def _arm_local_full(handle, video_id):
+    """Local playlists play whole even from the last song.
+
+    The normal context queue only holds what follows the clicked song, so a
+    click on the tail would arm nothing. Arm the full folder in original
+    order, starting at the clicked index (the service jumps the native
+    playlist there). Only for local_playlist folders; everything else keeps
+    single resolve.
+    """
+    try:
+        import store
+        route = store.get_state('list_route') or {}
+        if route.get('mode') != 'local_playlist':
+            return False
+        full = []
+        for entry in lists.context_entries():
+            vid = lists.video_id((entry or {}).get('video_id'))
+            if vid:
+                item = dict(entry or {})
+                item['video_id'] = vid
+                full.append(item)
+        ids = [track.get('video_id') for track in full]
+        if video_id not in ids or len(full) < 2:
+            return False
+        index = ids.index(video_id)
+        from browse import constants
+        from music import queue
+        queue.cancel()
+        if constants.playback_mode() == 'shuffle' and len(full) > 1:
+            import random
+            ordered = full[index:] + full[:index]
+            tail = ordered[1:]
+            random.SystemRandom().shuffle(tail)
+            ordered = [ordered[0]] + tail
+            queue.set_pending(ordered, 'music', route)
+        else:
+            queue.set_pending(full, 'music', route)
+            queue.set_position(index)
+        clear_tmdb_autoplay()
+        xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
+        config.log('Local queue armed: {} tracks from {}'.format(len(full), video_id))
+        return True
+    except Exception as exc:
+        config.log('local full arm failed: {}'.format(exc))
+        return False
+
+
+def _arm_related(handle, video_id, params):
+    """Related mode start: current song plus similar songs, not the folder."""
+    try:
+        from music import queue
+        import store
+        related = queue.build_related_queue(video_id, size=15)
+        seen = {video_id}
+        fresh = []
+        for item in related:
+            vid = item.get('video_id')
+            if vid and vid not in seen:
+                seen.add(vid)
+                fresh.append(item)
+        if not fresh:
+            return False
+        current = _current_entry(params, video_id)
+        queue.cancel()
+        queue.set_pending([current] + fresh, 'music',
+                          store.get_state('list_route'))
+        clear_tmdb_autoplay()
+        xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
+        config.log('Related queue armed: {} tracks from {}'.format(
+            len(fresh), video_id))
+        return True
+    except Exception as exc:
+        config.log('related arm failed: {}'.format(exc))
+        return False
+
+
 def start_queue(handle, params):
     """Arm a native Kodi playlist and return without resolving.
 
@@ -205,6 +281,21 @@ def start_queue(handle, params):
         store.add_history(lists.history_entry(params))
     except Exception:
         pass
+    if _arm_local_full(handle, video_id):
+        return
+    try:
+        from browse import constants
+        _related_mode = constants.playback_mode() == 'related'
+    except Exception:
+        _related_mode = False
+    if _related_mode:
+        try:
+            _route = store.get_state('list_route') or {}
+        except Exception:
+            _route = {}
+        if _route.get('mode') != 'local_playlist':
+            if _arm_related(handle, video_id, params):
+                return
     tracks, found = queue.build_context_queue(video_id)
     if not found:
         tracks = queue.build_music_queue(video_id)
