@@ -70,10 +70,34 @@ def _live(query, limit, locale):
                       results_type='video')
     entries = _dedupe(limit * 3)(raw)
     live = [entry for entry in entries if entry['is_live']]
-    if live:
-        return live[:limit]
-    return _dedupe(limit)(rich.search(query + ' live', limit=limit,
-                                      sort='relevance', results_type='video'))
+    seen = {entry.get('video_id') for entry in live}
+    fill = [entry for entry in entries
+            if not entry.get('is_live')
+            and 'live' in _title_text(entry).casefold()
+            and entry.get('video_id') not in seen]
+    combined = live + fill
+    if len(combined) < limit:
+        raw = rich.search(query + ' live', limit=limit * 3,
+                          sort='relevance', results_type='video')
+        for entry in _dedupe(limit * 3)(raw):
+            if len(combined) >= limit:
+                break
+            vid = entry.get('video_id')
+            if not vid or vid in seen:
+                continue
+            if entry.get('is_live') or 'live' in _title_text(entry).casefold():
+                seen.add(vid)
+                combined.append(entry)
+    return combined[:limit]
+
+
+def _title_text(entry):
+    title = (entry or {}).get('title') or ''
+    if isinstance(title, dict):
+        runs = title.get('runs') or []
+        title = ''.join(str(run.get('text') or '') for run in runs
+                        if isinstance(run, dict)) or title.get('simpleText') or ''
+    return str(title)
 
 
 def live_videos(query, limit=25):

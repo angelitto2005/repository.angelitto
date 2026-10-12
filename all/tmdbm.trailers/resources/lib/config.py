@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 
 import xbmc
 import xbmcaddon
@@ -124,6 +125,20 @@ def relative_date(value):
     text = str(value or '').strip()
     if not text:
         return ''
+
+    def _eu(match):
+        try:
+            month, day = int(match.group(1)), int(match.group(2))
+            year = match.group(3)
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                return '{:02d}.{:02d}.{}'.format(day, month, year)
+        except (TypeError, ValueError):
+            pass
+        return match.group(0)
+
+    converted = re.sub(r'(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})', _eu, text)
+    if converted != text:
+        return converted
     if not text.isdigit() and '-' not in text:
         return text
     digits = ''.join(ch for ch in text if ch.isdigit())

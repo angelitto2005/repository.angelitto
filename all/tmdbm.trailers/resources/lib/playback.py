@@ -159,11 +159,6 @@ def resolve_play(handle, params, extra=None, arm=True):
     if not video_id:
         xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
         return None
-    try:
-        import store
-        store.add_history(lists.history_entry(params))
-    except Exception:
-        pass
     if arm and not _ARMING['busy']:
         _ARMING['busy'] = True
         try:
@@ -178,6 +173,11 @@ def resolve_play(handle, params, extra=None, arm=True):
         if extra:
             kwargs.update(extra)
         li = play_youtube(video_id, **kwargs)
+        try:
+            import store
+            store.add_history(lists.history_entry(params))
+        except Exception:
+            pass
         xbmcplugin.setResolvedUrl(handle, True, li)
         return li
     except Exception as exc:
@@ -276,11 +276,6 @@ def start_queue(handle, params):
 
     video_id = lists.video_id(params.get('video_id'))
     queue.cancel()
-    try:
-        import store
-        store.add_history(lists.history_entry(params))
-    except Exception:
-        pass
     if _arm_local_full(handle, video_id):
         return
     try:

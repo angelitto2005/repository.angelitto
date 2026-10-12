@@ -423,6 +423,140 @@ def _stop_proxy():
         _proxy_port = None
 
 
+def _true_fps(url, declared=None, headers=None, timeout=15):
+    """Measure the real frame rate from tfhd default sample duration.
+
+    YouTube reports integer fps (24 for 23.976 content), and our MPD repeats
+    it: Kodi picks 24.0 at start, then resyncs mid-play when the demuxer
+    measures 23.976 (the 1-2s freeze ~9s in). Neither stts (empty in DASH
+    init segments) nor SPS VUI timing (absent in YouTube encodes) is usable,
+    but the first moof carries tfhd default_sample_duration, which combined
+    with the video mdhd timescale gives the exact rate (24000/1001 here).
+    Cross-checked against declared: full and half candidates, whichever lands
+    within 2% wins. Returns '24000/1001', '24', etc., or None.
+    """
+    import math as _math
+    try:
+        import requests as _req
+        session = _ProxyHandler._session
+        if session is None:
+            session = _req.Session()
+        h = dict(_YT_HEADERS)
+        for k, v in (headers or {}).items():
+            if k.lower() not in ('user-agent', 'accept'):
+                h[k] = v
+
+        def _u32(buf, off):
+            return struct.unpack('>I', buf[off:off + 4])[0]
+
+        def _kids(buf, start, end):
+            off = start
+            while off + 8 <= end:
+                size = _u32(buf, off)
+                typ = buf[off + 4:off + 8].decode('latin1', 'replace')
+                head = 8
+                if size == 1:
+                    if off + 16 > end:
+                        return
+                    size = struct.unpack('>Q', buf[off + 8:off + 16])[0]
+                    head = 16
+                if size == 0:
+                    size = end - off
+                if size < head or off + size > end:
+                    return
+                yield typ, off + head, off + size
+                off += size
+
+        buf = b''
+        pos = 0
+        chunk = 65536
+        timescale = 0
+        duration = 0
+        while (not timescale or not duration) and len(buf) < 262144:
+            h['Range'] = 'bytes={}-{}'.format(pos, pos + chunk - 1)
+            resp = session.get(url, headers=h, timeout=timeout, stream=True)
+            if resp.status_code not in (200, 206):
+                resp.close()
+                break
+            got = resp.raw.read(chunk + 1)
+            resp.close()
+            if not got:
+                break
+            buf += got
+            pos += len(got)
+            n = len(buf)
+            for _typ, _ps, _pe in _kids(buf, 0, n):
+                if _typ == 'moov' and not timescale:
+                    for _t, tps, tpe in _kids(buf, _ps, _pe):
+                        if _t != 'trak':
+                            continue
+                        _handler = ''
+                        _ts = 0
+                        for _m, mps, mpe in _kids(buf, tps, tpe):
+                            if _m != 'mdia':
+                                continue
+                            for _d, dps, dpe in _kids(buf, mps, mpe):
+                                if _d == 'mdhd':
+                                    ver = buf[dps]
+                                    tpos = dps + 20 if ver == 1 else dps + 12
+                                    if tpos + 4 <= dpe:
+                                        _ts = _u32(buf, tpos)
+                                elif _d == 'hdlr' and dps + 12 <= dpe:
+                                    _handler = buf[dps + 8:dps + 12].decode(
+                                        'latin1', 'replace')
+                            if _handler == 'vide' and _ts:
+                                timescale = _ts
+                                break
+                            if _handler == 'vide':
+                                break
+                        if timescale:
+                            break
+                elif _typ == 'moof' and not duration:
+                    for _t, tps, tpe in _kids(buf, _ps, _pe):
+                        if _t != 'traf':
+                            continue
+                        for _u, ups, upe in _kids(buf, tps, tpe):
+                            if _u != 'tfhd':
+                                continue
+                            flags = (buf[ups + 1] << 16) | (buf[ups + 2] << 8) | buf[ups + 3]
+                            if not flags & 8:
+                                continue
+                            _p = ups + 8
+                            if flags & 2:
+                                _p += 4
+                            if _p + 4 <= upe:
+                                duration = _u32(buf, _p)
+                        if duration:
+                            break
+            if len(got) < chunk:
+                break
+        if not timescale or not duration:
+            return None
+        try:
+            declared = float(declared)
+        except (TypeError, ValueError):
+            declared = 0
+        best = None
+        for num, den in ((timescale, duration), (timescale, 2 * duration)):
+            val = num / float(den)
+            if val < 19 or val > 65:
+                continue
+            if declared and abs(val - declared) / declared > 0.02:
+                continue
+            best = (val, num, den)
+            break
+        if best is None:
+            return None
+        val, num, den = best
+        if abs(val - round(val)) < 0.005:
+            return str(int(round(val)))
+        gcd = _math.gcd(int(num), int(den))
+        return '{}/{}'.format(int(num) // gcd, int(den) // gcd)
+    except Exception as e:
+        _log('fps probe failed: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
+        return None
+
+
 def _discover_dash_ranges(url, headers=None, timeout=15):
     """Discover initRange/indexRange by walking top-level MP4 boxes (ftyp/moov/sidx).
 
@@ -498,6 +632,13 @@ _IOS_TS_UA = ('com.google.ios.youtube/20.20.7'
               ' (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)')
 
 
+def _norm_fps(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
 def _extract_innertube_ios(video_id):
     """Pure-innertube extraction replicating plugin.video.youtube's working
     'ios_testsuite_params' client (IOS 20.20.7 / iPhone16,2 / osVersion
@@ -564,7 +705,7 @@ def _extract_innertube_ios(video_id):
             'url': f['url'],
             'width': f.get('width', 0) or 0,
             'height': f.get('height', 0) or 0,
-            'fps': f.get('fps'),
+            'fps': _norm_fps(f.get('fps')),
             'bitrate': f.get('bitrate'),
             'ext': sub,
             'protocol': 'https',
@@ -737,7 +878,7 @@ def _extract_innertube_tv_auth(video_id):
             'url': f['url'],
             'width': f.get('width', 0) or 0,
             'height': f.get('height', 0) or 0,
-            'fps': f.get('fps'),
+            'fps': _norm_fps(f.get('fps')),
             'bitrate': f.get('bitrate') or f.get('averageBitrate'),
             'ext': sub,
             'protocol': 'https',
@@ -1434,6 +1575,31 @@ def _build_mpd(data, proxy_base='', video_id=''):
     if heights:
         candidates = [h for h in heights if h <= cap_height]
         target_height = max(candidates) if candidates else min(heights)
+
+    probe = None
+    for fmt in data.get('formats', []):
+        if (fmt.get('container') == 'mp4_dash'
+                and _is_video_codec(fmt)
+                and fmt.get('height') == target_height
+                and fmt.get('fps') in (24, 30, 60)
+                and fmt.get('url')):
+            probe = fmt
+            break
+    if probe is None:
+        for fmt in data.get('formats', []):
+            if (fmt.get('container') == 'mp4_dash'
+                    and _is_video_codec(fmt)
+                    and fmt.get('fps') in (24, 30, 60)
+                    and fmt.get('url')):
+                probe = fmt
+                break
+    if probe is not None:
+        exact = _true_fps(probe['url'], declared=probe['fps'])
+        if exact and exact != probe['fps']:
+            _log('Measured fps {} instead of declared {}'.format(exact, probe['fps']))
+            for fmt in data.get('formats', []):
+                if fmt.get('fps') == probe['fps']:
+                    fmt['fps'] = exact
 
     # Fixed mode (1=720p, 2=1080p, 3=4K): pin the video ladder to the single
     # target height so ISA cannot drop below it on a smaller window/network.
