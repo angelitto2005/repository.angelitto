@@ -1,7 +1,9 @@
-1.1.311
-- New Downloads tab in Settings: save to Addon Data (default) or a custom folder (local drive or SMB share)
+1.1.312
+- New Downloads tab in Settings: save to Addon Data (default), a custom folder, or Split Folders (separate Movies / TV Shows locations, local drive or SMB share)
 - Download info panel option moved from General into the Downloads tab, so Defaults resets only download settings.
 - Download writes are verified by a probe file and logged step by step (settings, folder, system error).
+- Download finished notification now shows in both display modes (before it only showed with the info panel off).
+- Episode downloads now show the episode code (S01E02) in progress and milestone notifications, not just the show name.
 
 1.1.310
 - Fixed TMDbM Trailers autoplay UP Next

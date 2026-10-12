@@ -7,7 +7,7 @@ import requests
 import time
 import re
 from urllib.parse import parse_qsl, urljoin
-from resources.lib.core.config import ADDON, get_downloads_root, join_download_path, get_download_file_size
+from resources.lib.core.config import ADDON, get_downloads_root, get_download_split_roots, get_all_downloads_roots, join_download_path, get_download_file_size
 from resources.lib.core.utils import clean_text
 
 # Definim iconita local
@@ -56,10 +56,18 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
     window = xbmcgui.Window(10000)
     
     # 1. Path Configuration
-    downloads_dir = get_downloads_root()
+    is_tv = season and episode and str(season) != '0' and str(episode) != '0'
+    _split = get_download_split_roots()
+    if _split:
+        downloads_dir = _split[1] if is_tv else _split[0]
+    else:
+        downloads_dir = get_downloads_root()
 
     folder_title = clean_text(title)
-    is_tv = season and episode and str(season) != '0' and str(episode) != '0'
+    if is_tv:
+        display_title = f"{title} S{int(season):02d}E{int(episode):02d}"
+    else:
+        display_title = title
 
     if year and str(year).strip() not in ('', 'None'):
         folder_name = f"{folder_title} ({year})"
@@ -67,9 +75,15 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
         folder_name = folder_title
 
     if is_tv:
-        content_dir = join_download_path(downloads_dir, 'TV Shows', folder_name, f"Season {int(season)}")
+        if _split:
+            content_dir = join_download_path(downloads_dir, folder_name, f"Season {int(season)}")
+        else:
+            content_dir = join_download_path(downloads_dir, 'TV Shows', folder_name, f"Season {int(season)}")
     else:
-        content_dir = join_download_path(downloads_dir, 'Movies', folder_name)
+        if _split:
+            content_dir = join_download_path(downloads_dir, folder_name)
+        else:
+            content_dir = join_download_path(downloads_dir, 'Movies', folder_name)
 
     if not xbmcvfs.exists(content_dir):
         xbmcvfs.mkdirs(content_dir)
@@ -147,9 +161,9 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
 
     try:
         if is_hls:
-            _download_hls_stream(real_url, headers, file_path, title, final_filename, bg, window, unique_id)
+            _download_hls_stream(real_url, headers, file_path, display_title, final_filename, bg, window, unique_id)
         else:
-            _download_direct_stream(real_url, headers, file_path, title, final_filename, bg, window, unique_id)
+            _download_direct_stream(real_url, headers, file_path, display_title, final_filename, bg, window, unique_id)
             
     except Exception as e:
         if bg: bg.close()
@@ -214,10 +228,9 @@ def perform_cleanup_if_stopped(window, unique_id, file_path, bg):
 def _remove_folder_if_empty(file_path):
     try:
         parent_dir = os.path.dirname(file_path)
-        downloads_dir = get_downloads_root()
         _norm = lambda p: str(p).replace('\\', '/').rstrip('/')
-        _root = _norm(downloads_dir)
-        while parent_dir and _norm(parent_dir).startswith(_root) and _norm(parent_dir) != _root:
+        _roots = [_norm(r) for r in get_all_downloads_roots()]
+        while parent_dir and any(_norm(parent_dir).startswith(_r) and _norm(parent_dir) != _r for _r in _roots):
             dirs, files = xbmcvfs.listdir(parent_dir)
             if not dirs and not files:
                 xbmcvfs.rmdir(parent_dir)
@@ -231,11 +244,11 @@ def _remove_folder_if_empty(file_path):
 def cleanup_empty_download_folders():
     """Recursively removes empty folders inside Downloads directory."""
     try:
-        downloads_dir = get_downloads_root()
-        if not xbmcvfs.exists(downloads_dir):
-            xbmcvfs.mkdirs(downloads_dir)
-            return
-        _prune_empty_dirs(downloads_dir, downloads_dir)
+        for _root in get_all_downloads_roots():
+            if not xbmcvfs.exists(_root):
+                xbmcvfs.mkdirs(_root)
+            else:
+                _prune_empty_dirs(_root, _root)
     except Exception as e:
         xbmc.log(f"[DOWNLOAD] Cleanup error: {e}", xbmc.LOGERROR)
 
@@ -258,29 +271,19 @@ def _prune_empty_dirs(path, root):
 def _validate_and_finish(file_path, filename):
     try:
         size = get_download_file_size(file_path)
-        if size < MIN_FILE_SIZE:
-            xbmc.log(f"[DOWNLOAD] File too small ({size} bytes). Deleting invalid file.", xbmc.LOGWARNING)
-            xbmcvfs.delete(file_path)
-            _remove_folder_if_empty(file_path)
-            xbmcgui.Dialog().notification("Error Download", "Invalid file (too small).", TMDbmovies_ICON, 4000, False)
-        else:
-            # Afisam notificare de final DOAR daca bara (BG) este OPRITA
-            try:
-                show_ui = ADDON.getSetting('show_download_progress') == 'true'
-            except: show_ui = True
-            
-            if not show_ui:
-                _finish_notify(filename)
-
     except Exception as e:
         xbmc.log(f"[DOWNLOAD] Validation error: {e}", xbmc.LOGERROR)
-        # In caz de eroare verificare, notificam doar daca e OFF
+        size = 0
+    if size < MIN_FILE_SIZE:
+        xbmc.log(f"[DOWNLOAD] File too small ({size} bytes). Deleting invalid file.", xbmc.LOGWARNING)
         try:
-            show_ui = ADDON.getSetting('show_download_progress') == 'true'
-        except: show_ui = True
-        
-        if not show_ui:
-            _finish_notify(filename)
+            xbmcvfs.delete(file_path)
+        except:
+            pass
+        _remove_folder_if_empty(file_path)
+        xbmcgui.Dialog().notification("Error Download", "Invalid file (too small).", TMDbmovies_ICON, 4000, False)
+    else:
+        _finish_notify(filename)
 
 def _finish_notify(filename):
     header_fin = f"[B][COLOR {COL_HEADER}]Download Complete[/COLOR][/B]"

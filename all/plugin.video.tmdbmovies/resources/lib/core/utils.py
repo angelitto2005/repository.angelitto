@@ -12,7 +12,7 @@ import glob
 from urllib.parse import quote, unquote, urlencode # NOU
 
 # Import WITHOUT HEADERS (which is now a function)
-from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP, get_downloads_root
+from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP, get_downloads_root, get_download_split_roots
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
@@ -1387,8 +1387,31 @@ def build_downloads_list(params):
         handle = -1
 
     base_path = get_downloads_root()
-    
+
     current_folder = params.get('folder')
+
+    _split = get_download_split_roots()
+    if _split and not current_folder:
+        listing = []
+        for _name, _root in (('Movies', _split[0]), ('TV Shows', _split[1])):
+            _li = xbmcgui.ListItem(label=f"[COLOR yellow]{_name}[/COLOR]")
+            _li.setArt({'icon': 'DefaultFolder.png'})
+            try:
+                _li.getVideoInfoTag().setTitle(_name)
+            except:
+                pass
+            _url = f"{sys.argv[0]}?mode=downloads_menu&folder={quote(_root)}"
+            listing.append((_url, _li, True))
+        xbmcplugin.addDirectoryItems(handle, listing, len(listing))
+        xbmcplugin.setContent(handle, 'files')
+        xbmcplugin.endOfDirectory(handle)
+        try:
+            from resources.lib.core import views
+            views.apply_view('main', 'files')
+        except:
+            pass
+        return
+
     path_to_list = unquote(current_folder) if current_folder else base_path
 
     if not path_to_list.endswith('/'):

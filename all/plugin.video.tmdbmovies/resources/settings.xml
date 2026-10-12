@@ -488,8 +488,10 @@
     <!-- 10. DOWNLOADS -->
     <category label="Downloads">
         <setting type="lsep" label="Download Location"/>
-        <setting id="download_location" type="enum" label="Save downloads to" values="Addon Data (default)|Custom Folder" default="0"/>
+        <setting id="download_location" type="enum" label="Save downloads to" values="Addon Data (default)|Custom Folder|Split Folders" default="0"/>
         <setting id="download_custom_path" type="folder" label="Custom Folder" source="auto" option="writeable" default="" subsetting="true" visible="eq(-1,1)"/>
+        <setting id="download_movies_path" type="folder" label="Movies Folder" source="auto" option="writeable" default="" subsetting="true" visible="eq(-2,2)"/>
+        <setting id="download_tv_path" type="folder" label="TV Shows Folder" source="auto" option="writeable" default="" subsetting="true" visible="eq(-3,2)"/>
         <setting type="lsep" label="Display"/>
         <setting id="show_download_progress" type="bool" label="Show info panel (top-right) during download" default="true"/>
     </category>

@@ -433,15 +433,43 @@ def get_downloads_root():
     try:
         _loc = ADDON.getSetting('download_location') or '0'
         _raw = str(ADDON.getSetting('download_custom_path') or '')
+        _mov = str(ADDON.getSetting('download_movies_path') or '')
+        _tv = str(ADDON.getSetting('download_tv_path') or '')
     except:
-        _loc, _raw = '0', ''
-    xbmc.log(f"[DOWNLOAD] Settings: location={_loc} custom={_raw.strip()}", xbmc.LOGINFO)
-    try:
-        if _loc == '1' and _raw.strip():
+        _loc, _raw, _mov, _tv = '0', '', '', ''
+    xbmc.log(f"[DOWNLOAD] Settings: location={_loc} custom={_raw.strip()} movies={_mov.strip()} tv={_tv.strip()}", xbmc.LOGINFO)
+    if _loc == '1' and _raw.strip():
+        try:
             return xbmcvfs.translatePath(_raw.strip())
+        except Exception as e:
+            xbmc.log(f"[DOWNLOAD] Custom path error: {e}", xbmc.LOGERROR)
+    return get_default_downloads_root()
+
+def get_download_split_roots():
+    try:
+        if (ADDON.getSetting('download_location') or '0') == '2':
+            _m = _clean_download_path('download_movies_path')
+            _t = _clean_download_path('download_tv_path')
+            if _m or _t:
+                return (_m or get_default_downloads_root(), _t or get_default_downloads_root())
+    except:
+        pass
+    return None
+
+def get_all_downloads_roots():
+    _s = get_download_split_roots()
+    if _s:
+        return [_s[0]] if _s[0] == _s[1] else [_s[0], _s[1]]
+    return [get_downloads_root()]
+
+def _clean_download_path(setting_id):
+    try:
+        _c = str(ADDON.getSetting(setting_id) or '').strip()
+        if _c:
+            return xbmcvfs.translatePath(_c)
     except Exception as e:
         xbmc.log(f"[DOWNLOAD] Custom path error: {e}", xbmc.LOGERROR)
-    return get_default_downloads_root()
+    return ''
 
 def join_download_path(base, *parts):
     try:
