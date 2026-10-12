@@ -232,3 +232,11 @@ msgstr "Podcasts"
 msgctxt "#32071"
 msgid "Localized"
 msgstr "Localized"
+
+msgctxt "#32028"
+msgid "Extraction cache"
+msgstr "Extraction cache"
+
+msgctxt "#32058"
+msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"

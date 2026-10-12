@@ -214,6 +214,19 @@
           <default>false</default>
           <control type="toggle"/>
         </setting>
+        <setting id="extract_cache_ttl" type="string" label="32028" help="32058">
+          <level>0</level>
+          <default>6 hours</default>
+          <constraints>
+            <options>
+              <option>1 hour</option>
+              <option>6 hours</option>
+              <option>12 hours</option>
+              <option>24 hours</option>
+            </options>
+          </constraints>
+          <control type="spinner" format="string"/>
+        </setting>
         <setting id="clear_cache" type="action" label="32025" help="32055">
           <level>0</level>
           <data>RunPlugin(plugin://tmdbm.trailers/?mode=clear_cache)</data>

@@ -38,7 +38,7 @@ SNAPSHOT_KEYS = ('content_country', 'content_language',
                  'trending_category', 'live_category', 'trailer_audio',
                  'trailer_max_res', 'subtitles', 'subtitle_language',
                  'results_per_page', 'feed_per_channel', 'autoplay_next',
-                 'shuffle_play', 'debug')
+                 'shuffle_play', 'debug', 'extract_cache_ttl')
 _SNAP_RAW = ['']
 _SNAP_DATA = [None]
 

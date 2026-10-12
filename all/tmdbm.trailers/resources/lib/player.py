@@ -69,13 +69,13 @@ _proxy_server = None
 _proxy_port = None
 
 
-def _log(msg, level=xbmc.LOGINFO):
+def _log(msg, level=xbmc.LOGINFO, always=False):
     try:
         import config
     except Exception:
         xbmc.log('[{}] {}'.format(ADDON_ID, msg), level)
         return
-    config.log(msg, level)
+    config.log(msg, level, always=always)
 
 
 def _cleanup_old_mpd():
@@ -1674,6 +1674,109 @@ def _find_clean_progressive(data):
 
 _last_extract_time = 0
 
+_EXTRACT_CAP = 50
+_GATE_MINUTES = 15
+_gate_until = [0.0]
+
+
+def _extract_ttl():
+    try:
+        return max(3600, int(str(_get_setting('extract_cache_ttl', '') or '').split()[0]) * 3600)
+    except Exception:
+        return 6 * 3600
+
+
+def _extract_cache_dir():
+    import os as _os
+    path = xbmcvfs.translatePath('special://temp/yt_extract')
+    try:
+        _os.makedirs(path, exist_ok=True)
+    except Exception:
+        pass
+    return path
+
+
+def _cached_extract(video_id):
+    import os as _os
+    import pickle as _pk
+    path = _os.path.join(_extract_cache_dir(), '{}.bin'.format(video_id))
+    try:
+        if time.time() - _os.path.getmtime(path) > _extract_ttl():
+            try:
+                _os.remove(path)
+            except Exception:
+                pass
+            return None
+        with open(path, 'rb') as _fh:
+            data = _pk.load(_fh)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not data.get('formats'):
+        return None
+    try:
+        ok, _bad = _check_urls_servable(data)
+    except Exception:
+        return None
+    if not ok:
+        try:
+            _os.remove(path)
+        except Exception:
+            pass
+        return None
+    _log('Extraction cache hit: {} ({} formats)'.format(video_id, len(data.get('formats') or [])), always=True)
+    return data
+
+
+def _store_extract(video_id, data):
+    import os as _os
+    import pickle as _pk
+    if not isinstance(data, dict) or not data.get('formats'):
+        return
+    try:
+        path = _os.path.join(_extract_cache_dir(), '{}.bin'.format(video_id))
+        with open(path, 'wb') as _fh:
+            _pk.dump(data, _fh)
+        entries = sorted(
+            ((_os.path.getmtime(_os.path.join(_extract_cache_dir(), name)), name)
+             for name in _os.listdir(_extract_cache_dir())),
+            reverse=False)
+        for _, name in entries[:-_EXTRACT_CAP]:
+            try:
+                _os.remove(_os.path.join(_extract_cache_dir(), name))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _gate_file():
+    return xbmcvfs.translatePath('special://temp/yt_gate_until')
+
+
+def _gate_remaining():
+    now = time.time()
+    if now < _gate_until[0]:
+        return _gate_until[0] - now
+    try:
+        with open(_gate_file()) as _fh:
+            until = float((_fh.read() or '').strip() or 0)
+    except Exception:
+        return 0
+    if now < until:
+        _gate_until[0] = until
+        return until - now
+    return 0
+
+
+def _set_gate():
+    _gate_until[0] = time.time() + _GATE_MINUTES * 60
+    try:
+        with open(_gate_file(), 'w') as _fh:
+            _fh.write(str(_gate_until[0]))
+    except Exception:
+        pass
+
+
 
 def _tmdb_details_plot(tmdb_id, dbtype):
     try:
@@ -1759,30 +1862,39 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                  channel=None, views=None, vdate=None, dur=None, snippet=None):
     _cleanup_old_mpd()
 
-    # Rate-limit: random delay between extractions to avoid bot detection
-    global _last_extract_time
-    elapsed = time.time() - _last_extract_time
-    min_gap = 3 + random.random() * 5  # 3-8 seconds
-    if _last_extract_time > 0 and elapsed < min_gap:
-        wait = min_gap - elapsed
-        _log('Waiting {:.1f}s before next extraction to avoid bot detection'.format(wait))
-        xbmc.sleep(int(wait * 1000))
-    _last_extract_time = time.time()
+    _remaining = _gate_remaining()
+    if _remaining > 0:
+        _mins = int(_remaining // 60) + 1
+        raise Exception('YouTube is rate-limiting this IP right now (anti-bot). '
+                        'Leave it alone for about {} min, then retry.'.format(_mins))
 
-    url = 'https://www.youtube.com/watch?v={}'.format(video_id)
-    _log('Extracting: {}'.format(url))
+    # Rate-limit: random delay between extractions to avoid bot detection.
+    # Cache hits skip the wait entirely (no API call follows anyway).
+    data = _cached_extract(video_id)
+    raw_tainted = None
+    last_err = ''
+    permanent = False
+    gated = False
+    if data is None:
+        global _last_extract_time
+        elapsed = time.time() - _last_extract_time
+        min_gap = 3 + random.random() * 5  # 3-8 seconds
+        if _last_extract_time > 0 and elapsed < min_gap:
+            wait = min_gap - elapsed
+            _log('Waiting {:.1f}s before next extraction to avoid bot detection'.format(wait))
+            xbmc.sleep(int(wait * 1000))
+        _last_extract_time = time.time()
+
+        url = 'https://www.youtube.com/watch?v={}'.format(video_id)
+        _log('Extracting: {}'.format(url), always=True)
 
     # Innertube-only extraction (pure Python, no yt-dlp, no JS runtime,
     # no third-party binaries): replicates plugin.video.youtube's working
     # ios_testsuite client. Falls back to an emergency progressive (muxed)
     # format when the DASH URL-set is tainted/blocked.
-    data = None
-    raw_tainted = None
-    last_err = ''
-    permanent = False
-    gated = False
     for attempt in range(3):
-        data = _fast_extract(video_id)
+        if data is None:
+            data = _fast_extract(video_id)
         if data:
             break
         try:
@@ -1820,9 +1932,16 @@ def play_youtube(video_id, title=None, genre=None, year=None,
             data = _authenticated_extract(video_id)
             if data:
                 gated = False
+        if gated and not data and not fallback_fmt:
+            _log('Bot gate active, authenticated extract failed too; cannot recover',
+                 xbmc.LOGWARNING)
+            _set_gate()
+            raise Exception('YouTube blocked this IP ("Sign in to confirm you are '
+                            'not a bot"). Wait about 15 min without playing, then retry.')
         elif gated:
             _log('Bot gate active and no account linked; cannot recover',
                  xbmc.LOGWARNING)
+            _set_gate()
             raise Exception('YouTube blocked this IP ("Sign in to confirm you are '
                             'not a bot"). Link your YouTube account in My YouTube '
                             'to keep playing, or try another network.')
@@ -1838,6 +1957,8 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 _log(err_msg, xbmc.LOGERROR)
                 raise Exception(err_msg)
 
+    if data:
+        _store_extract(video_id, data)
     _log('Title: {} | Duration: {}s'.format(
         (data or {}).get('title', '?'), (data or {}).get('duration', '?')))
 
