@@ -1658,7 +1658,7 @@ def _build_mpd(data, proxy_base='', video_id=''):
         if pending:
             try:
                 from concurrent.futures import ThreadPoolExecutor, wait
-                ex = ThreadPoolExecutor(max_workers=4)
+                ex = ThreadPoolExecutor(max_workers=2)
                 try:
                     fm = {ex.submit(_discover_dash_ranges, unquote(fmt['url']), fmt.get('http_headers', {})): fmt for fmt in pending}
                     done, _ = wait(set(fm), timeout=90)
@@ -1752,14 +1752,17 @@ def _build_mpd(data, proxy_base='', video_id=''):
 
 
 def _check_urls_servable(data):
-    """Probe a byte near 80% of each DASH format's file.
+    """Probe a byte near 80% of the top video and top audio files.
 
     googlevideo sometimes issues URL-sets whose tail is rejected (HTTP 403):
     only the first ~47% of every file in the set is servable (audio and video
     alike, identical byte fraction). The stream plays ~70s then audio dies and
     ISA aborts the whole playback (ActiveAE sync errors). The taint is baked
     into the URL at extraction time and does not heal (verified 20+ min).
-    A re-extraction usually returns a clean set. Returns (ok, failed_format_id).
+    A re-extraction usually returns a clean set. Taint hits whole URL-sets
+    uniformly, so probing the top video plus the top audio detects it with
+    2 requests instead of ~20. One retry per probe before verdict (transient
+    403s happen). Returns (ok, failed_format_id).
     """
     import re as _re
     try:
@@ -1768,13 +1771,21 @@ def _check_urls_servable(data):
             import requests as _req
             session = _req.Session()
         h = dict(_YT_HEADERS)
-        checked = 0
-        for fmt in data.get('formats', []):
-            container = fmt.get('container', '')
-            if container not in ('mp4_dash', 'm4a_dash'):
-                continue
-            if fmt.get('vcodec', 'none') != 'none' and fmt.get('vcodec', '').startswith('av01'):
-                continue
+        formats = data.get('formats', []) or []
+        videos = [fmt for fmt in formats
+                  if fmt.get('container') in ('mp4_dash', 'webm_dash')
+                  and fmt.get('vcodec', 'none') != 'none'
+                  and not fmt.get('vcodec', '').startswith('av01')]
+        audios = [fmt for fmt in formats
+                  if fmt.get('container') == 'm4a_dash']
+        picks = []
+        if videos:
+            picks.append(max(videos, key=lambda f: f.get('height', 0) or 0))
+        if audios:
+            picks.append(max(audios, key=lambda f: f.get('bitrate', 0) or 0))
+        if not picks:
+            return True, None
+        for fmt in picks:
             url = fmt.get('url', '')
             size = fmt.get('filesize') or fmt.get('filesize_approx')
             if not size:
@@ -1785,15 +1796,18 @@ def _check_urls_servable(data):
                 continue
             pos = int(size * 0.8)
             h['Range'] = 'bytes={}-{}'.format(pos, pos)
-            resp = session.get(url, headers=h, timeout=10)
-            status = resp.status_code
-            resp.close()
-            checked += 1
+            status = 0
+            for _ in range(2):
+                resp = session.get(url, headers=h, timeout=10)
+                status = resp.status_code
+                resp.close()
+                if status == 206:
+                    break
             if status != 206:
                 _log('Format {} NOT fully servable (HTTP {} at byte {}/{})'.format(
                     fmt.get('format_id'), status, pos, size), xbmc.LOGWARNING)
                 return False, fmt.get('format_id')
-        _log('URL servability check passed ({} formats)'.format(checked))
+        _log('URL servability check passed ({} formats)'.format(len(picks)))
         return True, None
     except Exception as e:
         _log('Servability check error: {}'.format(str(e)[:150]), xbmc.LOGWARNING)
@@ -2094,10 +2108,13 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         elif gated and _account_connected():
             # Alternate trailers are gated exactly the same way, so go straight
             # to the account instead of burning more requests.
-            _log('Bot gate active and no alternate trailer; trying the linked account')
-            data = _authenticated_extract(video_id)
-            if data:
-                gated = False
+            if _gate_remaining() > 0:
+                _log('Bot gate already known active; skipping authenticated retry')
+            else:
+                _log('Bot gate active and no alternate trailer; trying the linked account')
+                data = _authenticated_extract(video_id)
+                if data:
+                    gated = False
         if gated and not data and not fallback_fmt:
             _log('Bot gate active, authenticated extract failed too; cannot recover',
                  xbmc.LOGWARNING)

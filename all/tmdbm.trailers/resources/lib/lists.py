@@ -14,6 +14,7 @@ CHANNEL_ART_URL = 'https://yt3.googleusercontent.com/{}=s176-c-k-c0x00ffffff-no-
 _BAD_RANGES = (
     (0x1F000, 0x1FAFF),
     (0x1D100, 0x1D1FF),
+    (0x2100, 0x214F),
     (0x2190, 0x21FF), (0x2300, 0x23FF), (0x2460, 0x24FF),
     (0x2600, 0x26FF), (0x2700, 0x27BF), (0x2B00, 0x2BFF),
     (0x3000, 0x303F),
@@ -29,10 +30,13 @@ _SILENT_RANGES = (
     (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF),
 )
 _BAD_SINGLE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+_BAD_CODEPOINTS = frozenset((0xA9, 0xAE))
 _BAD_COLLAPSE = re.compile(r'\|\s*\|')
 
 
 def _is_bad(code):
+    if code in _BAD_CODEPOINTS:
+        return True
     for low, high in _BAD_RANGES:
         if low <= code <= high:
             return True
@@ -175,6 +179,31 @@ def playlist_item(entry):
     return li
 
 
+_MENU_MEMO_SUBS = {}
+_MENU_MEMO_BLOCKED = [None]
+
+
+def clear_menu_memo():
+    _MENU_MEMO_SUBS.clear()
+    _MENU_MEMO_BLOCKED[0] = None
+
+
+def _menu_is_subscribed(channel_url):
+    if channel_url not in _MENU_MEMO_SUBS:
+        _MENU_MEMO_SUBS[channel_url] = store.is_subscribed(channel_url)
+    return _MENU_MEMO_SUBS[channel_url]
+
+
+def _menu_is_blocked(vid):
+    if _MENU_MEMO_BLOCKED[0] is None:
+        try:
+            from music import queue as _queue
+            _MENU_MEMO_BLOCKED[0] = _queue.blocked()
+        except Exception:
+            _MENU_MEMO_BLOCKED[0] = set()
+    return bool(vid) and vid in _MENU_MEMO_BLOCKED[0]
+
+
 def _song_menus(entry, vid, in_watch_later=False):
     entry = entry or {}
     menus = []
@@ -187,7 +216,7 @@ def _song_menus(entry, vid, in_watch_later=False):
                 router.BASE_URL + '?' + urlencode(
                     {'mode': 'channel', 'url': channel_url,
                      'title': entry.get('channel') or ''}))))
-        known = store.is_subscribed(channel_url)
+        known = _menu_is_subscribed(channel_url)
         menus.append((
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
                 'Unsubscribe' if known else 'Subscribe'),
@@ -208,11 +237,7 @@ def _song_menus(entry, vid, in_watch_later=False):
                           run_plugin('watch_later_add', entry_params(entry))))
         menus.append(('[B][COLOR yellow]Local Playlists[/COLOR][/B]',
                       run_plugin('local_playlist_add', entry_params(entry))))
-        try:
-            from music import queue as _queue
-            _is_blocked = vid in _queue.blocked()
-        except Exception:
-            _is_blocked = False
+        _is_blocked = _menu_is_blocked(vid)
         if _is_blocked:
             menus.append(('[B][COLOR FFFF5555]Unblock this video[/COLOR][/B]',
                           run_plugin('unblock', {'video_id': vid})))
@@ -485,11 +510,7 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     title = clean_title(entry.get('title')) or vid
     if entry.get('is_live'):
         title = '[COLOR FFFF4500][LIVE][/COLOR] {}'.format(title)
-    try:
-        from music import queue as _queue
-        _is_blocked = bool(vid) and vid in _queue.blocked()
-    except Exception:
-        _is_blocked = False
+    _is_blocked = _menu_is_blocked(vid)
     if _is_blocked:
         title = '{} [COLOR FFFF5555][blocked][/COLOR]'.format(title)
     image = entry.get('image') or thumbnail(vid)

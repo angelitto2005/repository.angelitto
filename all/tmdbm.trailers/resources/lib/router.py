@@ -127,9 +127,9 @@ def search(handle, params):
             folder=False))
     for query in store.get_searches():
         items.append(lists.folder_item(
-            query, 'search_results',
+            query, 'search_types',
             config.icon('trailers') or config.addon_icon() or config.icon('search'),
-            {'q': query, 'kind': 'video'},
+            {'q': query},
             cm=[('[B][COLOR FFFF5555]Delete[/COLOR][/B]',
                  lists.run_plugin('forget_search', {'q': query}))][0:3]))
     if store.get_searches():
@@ -211,12 +211,24 @@ def search_results(handle, params):
     elif kind == 'playlist':
         def fetch(limit):
             return yt.search_playlists(query, limit=limit)
-        items, content = lists.paged(
-            fetch, lambda entry: lists.folder_item(
-                entry['title'], 'playlist', entry['image'],
+
+        def _pl_builder(entry):
+            entry = entry or {}
+            if not entry.get('playlist_id'):
+                return None
+            _title = (lists.clean_title(entry.get('title') or '')
+                      or entry.get('title') or '')
+            return lists.folder_item(
+                _title, 'playlist', entry['image'],
                 {'url': entry['playlist_id']},
-                description=' '.join(x for x in (entry['channel'], entry['count']) if x))
-            if entry.get('playlist_id') else None,
+                description=' '.join(x for x in (entry['channel'], entry['count']) if x),
+                cm=[('[B][COLOR FF00CED1]Import playlist[/COLOR][/B]',
+                     lists.run_plugin('local_playlist_import',
+                                      {'pid': entry['playlist_id'],
+                                       'title': _title}))])
+
+        items, content = lists.paged(
+            fetch, _pl_builder,
             'search_results', {'q': query, 'kind': 'playlist'}, page=page)
     elif kind == 'trailer':
         search_query = '{} {}'.format(query, localization.trailer_query()).strip()
@@ -318,11 +330,19 @@ def charts(handle, params):
     sections = yt.chart_sections()
     items = [lists.folder_item(
         'Top Artists', 'chart_artists', config.icon('topartists'), {})]
-    items += [lists.folder_item(entry['title'], 'chart_videos',
-                                entry.get('image') or config.icon('charts'),
-                                {'url': entry.get('playlist_id'),
-                                 'title': entry.get('title')})
-              for entry in sections if entry.get('playlist_id')]
+    for entry in sections:
+        if not entry.get('playlist_id'):
+            continue
+        _title = (lists.clean_title(entry.get('title') or '')
+                  or entry.get('title') or '')
+        items.append(lists.folder_item(
+            _title, 'chart_videos',
+            entry.get('image') or config.icon('charts'),
+            {'url': entry.get('playlist_id'), 'title': _title},
+            cm=[('[B][COLOR FF00CED1]Import playlist[/COLOR][/B]',
+                 lists.run_plugin('local_playlist_import',
+                                  {'pid': entry.get('playlist_id'),
+                                   'title': _title}))]))
     build(handle, [item[0:3] for item in items], content=None)
 
 
@@ -414,6 +434,8 @@ def sub_channel(handle, params):
         return
     title = (info or {}).get('channel') or ''
     store.subscribe(title, 'https://www.youtube.com/channel/' + channel_id)
+    import lists
+    lists.clear_menu_memo()
     _notify('Subscribed to {}'.format(title))
 
 
@@ -520,10 +542,15 @@ def channel_playlists(handle, params):
         entry = entry or {}
         if not entry.get('playlist_id'):
             return None
-        return lists.folder_item(entry.get('title') or entry['playlist_id'],
-                                 'playlist', entry.get('image'),
+        title = (lists.clean_title(entry.get('title') or '')
+                 or entry.get('title') or entry['playlist_id'])
+        return lists.folder_item(title, 'playlist', entry.get('image'),
                                  {'url': entry['playlist_id']},
-                                 description=entry.get('count', ''))
+                                 description=entry.get('count', ''),
+                                 cm=[('[B][COLOR FF00CED1]Import playlist[/COLOR][/B]',
+                                      lists.run_plugin('local_playlist_import',
+                                                       {'pid': entry['playlist_id'],
+                                                        'title': title}))])
 
     items, content = lists.paged(
         lambda limit: yt.channel_playlists(url, limit=limit),
@@ -534,28 +561,22 @@ def channel_playlists(handle, params):
 @route('playlist')
 def playlist(handle, params):
     import lists
-    from browse import constants, yt
+    from browse import yt
     url = params.get('url') or ''
     pid = _playlist_id(url)
-    page = _page(params)
-    requested = page * constants.results_per_page() + 1
     if not pid:
         build(handle, [], content='videos')
         return
     try:
-        source = yt.playlist_videos(pid, limit=requested)
+        source = yt.playlist_videos(pid, limit=200)
     except Exception as exc:
-        config.log('playlist page {} failed: {}'.format(page, exc))
+        config.log('playlist failed: {}'.format(exc))
         source = []
     source = lists.fill_missing_meta(source)
-
-    def fetch(limit):
-        return source
-    items, content = lists.paged(
-        fetch,
-        lambda entry: lists.video_item(entry, 'play'),
-        'playlist', {'url': url}, page=page)
-    build(handle, items, content=content)
+    lists.set_listing('playlist', {'url': url}, 1)
+    lists.set_context(source)
+    items = [lists.video_item(entry, 'play') for entry in source]
+    build(handle, [item[0:3] for item in items], content='videos')
 
 
 # ----------------------------------------------------------------------- playback
@@ -601,6 +622,8 @@ def no_autoplay(handle, params):
     video_id = params.get('video_id') or ''
     if video_id:
         queue.block(video_id)
+    import lists
+    lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         'Blocked from autoplay', config.addon_icon(), time=2500, sound=False)
@@ -612,6 +635,8 @@ def no_autoplay(handle, params):
 def unblock(handle, params):
     from music import queue
     queue.unblock(params.get('video_id') or '')
+    import lists
+    lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         'Unblocked', config.addon_icon(), time=2500, sound=False)
@@ -625,6 +650,8 @@ def subscribe(handle, params):
     import store
     store.subscribe(params.get('title') or '', params.get('url') or '',
                     params.get('image') or '')
+    import lists
+    lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         'Subscribed to {}'.format(params.get('title') or ''),
@@ -637,6 +664,8 @@ def subscribe(handle, params):
 def unsubscribe(handle, params):
     import store
     store.unsubscribe(params.get('url') or '')
+    import lists
+    lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         'Unsubscribed', config.addon_icon(), time=2500, sound=False)
@@ -723,15 +752,9 @@ def local_playlists(handle, params):
 def local_playlist(handle, params):
     import lists
     import store
-    from browse import constants
     pid = params.get('pid') or ''
-    name = params.get('title') or ''
     entries = lists.fill_missing_meta(store.get_local_playlist_tracks(pid))
-    page = _page(params)
-    per_page = constants.results_per_page()
-    start = (page - 1) * per_page
-    end = start + per_page
-    lists.set_listing('local_playlist', {'pid': pid}, page)
+    lists.set_listing('local_playlist', {'pid': pid}, 1)
     lists.set_context(entries)
 
     def builder(entry):
@@ -741,18 +764,13 @@ def local_playlist(handle, params):
                               {'pid': pid,
                                'video_id': entry.get('video_id')}))])
 
-    items, content = lists.paged(lambda limit: entries, builder,
-                                 'local_playlist', {'pid': pid}, page=page)
-    items.append(lists.action_item(
-        '[B][COLOR FF00CED1]Rename playlist[/COLOR][/B]',
-        'local_playlist_rename', config.icon('playlists'),
-        {'pid': pid, 'title': name}, folder=False))
-    items.append(lists.action_item(
-        '[B][COLOR FFFF5555]Delete playlist[/COLOR][/B]',
-        'local_playlist_delete', config.icon('disconnect'),
-        {'pid': pid, 'title': name}, folder=False))
+    items = []
+    for entry in entries:
+        built = builder(entry)
+        if built:
+            items.append(built)
     build(handle, [item[0:3] if len(item) > 3 else item for item in items],
-          content=content)
+          content='videos')
 
 
 @route('local_playlist_play')
@@ -882,6 +900,40 @@ def local_playlist_delete(handle, params):
     finish(handle)
     xbmc.executebuiltin('Container.Update({}?mode=local_playlists,replace)'.format(
         BASE_URL))
+
+
+@route('local_playlist_import')
+def local_playlist_import(handle, params):
+    import lists
+    import store
+    from browse import yt
+    pid = _playlist_id(params.get('pid') or params.get('url') or '')
+    title = params.get('title') or 'Playlist'
+    if not pid:
+        cancel(handle)
+        return
+    try:
+        videos = yt.playlist_videos(pid, limit=200)
+    except Exception as exc:
+        config.log('playlist import failed: {}'.format(exc), xbmc.LOGERROR)
+        videos = []
+    videos = [entry for entry in (videos or []) if (entry or {}).get('video_id')]
+    if not videos:
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+            'Nothing to import', config.addon_icon(), time=2500, sound=False)
+        cancel(handle)
+        return
+    new_id = store.create_local_playlist(title)
+    added = 0
+    for entry in videos:
+        if store.add_to_local_playlist(new_id, dict(entry)) == 'added':
+            added += 1
+    xbmcgui.Dialog().notification(
+        '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
+        'Imported {} to [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(added, title),
+        config.addon_icon(), time=2500, sound=False)
+    cancel(handle)
 
 
 @route('history')
