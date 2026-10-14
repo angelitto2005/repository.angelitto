@@ -818,6 +818,59 @@ def _kodi_delete_resume_bookmark(tmdb_id, content_type, season=None, episode=Non
     except Exception as e:
         xbmc.log(f"[TMDb Movies] [RESUME] Bookmark Kodi stergere error: {e}", xbmc.LOGERROR)
 
+_BOOKMARK_WIPE_PROP = 'tmdbmovies.bookmarks_dirty'
+
+def _wipe_plugin_bookmark_db():
+    try:
+        import glob
+        import sqlite3
+        db_dir = xbmcvfs.translatePath('special://userdata/Database/')
+        for db_path in glob.glob(os.path.join(db_dir, 'MyVideos*.db')):
+            try:
+                if os.path.getsize(db_path) == 0:
+                    continue
+            except:
+                continue
+            try:
+                conn = sqlite3.connect(db_path, timeout=2)
+                cur = conn.cursor()
+                cur.execute("SELECT idFile FROM files WHERE strFilename LIKE '%plugin.video.tmdbmovies%'")
+                ids = [r[0] for r in cur.fetchall()]
+                if ids:
+                    for _tbl in ('bookmark', 'streamdetails', 'files'):
+                        try:
+                            cur.executemany("DELETE FROM %s WHERE idFile=?" % _tbl, [(i,) for i in ids])
+                        except:
+                            pass
+                    conn.commit()
+                conn.close()
+            except:
+                pass
+    except:
+        pass
+
+def wipe_plugin_bookmarks():
+    _wipe_plugin_bookmark_db()
+    try:
+        import xbmcgui
+        xbmcgui.Window(10000).setProperty(_BOOKMARK_WIPE_PROP, 'dirty')
+    except:
+        pass
+
+def wipe_plugin_bookmarks_followup():
+    try:
+        import xbmcgui
+        if xbmcgui.Window(10000).getProperty(_BOOKMARK_WIPE_PROP) != 'dirty':
+            return
+    except:
+        return
+    _wipe_plugin_bookmark_db()
+    try:
+        import xbmcgui
+        xbmcgui.Window(10000).clearProperty(_BOOKMARK_WIPE_PROP)
+    except:
+        pass
+
 def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode=None):
     """Elimina resume-ul (toate serverele autorizate + tabela locala) si refresheaza."""
     # 1. Server MDBList (daca e autorizat) - 404 = sesiune inexistenta, nu e eroare

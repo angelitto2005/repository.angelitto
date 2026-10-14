@@ -1351,25 +1351,19 @@ def clear_all_caches_with_notification():
 
 def set_resume_point(li, resume_seconds, total_seconds):
     """
-    Sets the resume point for a ListItem.
-    Compatible with Kodi 20+ (no deprecation warnings).
+    Directory rows stay non-resumable for Kodi native prompt; progress goes to WatchedProgress.
     """
     try:
-    # New method (Kodi 20+)
         info_tag = li.getVideoInfoTag()
+        info_tag.setResumePoint(0.0, 0.0)
         if resume_seconds > 0 and total_seconds > 0:
-            info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
-        else:
-            info_tag.setResumePoint(0.0, 0.0)
+            percent = int((float(resume_seconds) / float(total_seconds)) * 100)
+            if 0 < percent < 100:
+                li.setProperty('WatchedProgress', str(percent))
     except AttributeError:
-        # Fallback for Kodi 19 (Leia)
         try:
-            if resume_seconds > 0 and total_seconds > 0:
-                li.setProperty('resumetime', str(int(resume_seconds)))
-                li.setProperty('totaltime', str(int(total_seconds)))
-            else:
-                li.setProperty('resumetime', '0')
-                li.setProperty('totaltime', '0')
+            li.setProperty('resumetime', '0')
+            li.setProperty('totaltime', '0')
         except Exception:
             pass
     except Exception:
@@ -1671,15 +1665,33 @@ def upload_logfile():
         
         if isinstance(text, str):
             text = text.encode('utf-8', errors='ignore')
-            
-        response = requests.post(f"{url}documents", data=text, timeout=10.0).json()
+
+        trimmed = False
+        if len(text) > 350000:
+            cut = text[-350000:].find(b'\n')
+            text = text[-350000 + cut + 1:] if cut > 0 else text[-350000:]
+            trimmed = True
+
+        response = requests.post(f"{url}documents", data=text, timeout=20.0)
         xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
-        
-        if 'key' in response:
-            link = f"{url}{response['key']}"
+
+        if response.status_code != 200:
+            body = (response.text or '')[:200]
+            dialog.ok("Error", f"Upload failed: server returned HTTP {response.status_code}.\n{body}")
+            return
+
+        try:
+            data = response.json()
+        except Exception:
+            body = (response.text or '')[:200]
+            dialog.ok("Error", f"Upload failed: server response was not JSON.\n{body}")
+            return
+
+        if 'key' in data:
+            link = f"{url}{data['key']}"
             colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
-            # Redus la 2 randuri
-            dialog.ok("Upload Successful", f"The log was uploaded successfully!\n\nLink: {colored_link}")
+            extra = "\n(Log trimmed to last ~350KB, paste limit.)" if trimmed else ""
+            dialog.ok("Upload Successful", f"The log was uploaded successfully!{extra}\n\nLink: {colored_link}")
         else:
             dialog.ok("Error", "Upload failed. Check the Kodi log.")
             

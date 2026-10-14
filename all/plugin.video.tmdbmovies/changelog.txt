@@ -1,3 +1,8 @@
+1.1.313
+- Resume from widgets asks every time now. Fixes silent play-from-start on Nimbus and other skins.
+- Resume seek waits for the real duration before seeking instead of a fixed delay, so slow opens no longer start from zero after choosing Resume.
+- Log upload to pastebin trims large logs to the last ~350KB (paste limit) and shows the real server error instead of a JSON parse failure.
+
 1.1.312
 - New Downloads tab in Settings: save to Addon Data (default), a custom folder, or Split Folders (separate Movies / TV Shows locations, local drive or SMB share)
 - Download info panel option moved from General into the Downloads tab, so Defaults resets only download settings.

@@ -513,21 +513,18 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         else: 
             tag.setPlaycount(0)
             
-        # ✅ SETAM CERCULET PROGRES (indiferent daca e vizionat sau nu, daca utilizatorul a reinceput vizionarea)
         if 'resume_percent' in info_data and info_data['resume_percent'] > 0:
             percent = float(info_data['resume_percent'])
-            
             if duration == 0:
                 duration = 7200 if info_data.get('mediatype') == 'movie' else 2700
                 try: tag.setDuration(duration)
                 except: pass
-            
-            resume_time = int((percent / 100.0) * duration)
-            
-            try: 
-                tag.setResumePoint(float(resume_time), float(duration))
-            except: 
+            try:
+                tag.setResumePoint(0.0, 0.0)
+            except:
                 pass
+            if 0 < percent < 100:
+                _safe_set_prop(li, 'WatchedProgress', str(int(percent)))
             
     except Exception as e:
         log(f"[METADATA] Error: {e}", xbmc.LOGERROR)

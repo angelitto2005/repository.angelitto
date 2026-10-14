@@ -15,7 +15,7 @@ from resources.lib.core.config import get_headers, BASE_URL, API_KEY, IMG_BASE, 
 from resources.lib.core.utils import log, get_json, extract_details, get_language, clean_text
 from resources.lib.playback.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group
 from resources.lib.api.tmdb_api import set_metadata
-from resources.lib.providers.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble
+from resources.lib.providers.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble, wipe_plugin_bookmarks
 from resources.lib import subtitle as subtitles
 from resources.lib.providers import trakt_sync
 from resources.lib.core.cache import MainCache
@@ -61,13 +61,6 @@ def _current_handle():
         return int(sys.argv[1])
     except Exception:
         return -1
-
-
-def _current_win_id():
-    try:
-        return int(xbmcgui.getCurrentWindowId())
-    except:
-        return 0
 
 
 def _kodi_major():
@@ -2104,6 +2097,10 @@ def start_playback_monitor(player_instance, dialog=None):
             for prop in props_to_clear: win.clearProperty(prop)
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error clearing properties: {e}")
+        try:
+            wipe_plugin_bookmarks()
+        except Exception as e:
+            log(f"[PLAYER-MONITOR] Error wiping plugin bookmarks: {e}")
         
         # VALIDARE DATE PENTRU SALVARE
         if last_known_progress <= 0 or last_known_total <= 0:
@@ -3201,7 +3198,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     else:
                         log("[RESUME] do_resume: player-ul nu a pornit in 15s, abandon")
                         return
-                    xbmc.sleep(3000)
+                    for _ in range(40):
+                        if not player.isPlaying(): return
+                        try:
+                            if float(player.getTotalTime() or 0) > 0: break
+                        except: pass
+                        xbmc.sleep(250)
                     target_pos = float(resume_time)
                     for attempt in range(5):
                         if not player.isPlaying(): return
@@ -3655,32 +3657,18 @@ def list_sources(params):
     ids = {}
     
     # CALCULARE POZITIE RESUME
-    # Decizia de resume se face DIN SEMNALELE KODI, nu din skin:
-    #   - argv[3]='resume:true'  -> dialogul NATIV a aparut (fereastra video) si
-    #     userul a ales "Resume from X". Kodi face singur seek-ul din bookmark
-    #     (StartOffset sentinel -> PlayFile -> options.starttime). Nu intervenim.
-    #   - argv[3]='resume:false' + fereastra video (win id != 10000) + bookmark
-    #     exista in MyVideos*.db -> dialogul nativ a aparut si a fost deja
-    #     raspuns cu "Play from beginning". Play 0, fara dialogul nostru.
-    #   - Altfel (RunPlugin binge argv[1]=='-1', click din Home-widget fereastra
-    #     10000 = PlayMedia builtin cu item fresh = nativ IMPOSIBIL, sau fereastra
-    #     video FARA bookmark = click pe item nerezumabil din lista: argv='resume:false'
-    #     e doar flag-ul implicit al invocarii, dialogul nativ NU a aparut)
-    #     -> dialogul nostru, pe baza bazei locale de progres (autoritara).
-    # NOTA: bookmark-ul din MyVideos (scris la stop de SaveFileStateJob, keyed by
-    # plugin URL) e singura dovada ca dialogul nativ chiar a rulat pe click:
-    # cu bookmark existent, GetResumeBookMark(path) reusesc -> item-ul e resumable ->
-    # nativ a afisat. Fara bookmark, argv='resume:false' NU inseamna "nativ a raspuns",
-    # ci doar invocare standard a plugin-ului (vezi cazul filmelor din Trending Today,
-    # unde DialogContextMenu.xml NU se incarca niciodata la click pe movie nerezumabil).
+    # Randurile de director nu au resume point pe tag si bookmarkurile plugin
+    # sunt sterse la stop, deci dialogul NATIV nu poate aparea pe ele.
+    # Singura exceptie e libraria Kodi (.strm): acolo nativul ramane posibil.
+    #   - argv[3]='resume:true' -> nativul a ales Resume (doar librarie).
+    #     Kodi face seek din bookmark, nu intervenim.
+    #   - orice altceva -> dialogul nostru din baza locala (autoritara).
     resume_time = 0
     native_resume_mode = False
     try: resume_from_url = int(params.get('resume_time', 0))
     except: resume_from_url = 0
 
     resume_argv = sys.argv[3] if len(sys.argv) > 3 else ''
-    invoke_handle = sys.argv[1] if len(sys.argv) > 1 else ''
-    is_runplugin = (invoke_handle == '-1')
 
     if resolve_only:
         # TMDb Helper JSON player: skip resume calculation, just resolve
@@ -3691,25 +3679,9 @@ def list_sources(params):
         # Nu intrebam noi si NU facem player.play() (ar reseta sentinel-ul).
         native_resume_mode = True
         log("[RESUME] resume:true -> dialog nativ a ales Resume, Kodi face seek din bookmark")
-    elif (resume_argv == 'resume:false' and _current_win_id() == 10000):
-        # Home-widget (win id 10000): click pe item de widget = CDirectoryProvider::OnClick
-        # -> ChoosePlayOrResume -> dialogul NATIV a aparut (item-ul de widget pastreaza
-        # resume point pe VideoInfoTag). resume:false = userul a ales "Play from beginning"
-        # -> play 0, fara dialogul nostru (altfel apar 2 dialoguri).
-        # NOTA: bookmark-ul din MyVideos NU e folosit ca semnal aici — el e scris de
-        # SaveFileStateJob la ORICE stop anterior (persistent), deci existenta lui nu
-        # dovedeste ca dialogul nativ a rulat pe click-ul curent (vezi In Progress Episodes,
-        # unde argv='resume:false' e doar flag-ul implicit al listelor de plugin).
-        native_resume_mode = False
-        resume_time = 0
-        log("[RESUME] resume:false + Home-widget (win=10000) -> nativ a ales 'Play from beginning', fara dialogul nostru")
     else:
-        # Dialogul nostru in TOATE cazurile ramase: RunPlugin (binge, argv[1]=='-1'),
-        # click din Home-widget (fereastra 10000, PlayMedia builtin = nativ imposibil),
-        # sau fereastra video FARA bookmark (crash la stop pe AF3 / progres de pe alt
-        # dispozitiv -> bookmark lipsa, dar progres exista local). Baza locala e sursa
-        # autoritara si proaspata; valoarea din URL (pusa de builderele de liste) e
-        # doar fallback.
+        # Dialogul nostru in toate cazurile: baza locala e sursa autoritara;
+        # valoarea din URL e doar fallback pentru baze golite.
         progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
         log(f"[RESUME] progress_value: {progress_value}, tmdb_id: {tmdb_id}, c_type: {c_type}")
         

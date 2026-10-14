@@ -680,6 +680,11 @@ def run_plugin():
     mode = params.get('mode')
     handle = get_handle()
     _migrate_simkl_status()
+    try:
+        from resources.lib.providers.watched_provider import wipe_plugin_bookmarks_followup
+        wipe_plugin_bookmarks_followup()
+    except:
+        pass
 
     # Sync HANDLE across modules if already imported (stale copies with reuselanguageinvoker)
     if 'resources.lib.core.config' in sys.modules:
