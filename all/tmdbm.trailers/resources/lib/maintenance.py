@@ -63,28 +63,32 @@ def _version_tuple(value):
 
 
 def check_addon_update():
+    """Return 'upgrade', 'downgrade' or None so the caller can react to a
+    real upgrade (for example forcing a library sync right away)."""
     try:
         current = config.ADDON.getAddonInfo('version')
     except Exception:
-        return False
+        return None
     try:
         saved = config.ADDON.getSetting('installed_version')
     except Exception:
         saved = ''
     if saved == current:
-        return False
+        return None
     saved_tuple = _version_tuple(saved)
     current_tuple = _version_tuple(current)
     if saved and saved_tuple is not None and current_tuple is not None \
             and saved_tuple > current_tuple:
         config.log('[Maintenance] Downgrade {} -> {}; version saved, '
                    'no cleanup.'.format(saved, current))
+        action = 'downgrade'
     else:
         config.log('[Maintenance] Update {} -> {}; cleaning '
                    'settings.'.format(saved or '?', current))
         clean_settings()
+        action = 'upgrade'
     try:
         config.ADDON.setSetting('installed_version', current)
     except Exception:
         pass
-    return True
+    return action

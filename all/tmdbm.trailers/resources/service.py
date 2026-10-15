@@ -120,7 +120,20 @@ def _sync_after_connect():
     thread.start()
 
 
-def _maybe_periodic_sync(syncing):
+def _remote_library_empty():
+    """True when the account mirror holds nothing at all. After a cache
+    clear the sync stamp can say 'synced recently' while every folder is
+    empty, so the stamp alone must not block the refresh."""
+    try:
+        import store
+        return not (store.get_library('subscription_feed')
+                    or store.get_library('subscribed_channels')
+                    or store.get_library('saved_playlists'))
+    except Exception:
+        return False
+
+
+def _maybe_periodic_sync(syncing, force=False):
     if syncing['busy']:
         return
     try:
@@ -133,8 +146,19 @@ def _maybe_periodic_sync(syncing):
             last = int(store.get_state('last_yt_sync').get('ts') or 0)
         except (TypeError, ValueError):
             last = 0
-        if time.time() - last < 24 * 3600:
+        age = time.time() - last
+        empty = _remote_library_empty()
+        if not force and age < 24 * 3600 and not empty:
+            config.log('periodic sync: last run {:.1f}h ago (next in '
+                       '{:.1f}h)'.format(age / 3600.0,
+                                         (24 * 3600 - age) / 3600.0))
             return
+        if force and age < 1800 and not empty:
+            config.log('update sync: already synced {:.1f}h ago'.format(
+                age / 3600.0))
+            return
+        config.log('update sync: refreshing the account now' if force
+                   else 'periodic sync: mirror empty, refreshing now')
         syncing['busy'] = True
         thread = threading.Thread(target=_periodic_sync_bg, args=(syncing,),
                                   daemon=True)
@@ -773,9 +797,10 @@ def run():
     config.log('Service started')
     _publish_locale(_locale_key())
     _publish_settings()
+    updated = None
     try:
         import maintenance
-        maintenance.check_addon_update()
+        updated = maintenance.check_addon_update()
     except Exception as exc:
         config.log('update check failed: {}'.format(exc))
     try:
@@ -826,6 +851,10 @@ def run():
             '{:.1f}h ago'.format(_age_h) if _age_h >= 0 else 'never',
             '{:.1f}h'.format(max(0.0, 24 - _age_h)) if _age_h >= 0 else 'now'),
             always=True)
+        if updated == 'upgrade':
+            config.log('addon upgraded: refreshing the account now',
+                       always=True)
+            _maybe_periodic_sync(syncing, force=True)
     except Exception:
         pass
     try:
