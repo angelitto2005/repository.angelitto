@@ -136,6 +136,35 @@ def channel_playlists(url, limit=25):
     return _channel_pl(url, limit, configure())
 
 
+@cache_function(cache_duration(720))
+def _channel_av(url, locale):
+    localization.configure()
+    from . import rich as _rich
+    return _rich.channel_avatar(url) or ''
+
+
+def channel_avatar(url):
+    try:
+        return _channel_av(url, configure())
+    except Exception:
+        return ''
+
+
+@cache_function(cache_duration(720))
+def _channel_hd(url, locale):
+    localization.configure()
+    from . import rich as _rich
+    avatar, title = _rich.channel_header(url)
+    return (avatar or '', title or '')
+
+
+def channel_header(url):
+    try:
+        return _channel_hd(url, configure())
+    except Exception:
+        return '', ''
+
+
 @cache_function(cache_duration(30))
 def _playlist(playlist_id, limit, locale):
     localization.configure()

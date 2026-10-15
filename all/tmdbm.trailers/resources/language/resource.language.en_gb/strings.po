@@ -276,3 +276,464 @@ msgstr "Shuffled"
 msgctxt "#32076"
 msgid "Similar songs"
 msgstr "Similar songs"
+
+msgctxt "#32077"
+msgid "YouTube network family"
+msgstr "YouTube network family"
+
+msgctxt "#32078"
+msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+
+msgctxt "#32079"
+msgid "Auto"
+msgstr "Auto"
+
+msgctxt "#32080"
+msgid "IPv4 only"
+msgstr "IPv4 only"
+
+msgctxt "#32081"
+msgid "IPv6 only"
+msgstr "IPv6 only"
+
+msgctxt "#32032"
+msgid "UI language"
+msgstr "UI language"
+
+msgctxt "#32083"
+msgid "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+msgstr "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+
+msgctxt "#32084"
+msgid "Auto"
+msgstr "Auto"
+
+msgctxt "#32085"
+msgid "English"
+msgstr "English"
+
+msgctxt "#32086"
+msgid "Romanian"
+msgstr "Romanian"
+
+msgctxt "#32087"
+msgid "Hungarian"
+msgstr "Hungarian"
+
+msgctxt "#32088"
+msgid "Troubleshooting"
+msgstr "Troubleshooting"
+
+msgctxt "#32306"
+msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
+msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
+
+msgctxt "#32307"
+msgid "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
+msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
+
+msgctxt "#32091"
+msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+msgstr "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+
+msgctxt "#32092"
+msgid "Show a QR card with the donation link."
+msgstr "Show a QR card with the donation link."
+
+msgctxt "#32100"
+msgid "Search"
+msgstr "Search"
+
+msgctxt "#32101"
+msgid "Trending"
+msgstr "Trending"
+
+msgctxt "#32102"
+msgid "Random music"
+msgstr "Random music"
+
+msgctxt "#32103"
+msgid "Live"
+msgstr "Live"
+
+msgctxt "#32104"
+msgid "Trailers"
+msgstr "Trailers"
+
+msgctxt "#32105"
+msgid "Charts"
+msgstr "Charts"
+
+msgctxt "#32106"
+msgid "My YouTube"
+msgstr "My YouTube"
+
+msgctxt "#32107"
+msgid "Feed"
+msgstr "Feed"
+
+msgctxt "#32108"
+msgid "Watch Later"
+msgstr "Watch Later"
+
+msgctxt "#32109"
+msgid "History"
+msgstr "History"
+
+msgctxt "#32110"
+msgid "Local Playlists"
+msgstr "Local Playlists"
+
+msgctxt "#32111"
+msgid "Settings"
+msgstr "Settings"
+
+msgctxt "#32112"
+msgid "Search YouTube"
+msgstr "Search YouTube"
+
+msgctxt "#32113"
+msgid "Search Now"
+msgstr "Search Now"
+
+msgctxt "#32114"
+msgid "Empty Search"
+msgstr "Empty Search"
+
+msgctxt "#32115"
+msgid "Delete"
+msgstr "Delete"
+
+msgctxt "#32116"
+msgid "Delete all search history"
+msgstr "Delete all search history"
+
+msgctxt "#32117"
+msgid "Videos"
+msgstr "Videos"
+
+msgctxt "#32118"
+msgid "Channels"
+msgstr "Channels"
+
+msgctxt "#32119"
+msgid "Playlists"
+msgstr "Playlists"
+
+msgctxt "#32120"
+msgid "Top Artists"
+msgstr "Top Artists"
+
+msgctxt "#32121"
+msgid "My subscriptions"
+msgstr "My subscriptions"
+
+msgctxt "#32122"
+msgid "Subscribed channels"
+msgstr "Subscribed channels"
+
+msgctxt "#32123"
+msgid "My Playlists"
+msgstr "My Playlists"
+
+msgctxt "#32124"
+msgid "Watch history"
+msgstr "Watch history"
+
+msgctxt "#32125"
+msgid "Sync now"
+msgstr "Sync now"
+
+msgctxt "#32126"
+msgid "Disconnect"
+msgstr "Disconnect"
+
+msgctxt "#32127"
+msgid "Finish activation"
+msgstr "Finish activation"
+
+msgctxt "#32128"
+msgid "Connect YouTube account (QR code)"
+msgstr "Connect YouTube account (QR code)"
+
+
+
+
+
+msgctxt "#32133"
+msgid "Cancel"
+msgstr "Cancel"
+
+msgctxt "#32134"
+msgid "New playlist"
+msgstr "New playlist"
+
+msgctxt "#32135"
+msgid "Playlist name"
+msgstr "Playlist name"
+
+msgctxt "#32136"
+msgid "Add to playlist"
+msgstr "Add to playlist"
+
+msgctxt "#32137"
+msgid "+ New playlist"
+msgstr "+ New playlist"
+
+msgctxt "#32138"
+msgid "Rename playlist"
+msgstr "Rename playlist"
+
+msgctxt "#32139"
+msgid "Delete playlist?"
+msgstr "Delete playlist?"
+
+msgctxt "#32140"
+msgid "Delete \"{}\" and its tracks?"
+msgstr "Delete \"{}\" and its tracks?"
+
+msgctxt "#32141"
+msgid "Remove from this playlist"
+msgstr "Remove from this playlist"
+
+msgctxt "#32142"
+msgid "Import playlist"
+msgstr "Import playlist"
+
+msgctxt "#32143"
+msgid "Added to {}"
+msgstr "Added to {}"
+
+msgctxt "#32144"
+msgid "Already in {}"
+msgstr "Already in {}"
+
+msgctxt "#32145"
+msgid "{} is full (200)"
+msgstr "{} is full (200)"
+
+msgctxt "#32146"
+msgid "Could not add video"
+msgstr "Could not add video"
+
+msgctxt "#32147"
+msgid "Removed from {}"
+msgstr "Removed from {}"
+
+msgctxt "#32148"
+msgid "Created {}"
+msgstr "Created {}"
+
+msgctxt "#32149"
+msgid "Deleted {}"
+msgstr "Deleted {}"
+
+msgctxt "#32150"
+msgid "Imported {} to {}"
+msgstr "Imported {} to {}"
+
+msgctxt "#32151"
+msgid "Nothing to import"
+msgstr "Nothing to import"
+
+msgctxt "#32152"
+msgid "Go to Channel"
+msgstr "Go to Channel"
+
+msgctxt "#32153"
+msgid "Subscribe"
+msgstr "Subscribe"
+
+msgctxt "#32154"
+msgid "Unsubscribe"
+msgstr "Unsubscribe"
+
+msgctxt "#32155"
+msgid "Add to Watch Later"
+msgstr "Add to Watch Later"
+
+msgctxt "#32157"
+msgid "Unblock this video"
+msgstr "Unblock this video"
+
+msgctxt "#32158"
+msgid "No autoplay for this video"
+msgstr "No autoplay for this video"
+
+msgctxt "#32159"
+msgid "Play"
+msgstr "Play"
+
+msgctxt "#32160"
+msgid "Next page {}"
+msgstr "Next page {}"
+
+msgctxt "#32161"
+msgid "UP Next"
+msgstr "UP Next"
+
+msgctxt "#32162"
+msgid "Blocked from autoplay"
+msgstr "Blocked from autoplay"
+
+msgctxt "#32163"
+msgid "Unblocked"
+msgstr "Unblocked"
+
+msgctxt "#32164"
+msgid "Subscribed to {}"
+msgstr "Subscribed to {}"
+
+
+
+msgctxt "#32167"
+msgid "Connect YouTube account"
+msgstr "Connect YouTube account"
+
+msgctxt "#32168"
+msgid "Disconnect YouTube account?"
+msgstr "Disconnect YouTube account?"
+
+msgctxt "#32169"
+msgid "The activation code expired, start again"
+msgstr "The activation code expired, start again"
+
+
+
+msgctxt "#32172"
+msgid "Still waiting for approval on your phone"
+msgstr "Still waiting for approval on your phone"
+
+msgctxt "#32173"
+msgid "Syncing YouTube..."
+msgstr "Syncing YouTube..."
+
+msgctxt "#32174"
+msgid "Sync failed: {}"
+msgstr "Sync failed: {}"
+
+
+
+msgctxt "#32177"
+msgid "No YouTube account connected"
+msgstr "No YouTube account connected"
+
+msgctxt "#32178"
+msgid "YouTube account disconnected"
+msgstr "YouTube account disconnected"
+
+msgctxt "#32179"
+msgid "YouTube account connected. Syncing..."
+msgstr "YouTube account connected. Syncing..."
+
+msgctxt "#32180"
+msgid "Shorts"
+msgstr "Shorts"
+
+msgctxt "#32181"
+msgid "Search YouTube for: {}"
+msgstr "Search YouTube for: {}"
+
+msgctxt "#32182"
+msgid "Disconnect the linked account? Local subscriptions remain."
+msgstr "Disconnect the linked account? Local subscriptions remain."
+
+msgctxt "#32183"
+msgid "Added to Watch Later"
+msgstr "Added to Watch Later"
+
+msgctxt "#32184"
+msgid "Channel not found"
+msgstr "Channel not found"
+
+msgctxt "#32185"
+msgid "Unsubscribed"
+msgstr "Unsubscribed"
+
+msgctxt "#32186"
+msgid "Remove from history"
+msgstr "Remove from history"
+
+msgctxt "#32187"
+msgid "Could not start the activation: {}"
+msgstr "Could not start the activation: {}"
+
+msgctxt "#32188"
+msgid "Open this address: {}\n\nEnter this code:\n{}"
+msgstr "Open this address: {}\n\nEnter this code:\n{}"
+
+
+
+msgctxt "#32191"
+msgid "Synced: {} channels, {} videos"
+msgstr "Synced: {} channels, {} videos"
+
+msgctxt "#32192"
+msgid "Cache cleared"
+msgstr "Cache cleared"
+
+msgctxt "#32193"
+msgid "Could not clear the cache"
+msgstr "Could not clear the cache"
+
+msgctxt "#32194"
+msgid "Playlist"
+msgstr "Playlist"
+
+msgctxt "#32195"
+msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+
+msgctxt "#32196"
+msgid "Account activation failed"
+msgstr "Account activation failed"
+
+msgctxt "#32197"
+msgid "The activation code expired"
+msgstr "The activation code expired"
+
+msgctxt "#32224"
+msgid "German"
+msgstr "German"
+
+msgctxt "#32229"
+msgid "Spanish"
+msgstr "Spanish"
+
+msgctxt "#32235"
+msgid "French"
+msgstr "French"
+
+msgctxt "#32243"
+msgid "Indonesian"
+msgstr "Indonesian"
+
+msgctxt "#32245"
+msgid "Italian"
+msgstr "Italian"
+
+msgctxt "#32267"
+msgid "Dutch"
+msgstr "Dutch"
+
+msgctxt "#32276"
+msgid "Portuguese"
+msgstr "Portuguese (Portugal)"
+
+msgctxt "#32277"
+msgid "Portuguese (Brazil)"
+msgstr "Portuguese (Brazil)"
+
+
+msgctxt "#32093"
+msgid "YouTube account status"
+msgstr "YouTube account status"
+
+msgctxt "#32094"
+msgid "Status: Connected"
+msgstr "Status: Connected"
+
+msgctxt "#32095"
+msgid "Channels: {} | Feed videos: {}"
+msgstr "Channels: {} | Feed videos: {}"

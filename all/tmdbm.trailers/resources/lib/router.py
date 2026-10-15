@@ -93,6 +93,7 @@ def _merge_remote(local_entries, remote_entries):
 @route('root')
 def root(handle, params):
     import lists
+    _build_roots()
     items = []
     for label, mode, image, folder in _ROOT_ITEMS:
         url, li, is_folder = lists.folder_item(label, mode, image,
@@ -106,6 +107,29 @@ def open_settings(handle, params):
     config.ADDON.openSettings()
 
 
+# ----------------------------------------------------------------- diagnostics
+@route('netcheck')
+def netcheck(handle, params):
+    """Network/TLS identity report for this device (resources/lib/netcheck.py).
+
+    Logs every line and shows the report in a text viewer, so the same report
+    can be collected from a Windows PC and from an Android box and diffed - the
+    "not a bot" gate is per egress IP, and two devices in one house rarely share
+    one. Run it on a headless box from a PC (webserver enabled):
+
+    Files.GetDirectory on
+    plugin://plugin.video.tmdbm.trailers/?mode=netcheck  (add &video=<id>
+    to also send one player API request and see the playabilityStatus).
+    """
+    import netcheck as _netcheck
+    report = _netcheck.run(api_video=params.get('video') or params.get('api'))
+    try:
+        xbmcgui.Dialog().textviewer('TMDbM Trailers - netcheck', report)
+    except Exception:
+        pass
+    finish(handle)
+
+
 # ------------------------------------------------------------------------ search
 @route('search')
 def search(handle, params):
@@ -115,26 +139,26 @@ def search(handle, params):
     items = []
     if prefill:
         items.append(lists.action_item(
-            'Search Now', 'search_input', config.icon('search'),
+            config.T(32113), 'search_input', config.icon('search'),
             {'q': prefill},
-            'Search YouTube for: {}'.format(prefill), folder=False))
+            config.T(32181).format(prefill), folder=False))
         items.append(lists.action_item(
-            'Empty Search', 'search_input', config.icon('search'), {},
+            config.T(32114), 'search_input', config.icon('search'), {},
             folder=False))
     else:
         items.append(lists.action_item(
-            'Search YouTube', 'search_input', config.icon('search'), {},
+            config.T(32112), 'search_input', config.icon('search'), {},
             folder=False))
     for query in store.get_searches():
         items.append(lists.folder_item(
             query, 'search_types',
             config.icon('trailers') or config.addon_icon() or config.icon('search'),
             {'q': query},
-            cm=[('[B][COLOR FFFF5555]Delete[/COLOR][/B]',
+            cm=[('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32115)),
                  lists.run_plugin('forget_search', {'q': query}))][0:3]))
     if store.get_searches():
         items.append(lists.action_item(
-            '[COLOR FFFF5555]Delete all search history[/COLOR]', 'clear_searches',
+            '[COLOR FFFF5555]{}[/COLOR]'.format(config.T(32116)), 'clear_searches',
             config.icon('history')))
     build(handle, items, content=None)
 
@@ -143,7 +167,7 @@ def search(handle, params):
 def search_input(handle, params):
     import store
     default = str(params.get('q') or '')
-    query = xbmcgui.Dialog().input('Search YouTube', default,
+    query = xbmcgui.Dialog().input(config.T(32112), default,
                                     type=xbmcgui.INPUT_ALPHANUM)
     if not query:
         return
@@ -173,15 +197,15 @@ def search_types(handle, params):
     import lists
     query = params.get('q') or ''
     items = [
-        lists.folder_item('Videos', 'search_results',
+        lists.folder_item(config.T(32117), 'search_results',
                           config.icon('videos'), {'q': query, 'kind': 'video'}),
-        lists.folder_item('Channels', 'search_results',
+        lists.folder_item(config.T(32118), 'search_results',
                           config.icon('subscribedch'),
                           {'q': query, 'kind': 'channel'}),
-        lists.folder_item('Playlists', 'search_results',
+        lists.folder_item(config.T(32119), 'search_results',
                           config.icon('playlists'),
                           {'q': query, 'kind': 'playlist'}),
-        lists.folder_item('Trailers', 'search_results',
+        lists.folder_item(config.T(32104), 'search_results',
                           config.icon('trailers'),
                           {'q': query, 'kind': 'trailer'}),
     ]
@@ -205,7 +229,8 @@ def search_results(handle, params):
             fetch, lambda entry: lists.folder_item(
                 entry['title'] or entry['channel_id'], 'channel',
                 entry['image'], {'url': 'https://www.youtube.com/channel/' +
-                                 entry['channel_id']},
+                                 entry['channel_id'],
+                                 'image': entry.get('image') or ''},
                 description=' '.join(x for x in (entry['subs'], entry['count']) if x)),
             'search_results', {'q': query, 'kind': 'channel'}, page=page)
     elif kind == 'playlist':
@@ -329,7 +354,7 @@ def charts(handle, params):
     from browse import yt
     sections = yt.chart_sections()
     items = [lists.folder_item(
-        'Top Artists', 'chart_artists', config.icon('topartists'), {})]
+        config.T(32120), 'chart_artists', config.icon('topartists'), {})]
     for entry in sections:
         if not entry.get('playlist_id'):
             continue
@@ -339,11 +364,42 @@ def charts(handle, params):
             _title, 'chart_videos',
             entry.get('image') or config.icon('charts'),
             {'url': entry.get('playlist_id'), 'title': _title},
-            cm=[('[B][COLOR FF00CED1]Import playlist[/COLOR][/B]',
+            cm=[('[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32142)),
                  lists.run_plugin('local_playlist_import',
                                   {'pid': entry.get('playlist_id'),
                                    'title': _title}))]))
     build(handle, [item[0:3] for item in items], content=None)
+
+
+_FILL_DATES = {'busy': False}
+
+
+def _fill_dates_bg(entries):
+    """Finish the metadata fill the directory timeout had to cut off.
+
+    Music charts carry no date at all, so the first visit only fills what fits
+    in the listing deadline. This runs the rest in the background and the next
+    visit shows them.
+    """
+    import threading as _threading
+    entries = [dict(entry or {}) for entry in entries or []]
+    if not entries or _FILL_DATES['busy']:
+        return
+
+    def _run():
+        try:
+            import lists
+            done = lists.fill_missing_meta(entries, timeout=60.0)
+            dated = sum(1 for entry in done if lists.entry_date(entry))
+            config.log('background meta fill: {}/{} with a date'.format(
+                dated, len(done)), always=True)
+        except Exception as exc:
+            config.log('background meta fill failed: {}'.format(exc))
+        finally:
+            _FILL_DATES['busy'] = False
+
+    _FILL_DATES['busy'] = True
+    _threading.Thread(target=_run, daemon=True).start()
 
 
 @route('chart_artists')
@@ -374,6 +430,7 @@ def chart_videos(handle, params):
         config.log('chart_videos page {} failed: {}'.format(page, exc))
         source = []
     source = lists.fill_missing_meta(source)
+    undated = [entry for entry in source if not lists.entry_date(entry)]
 
     def fetch(limit):
         return source
@@ -384,6 +441,8 @@ def chart_videos(handle, params):
     items, content = lists.paged(fetch, builder, 'chart_videos',
                                  {'url': url, 'title': title}, page=page)
     build(handle, items, content=content)
+    if undated:
+        _fill_dates_bg(undated)
 
 
 @route('random_music')
@@ -413,7 +472,7 @@ def go_channel(handle, params):
     info = meta.video_meta(video_id) if video_id else {}
     channel_id = (info or {}).get('channel_id') or ''
     if not channel_id:
-        _notify('Channel not found')
+        _notify(config.T(32184))
         return
     xbmc.executebuiltin('Container.Update({}?{},replace)'.format(
         BASE_URL, urlencode({'mode': 'channel',
@@ -430,13 +489,17 @@ def sub_channel(handle, params):
     info = meta.video_meta(video_id) if video_id else {}
     channel_id = (info or {}).get('channel_id') or ''
     if not channel_id:
-        _notify('Channel not found')
+        _notify(config.T(32184))
         return
     title = (info or {}).get('channel') or ''
-    store.subscribe(title, 'https://www.youtube.com/channel/' + channel_id)
+    _curl = 'https://www.youtube.com/channel/' + channel_id
+    store.subscribe(title, _curl)
+    import threading as _threading
+    _threading.Thread(target=_backfill_sub_thumbs, args=([_curl],),
+                      daemon=True).start()
     import lists
     lists.clear_menu_memo()
-    _notify('Subscribed to {}'.format(title))
+    _notify(config.T(32164).format(title))
 
 
 @route('channel')
@@ -448,21 +511,22 @@ def channel(handle, params):
     known = next((item for item in store.get_subscriptions()
                   if item.get('url') == url), None)
     name = title or (known or {}).get('title') or url
-    toggle = ('unsubscribe', '[B][COLOR FF00CED1]Unsubscribe[/COLOR][/B]') if known \
-        else ('subscribe', '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]')
+    toggle = ('unsubscribe', '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32154))) if known \
+        else ('subscribe', '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32153)))
     items = [
-        lists.folder_item('Videos', 'channel_videos', config.icon('videos'),
+        lists.folder_item(config.T(32117), 'channel_videos', config.icon('videos'),
                           {'url': url, 'tab': 'videos', 'title': name}),
-        lists.folder_item('Shorts', 'channel_videos', config.icon('shorts'),
+        lists.folder_item(config.T(32180), 'channel_videos', config.icon('shorts'),
                           {'url': url, 'tab': 'shorts', 'title': name}),
-        lists.folder_item('Live', 'channel_videos', config.icon('live'),
+        lists.folder_item(config.T(32103), 'channel_videos', config.icon('live'),
                           {'url': url, 'tab': 'streams', 'title': name}),
-        lists.folder_item('Playlists', 'channel_playlists',
+        lists.folder_item(config.T(32119), 'channel_playlists',
                           config.icon('playlists'), {'url': url}),
         lists.action_item(toggle[1], toggle[0],
                           config.icon('unsubscribe' if known else 'subscribe'),
                           {'url': url, 'title': name,
-                           'image': (known or {}).get('image', '')}),
+                           'image': params.get('image') or (known or {}).get('image', '')},
+                          folder=False),
     ]
     build(handle, [item[0:3] for item in items], content=None)
 
@@ -626,7 +690,7 @@ def no_autoplay(handle, params):
     lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Blocked from autoplay', config.addon_icon(), time=2500, sound=False)
+        config.T(32162), config.addon_icon(), time=2500, sound=False)
     cancel(handle)
     xbmc.executebuiltin('Container.Refresh')
 
@@ -639,22 +703,86 @@ def unblock(handle, params):
     lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Unblocked', config.addon_icon(), time=2500, sound=False)
+        config.T(32163), config.addon_icon(), time=2500, sound=False)
     cancel(handle)
     xbmc.executebuiltin('Container.Refresh')
 
 
 # ----------------------------------------------------------------------- library
+def _resolve_sub_info(url):
+    thumb = ''
+    owner = ''
+    try:
+        from browse import yt as _ytav
+        avatar, title = _ytav.channel_header(url) or ('', '')
+        if avatar.startswith('http'):
+            thumb = avatar
+        owner = title or ''
+    except Exception as exc:
+        config.log('sub avatar {} failed: {}'.format(url, str(exc)[:90]))
+    if not thumb or not owner:
+        try:
+            from browse import yt
+            videos = yt.channel_videos(url, limit=1) or []
+            if videos:
+                if not thumb and videos[0].get('image'):
+                    thumb = videos[0]['image']
+                if not owner:
+                    owner = videos[0].get('channel') or ''
+        except Exception as exc:
+            config.log('sub thumb {} failed: {}'.format(url, str(exc)[:90]))
+    return thumb, owner
+
+
+def _resolve_sub_image(url, image=''):
+    import store
+    image = str(image or '')
+    if image and not store.needs_avatar(image):
+        return image
+    thumb, _owner = _resolve_sub_info(url)
+    return thumb or image
+
+
+def _backfill_sub_thumbs(urls):
+    changed = False
+    try:
+        import store as _store
+        for url in urls or []:
+            try:
+                thumb, owner = _resolve_sub_info(url or '')
+            except Exception:
+                continue
+            if (thumb or owner) and _store.update_subscription(
+                    url or '', image=thumb or None, title=owner or None):
+                changed = True
+    except Exception as exc:
+        config.log('sub thumb backfill failed: {}'.format(str(exc)[:90]))
+        return
+    if changed:
+        try:
+            import xbmc as _xbmc
+            if not _xbmc.Player().isPlayingVideo():
+                xbmc.executebuiltin('Container.Refresh')
+        except Exception:
+            pass
+
+
 @route('subscribe')
 def subscribe(handle, params):
     import store
-    store.subscribe(params.get('title') or '', params.get('url') or '',
-                    params.get('image') or '')
+    import threading
+    title = params.get('title') or ''
+    url = params.get('url') or ''
+    image = params.get('image') or ''
+    store.subscribe(title, url, image)
+    if store.needs_avatar(image):
+        threading.Thread(target=_backfill_sub_thumbs, args=([url],),
+                         daemon=True).start()
     import lists
     lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Subscribed to {}'.format(params.get('title') or ''),
+        config.T(32164).format(params.get('title') or ''),
         config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
@@ -668,7 +796,7 @@ def unsubscribe(handle, params):
     lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Unsubscribed', config.addon_icon(), time=2500, sound=False)
+        config.T(32185), config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
 
@@ -680,7 +808,7 @@ def watch_later_add(handle, params):
     store.add_watch_later(lists.history_entry(params))
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Added to Watch Later', config.addon_icon(), time=2500, sound=False)
+        config.T(32183), config.addon_icon(), time=2500, sound=False)
     cancel(handle)
 
 
@@ -704,7 +832,7 @@ def watch_later(handle, params):
                           {'video_id': entry.get('video_id')}))]
         ) for entry in entries[start:end]]
     if len(entries) > end:
-        items.append(lists.folder_item('[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+        items.append(lists.folder_item('[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),
                                        'watch_later', config.icon('nextpage'),
                                        {'page': page + 1}))
     build(handle, items, content='videos', cache=False)
@@ -728,22 +856,22 @@ def local_playlists(handle, params):
         count = len(store.get_local_playlist_tracks(entry.get('id')))
         items.append(lists.folder_item(
             '{} [B][COLOR FFFFA500]({})[/COLOR][/B]'.format(
-                entry.get('name') or 'Playlist', count),
+                entry.get('name') or config.T(32194), count),
             'local_playlist', config.icon('playlists'),
             {'pid': entry.get('id'), 'title': entry.get('name') or ''},
-            cm=[('[B][COLOR FF00CED1]Play[/COLOR][/B]',
+            cm=[('[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32159)),
                  lists.run_plugin('local_playlist_play',
                                   {'pid': entry.get('id')})),
-                ('[B][COLOR FF00CED1]Rename playlist[/COLOR][/B]',
+                ('[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32138)),
                  lists.run_plugin('local_playlist_rename',
                                   {'pid': entry.get('id'),
                                    'title': entry.get('name') or ''})),
-                ('[B][COLOR FFFF5555]Delete playlist[/COLOR][/B]',
+                ('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32139)),
                  lists.run_plugin('local_playlist_delete',
                                   {'pid': entry.get('id'),
                                    'title': entry.get('name') or ''}))]))
     items.append(lists.action_item(
-        '[B][COLOR FF00CED1]New playlist[/COLOR][/B]', 'local_playlist_create',
+        '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32134)), 'local_playlist_create',
         config.icon('playlists'), {}, folder=False))
     build(handle, [item[0:3] for item in items], content=None)
 
@@ -753,13 +881,15 @@ def local_playlist(handle, params):
     import lists
     import store
     pid = params.get('pid') or ''
-    entries = lists.fill_missing_meta(store.get_local_playlist_tracks(pid))
+    original = store.get_local_playlist_tracks(pid)
+    entries = lists.fill_missing_meta(original)
+    lists.persist_filled('local_playlist_' + pid, original, entries)
     lists.set_listing('local_playlist', {'pid': pid}, 1)
     lists.set_context(entries)
 
     def builder(entry):
         return lists.video_item(entry, 'music_play', cm=[
-            ('[B][COLOR FFFF5555]Remove from this playlist[/COLOR][/B]',
+            ('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32141)),
              lists.run_plugin('local_playlist_remove',
                               {'pid': pid,
                                'video_id': entry.get('video_id')}))])
@@ -791,13 +921,14 @@ def local_playlist_play(handle, params):
 @route('local_playlist_create')
 def local_playlist_create(handle, params):
     import store
-    name = xbmcgui.Dialog().input('Playlist name') or ''
+    name = xbmcgui.Dialog().input(config.T(32135)) or ''
     name = name.strip()
     if name:
         store.create_local_playlist(name)
         xbmcgui.Dialog().notification(
             '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-            'Created [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name),
+            config.T(32148).format(
+                '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name)),
             config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
@@ -816,7 +947,7 @@ def local_playlist_add(handle, params):
     options = []
     member_of = []
     for entry in all_playlists:
-        name = entry.get('name') or 'Playlist'
+        name = entry.get('name') or config.T(32194)
         tracks = store.get_local_playlist_tracks(entry.get('id'))
         member = any(track.get('video_id') == video_id for track in tracks)
         member_of.append(member)
@@ -826,12 +957,12 @@ def local_playlist_add(handle, params):
         else:
             options.append('[B][COLOR FF00FF7F]+ {}[/COLOR][/B] {}'.format(name, count))
     choice = xbmcgui.Dialog().select(
-        'Add to playlist', options + ['+ New playlist'])
+        config.T(32136), options + [config.T(32137)])
     if choice is None or choice < 0:
         cancel(handle)
         return
     if choice == len(options):
-        name = xbmcgui.Dialog().input('Playlist name') or ''
+        name = xbmcgui.Dialog().input(config.T(32135)) or ''
         name = name.strip()
         if not name:
             cancel(handle)
@@ -841,7 +972,7 @@ def local_playlist_add(handle, params):
         result = store.add_to_local_playlist(pid, track)
     else:
         pid = all_playlists[choice].get('id')
-        picked = all_playlists[choice].get('name') or 'Playlist'
+        picked = all_playlists[choice].get('name') or config.T(32194)
         if member_of[choice]:
             store.remove_from_local_playlist(pid, video_id)
             result = 'removed'
@@ -849,15 +980,15 @@ def local_playlist_add(handle, params):
             result = store.add_to_local_playlist(pid, track)
     shown = '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(picked)
     if result == 'added':
-        message = 'Added to {}'.format(shown)
+        message = config.T(32143).format(shown)
     elif result == 'removed':
-        message = 'Removed from {}'.format(shown)
+        message = config.T(32147).format(shown)
     elif result == 'duplicate':
-        message = 'Already in {}'.format(shown)
+        message = config.T(32144).format(shown)
     elif result == 'full':
-        message = '{} is full (200)'.format(shown)
+        message = config.T(32145).format(shown)
     else:
-        message = 'Could not add video'
+        message = config.T(32146)
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         message, config.addon_icon(), time=2500, sound=False)
@@ -878,7 +1009,7 @@ def local_playlist_rename(handle, params):
     import store
     pid = params.get('pid') or ''
     name = xbmcgui.Dialog().input(
-        'Playlist name', params.get('title') or '') or ''
+        config.T(32135), params.get('title') or '') or ''
     name = name.strip()
     if name:
         store.rename_local_playlist(pid, name)
@@ -891,11 +1022,13 @@ def local_playlist_delete(handle, params):
     import store
     name = params.get('title') or 'playlist'
     if xbmcgui.Dialog().yesno(
-            'Delete playlist?', 'Delete [B][COLOR FFFFA500]{}[/COLOR][/B] and its tracks?'.format(name)):
+            config.T(32139), config.T(32140).format(
+                '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name))):
         store.delete_local_playlist(params.get('pid') or '')
         xbmcgui.Dialog().notification(
             '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-            'Deleted [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name),
+            config.T(32149).format(
+                '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(name)),
             config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Update({}?mode=local_playlists,replace)'.format(
@@ -908,7 +1041,7 @@ def local_playlist_import(handle, params):
     import store
     from browse import yt
     pid = _playlist_id(params.get('pid') or params.get('url') or '')
-    title = params.get('title') or 'Playlist'
+    title = params.get('title') or config.T(32194)
     if not pid:
         cancel(handle)
         return
@@ -921,7 +1054,7 @@ def local_playlist_import(handle, params):
     if not videos:
         xbmcgui.Dialog().notification(
             '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-            'Nothing to import', config.addon_icon(), time=2500, sound=False)
+            config.T(32151), config.addon_icon(), time=2500, sound=False)
         cancel(handle)
         return
     new_id = store.create_local_playlist(title)
@@ -931,7 +1064,8 @@ def local_playlist_import(handle, params):
             added += 1
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Imported {} to [B][COLOR FFFFA500]{}[/COLOR][/B]'.format(added, title),
+        config.T(32150).format(
+            added, '[B][COLOR FFFFA500]{}[/COLOR][/B]'.format(title)),
         config.addon_icon(), time=2500, sound=False)
     cancel(handle)
 
@@ -951,12 +1085,12 @@ def history(handle, params):
     lists.set_listing('history', {}, page)
     lists.set_context(entries)
     items = [lists.video_item(entry, 'play', cm=[
-        ('[B][COLOR FFFF5555]Remove from history[/COLOR][/B]',
+        ('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32186)),
          lists.run_plugin('remove_history',
                           {'video_id': entry.get('video_id')}))])
         for entry in entries[start:end]]
     if len(entries) > end:
-        items.append(lists.folder_item('[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+        items.append(lists.folder_item('[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),
                                        'history', config.icon('nextpage'),
                                        {'page': page + 1}))
     build(handle, items, content='videos', cache=False)
@@ -993,32 +1127,36 @@ def my_youtube(handle, params):
     items = []
     if account.get('connected'):
         items.append(lists.folder_item(
-            'My subscriptions', 'subscription_feed', config.icon('mysubscriptions')))
+            config.T(32121), 'subscription_feed', config.icon('mysubscriptions')))
         items.append(lists.folder_item(
-            'Subscribed channels', 'subscribed_channels',
+            config.T(32122), 'subscribed_channels',
             config.icon('subscribedch')))
         items.append(lists.folder_item(
-            'Watch Later', 'watch_later', config.icon('watchlater')))
+            config.T(32108), 'watch_later', config.icon('watchlater')))
         items.append(lists.folder_item(
-            'My Playlists', 'saved_playlists', config.icon('playlists')))
+            config.T(32123), 'saved_playlists', config.icon('playlists')))
         items.append(lists.folder_item(
-            'Watch history', 'history', config.icon('history')))
+            config.T(32124), 'history', config.icon('history')))
         items.append(lists.action_item(
-            '[B][COLOR FF00CED1]Sync now[/COLOR][/B]', 'sync_now',
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32125)), 'sync_now',
             config.icon('sync'), folder=False))
         items.append(lists.action_item(
-            '[B][COLOR FFFF5555]Disconnect[/COLOR][/B]', 'logout',
+            '[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32126)), 'logout',
             config.icon('disconnect'), folder=False))
     elif account.get('pending'):
         items.append(lists.folder_item(
-            '[B][COLOR FFFF4500]Finish activation[/COLOR][/B]', 'login',
+            '[B][COLOR FFFF4500]{}[/COLOR][/B]'.format(config.T(32127)), 'login',
             config.icon('subscribe')))
     else:
+        items.append(lists.folder_item(
+            config.T(32121), 'subscription_feed', config.icon('mysubscriptions')))
+        items.append(lists.folder_item(
+            config.T(32122), 'subscribed_channels',
+            config.icon('subscribedch')))
         items.append(lists.action_item(
-            '[B][COLOR FF00CED1]Connect YouTube account (QR code)[/COLOR][/B]',
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32128)),
             'login', config.icon('subscribe'),
-            description='Link your YouTube account to browse subscriptions, '
-                        'Watch Later, playlists and history.'))
+            description=config.T(32195)))
     build(handle, [item[0:3] for item in items], content=None)
 
 
@@ -1030,7 +1168,59 @@ def subscription_feed(handle, params):
     entries = store.get_library('subscription_feed')
     if not entries:
         return feed(handle, params)
+    try:
+        _local_only = [sub for sub in store.get_subscriptions()
+                       if isinstance(sub, dict)
+                       and sub.get('source') == 'local' and sub.get('url')]
+    except Exception:
+        _local_only = []
+    if _local_only:
+        from browse import constants as _constants, yt as _yt
+        try:
+            _per_channel = int(_constants.feed_per_channel())
+        except Exception:
+            _per_channel = 3
+        _urls = {sub.get('url') for sub in _local_only if sub.get('url')}
+        _seen = {entry.get('video_id') for entry in entries}
+        _fresh = [entry for entry in store.get_feed_cache()
+                  if isinstance(entry, dict)
+                  and entry.get('_feed_sub') in _urls
+                  and entry.get('video_id') not in _seen]
+        for entry in _fresh:
+            _seen.add(entry.get('video_id'))
+        if not _fresh:
+            _fresh = []
+            _added = 0
+            for sub in _local_only:
+                if _added >= 30:
+                    break
+                url = sub.get('url') or ''
+                name = sub.get('title') or url
+                if url not in _urls:
+                    continue
+                try:
+                    videos = _yt.channel_videos(url, limit=_per_channel)[:_per_channel]
+                except Exception as exc:
+                    config.log('mixed feed {} failed: {}'.format(url, str(exc)[:90]))
+                    continue
+                for entry in videos:
+                    item = dict(entry or {})
+                    if not item.get('video_id') or item.get('video_id') in _seen:
+                        continue
+                    _seen.add(item.get('video_id'))
+                    item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
+                    item['channel'] = item.get('channel') or name
+                    item['_local_only'] = True
+                    item['_feed_sub'] = url
+                    _fresh.append(item)
+                    _added += 1
+            store.set_feed_cache(_fresh)
+        _mirror_ids = {entry.get('video_id') for entry in entries}
+        entries = entries + [entry for entry in _fresh
+                             if entry.get('video_id') not in _mirror_ids]
+    original = list(entries)
     entries = lists.fill_missing_meta(entries)
+    lists.persist_filled('subscription_feed', original, entries)
     try:
         _hide_shorts = bool(config.get_bool('hide_shorts', False))
     except Exception:
@@ -1049,7 +1239,8 @@ def subscription_feed(handle, params):
     items = [lists.video_item(entry, 'play') for entry in entries[start:end]]
     if len(entries) > end:
         items.append(lists.folder_item(
-            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(
+                config.T(32160).format(page + 1)),
             'subscription_feed', config.icon('nextpage'), {'page': page + 1}))
     build(handle, items, content='videos', cache=False)
 
@@ -1066,26 +1257,36 @@ def feed(handle, params):
     need = (page + 1) * per_page + 1
     collected = []
     exhausted = True
-    for sub in store.get_subscriptions():
-        if len(collected) >= need:
-            exhausted = False
-            break
-        url = sub.get('url') or ''
-        name = sub.get('title') or url
-        if not url:
-            continue
-        try:
-            videos = yt.channel_videos(url, limit=per_channel)[:per_channel]
-        except Exception as exc:
-            config.log('feed {} failed: {}'.format(url, str(exc)[:100]))
-            continue
-        for entry in videos:
-            item = dict(entry or {})
-            if not item.get('video_id'):
+    _full = store.get_feed_full_cache()
+    if _full and len(_full.get('entries') or []) >= need:
+        collected = _full.get('entries') or []
+        exhausted = _full.get('exhausted', True)
+    else:
+        _subs = sorted(store.get_subscriptions(),
+                       key=lambda sub: -((sub or {}).get('added') or 0))
+        for sub in _subs:
+            if len(collected) >= need:
+                exhausted = False
+                break
+            url = sub.get('url') or ''
+            name = sub.get('title') or url
+            if not url:
                 continue
-            item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
-            item['channel'] = item.get('channel') or name
-            collected.append(item)
+            try:
+                videos = yt.channel_videos(url, limit=per_channel)[:per_channel]
+            except Exception as exc:
+                config.log('feed {} failed: {}'.format(url, str(exc)[:100]))
+                continue
+            for entry in videos:
+                item = dict(entry or {})
+                if not item.get('video_id'):
+                    continue
+                item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
+                item['channel'] = item.get('channel') or name
+                if sub.get('source') == 'local':
+                    item['_local_only'] = True
+                collected.append(item)
+        store.set_feed_full_cache(collected, need, exhausted)
     collected = lists.fill_missing_meta(collected)
     try:
         _hide_all = bool(config.get_bool('hide_shorts', False))
@@ -1101,7 +1302,7 @@ def feed(handle, params):
         for entry in collected[start:end]]
     if not exhausted or len(collected) > end:
         items.append(lists.folder_item(
-            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),
             'feed', config.icon('nextpage'), {'page': page + 1}))
     build(handle, items, content='videos', cache=False)
 
@@ -1111,17 +1312,32 @@ def subscribed_channels(handle, params):
     import lists
     from browse.constants import results_per_page
     import store
-    entries = store.get_library('subscribed_channels')
+    entries = [entry for entry in store.get_subscriptions()
+               if isinstance(entry, dict) and entry.get('url')]
+    entries.sort(key=lambda entry: -(entry.get('added') or 0))
+    _missing = [entry.get('url') for entry in entries
+                if store.needs_avatar(entry.get('image'))
+                or store.is_url_title(entry.get('title'),
+                                      entry.get('url'))][:3]
+    if _missing:
+        import threading as _threading
+        _threading.Thread(target=_backfill_sub_thumbs, args=(_missing,),
+                          daemon=True).start()
     page = _page(params)
     per_page = results_per_page()
     start = (page - 1) * per_page
     end = start + per_page
-    items = [lists.folder_item(entry['title'] or entry['url'], 'channel',
-                               entry.get('image'), {'url': entry['url']})
-             for entry in entries[start:end]]
+    items = []
+    for entry in entries[start:end]:
+        _label = entry.get('title') or entry.get('url')
+        if entry.get('source') == 'local':
+            _label = '{} [COLOR FF00FF7F][LOCAL][/COLOR]'.format(_label)
+        items.append(lists.folder_item(_label, 'channel',
+                                       entry.get('image'),
+                                       {'url': entry.get('url')}))
     if len(entries) > end:
         items.append(lists.folder_item(
-            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),
             'subscribed_channels', config.icon('nextpage'), {'page': page + 1}))
     build(handle, items, content=None)
 
@@ -1156,153 +1372,283 @@ def saved_playlists(handle, params):
              for entry in entries[start:end]]
     if len(entries) > end:
         items.append(lists.folder_item(
-            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),
             'saved_playlists', config.icon('nextpage'), {'page': page + 1}))
     build(handle, items, content=None)
 
 
 @route('login')
 def login(handle, params):
-    from account import youtube_sync
+    import threading
+    import time
+    import xbmc
+    from account import qr_login, youtube_sync
+    from auth_dialog import QRProgressDialog, run_modal_main_thread
     account = youtube_sync.status()
     if account.get('connected'):
-        _notify('YouTube account is already connected')
-        finish(handle, update=True)
-        return
-    if not account.get('pending'):
+        import store
         try:
-            youtube_sync.start_device_link()
-        except Exception as exc:
-            xbmcgui.Dialog().ok('Connect YouTube account',
-                                'Could not start the activation: {}'.format(exc))
-            finish(handle)
-            return
-    login_menu(handle, params)
-
-
-@route('login_menu')
-def login_menu(handle, params):
-    import lists
-    from account import qr_login, youtube_sync
+            n_subs = len(store.get_subscriptions())
+        except Exception:
+            n_subs = 0
+        try:
+            n_feed = len(store.get_library('subscription_feed'))
+        except Exception:
+            n_feed = 0
+        xbmcgui.Dialog().ok(
+            config.T(32093),
+            '{}\n{}'.format(config.T(32094),
+                            config.T(32095).format(n_subs, n_feed)))
+        _back_to_account(handle)
+        return
     pending = youtube_sync.pending_device_link()
     if not pending:
-        login(handle, params)
-        return
-    qr_path = ''
+        try:
+            pending = youtube_sync.start_device_link()
+        except Exception as exc:
+            xbmcgui.Dialog().ok(config.T(32167),
+                                config.T(32187).format(exc))
+            finish(handle)
+            return
     try:
         qr_path = qr_login.create(pending.get('qr_url', ''))
     except Exception as exc:
         config.log('QR render failed: {}'.format(exc))
-    if not qr_path:
-        xbmcgui.Dialog().ok(
-            'Connect YouTube account',
-            'Open this address: {}\n\nEnter this code:\n{}'.format(
-                pending.get('verification_url', ''), pending.get('user_code', '')))
-        finish(handle)
-        return
-    items = [
-        lists.action_item(
-            '[B][COLOR FF00CED1]Step 1 - Scan this QR code[/COLOR][/B]',
-            'show_qr', qr_path, {'path': qr_path},
-            description='Scan with the YouTube app on your phone (or open the '
-                        'activation page and enter the code).',
-            folder=False),
-        lists.action_item(
-            '[B][COLOR FF00CED1]Step 2 - Manual code: {}[/COLOR][/B]'.format(
-                pending.get('user_code', '')),
-            'show_code', config.icon('myyoutube'), {}, folder=False),
-        lists.action_item(
-            '[B][COLOR FFFF4500]Generate a new code[/COLOR][/B]', 'new_code',
-            config.icon('sync'), {}),
-        lists.action_item(
-            '[B][COLOR FF00CED1]Step 3 - Confirm connection[/COLOR][/B]',
-            'sync_now', config.icon('sync'), {}),
-        lists.action_item(
-            '[B][COLOR FFFF5555]Cancel[/COLOR][/B]', 'cancel_login',
-            config.icon('disconnect'), {}),
-    ]
-    build(handle, [item[0:3] for item in items], content=None, cache=False)
-
-
-@route('show_qr')
-def show_qr(handle, params):
-    path = str(params.get('path') or '').replace('"', '')
-    if path:
-        xbmc.executebuiltin('ShowPicture({})'.format(path))
-
-
-@route('show_code')
-def show_code(handle, params):
-    from account import youtube_sync
-    pending = youtube_sync.pending_device_link()
-    if not pending:
-        _notify('The activation code expired, start again')
-        return
-    xbmcgui.Dialog().ok(
-        'Sign in to YouTube',
-        '1. Open: {}\n\n2. Enter the code:\n[COLOR FFFF4500]{}[/COLOR]\n\n'
-        '3. Come back and choose "Step 3 - Confirm connection".'.format(
-            pending.get('verification_url', ''), pending.get('user_code', '')))
-
-
-@route('new_code')
-def new_code(handle, params):
-    from account import youtube_sync
-    import store
-    store.clear_oauth_pending()
+        qr_path = ''
+    content = config.T(32188).format(
+        pending.get('verification_url', ''),
+        '[B][COLOR FF00FF7F]{}[/COLOR][/B]'.format(pending.get('user_code', '')))
+    dialog = QRProgressDialog(
+        'auth_qr.xml', config.ADDON_PATH, 'Default', '1080i',
+        heading='[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
+            config.T(32167)),
+        qr_image=qr_path or '',
+        icon=config.icon('myyoutube'),
+        addon_icon=config.addon_icon(),
+        content=content)
     try:
-        youtube_sync.start_device_link()
-    except Exception as exc:
-        _notify('Could not generate a new code: {}'.format(exc))
-        finish(handle)
+        xbmcgui.Window(10000).setProperty('tmdbm.auth_modal_open', '1')
+    except Exception:
+        pass
+    _result = {}
+    _mon = xbmc.Monitor()
+    _span = max(1, int(pending.get('expires_at', 0) or 0) - int(time.time()))
+
+    def _poll():
+        while not dialog.iscanceled() and not _mon.abortRequested():
+            try:
+                cur = youtube_sync.pending_device_link()
+            except Exception:
+                cur = {}
+            if not cur:
+                dialog.close()
+                return
+            try:
+                res = youtube_sync.poll_pending_once()
+            except Exception as exc:
+                config.log('login poll failed: {}'.format(exc))
+                res = {'state': 'waiting'}
+            state = res.get('state')
+            if state == 'authorized':
+                _result['ok'] = True
+                dialog.close()
+                return
+            if state == 'expired':
+                _result['expired'] = True
+                dialog.close()
+                return
+            if state == 'failed':
+                _result['message'] = res.get('message', '')
+                dialog.close()
+                return
+            if state == 'idle':
+                dialog.close()
+                return
+            try:
+                left = int(cur.get('expires_at', 0) or 0) - int(time.time())
+            except Exception:
+                left = 0
+            dialog.update(max(0, int(left * 100 / _span)), content)
+            time.sleep(2)
+
+    threading.Thread(target=_poll, daemon=True).start()
+    run_modal_main_thread(dialog)
+    dialog.close()
+    try:
+        xbmcgui.Window(10000).clearProperty('tmdbm.auth_modal_open')
+    except Exception:
+        pass
+    if _result.get('ok'):
+        _notify(config.T(32179))
+        _back_to_account(handle)
+        threading.Thread(target=_sync_after_login, daemon=True).start()
         return
-    finish(handle)
-    xbmc.executebuiltin('Container.Update({}?mode=login_menu,replace)'.format(
-        BASE_URL))
+    if _result.get('expired'):
+        _notify(config.T(32169))
+    elif 'message' in _result:
+        _notify(config.T(32174).format(_result.get('message', '')))
+    else:
+        import store
+        store.clear_oauth_pending()
+    _back_to_account(handle)
 
 
-@route('cancel_login')
-def cancel_login(handle, params):
-    import store
-    store.clear_oauth_pending()
+def _back_to_account(handle):
     finish(handle)
-    _notify('Activation cancelled')
+    xbmc.sleep(500)
     xbmc.executebuiltin('Container.Update({}?mode=my_youtube,replace)'.format(
         BASE_URL))
+
+
+def _sync_after_login():
+    try:
+        from account import youtube_sync as _ys
+        summary = _ys.sync_library()
+    except Exception as exc:
+        _notify(config.T(32174).format(str(exc)[:120]))
+        return
+    _notify(config.T(32191).format(
+        summary.get('channels', 0), summary.get('videos', 0)), 6000)
+    try:
+        xbmc.executebuiltin('Container.Refresh')
+    except Exception:
+        pass
 
 
 @route('sync_now')
 def sync_now(handle, params):
     from account import youtube_sync
-    _notify('Syncing YouTube...')
+    _notify(config.T(32173))
     pending = youtube_sync.pending_device_link()
     result = youtube_sync.poll_pending_once() if pending else {'state': 'idle'}
     if result.get('state') == 'expired':
-        _notify('The activation code expired, start again')
+        _notify(config.T(32169))
         xbmc.executebuiltin('Container.Update({}?mode=login,replace)'.format(
             BASE_URL))
         return
     if result.get('state') == 'failed':
-        _notify('Sync failed: {}'.format(result.get('message', '')))
+        _notify(config.T(32174).format(result.get('message', '')))
         xbmc.executebuiltin('Container.Update({}?mode=my_youtube,replace)'.format(
             BASE_URL))
         return
     if result.get('state') == 'waiting':
-        _notify('Still waiting for approval on your phone')
-        xbmc.executebuiltin('Container.Update({}?mode=login_menu,replace)'.format(
+        _notify(config.T(32172))
+        xbmc.executebuiltin('Container.Update({}?mode=login,replace)'.format(
             BASE_URL))
         return
     try:
         summary = youtube_sync.sync_library()
     except Exception as exc:
-        _notify('Sync failed: {}'.format(str(exc)[:120]))
+        _notify(config.T(32174).format(str(exc)[:120]))
         xbmc.executebuiltin('Container.Update({}?mode=my_youtube,replace)'.format(
             BASE_URL))
         return
-    _notify('Synced: {0} channels, {1} videos'.format(
+    _notify(config.T(32191).format(
         summary.get('channels', 0), summary.get('videos', 0)), 6000)
     xbmc.executebuiltin('Container.Update({}?mode=my_youtube,replace)'.format(
         BASE_URL))
+
+
+@route('donate')
+def donate(handle, params):
+    from auth_dialog import QRProgressDialog, run_modal_main_thread
+    from account import qr_login
+    import os
+    url = qr_login.DONATE_URL
+    qr_path = os.path.join(config.MEDIA_DIR, 'donate_qr.png')
+    if not os.path.isfile(qr_path):
+        try:
+            qr_path = qr_login.create(url)
+        except Exception as exc:
+            config.log('donate QR failed: {}'.format(exc))
+            qr_path = ''
+    msg = ('Enjoying the addon?\nSupport its development\n'
+           'and buy me a coffee!\n'
+           'Link: [B][COLOR FF6AFB92]' + url + '[/COLOR][/B]\n'
+           'Thank you for your support!')
+    dialog = QRProgressDialog(
+        'auth_qr.xml', config.ADDON_PATH, 'Default', '1080i',
+        heading='[B][COLOR FF6AFB92]Support the Project[/COLOR][/B]',
+        qr_image=qr_path or '',
+        icon=config.icon('trailers'),
+        addon_icon=config.addon_icon(),
+        content=msg)
+    run_modal_main_thread(dialog)
+    dialog.close()
+    finish(handle)
+
+
+@route('upload_log')
+def upload_log(handle, params):
+    import requests
+    import xbmcvfs
+    dialog = xbmcgui.Dialog()
+    choice = dialog.select(
+        'Select log file',
+        ['[B][COLOR FF6AFB92]kodi.log[/COLOR][/B] - active log',
+         '[B][COLOR FFFF4444]kodi.old.log[/COLOR][/B] - old log'])
+    if choice is None or choice < 0:
+        cancel(handle)
+        return
+    filename = 'kodi.log' if choice == 0 else 'kodi.old.log'
+    path = xbmcvfs.translatePath('special://logpath/{}'.format(filename))
+    if not xbmcvfs.exists(path):
+        dialog.ok('Error', 'File {} not found.'.format(filename))
+        cancel(handle)
+        return
+    if not dialog.yesno(
+            'Upload Kodi Log',
+            'Do you want to upload {} to paste.kodi.tv?\n'
+            'Useful for error reporting.'.format(filename)):
+        cancel(handle)
+        return
+    url = 'https://paste.kodi.tv/'
+    xbmc.executebuiltin('ActivateWindow(busydialognocancel)')
+    try:
+        log_file = xbmcvfs.File(path, 'r')
+        text = log_file.read()
+        log_file.close()
+        if isinstance(text, str):
+            text = text.encode('utf-8', errors='ignore')
+        trimmed = False
+        if len(text) > 350000:
+            cut = text[-350000:].find(b'\n')
+            text = text[-350000 + cut + 1:] if cut > 0 else text[-350000:]
+            trimmed = True
+        response = requests.post('{}documents'.format(url), data=text,
+                                 timeout=20.0)
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        if response.status_code != 200:
+            body = (response.text or '')[:200]
+            dialog.ok('Error',
+                      'Upload failed: server returned HTTP {}.\n{}'.format(
+                          response.status_code, body))
+            cancel(handle)
+            return
+        try:
+            data = response.json()
+        except Exception:
+            body = (response.text or '')[:200]
+            dialog.ok('Error',
+                      'Upload failed: server response was not '
+                      'JSON.\n{}'.format(body))
+            cancel(handle)
+            return
+        if 'key' in data:
+            link = '{}{}'.format(url, data['key'])
+            extra = '\n(Log trimmed to last ~350KB, paste limit.)' \
+                if trimmed else ''
+            dialog.ok('Upload Successful',
+                      'The log was uploaded successfully!{}'
+                      '\n\nLink: [B][COLOR FF6AFB92]{}[/COLOR][/B]'.format(
+                          extra, link))
+        else:
+            dialog.ok('Error', 'Upload failed. Check the Kodi log.')
+    except Exception as exc:
+        xbmc.executebuiltin('Dialog.Close(busydialognocancel)')
+        config.log('upload log failed: {}'.format(exc), xbmc.LOGERROR)
+        dialog.ok('Error', 'Load error: {}'.format(exc))
+    cancel(handle)
 
 
 @route('clear_cache')
@@ -1315,12 +1661,19 @@ def clear_cache(handle, params):
         config.log('cache reset failed: {}'.format(exc))
         ok = False
     try:
+        from player import _clear_extract_cache
+        if not _clear_extract_cache():
+            ok = False
+    except Exception as exc:
+        config.log('extract cache reset failed: {}'.format(exc))
+        ok = False
+    try:
         store_clear_queue(queue)
     except Exception as exc:
         config.log('queue reset failed: {}'.format(exc))
     xbmcgui.Dialog().ok(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        'Cache cleared' if ok else 'Could not clear the cache')
+        config.T(32192) if ok else config.T(32193))
     xbmc.executebuiltin('Container.Refresh')
 
 
@@ -1332,6 +1685,8 @@ def store_clear_queue(queue):
     store.set_library('saved_playlists', [])
     store.set_library('remote_history', [])
     store.set_library('watch_later_remote', [])
+    store.clear_feed_cache()
+    store.clear_yt_meta_cache()
     queue.clear()
 
 
@@ -1340,25 +1695,31 @@ def logout(handle, params):
     from account import youtube_sync
     account = youtube_sync.status()
     if not account.get('connected') and not account.get('pending'):
-        _notify('No YouTube account connected')
+        _notify(config.T(32177))
         return
-    if xbmcgui.Dialog().yesno('Disconnect YouTube account?',
-                               'Disconnect the linked account? Local subscriptions remain.',
-                               nolabel='Cancel', yeslabel='Disconnect'):
+    if xbmcgui.Dialog().yesno(config.T(32168),
+                               config.T(32182),
+                               nolabel=config.T(32133), yeslabel=config.T(32126)):
         youtube_sync.disconnect()
-        _notify('YouTube account disconnected')
+        _notify(config.T(32178))
     xbmc.executebuiltin('Container.Refresh')
 
 
-add_root('Search', 'search', config.icon('search'))
-add_root('Trending', 'trending', config.icon('trending'))
-add_root('Random music', 'random_music', config.icon('random'))
-add_root('Live', 'live', config.icon('live'))
-add_root('Trailers', 'trailers', config.icon('trailers'))
-add_root('Charts', 'charts', config.icon('charts'))
-add_root('My YouTube', 'my_youtube', config.icon('myyoutube'))
-add_root('Feed', 'feed', config.icon('feed'))
-add_root('Watch Later', 'watch_later', config.icon('watchlater'))
-add_root('History', 'history', config.icon('history'))
-add_root('Local Playlists', 'local_playlists', config.icon('playlists'))
-add_root('Settings', 'open_settings', config.icon('settings'), folder=False)
+def _build_roots():
+    del _ROOT_ITEMS[:]
+    add_root(config.T(32100), 'search', config.icon('search'))
+    add_root(config.T(32101), 'trending', config.icon('trending'))
+    add_root(config.T(32102), 'random_music', config.icon('random'))
+    add_root(config.T(32103), 'live', config.icon('live'))
+    add_root(config.T(32104), 'trailers', config.icon('trailers'))
+    add_root(config.T(32105), 'charts', config.icon('charts'))
+    add_root(config.T(32106), 'my_youtube', config.icon('myyoutube'))
+    add_root(config.T(32107), 'feed', config.icon('feed'))
+    add_root(config.T(32108), 'watch_later', config.icon('watchlater'))
+    add_root(config.T(32109), 'history', config.icon('history'))
+    add_root(config.T(32110), 'local_playlists', config.icon('playlists'))
+    add_root(config.T(32111), 'open_settings', config.icon('settings'),
+             folder=False)
+
+
+_build_roots()

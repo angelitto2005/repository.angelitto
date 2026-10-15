@@ -1,0 +1,737 @@
+# Kodi Media Center language file
+# Addon Name: TMDbM Trailers
+# Addon id: tmdbm.trailers
+msgid ""
+msgstr ""
+"Project-Id-Version: TMDbM Trailers\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: id_ID\n"
+
+msgctxt "#32000"
+msgid "General"
+msgstr "General"
+
+msgctxt "#32001"
+msgid "YouTube Account"
+msgstr "YouTube Account"
+
+msgctxt "#32002"
+msgid "Video"
+msgstr "Video"
+
+msgctxt "#32003"
+msgid "Localisation"
+msgstr "Localisation"
+
+msgctxt "#32004"
+msgid "Categories"
+msgstr "Categories"
+
+msgctxt "#32005"
+msgid "Playback"
+msgstr "Playback"
+
+msgctxt "#32006"
+msgid "Maintenance"
+msgstr "Maintenance"
+
+msgctxt "#32007"
+msgid "Account"
+msgstr "Account"
+
+msgctxt "#32010"
+msgid "[B]Maximum video resolution[/B]"
+msgstr "[B]Maximum video resolution[/B]"
+
+msgctxt "#32011"
+msgid "Subtitles"
+msgstr "Subtitles"
+
+msgctxt "#32012"
+msgid "Subtitle language override (optional)"
+msgstr "Subtitle language override (optional)"
+
+msgctxt "#32013"
+msgid "Content country (ISO 3166-1)"
+msgstr "Content country (ISO 3166-1)"
+
+msgctxt "#32014"
+msgid "Custom country code (optional)"
+msgstr "Custom country code (optional)"
+
+msgctxt "#32015"
+msgid "Content language"
+msgstr "Content language"
+
+msgctxt "#32016"
+msgid "Custom language code (optional)"
+msgstr "Custom language code (optional)"
+
+msgctxt "#32017"
+msgid "Default Trending category"
+msgstr "Default Trending category"
+
+msgctxt "#32018"
+msgid "Default Live category"
+msgstr "Default Live category"
+
+msgctxt "#32019"
+msgid "Trailer audio"
+msgstr "Trailer audio"
+
+msgctxt "#32020"
+msgid "[B]Autoplay next video[/B]"
+msgstr "[B]Autoplay next video[/B]"
+
+msgctxt "#32021"
+msgid "Shuffle play"
+msgstr "Shuffle play"
+
+msgctxt "#32022"
+msgid "Results per page"
+msgstr "Results per page"
+
+msgctxt "#32023"
+msgid "Feed items per channel"
+msgstr "Feed items per channel"
+
+msgctxt "#32024"
+msgid "Debug logging (disables cache)"
+msgstr "Debug logging (disables cache)"
+
+msgctxt "#32025"
+msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+
+msgctxt "#32026"
+msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+
+msgctxt "#32027"
+msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+
+msgctxt "#32040"
+msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+
+msgctxt "#32041"
+msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+
+msgctxt "#32042"
+msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+
+msgctxt "#32043"
+msgid "Country used for search, Trending, Live and Trailers results."
+msgstr "Country used for search, Trending, Live and Trailers results."
+
+msgctxt "#32044"
+msgid "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+
+msgctxt "#32045"
+msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+
+msgctxt "#32046"
+msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+
+msgctxt "#32047"
+msgid "Category listed when Trending is opened without a choice."
+msgstr "Category listed when Trending is opened without a choice."
+
+msgctxt "#32048"
+msgid "Category listed when Live is opened without a choice."
+msgstr "Category listed when Live is opened without a choice."
+
+msgctxt "#32049"
+msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+
+msgctxt "#32050"
+msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+
+msgctxt "#32051"
+msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+
+msgctxt "#32052"
+msgid "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "How many videos a list page shows. Larger pages build longer playlists."
+
+msgctxt "#32053"
+msgid "How many videos each subscribed channel contributes to the feed."
+msgstr "How many videos each subscribed channel contributes to the feed."
+
+msgctxt "#32054"
+msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+
+msgctxt "#32055"
+msgid "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Deletes the downloaded listings, the music pool and the queue state."
+
+msgctxt "#32056"
+msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+
+msgctxt "#32057"
+msgid "Removes the linked YouTube account and its local snapshot."
+msgstr "Removes the linked YouTube account and its local snapshot."
+
+msgctxt "#32060"
+msgid "Off"
+msgstr "Off"
+
+msgctxt "#32061"
+msgid "Original"
+msgstr "Original"
+
+msgctxt "#32062"
+msgid "Preferred language"
+msgstr "Preferred language"
+
+msgctxt "#32063"
+msgid "Music"
+msgstr "Music"
+
+msgctxt "#32064"
+msgid "Gaming"
+msgstr "Gaming"
+
+msgctxt "#32065"
+msgid "News"
+msgstr "News"
+
+msgctxt "#32066"
+msgid "Movies"
+msgstr "Movies"
+
+msgctxt "#32067"
+msgid "Live"
+msgstr "Live"
+
+msgctxt "#32068"
+msgid "Games"
+msgstr "Games"
+
+msgctxt "#32069"
+msgid "Sports"
+msgstr "Sports"
+
+msgctxt "#32070"
+msgid "Podcasts"
+msgstr "Podcasts"
+
+msgctxt "#32071"
+msgid "Localized"
+msgstr "Localized"
+
+msgctxt "#32028"
+msgid "Extraction cache"
+msgstr "Extraction cache"
+
+msgctxt "#32058"
+msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+
+msgctxt "#32029"
+msgid "Custom trending search"
+msgstr "Custom trending search"
+
+msgctxt "#32059"
+msgid "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+
+msgctxt "#32030"
+msgid "Hide Shorts"
+msgstr "Hide Shorts"
+
+msgctxt "#32072"
+msgid "Hide vertical short videos from subscription lists"
+msgstr "Hide vertical short videos from subscription lists"
+
+msgctxt "#32031"
+msgid "Up Next"
+msgstr "Up Next"
+
+msgctxt "#32073"
+msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+
+msgctxt "#32074"
+msgid "In order"
+msgstr "In order"
+
+msgctxt "#32075"
+msgid "Shuffled"
+msgstr "Shuffled"
+
+msgctxt "#32076"
+msgid "Similar songs"
+msgstr "Similar songs"
+
+msgctxt "#32077"
+msgid "YouTube network family"
+msgstr "YouTube network family"
+
+msgctxt "#32078"
+msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+
+msgctxt "#32079"
+msgid "Auto"
+msgstr "Auto"
+
+msgctxt "#32080"
+msgid "IPv4 only"
+msgstr "IPv4 only"
+
+msgctxt "#32081"
+msgid "IPv6 only"
+msgstr "IPv6 only"
+
+msgctxt "#32032"
+msgid "UI language"
+msgstr "Bahasa antarmuka"
+
+msgctxt "#32083"
+msgid "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+msgstr "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+
+msgctxt "#32084"
+msgid "Auto"
+msgstr "Otomatis"
+
+msgctxt "#32085"
+msgid "English"
+msgstr "Inggris"
+
+msgctxt "#32086"
+msgid "Romanian"
+msgstr "Rumania"
+
+msgctxt "#32087"
+msgid "Hungarian"
+msgstr "Hungaria"
+
+msgctxt "#32100"
+msgid "Search"
+msgstr "Cari"
+
+msgctxt "#32101"
+msgid "Trending"
+msgstr "Trending"
+
+msgctxt "#32102"
+msgid "Random music"
+msgstr "Musik acak"
+
+msgctxt "#32103"
+msgid "Live"
+msgstr "Live"
+
+msgctxt "#32104"
+msgid "Trailers"
+msgstr "Trailer"
+
+msgctxt "#32105"
+msgid "Charts"
+msgstr "Tangga lagu"
+
+msgctxt "#32106"
+msgid "My YouTube"
+msgstr "YouTube Saya"
+
+msgctxt "#32107"
+msgid "Feed"
+msgstr "Feed"
+
+msgctxt "#32108"
+msgid "Watch Later"
+msgstr "Tonton Nanti"
+
+msgctxt "#32109"
+msgid "History"
+msgstr "Riwayat"
+
+msgctxt "#32110"
+msgid "Local Playlists"
+msgstr "Daftar putar lokal"
+
+msgctxt "#32111"
+msgid "Settings"
+msgstr "Pengaturan"
+
+msgctxt "#32112"
+msgid "Search YouTube"
+msgstr "Cari di YouTube"
+
+msgctxt "#32113"
+msgid "Search Now"
+msgstr "Cari sekarang"
+
+msgctxt "#32114"
+msgid "Empty Search"
+msgstr "Pencarian kosong"
+
+msgctxt "#32115"
+msgid "Delete"
+msgstr "Hapus"
+
+msgctxt "#32116"
+msgid "Delete all search history"
+msgstr "Hapus seluruh riwayat pencarian"
+
+msgctxt "#32117"
+msgid "Videos"
+msgstr "Video"
+
+msgctxt "#32118"
+msgid "Channels"
+msgstr "Channel"
+
+msgctxt "#32119"
+msgid "Playlists"
+msgstr "Daftar putar"
+
+msgctxt "#32120"
+msgid "Top Artists"
+msgstr "Artis Teratas"
+
+msgctxt "#32121"
+msgid "My subscriptions"
+msgstr "Langganan saya"
+
+msgctxt "#32122"
+msgid "Subscribed channels"
+msgstr "Channel yang dilanggan"
+
+msgctxt "#32123"
+msgid "My Playlists"
+msgstr "Daftar putar saya"
+
+msgctxt "#32124"
+msgid "Watch history"
+msgstr "Riwayat tontonan"
+
+msgctxt "#32125"
+msgid "Sync now"
+msgstr "Sinkronkan sekarang"
+
+msgctxt "#32126"
+msgid "Disconnect"
+msgstr "Putuskan"
+
+msgctxt "#32127"
+msgid "Finish activation"
+msgstr "Selesaikan aktivasi"
+
+msgctxt "#32128"
+msgid "Connect YouTube account (QR code)"
+msgstr "Hubungkan akun YouTube (QR)"
+
+
+
+
+
+msgctxt "#32133"
+msgid "Cancel"
+msgstr "Batal"
+
+msgctxt "#32134"
+msgid "New playlist"
+msgstr "Daftar putar baru"
+
+msgctxt "#32135"
+msgid "Playlist name"
+msgstr "Nama daftar putar"
+
+msgctxt "#32136"
+msgid "Add to playlist"
+msgstr "Tambah ke daftar putar"
+
+msgctxt "#32137"
+msgid "+ New playlist"
+msgstr "+ Daftar putar baru"
+
+msgctxt "#32138"
+msgid "Rename playlist"
+msgstr "Ganti nama daftar"
+
+msgctxt "#32139"
+msgid "Delete playlist?"
+msgstr "Hapus daftar?"
+
+msgctxt "#32140"
+msgid "Delete \"{}\" and its tracks?"
+msgstr "Hapus \"{}\" beserta lagunya?"
+
+msgctxt "#32141"
+msgid "Remove from this playlist"
+msgstr "Hapus dari daftar ini"
+
+msgctxt "#32142"
+msgid "Import playlist"
+msgstr "Impor daftar putar"
+
+msgctxt "#32143"
+msgid "Added to {}"
+msgstr "Ditambahkan ke {}"
+
+msgctxt "#32144"
+msgid "Already in {}"
+msgstr "Sudah ada di {}"
+
+msgctxt "#32145"
+msgid "{} is full (200)"
+msgstr "{} penuh (200)"
+
+msgctxt "#32146"
+msgid "Could not add video"
+msgstr "Video gagal ditambahkan"
+
+msgctxt "#32147"
+msgid "Removed from {}"
+msgstr "Dihapus dari {}"
+
+msgctxt "#32148"
+msgid "Created {}"
+msgstr "Dibuat: {}"
+
+msgctxt "#32149"
+msgid "Deleted {}"
+msgstr "Dihapus: {}"
+
+msgctxt "#32150"
+msgid "Imported {} to {}"
+msgstr "{} diimpor ke {}"
+
+msgctxt "#32151"
+msgid "Nothing to import"
+msgstr "Tidak ada yang diimpor"
+
+msgctxt "#32152"
+msgid "Go to Channel"
+msgstr "Ke channel"
+
+msgctxt "#32153"
+msgid "Subscribe"
+msgstr "Berlangganan"
+
+msgctxt "#32154"
+msgid "Unsubscribe"
+msgstr "Berhenti berlangganan"
+
+msgctxt "#32155"
+msgid "Add to Watch Later"
+msgstr "Tambah ke \"Tonton Nanti\""
+
+msgctxt "#32157"
+msgid "Unblock this video"
+msgstr "Buka blokir video ini"
+
+msgctxt "#32158"
+msgid "No autoplay for this video"
+msgstr "Tanpa autoplay untuk video ini"
+
+msgctxt "#32159"
+msgid "Play"
+msgstr "Putar"
+
+msgctxt "#32160"
+msgid "Next page {}"
+msgstr "Halaman berikut {}"
+
+msgctxt "#32161"
+msgid "UP Next"
+msgstr "Berikutnya"
+
+msgctxt "#32162"
+msgid "Blocked from autoplay"
+msgstr "Dikecualikan dari autoplay"
+
+msgctxt "#32163"
+msgid "Unblocked"
+msgstr "Blokir dibuka"
+
+msgctxt "#32164"
+msgid "Subscribed to {}"
+msgstr "Berlangganan: {}"
+
+
+msgctxt "#32167"
+msgid "Connect YouTube account"
+msgstr "Hubungkan akun YouTube"
+
+msgctxt "#32168"
+msgid "Disconnect YouTube account?"
+msgstr "Putuskan akun YouTube?"
+
+msgctxt "#32169"
+msgid "The activation code expired, start again"
+msgstr "Kode kedaluwarsa, mulai lagi"
+
+
+
+msgctxt "#32172"
+msgid "Still waiting for approval on your phone"
+msgstr "Menunggu persetujuan di HP"
+
+msgctxt "#32173"
+msgid "Syncing YouTube..."
+msgstr "Menyinkronkan YouTube..."
+
+msgctxt "#32174"
+msgid "Sync failed: {}"
+msgstr "Sinkronisasi gagal: {}"
+
+
+msgctxt "#32177"
+msgid "No YouTube account connected"
+msgstr "Tidak ada akun terhubung"
+
+msgctxt "#32178"
+msgid "YouTube account disconnected"
+msgstr "Akun YouTube diputus"
+
+msgctxt "#32179"
+msgid "YouTube account connected. Syncing..."
+msgstr "Akun terhubung. Menyinkronkan..."
+
+msgctxt "#32180"
+msgid "Shorts"
+msgstr "Shorts"
+
+msgctxt "#32181"
+msgid "Search YouTube for: {}"
+msgstr "Cari di YouTube: {}"
+
+msgctxt "#32182"
+msgid "Disconnect the linked account? Local subscriptions remain."
+msgstr "Putuskan akun? Langganan lokal tetap ada."
+
+msgctxt "#32183"
+msgid "Added to Watch Later"
+msgstr "Ditambahkan ke \"Tonton Nanti\""
+
+msgctxt "#32184"
+msgid "Channel not found"
+msgstr "Channel tidak ditemukan"
+
+msgctxt "#32185"
+msgid "Unsubscribed"
+msgstr "Berhenti langganan"
+
+msgctxt "#32186"
+msgid "Remove from history"
+msgstr "Hapus dari riwayat"
+
+msgctxt "#32187"
+msgid "Could not start the activation: {}"
+msgstr "Aktivasi gagal dimulai: {}"
+
+msgctxt "#32188"
+msgid "Open this address: {}\n\nEnter this code:\n{}"
+msgstr "Buka alamat ini: {}\n\nMasukkan kode ini:\n{}"
+
+
+
+msgctxt "#32191"
+msgid "Synced: {} channels, {} videos"
+msgstr "Disinkronkan: {} channel, {} video"
+
+msgctxt "#32192"
+msgid "Cache cleared"
+msgstr "Cache dibersihkan"
+
+msgctxt "#32193"
+msgid "Could not clear the cache"
+msgstr "Cache gagal dibersihkan"
+
+msgctxt "#32194"
+msgid "Playlist"
+msgstr "Daftar putar"
+
+msgctxt "#32195"
+msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Hubungkan akunmu untuk melihat langganan, \"Tonton Nanti\", daftar putar, dan riwayat."
+
+msgctxt "#32196"
+msgid "Account activation failed"
+msgstr "Aktivasi akun gagal"
+
+msgctxt "#32197"
+msgid "The activation code expired"
+msgstr "Kode aktivasi kedaluwarsa"
+
+msgctxt "#32243"
+msgid "Indonesian"
+msgstr "Bahasa Indonesia"
+
+msgctxt "#32224"
+msgid "German"
+msgstr "Germana"
+
+msgctxt "#32229"
+msgid "Spanish"
+msgstr "Spaniola"
+
+msgctxt "#32235"
+msgid "French"
+msgstr "Franceza"
+
+msgctxt "#32245"
+msgid "Italian"
+msgstr "Italiana"
+
+msgctxt "#32267"
+msgid "Dutch"
+msgstr "Olandeza"
+
+msgctxt "#32276"
+msgid "Portuguese"
+msgstr "Português (Portugal)"
+
+msgctxt "#32277"
+msgid "Portuguese (Brazil)"
+msgstr "Portugheza (Brazilia)"
+
+
+msgctxt "#32306"
+msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
+msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
+
+msgctxt "#32307"
+msgid "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
+msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
+
+msgctxt "#32091"
+msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+msgstr "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+
+msgctxt "#32092"
+msgid "Show a QR card with the donation link."
+msgstr "Show a QR card with the donation link."
+
+msgctxt "#32093"
+msgid "YouTube account status"
+msgstr "YouTube account status"
+
+msgctxt "#32094"
+msgid "Status: Connected"
+msgstr "Status: Connected"
+
+msgctxt "#32095"
+msgid "Channels: {} | Feed videos: {}"
+msgstr "Channels: {} | Feed videos: {}"
+
+msgctxt "#32088"
+msgid "Troubleshooting"
+msgstr "Troubleshooting"

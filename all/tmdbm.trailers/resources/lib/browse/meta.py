@@ -31,16 +31,27 @@ def _context():
     }}
 
 
+_META_SESSION = [None]
+
+
 def _post(endpoint, payload, timeout=20):
-    import requests
+    import config
     body = {'context': _context(),
             'cpn': ''.join(random.choice(
                 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_')
                 for _ in range(16))}
     body.update(payload)
-    response = requests.post(_ENDPOINT.format(endpoint),
-                             data=json.dumps(body), headers=_HEADERS,
-                             timeout=timeout)
+    try:
+        if _META_SESSION[0] is None:
+            _META_SESSION[0] = config.new_session()
+        response = _META_SESSION[0].post(
+            _ENDPOINT.format(endpoint),
+            data=json.dumps(body), headers=_HEADERS, timeout=timeout)
+    except Exception:
+        import requests
+        response = requests.post(_ENDPOINT.format(endpoint),
+                                 data=json.dumps(body), headers=_HEADERS,
+                                 timeout=timeout)
     return response.json()
 
 
@@ -276,13 +287,21 @@ def video_meta(video_id):
     try:
         payload = _post('player', {'videoId': video_id,
                                    'contentCheckOk': True,
-                                   'racyCheckOk': True})
+                                   'racyCheckOk': True,
+                                   'params': '2AMB'})
     except Exception as exc:
         config.log('meta {} failed: {}'.format(video_id, str(exc)[:120]))
         return {}
     details = payload.get('videoDetails') or {}
     micro = (payload.get('microformat') or {}).get('playerMicroformatRenderer') or {}
     if not details and not micro:
+        # An empty player response is what a rate-limited or gated call looks
+        # like. Named here because the bulk metadata fill only reports a count,
+        # which hides whether the cause is the anti-bot gate or something else.
+        ps = payload.get('playabilityStatus') or {}
+        config.log('meta {} empty: playability {} {}'.format(
+            video_id, ps.get('status') or '?',
+            (ps.get('reason') or '-')[:90]), always=True)
         return {}
     return {
         'title': details.get('title') or '',
@@ -324,6 +343,69 @@ def watch_upload_date(video_id):
     return match.group(1)
 
 
+_NEXT_CLIENT = 'WEB'
+_NEXT_VERSION = '2.20260101.01.00'
+_NEXT_UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+            'Chrome/120.0 Safari/537.36')
+
+
+def _post_next(video_id):
+    import random
+    body = {'context': {'client': {'clientName': _NEXT_CLIENT,
+                                   'clientVersion': _NEXT_VERSION,
+                                   'hl': 'en', 'gl': 'US'}},
+            'videoId': video_id, 'contentCheckOk': True, 'racyCheckOk': True}
+    headers = dict(_HEADERS)
+    headers['User-Agent'] = _NEXT_UA
+    headers['Origin'] = 'https://www.youtube.com'
+    headers['X-Youtube-Client-Name'] = '1'
+    headers['X-Youtube-Client-Version'] = _NEXT_VERSION
+    session = _META_SESSION[0] or config.new_session()
+    response = session.post(_ENDPOINT.format('next'), data=json.dumps(body),
+                            headers=headers, timeout=15)
+    return response.json()
+
+
+def _compact_views(text_value):
+    import re as _re3
+    found = _re3.findall(r'[\d.,]+', str(text_value or ''))
+    if not found:
+        return ''
+    return _short_views(found[0].replace('.', ''))
+
+
+@cache_function(7 * 24 * 60)
+def video_next_meta(video_id):
+    """Date and views from the watch next payload.
+
+    Music videos answer the player call without microformat and without a view
+    count, so for those the date lives only in the primary info of the watch
+    next response. The watch page is rate limited, which is why this runs
+    before watch_upload_date.
+    """
+    payload = _post_next(video_id)
+    columns = ((((payload.get('contents') or {}).get('twoColumnWatchNextResults')
+                 or {}).get('results') or {}).get('results') or {}).get(
+                     'contents') or []
+    published = ''
+    views = ''
+    for column in columns:
+        primary = column.get('videoPrimaryInfoRenderer') or {}
+        if not published:
+            published = (_text(primary.get('relativeDateText'))
+                         or _text(primary.get('dateText')))
+        if not views:
+            renderer = ((primary.get('viewCount') or {}).get(
+                'videoViewCountRenderer') or {})
+            views = (_compact_views(_text(renderer.get('viewCount')))
+                     or _text(renderer.get('shortViewCount')))
+        if published and views:
+            break
+    if not published:
+        raise ValueError('no date in next payload')
+    return {'published': published, 'views': views}
+
+
 def full_entry_meta(video_id):
     try:
         info = video_meta_cached(video_id)
@@ -338,6 +420,15 @@ def full_entry_meta(video_id):
                             out.get('description') or '')
         if match:
             out['published'] = match.group(1)
+    if not out.get('published') or not out.get('views'):
+        try:
+            extra = video_next_meta(video_id)
+        except Exception:
+            extra = {}
+        if extra.get('published'):
+            out['published'] = extra['published']
+        if extra.get('views'):
+            out['views'] = extra['views']
     if not out.get('published'):
         try:
             out['published'] = watch_upload_date(video_id)

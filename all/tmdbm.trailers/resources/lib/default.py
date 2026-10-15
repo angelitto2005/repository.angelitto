@@ -50,6 +50,10 @@ def play(video_id, title=None, genre=None, year=None, tmdb_id=None, dbtype=None,
 
 
 def main():
+    try:
+        config.enforce_ip_family()
+    except Exception:
+        pass
     plugin_url = sys.argv[0] if sys.argv else 'plugin://{}/'.format(ADDON_ID)
     query = sys.argv[2] if len(sys.argv) > 2 else ''
     handle = 0

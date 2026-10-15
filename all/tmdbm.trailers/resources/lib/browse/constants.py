@@ -11,12 +11,12 @@ PER_PAGE = (5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
 FEED_PER_CHANNEL = (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20)
 
 COUNTRIES = ('AO', 'AR', 'AT', 'AU', 'BE', 'BR', 'CA', 'CH', 'CL', 'CO', 'CV',
-             'DK', 'ES', 'FI', 'FR', 'GB', 'GR', 'ID', 'IE', 'IN', 'IT', 'JP',
+             'DK', 'ES', 'FI', 'FR', 'GB', 'GR', 'HU', 'ID', 'IE', 'IN', 'IT', 'JP',
              'KR', 'MX', 'MZ', 'NL', 'NO', 'NZ', 'PE', 'PH', 'PL', 'PT', 'RO',
              'SE', 'TR', 'US', 'ZA')
 
 LANGUAGES = ('pt-PT', 'pt-BR', 'en', 'es', 'fr', 'de', 'it', 'nl', 'ro', 'tr',
-             'ja', 'ko')
+             'ja', 'ko', 'hu', 'id')
 
 TRENDING_CATEGORIES = ('music', 'gaming', 'news', 'movies', 'live')
 LIVE_CATEGORIES = ('news', 'music', 'gaming', 'sports', 'podcasts')

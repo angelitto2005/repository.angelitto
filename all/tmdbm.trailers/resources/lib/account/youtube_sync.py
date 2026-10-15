@@ -327,6 +327,11 @@ def poll_pending_once():
         })
         store.clear_oauth_pending()
         _log('account authorised')
+        try:
+            from account import qr_login
+            qr_login.cleanup()
+        except Exception:
+            pass
         return {'state': 'authorized'}
     error = str((payload or {}).get('error') or '')
     if error in ('authorization_pending', 'slow_down'):
@@ -880,4 +885,5 @@ def sync_library():
 def disconnect():
     store.clear_oauth_pending()
     store.clear_oauth_token()
-    store.clear_library()
+    store.clear_remote_mirrors()
+    store.prune_youtube_subscriptions()

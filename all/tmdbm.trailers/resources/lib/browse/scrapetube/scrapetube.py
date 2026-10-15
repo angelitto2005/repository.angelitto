@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 from typing import Generator, Union
 
@@ -400,7 +401,7 @@ def get_session(proxies: dict = None, cookies: Union[dict, str] = None) -> reque
 def get_initial_data(session: requests.Session, url: str) -> str:
     if not session.cookies.get("CONSENT"):
         session.cookies.set("CONSENT", "YES+cb", domain=".youtube.com")
-    response = session.get(url, params={"ucbcb":1})
+    response = session.get(url, params={"ucbcb":1}, timeout=20)
     html = response.text
     return html
 
@@ -417,7 +418,7 @@ def get_ajax_data(
     }
     response = session.post(
         api_endpoint, params={"key": api_key}, json=data,
-        headers=_get_auth_headers(session),
+        headers=_get_auth_headers(session), timeout=20,
     )
     text = response.text
     if text.startswith(")]}'"):
@@ -601,6 +602,35 @@ def search_dict(partial: dict, search_key: str) -> Generator[dict, None, None]:
             for value in current_item:
                 stack.append(value)
 
+# Status badges are dropped before the counters are read. The prefix list is
+# ASCII only, so both "In direct" and the accented spelling match.
+_META_STATUS_RE = re.compile(
+    r"(?:in|\u00cen|en|em|pe|il|la|di|acum|sur)[\s-]+"
+    r"(?:live|dire[ct]\w*|premier\w*|upcoming|soon|gerade)"
+    r"|(?:live|upcoming|soon|new|nou|shorts|premiere|gerade)"
+    r"(?:[\s-]+(?:now|today|acum))?",
+    re.IGNORECASE)
+_META_VIEWS_WORD_RE = re.compile(
+    r"(view|vues|visi|vizion|auffl|watching|watches|visual|ogl)", re.IGNORECASE)
+# "853K", "19 mil", "768M", "853.000" (de) and any bare number
+_META_COUNT_RE = re.compile(r"\d[\d.,\s]*\s*(?:[KkMmBb]|mil|mio|mill|milion)\b\.?",
+                            re.IGNORECASE)
+_META_PLAIN_NUMBER_RE = re.compile(r"\d[\d.,\s]*\s*\Z")
+
+
+def _meta_looks_like_views(value):
+    """True for a view counter in any localisation ("853K", "19 mil", "1,2 M
+    vizionari", "853.000"). Digits with a magnitude or a bare number count."""
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if _META_VIEWS_WORD_RE.search(text):
+        return True
+    if _META_COUNT_RE.search(text):
+        return True
+    return bool(_META_PLAIN_NUMBER_RE.match(text))
+
+
 def parse_rich_item_new_format(rich_item: dict) -> dict:
     """Parse richItemRenderer wrapper (used on channel pages)."""
     content = rich_item.get("content", {})
@@ -659,24 +689,43 @@ def parse_lockup_view_model(lockup_view: dict) -> dict:
 
         meta_rows = lockup_metadata.get("metadata", {}).get("contentMetadataViewModel", {}).get("metadataRows", [])
 
-        if len(meta_rows) == 1:
-            # Channel pages: single row is views/upload only, no channel name
-            parts = meta_rows[0].get("metadataParts", [])
-            if len(parts) > 0:
-                views = parts[0].get("text", {}).get("content", "")
-            if len(parts) > 1:
-                upload_time = parts[1].get("text", {}).get("content", "")
-        elif len(meta_rows) >= 2:
-            # Playlists: row 0 = channel name, row 1 = views/upload
-            parts0 = meta_rows[0].get("metadataParts", [])
-            if parts0:
-                channel_name = parts0[0].get("text", {}).get("content", "")
+        rows = []
+        for row in meta_rows:
+            parts = (row or {}).get("metadataParts", [])
+            texts = [str((((part or {}).get("text") or {}).get("content")) or "").strip()
+                     for part in parts]
+            rows.append([text for text in texts if text])
 
-            parts1 = meta_rows[1].get("metadataParts", [])
-            if len(parts1) > 0:
-                views = parts1[0].get("text", {}).get("content", "")
-            if len(parts1) > 1:
-                upload_time = parts1[1].get("text", {}).get("content", "")
+        # YouTube always ends a metadata row with the counters, so the row is read
+        # from the right: the last part is the time, the one before it the
+        # views. A collaboration pushes both artists in front of them
+        # ("Theo Rose", "and JUNO", "853K", "11mo ago"), which is why the
+        # position cannot be trusted and the counters are recognised by shape.
+        byline = []
+        if rows:
+            # Badges are not counters, they only take a slot in the row.
+            parts = [part for part in rows[-1]
+                     if not _META_STATUS_RE.fullmatch(part)]
+            consumed = 0
+            if len(parts) == 1:
+                if _meta_looks_like_views(parts[0]):
+                    views = parts[0]
+                else:
+                    upload_time = parts[0]
+                consumed = 1
+            elif len(parts) >= 2:
+                if (_meta_looks_like_views(parts[-1])
+                        and not _meta_looks_like_views(parts[-2])):
+                    upload_time, views = parts[-2], parts[-1]
+                elif _meta_looks_like_views(parts[-2]):
+                    upload_time, views = parts[-1], parts[-2]
+                consumed = 2 if views or upload_time else 0
+            byline = parts[:len(parts) - consumed] if consumed else list(parts)
+
+        if len(rows) >= 2:
+            channel_name = " ".join(rows[0]) or None
+        elif byline:
+            channel_name = " ".join(byline) or None
 
         badge_style = _safe_get(
             lockup_view, "contentImage", "thumbnailViewModel", "overlays", 0,

@@ -16,7 +16,6 @@ if _LIB_PATH not in sys.path:
 import config
 
 _HEADING = '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]'
-_UP_LABEL = '[B][COLOR FF00CED1]UP Next[/COLOR][/B]'
 _UP_NEXT_SECONDS = 15
 _UP_NEXT_DURATION = 15000
 _POLL_SECONDS = 0.5
@@ -53,10 +52,20 @@ def _remaining_seconds(player):
     return None
 
 
+def _own_playback():
+    try:
+        return 'tmdbm.trailers' in (
+            xbmc.getInfoLabel('Player.Filenameandpath') or '')
+    except Exception:
+        return False
+
+
 def _show_up_next(player, shown):
     from music import queue
     tracks = queue.active_tracks()
     if len(tracks) < 2:
+        return shown, None
+    if not _own_playback():
         return shown, None
     try:
         if not player.isPlayingVideo():
@@ -80,8 +89,8 @@ def _show_up_next(player, shown):
     if remaining is None or remaining <= 0 or remaining > _UP_NEXT_SECONDS:
         return shown, remaining
     import lists
-    message = '{}: [COLOR yellow][B]{}[/B][/COLOR]'.format(
-        _UP_LABEL, lists.clean_title(upcoming.get('title'))
+    message = '[B][COLOR FF00CED1]{}[/COLOR][/B]: [COLOR yellow][B]{}[/B][/COLOR]'.format(
+        config.T(32161), lists.clean_title(upcoming.get('title'))
         or upcoming.get('video_id') or '')
     notify(message, upcoming.get('image') or '')
     config.log('UP Next announced at {:.1f}s remaining: {}'.format(
@@ -98,9 +107,9 @@ def _sync_library_bg():
         from account import youtube_sync
         summary = youtube_sync.sync_library()
     except Exception as exc:
-        notify('Sync failed: {}'.format(str(exc)[:120]))
+        notify(config.T(32174).format(str(exc)[:120]))
         return
-    notify('Synced: {0} channels, {1} videos'.format(
+    notify(config.T(32191).format(
         summary.get('channels', 0), summary.get('videos', 0)),
         time_ms=6000)
     xbmc.executebuiltin('Container.Refresh')
@@ -171,6 +180,12 @@ def _error_stop(observer=None):
         pass
     try:
         if observer is not None and observer.was_playing:
+            try:
+                playing = observer.isPlayingVideo()
+            except Exception:
+                playing = False
+            if not playing:
+                return False
             total = float(observer.getTotalTime() or 0.0)
             if total <= 0:
                 return True
@@ -340,6 +355,8 @@ def _native_state():
         state = queue.active()
         if not state.get('tracks') or state.get('mode') != 'active':
             return None
+        if not _own_playback():
+            return None
         if xbmc.PlayList(xbmc.PLAYLIST_VIDEO).size() <= 1:
             return None
         return state
@@ -468,6 +485,7 @@ def _watch_locale(previous):
 
 
 _LOCALE_SEEN = []
+_UI_LANG_SEEN = []
 _LAST_FLAGS = {}
 
 
@@ -482,6 +500,7 @@ def _settings_snapshot():
 
 _LAST_LOCALE_RESET = [0.0]
 _LAST_REFRESH = [0.0]
+_IP_SETTING_SEEN = []
 
 
 def _reset_browse_state(current):
@@ -584,6 +603,36 @@ class _LocaleMonitor(xbmc.Monitor):
         current = _locale_key()
         _publish_locale(current)
         _publish_settings()
+        try:
+            ui_code = str(config.get_setting('ui_language', 'auto',
+                                             _use_snapshot=False) or 'auto')
+        except Exception:
+            ui_code = 'auto'
+        if not _UI_LANG_SEEN:
+            _UI_LANG_SEEN.append(ui_code)
+        elif ui_code != _UI_LANG_SEEN[0]:
+            _UI_LANG_SEEN[0] = ui_code
+            import time as _time4
+            if _time4.time() - _LAST_REFRESH[0] >= 3:
+                _LAST_REFRESH[0] = _time4.time()
+                try:
+                    from browse import constants as _constants
+                    _constants.reset_cache()
+                except Exception as exc:
+                    config.log('ui language cache reset failed: {}'.format(exc))
+                config.log('UI language changed to {}, refresh'.format(ui_code))
+                xbmc.executebuiltin('Container.Refresh')
+        try:
+            # Network family applies to the whole process, so a change in
+            # settings takes effect now instead of after a Kodi restart. A
+            # manual choice also forgets what auto had learned earlier.
+            chosen = config.ip_family_setting()
+            if _IP_SETTING_SEEN and chosen != _IP_SETTING_SEEN[0]:
+                config.forget_learned_ip_family()
+            _IP_SETTING_SEEN[:] = [chosen]
+            config.enforce_ip_family()
+        except Exception:
+            pass
         did_reset = False
         if not _LOCALE_SEEN:
             _LOCALE_SEEN.append(current)
@@ -725,6 +774,30 @@ def run():
     _publish_locale(_locale_key())
     _publish_settings()
     try:
+        import maintenance
+        maintenance.check_addon_update()
+    except Exception as exc:
+        config.log('update check failed: {}'.format(exc))
+    try:
+        import threading as _th
+
+        def _netcheck_report():
+            """Egress IP (v4 and v6), DNS family and the real JA3 of this
+            device, in one block in kodi.log. Only with debug enabled, so a
+            normal start stays quiet: this is the report to compare when one
+            device gets the YouTube anti-bot gate and another does not."""
+            try:
+                if not config.get_bool('debug', False):
+                    return
+                import netcheck as _nc
+                _nc.run()
+            except Exception:
+                pass
+
+        _th.Thread(target=_netcheck_report, daemon=True).start()
+    except Exception:
+        pass
+    try:
         from music import queue
         if not player.isPlayingVideo():
             queue.cancel()
@@ -738,6 +811,12 @@ def run():
     del _LOCALE_SEEN[:]
     _LOCALE_SEEN.append(locale_key)
     _LAST_FLAGS.update(_settings_snapshot())
+    try:
+        # Seed the network family so the first change after a restart is still
+        # detected as a change (and clears what auto had learned).
+        _IP_SETTING_SEEN[:] = [config.ip_family_setting()]
+    except Exception:
+        pass
     try:
         import time
         import store
@@ -784,7 +863,12 @@ def run():
             if not watching and now - last_poll >= 30:
                 last_poll = now
                 watching = os.path.exists(_oauth_file())
-            if watching and now - last_poll >= 5:
+            try:
+                _modal = bool(xbmcgui.Window(10000).getProperty(
+                    'tmdbm.auth_modal_open'))
+            except Exception:
+                _modal = False
+            if watching and not _modal and now - last_poll >= 5:
                 last_poll = now
                 from account import youtube_sync
                 result = youtube_sync.poll_pending_once()
@@ -797,15 +881,15 @@ def run():
                             xbmc.sleep(500)
                     except Exception:
                         pass
-                    notify('YouTube account connected. Syncing...')
+                    notify(config.T(32179))
                     _sync_after_connect()
                     xbmc.executebuiltin(
                         'Container.Update({}?mode=my_youtube,replace)'.format(
                             'plugin://tmdbm.trailers/'))
                 elif state in ('expired', 'failed'):
                     watching = False
-                    notify('The activation code expired' if state == 'expired'
-                           else 'Account activation failed')
+                    notify(config.T(32197) if state == 'expired'
+                           else config.T(32196))
         except Exception as exc:
             config.log('login watcher: {}'.format(str(exc)[:120]))
         try:

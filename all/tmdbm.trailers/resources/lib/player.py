@@ -113,6 +113,10 @@ _YT_HEADERS = {
     'Accept-Language': 'en-US,en;q=0.5',
 }
 
+def _new_session(profile=0):
+    import config
+    return config.new_session(profile)
+
 
 class _ProxyHandler(BaseHTTPRequestHandler):
     _mpd_content = None
@@ -228,8 +232,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         for attempt in range(max_attempts):
             try:
                 if not _ProxyHandler._session:
-                    import requests as req
-                    _ProxyHandler._session = req.Session()
+                    _ProxyHandler._session = _api_session()
 
                 headers = dict(_YT_HEADERS)
                 if self._segment_headers:
@@ -437,10 +440,9 @@ def _true_fps(url, declared=None, headers=None, timeout=15):
     """
     import math as _math
     try:
-        import requests as _req
         session = _ProxyHandler._session
         if session is None:
-            session = _req.Session()
+            session = _new_session()
         h = dict(_YT_HEADERS)
         for k, v in (headers or {}).items():
             if k.lower() not in ('user-agent', 'accept'):
@@ -568,10 +570,9 @@ def _discover_dash_ranges(url, headers=None, timeout=15):
     Returns ((init_start, init_end), (idx_start, idx_end)) or (None, None).
     """
     try:
-        import requests as _req
         session = _ProxyHandler._session
         if session is None:
-            session = _req.Session()
+            session = _new_session()
         h = dict(_YT_HEADERS)
         for k, v in (headers or {}).items():
             if k.lower() not in ('user-agent', 'accept'):
@@ -632,6 +633,55 @@ _IOS_TS_UA = ('com.google.ios.youtube/20.20.7'
               ' (iPhone16,2; U; CPU iOS 18_5_0 like Mac OS X)')
 
 
+def _api_session():
+    session = _ProxyHandler._session
+    if session is None:
+        session = _new_session(0)
+        _ProxyHandler._session = session
+    return session
+
+
+def _flip_ip_family_on_gate():
+    """Auto mode: try the other address family while the gate is active.
+
+    YouTube decides the anonymous gate on the address the request arrives from,
+    and one device can present two of them (shared IPv4 through the router, its
+    own IPv6). With the setting on auto the cheapest test is to switch family
+    for the next attempt; when that attempt succeeds the family is remembered
+    (config.learn_ip_family), so later sessions start with the working one.
+    Returns True when a switch was applied. Never flips toward a family whose
+    own gate bucket is still active, so two banned families cannot ping-pong.
+    """
+    try:
+        import config
+        if config.ip_family_setting() != config.IP_FAMILY_AUTO:
+            _log('Anti-bot gate; IP family stays {} (pinned in settings)'.format(
+                config.current_ip_family()), xbmc.LOGWARNING)
+            return False
+        current = config.current_ip_family()
+        if current == config.IP_FAMILY_AUTO:
+            target = 'ipv4' if config.family_reachable('ipv6') else 'ipv6'
+        else:
+            target = 'ipv4' if current == 'ipv6' else 'ipv6'
+        if not config.family_reachable(target):
+            _log('Anti-bot gate; no other IP family is usable here (v4 {}, v6 {}), '
+                 'the gate is not a family problem'.format(
+                     config.family_reachable('ipv4'),
+                     config.family_reachable('ipv6')), xbmc.LOGWARNING)
+            return False
+        if _gate_remaining(target) > 0:
+            _log('Anti-bot gate; {} is also rate-limited right now, '
+                 'staying on {}'.format(target, current), xbmc.LOGWARNING)
+            return False
+        config.force_ip_family(target)
+        _log('Anti-bot gate; switched IP family {} -> {} for the next attempt'.format(
+            current, target), xbmc.LOGWARNING)
+        return True
+    except Exception as exc:
+        _log('IP family switch failed: {}'.format(str(exc)[:100]))
+        return False
+
+
 def _norm_fps(value):
     try:
         return int(value)
@@ -681,8 +731,8 @@ def _extract_innertube_ios(video_id):
         'X-YouTube-Client-Version': '20.20.7',
         'Content-Type': 'application/json',
     }
-    r = _rq.post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
-                 data=json.dumps(payload), headers=headers, timeout=20)
+    r = _api_session().post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+                              data=json.dumps(payload), headers=headers, timeout=20)
     body = r.json()
     status = ((body.get('playabilityStatus') or {}).get('status') or '')
     if status != 'OK':
@@ -854,8 +904,8 @@ def _extract_innertube_tv_auth(video_id):
         headers['X-Goog-Visitor-Id'] = visitor_data
     if page_id:
         headers['X-Goog-Pageid'] = page_id
-    r = _rq.post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
-                 data=json.dumps(payload), headers=headers, timeout=25)
+    r = _api_session().post('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',
+                              data=json.dumps(payload), headers=headers, timeout=25)
     body = r.json()
     status = ((body.get('playabilityStatus') or {}).get('status') or '')
     if status != 'OK':
@@ -1768,8 +1818,7 @@ def _check_urls_servable(data):
     try:
         session = _ProxyHandler._session
         if session is None:
-            import requests as _req
-            session = _req.Session()
+            session = _new_session()
         h = dict(_YT_HEADERS)
         formats = data.get('formats', []) or []
         videos = [fmt for fmt in formats
@@ -1822,8 +1871,7 @@ def _find_clean_progressive(data):
     try:
         session = _ProxyHandler._session
         if session is None:
-            import requests as _req
-            session = _req.Session()
+            session = _new_session()
         h = dict(_YT_HEADERS)
         for fmt in data.get('formats', []):
             if fmt.get('container', '') != 'mp4':
@@ -1856,7 +1904,37 @@ _last_extract_time = 0
 
 _EXTRACT_CAP = 50
 _GATE_MINUTES = 15
-_gate_until = [0.0]
+_gate_until = {}
+
+
+def _gate_key():
+    try:
+        import config as _config
+        return _config.current_ip_family()
+    except Exception:
+        return 'auto'
+
+
+def _gate_read_file():
+    try:
+        import json as _js
+        with open(_gate_file()) as _fh:
+            data = _js.load(_fh)
+        if isinstance(data, dict):
+            return {str(k): float(v) for k, v in data.items()}
+        return {'ipv4': float(data), 'ipv6': float(data),
+                'auto': float(data)}
+    except Exception:
+        return {}
+
+
+def _gate_write_file():
+    try:
+        import json as _js
+        with open(_gate_file(), 'w') as _fh:
+            _js.dump({k: v for k, v in _gate_until.items() if v}, _fh)
+    except Exception:
+        pass
 
 
 def _extract_ttl():
@@ -1868,7 +1946,7 @@ def _extract_ttl():
 
 def _extract_cache_dir():
     import os as _os
-    path = xbmcvfs.translatePath('special://temp/yt_extract')
+    path = os.path.join(ADDON_PROFILE, 'extract_cache')
     try:
         _os.makedirs(path, exist_ok=True)
     except Exception:
@@ -1929,32 +2007,54 @@ def _store_extract(video_id, data):
         pass
 
 
+def _clear_extract_cache():
+    import os as _os
+    import shutil as _sh
+    try:
+        _sh.rmtree(_extract_cache_dir(), ignore_errors=True)
+        return True
+    except Exception:
+        return False
+
+
 def _gate_file():
     return xbmcvfs.translatePath('special://temp/yt_gate_until')
 
 
-def _gate_remaining():
+def _gate_remaining(family=None):
     now = time.time()
-    if now < _gate_until[0]:
-        return _gate_until[0] - now
-    try:
-        with open(_gate_file()) as _fh:
-            until = float((_fh.read() or '').strip() or 0)
-    except Exception:
-        return 0
+    key = family or _gate_key()
+    until = _gate_until.get(key, 0.0)
     if now < until:
-        _gate_until[0] = until
+        return until - now
+    for stored_key, stored_until in _gate_read_file().items():
+        if stored_until > _gate_until.get(stored_key, 0.0):
+            _gate_until[stored_key] = stored_until
+    until = _gate_until.get(key, 0.0)
+    if now < until:
         return until - now
     return 0
 
 
-def _set_gate():
-    _gate_until[0] = time.time() + _GATE_MINUTES * 60
+def _other_family_clean(key):
+    other = {'ipv4': 'ipv6', 'ipv6': 'ipv4'}.get(key)
+    if not other:
+        return ''
+    if _gate_remaining(other) > 0:
+        return ''
     try:
-        with open(_gate_file(), 'w') as _fh:
-            _fh.write(str(_gate_until[0]))
+        import config as _config
+        if not _config.family_reachable(other):
+            return ''
     except Exception:
         pass
+    return other
+
+
+def _set_gate(family=None):
+    key = family or _gate_key()
+    _gate_until[key] = time.time() + _GATE_MINUTES * 60
+    _gate_write_file()
 
 
 
@@ -2042,9 +2142,16 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                  channel=None, views=None, vdate=None, dur=None, snippet=None):
     _cleanup_old_mpd()
 
-    _remaining = _gate_remaining()
+    _gate_family = _gate_key()
+    _remaining = _gate_remaining(_gate_family)
     if _remaining > 0:
         _mins = int(_remaining // 60) + 1
+        _alt = _other_family_clean(_gate_family)
+        if _alt:
+            raise Exception('YouTube is rate-limiting {} right now (anti-bot). '
+                            'Switch IP family to {} and retry at once, or leave '
+                            'it alone for about {} min.'.format(
+                                _gate_family.upper(), _alt, _mins))
         raise Exception('YouTube is rate-limiting this IP right now (anti-bot). '
                         'Leave it alone for about {} min, then retry.'.format(_mins))
 
@@ -2055,6 +2162,8 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     last_err = ''
     permanent = False
     gated = False
+    fresh = False
+    family_switched = False
     if data is None:
         global _last_extract_time
         elapsed = time.time() - _last_extract_time
@@ -2075,6 +2184,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     for attempt in range(3):
         if data is None:
             data = _fast_extract(video_id)
+            fresh = bool(data)
         if data:
             break
         try:
@@ -2093,6 +2203,8 @@ def play_youtube(video_id, title=None, genre=None, year=None,
             _pause = 8000 + int(random.random() * 4000)
             _log('YouTube anti bot gate; retrying in {}ms (attempt {}/3)'.format(
                 _pause, attempt + 1), xbmc.LOGWARNING)
+            if _flip_ip_family_on_gate():
+                family_switched = True
             xbmc.sleep(_pause)
             continue
         _log('Extraction attempt {} failed; retrying ({}/3)'.format(
@@ -2114,6 +2226,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 _log('Bot gate active and no alternate trailer; trying the linked account')
                 data = _authenticated_extract(video_id)
                 if data:
+                    fresh = True
                     gated = False
         if gated and not data and not fallback_fmt:
             _log('Bot gate active, authenticated extract failed too; cannot recover',
@@ -2139,6 +2252,14 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 err_msg = 'Extraction failed for ' + video_id
                 _log(err_msg, xbmc.LOGERROR)
                 raise Exception(err_msg)
+
+    if data and fresh and family_switched:
+        # A fresh extraction succeeded only after the family switch: that is
+        # evidence, so auto mode keeps using it from now on.
+        import config
+        _log('Extraction succeeded on IP family {}'.format(
+            config.current_ip_family()), xbmc.LOGWARNING)
+        config.learn_ip_family(config.current_ip_family())
 
     if data:
         _store_extract(video_id, data)

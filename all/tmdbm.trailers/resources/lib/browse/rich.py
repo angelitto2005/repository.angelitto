@@ -11,6 +11,84 @@ def channel_videos(url, tab='videos', limit=None):
                             content_type=tab))
 
 
+def channel_avatar(url):
+    avatar, _title = channel_header(url)
+    return avatar
+
+
+def channel_header(url):
+    from .scrapetube.scrapetube import (get_initial_data, get_session,
+                                        _extract_yt_initial_data)
+    try:
+        session = get_session()
+    except Exception:
+        return '', ''
+    base = str(url or '').rstrip('/')
+    for candidate in (base + '/videos', base):
+        try:
+            data = _extract_yt_initial_data(get_initial_data(session, candidate))
+        except Exception:
+            continue
+        found = _avatar_from_data(data)
+        title = _title_from_data(data)
+        if found or title:
+            try:
+                session.close()
+            except Exception:
+                pass
+            return found, title
+    try:
+        session.close()
+    except Exception:
+        pass
+    return '', ''
+
+
+def _title_from_data(data):
+    if not isinstance(data, dict):
+        return ''
+    try:
+        meta = (data.get('metadata') or {}).get('channelMetadataRenderer') or {}
+        title = str(meta.get('title') or '').strip()
+        if title:
+            return title
+        header = data.get('header') or {}
+        tabbed = header.get('c4TabbedHeaderRenderer') or {}
+        return str(tabbed.get('title') or '').strip()
+    except Exception:
+        return ''
+
+
+def _avatar_from_data(data):
+    if not isinstance(data, dict):
+        return ''
+    candidates = []
+    try:
+        header = data.get('header') or {}
+        tabbed = header.get('c4TabbedHeaderRenderer') or {}
+        candidates += ((tabbed.get('avatar') or {}).get('thumbnails') or [])
+        page_header = header.get('pageHeaderRenderer') or {}
+        content = page_header.get('content') or {}
+        view_model = content.get('pageHeaderViewModel') or {}
+        image = view_model.get('image') or {}
+        decorated = image.get('decoratedAvatarViewModel') or {}
+        avatar = decorated.get('avatar') or {}
+        avatar_vm = avatar.get('avatarViewModel') or {}
+        candidates += ((avatar_vm.get('image') or {}).get('sources') or [])
+        meta = (data.get('metadata') or {}).get('channelMetadataRenderer') or {}
+        candidates += ((meta.get('avatar') or {}).get('thumbnails') or [])
+    except Exception:
+        return ''
+    best = ''
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        link = item.get('url') or ''
+        if link.startswith('http'):
+            best = link
+    return best
+
+
 def channel_albums(url, limit=None):
     from .scrapetube.scrapetube import (get_initial_data, get_session,
                                         search_dict, _extract_yt_initial_data)

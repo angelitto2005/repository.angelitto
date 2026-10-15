@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import time
 import uuid
 
@@ -105,22 +106,97 @@ def clear_history():
 
 
 def get_subscriptions():
-    return _read(_SUBS, [])
+    collapsed = {}
+    for item in _read(_SUBS, []):
+        if not isinstance(item, dict) or not item.get('url'):
+            continue
+        key = _sub_key(item.get('url'))
+        previous = collapsed.get(key)
+        if previous is None or ('/channel/' in str(item.get('url'))
+                                and '/channel/' not in str(previous.get('url'))):
+            collapsed[key] = item
+    return list(collapsed.values())
+
+
+def _sub_key(url):
+    text = str(url or '').strip().rstrip('/')
+    match = re.search(r'/channel/([A-Za-z0-9_-]+)', text)
+    if match:
+        return 'channel:' + match.group(1)
+    return 'url:' + text.lower()
 
 
 def subscribe(title, url, image='', source='local'):
-    subs = [item for item in get_subscriptions() if item.get('url') != url]
+    key = _sub_key(url)
+    if is_url_title(title, url):
+        title = ''
+    subs = [item for item in _read(_SUBS, [])
+            if _sub_key(item.get('url')) != key]
     subs.append({'title': title, 'url': url, 'image': image,
                  'source': source, 'added': int(time.time())})
     _write(_SUBS, subs[:_SUBS_CAP])
+    clear_feed_cache()
 
 
 def unsubscribe(url):
-    _write(_SUBS, [item for item in get_subscriptions() if item.get('url') != url])
+    key = _sub_key(url)
+    _write(_SUBS, [item for item in _read(_SUBS, [])
+                   if _sub_key(item.get('url')) != key])
+    clear_feed_cache()
 
 
 def is_subscribed(url):
-    return any(item.get('url') == url for item in get_subscriptions())
+    key = _sub_key(url)
+    return any(_sub_key(item.get('url')) == key
+               for item in _read(_SUBS, []))
+
+
+_BROKEN_THUMB_PREFIX = 'https://yt3.googleusercontent.com/UC'
+
+
+def is_broken_thumb(image):
+    return str(image or '').startswith(_BROKEN_THUMB_PREFIX)
+
+
+def is_video_thumb(image):
+    text = str(image or '')
+    return 'i.ytimg.com' in text and '/vi/' in text
+
+
+def is_url_title(title, url):
+    text = str(title or '').strip()
+    if not text:
+        return True
+    if text == str(url or '').strip():
+        return True
+    return text.startswith('http')
+
+
+def needs_avatar(image):
+    return not image or is_broken_thumb(image) or is_video_thumb(image)
+
+
+def update_subscription_image(url, image):
+    return update_subscription(url, image=image)
+
+
+def update_subscription(url, image=None, title=None):
+    key = _sub_key(url)
+    changed = False
+    subs = _read(_SUBS, [])
+    for item in subs:
+        if isinstance(item, dict) and _sub_key(item.get('url')) == key:
+            if image and not is_broken_thumb(image):
+                current = item.get('image') or ''
+                if needs_avatar(current):
+                    item['image'] = image
+                    changed = True
+            if title and is_url_title(item.get('title'), item.get('url')):
+                item['title'] = title
+                changed = True
+    if changed:
+        _write(_SUBS, subs[:_SUBS_CAP])
+    return changed
 
 
 def get_bookmarks():
@@ -162,9 +238,49 @@ def remove_watch_later(video_id):
 _LOCAL_PLAYLISTS = 'local_playlists'
 _LOCAL_PREFIX = 'local_playlist_'
 _LOCAL_TRACK_CAP = 200
+_LOCAL_FILE = 'local_playlists.json'
+_FEED_CACHE = 'feed_local_cache'
+_FEED_FULL_CACHE = 'feed_full_cache'
+_FEED_CACHE_TTL = 1800
+_YT_META = 'yt_meta_cache'
+_YT_META_TTL = 7 * 24 * 3600
+_YT_META_FAIL_TTL = 3600
+_YT_META_CAP = 2000
+_REMOTE_MIRROR_KEYS = ('subscription_feed', 'subscribed_channels',
+                       'watch_later_remote', 'remote_history',
+                       'saved_playlists', 'music_pool')
+
+
+def _is_local_key(name):
+    text = str(name or '')
+    return text == _LOCAL_PLAYLISTS or text.startswith(_LOCAL_PREFIX)
+
+
+def _migrate_local_playlists():
+    try:
+        if os.path.isfile(_path(_LOCAL_FILE)):
+            return
+        library = _read_obj(_LIBRARY)
+        local = {key: value for key, value in library.items()
+                 if key == _LOCAL_PLAYLISTS or key.startswith(_LOCAL_PREFIX)}
+        if not local:
+            return
+        _write_obj(_LOCAL_FILE, local)
+        for key in local:
+            library.pop(key, None)
+        _write_obj(_LIBRARY, library)
+    except Exception as exc:
+        config.log('local playlists migrate failed: {}'.format(exc),
+                   xbmc.LOGWARNING)
 
 
 def remove_library(name):
+    if _is_local_key(name):
+        _migrate_local_playlists()
+        data = _read_obj(_LOCAL_FILE)
+        data.pop(str(name or ''), None)
+        _write_obj(_LOCAL_FILE, data)
+        return
     library = _read_obj(_LIBRARY)
     library.pop(str(name or ''), None)
     _write_obj(_LIBRARY, library)
@@ -226,29 +342,195 @@ def remove_from_local_playlist(pid, video_id):
 
 
 def get_library(name):
+    if _is_local_key(name):
+        _migrate_local_playlists()
+        value = _read_obj(_LOCAL_FILE).get(str(name or ''))
+        return value if isinstance(value, list) else []
     value = _read_obj(_LIBRARY).get(str(name or ''))
     return value if isinstance(value, list) else []
 
 
 def set_library(name, entries):
+    if _is_local_key(name):
+        _migrate_local_playlists()
+        data = _read_obj(_LOCAL_FILE)
+        data[str(name or '')] = list(entries or [])
+        _write_obj(_LOCAL_FILE, data)
+        return
     library = _read_obj(_LIBRARY)
     library[str(name or '')] = list(entries or [])
     library['updated_at'] = int(time.time())
     _write_obj(_LIBRARY, library)
 
 
-def clear_library():
+def prune_youtube_subscriptions():
+    merged = {}
+    for item in _read(_SUBS, []):
+        if not isinstance(item, dict) or not item.get('url'):
+            continue
+        if item.get('source') == 'youtube':
+            continue
+        item = dict(item)
+        if item.get('source') == 'both':
+            item.pop('youtube_subscription_id', None)
+            item.pop('synced', None)
+            item['source'] = 'local'
+        key = _sub_key(item.get('url'))
+        previous = merged.get(key)
+        if previous is None or ('/channel/' in str(item.get('url'))
+                                and '/channel/' not in str(previous.get('url'))):
+            merged[key] = item
+    _write(_SUBS, list(merged.values())[:_SUBS_CAP])
+    clear_feed_cache()
+
+
+def clear_remote_mirrors():
+    library = _read_obj(_LIBRARY)
+    for key in _REMOTE_MIRROR_KEYS:
+        library.pop(key, None)
+    _write_obj(_LIBRARY, library)
+
+
+def _feed_cache_valid(data):
+    if not isinstance(data, dict):
+        return False
     try:
-        os.remove(_path(_LIBRARY))
-    except OSError:
-        pass
+        age = int(time.time()) - int(data.get('ts') or 0)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= age <= _FEED_CACHE_TTL
+
+
+def _debug_no_cache():
+    try:
+        return bool(config.get_bool('debug', False))
+    except Exception:
+        return False
+
+
+def get_feed_cache():
+    if _debug_no_cache():
+        return []
+    data = _read_obj(_LIBRARY).get(_FEED_CACHE)
+    if not _feed_cache_valid(data):
+        return []
+    entries = data.get('entries')
+    return entries if isinstance(entries, list) else []
+
+
+def set_feed_cache(entries):
+    library = _read_obj(_LIBRARY)
+    library[_FEED_CACHE] = {'ts': int(time.time()),
+                            'entries': list(entries or [])}
+    _write_obj(_LIBRARY, library)
+
+
+def get_feed_full_cache():
+    if _debug_no_cache():
+        return {}
+    data = _read_obj(_LIBRARY).get(_FEED_FULL_CACHE)
+    if not _feed_cache_valid(data):
+        return {}
+    entries = data.get('entries')
+    if not isinstance(entries, list):
+        return {}
+    return {'entries': entries, 'need': int(data.get('need') or 0),
+            'exhausted': bool(data.get('exhausted', True))}
+
+
+def set_feed_full_cache(entries, need, exhausted):
+    library = _read_obj(_LIBRARY)
+    library[_FEED_FULL_CACHE] = {'ts': int(time.time()),
+                                 'entries': list(entries or []),
+                                 'need': int(need or 0),
+                                 'exhausted': bool(exhausted)}
+    _write_obj(_LIBRARY, library)
+
+
+def clear_feed_cache():
+    remove_library(_FEED_CACHE)
+    remove_library(_FEED_FULL_CACHE)
+
+
+def set_yt_meta_failed(video_id):
+    try:
+        if not video_id:
+            return
+        library = _read_obj(_LIBRARY)
+        data = library.get(_YT_META)
+        if not isinstance(data, dict):
+            data = {}
+        data[str(video_id)] = {'ts': int(time.time()), 'fail': True}
+        if len(data) > _YT_META_CAP:
+            ordered = sorted(data.items(),
+                             key=lambda kv: int((kv[1] or {}).get('ts') or 0))
+            data = dict(ordered[-(_YT_META_CAP - 500):])
+        library[_YT_META] = data
+        _write_obj(_LIBRARY, library)
+    except Exception as exc:
+        config.log('yt meta fail mark failed: {}'.format(exc),
+                   xbmc.LOGWARNING)
+
+
+def is_yt_meta_failed(video_id):
+    try:
+        data = _read_obj(_LIBRARY).get(_YT_META) or {}
+        item = data.get(str(video_id or ''))
+        if not isinstance(item, dict) or not item.get('fail'):
+            return False
+        return int(time.time()) - int(item.get('ts') or 0) <= _YT_META_FAIL_TTL
+    except Exception:
+        return False
+
+
+def clear_yt_meta_cache():
+    remove_library(_YT_META)
+
+
+def get_yt_meta(video_id):
+    try:
+        data = _read_obj(_LIBRARY).get(_YT_META) or {}
+        item = data.get(str(video_id or ''))
+        if not isinstance(item, dict):
+            return {}
+        if int(time.time()) - int(item.get('ts') or 0) > _YT_META_TTL:
+            return {}
+        meta = item.get('meta')
+        return meta if isinstance(meta, dict) else {}
+    except Exception:
+        return {}
+
+
+def set_yt_meta(video_id, meta):
+    try:
+        if not video_id or not isinstance(meta, dict):
+            return
+        library = _read_obj(_LIBRARY)
+        data = library.get(_YT_META)
+        if not isinstance(data, dict):
+            data = {}
+        data[str(video_id)] = {'ts': int(time.time()), 'meta': dict(meta)}
+        if len(data) > _YT_META_CAP:
+            ordered = sorted(data.items(),
+                             key=lambda kv: int((kv[1] or {}).get('ts') or 0))
+            data = dict(ordered[-(_YT_META_CAP - 500):])
+        library[_YT_META] = data
+        _write_obj(_LIBRARY, library)
+    except Exception as exc:
+        config.log('yt meta cache failed: {}'.format(exc), xbmc.LOGWARNING)
 
 
 def merge_youtube_subscriptions(remote):
-    existing = {item.get('url'): dict(item)
-                for item in get_subscriptions() if item.get('url')}
-    remote_map = {item.get('url'): dict(item) for item in remote or []
-                  if item.get('url')}
+    existing = {}
+    for item in get_subscriptions():
+        if not isinstance(item, dict) or not item.get('url'):
+            continue
+        existing[_sub_key(item.get('url'))] = dict(item)
+    remote_map = {}
+    for item in remote or []:
+        if not isinstance(item, dict) or not item.get('url'):
+            continue
+        remote_map[_sub_key(item.get('url'))] = dict(item)
     merged = []
     for url, entry in remote_map.items():
         previous = existing.pop(url, {})

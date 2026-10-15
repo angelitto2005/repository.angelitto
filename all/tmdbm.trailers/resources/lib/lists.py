@@ -9,7 +9,6 @@ import store
 from browse.constants import results_per_page
 
 THUMBNAIL_URL = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'
-CHANNEL_ART_URL = 'https://yt3.googleusercontent.com/{}=s176-c-k-c0x00ffffff-no-rj'
 
 _BAD_RANGES = (
     (0x1F000, 0x1FAFF),
@@ -211,7 +210,7 @@ def _song_menus(entry, vid, in_watch_later=False):
     if entry.get('channel_id'):
         channel_url = 'https://www.youtube.com/channel/' + entry['channel_id']
         menus.append((
-            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32152)),
             'ActivateWindow(Videos,{})'.format(
                 router.BASE_URL + '?' + urlencode(
                     {'mode': 'channel', 'url': channel_url,
@@ -219,30 +218,30 @@ def _song_menus(entry, vid, in_watch_later=False):
         known = _menu_is_subscribed(channel_url)
         menus.append((
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
-                'Unsubscribe' if known else 'Subscribe'),
+                config.T(32154) if known else config.T(32153)),
             run_plugin('unsubscribe' if known else 'subscribe',
                        {'url': channel_url,
                         'title': entry.get('channel') or '',
-                        'image': CHANNEL_ART_URL.format(entry['channel_id'])})))
+                        'image': ''})))
     elif vid:
         menus.append((
-            '[B][COLOR FF00CED1]Go to Channel[/COLOR][/B]',
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32152)),
             run_plugin('go_channel', {'video_id': vid})))
         menus.append((
-            '[B][COLOR FF00CED1]Subscribe[/COLOR][/B]',
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32153)),
             run_plugin('sub_channel', {'video_id': vid})))
     if vid:
         if not in_watch_later:
-            menus.append(('[B][COLOR FF00CED1]Add to Watch Later[/COLOR][/B]',
+            menus.append(('[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32155)),
                           run_plugin('watch_later_add', entry_params(entry))))
-        menus.append(('[B][COLOR yellow]Local Playlists[/COLOR][/B]',
+        menus.append(('[B][COLOR yellow]{}[/COLOR][/B]'.format(config.T(32110)),
                       run_plugin('local_playlist_add', entry_params(entry))))
         _is_blocked = _menu_is_blocked(vid)
         if _is_blocked:
-            menus.append(('[B][COLOR FFFF5555]Unblock this video[/COLOR][/B]',
+            menus.append(('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32157)),
                           run_plugin('unblock', {'video_id': vid})))
         else:
-            menus.append(('[B][COLOR FFFF5555]No autoplay for this video[/COLOR][/B]',
+            menus.append(('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32158)),
                           run_plugin('no_autoplay', {'video_id': vid})))
     return menus
 
@@ -267,6 +266,7 @@ def _queue_entry(entry):
 def fill_missing_meta(entries, timeout=5.0):
     from browse import meta
     from concurrent.futures import ThreadPoolExecutor, wait
+    import store as _store
     entries = list(entries or [])
     pending = [dict(entry or {}) for entry in entries
                if (entry or {}).get('video_id')
@@ -275,8 +275,38 @@ def fill_missing_meta(entries, timeout=5.0):
                     or not entry_date(entry or {}))]
     if not pending:
         return entries
+    cached = {}
+    fetch = []
+    for entry in pending:
+        vid = video_id(entry.get('video_id'))
+        info = _store.get_yt_meta(vid)
+        if not info and _store.is_yt_meta_failed(vid):
+            continue
+        # A cached row without a date is not complete: the music chart parser
+        # has no date to begin with, so it must be refilled instead of
+        # serving the same empty value for the whole store TTL.
+        needs_date = not entry_date(entry)
+        if info and not (needs_date and not info.get('published')):
+            merged = dict(entry)
+            merged['channel'] = merged.get('channel') or info.get('channel') or ''
+            merged['channel_id'] = merged.get('channel_id') or info.get('channel_id') or ''
+            merged['views'] = merged.get('views') or info.get('views') or ''
+            merged['vdate'] = entry_date(merged) or info.get('published') or ''
+            if not merged.get('duration'):
+                try:
+                    merged['duration'] = int(info.get('duration') or 0)
+                except (TypeError, ValueError):
+                    pass
+            merged['snippet'] = merged.get('snippet') or info.get('description') or ''
+            cached[vid] = merged
+        else:
+            fetch.append(entry)
+    pending = fetch
+    if not pending:
+        return [cached.get(video_id(entry.get('video_id')), entry)
+                for entry in entries]
     try:
-        pool = ThreadPoolExecutor(max_workers=10)
+        pool = ThreadPoolExecutor(max_workers=8)
     except Exception:
         return list(entries or [])
     try:
@@ -291,15 +321,30 @@ def fill_missing_meta(entries, timeout=5.0):
             pass
     filled = {}
     failed = 0
+    first_error = ''
     for future in done:
         entry = futures.get(future)
         try:
             info = future.result() or {}
-        except Exception:
+        except Exception as exc:
             failed += 1
+            try:
+                _store.set_yt_meta_failed(
+                    video_id((entry or {}).get('video_id')))
+            except Exception:
+                pass
+            if not first_error:
+                first_error = str(exc)[:160]
             continue
         if not info:
             failed += 1
+            try:
+                _store.set_yt_meta_failed(
+                    video_id((entry or {}).get('video_id')))
+            except Exception:
+                pass
+            if not first_error:
+                first_error = 'empty meta'
             continue
         merged = dict(entry)
         merged['channel'] = merged.get('channel') or info.get('channel') or ''
@@ -313,14 +358,54 @@ def fill_missing_meta(entries, timeout=5.0):
                 pass
         merged['snippet'] = merged.get('snippet') or info.get('description') or ''
         filled[merged['video_id']] = merged
+        try:
+            stored = {
+                'channel': merged.get('channel') or '',
+                'channel_id': merged.get('channel_id') or '',
+                'views': merged.get('views') or '',
+                'duration': merged.get('duration') or 0,
+                'description': merged.get('snippet') or ''}
+            if merged.get('vdate'):
+                stored['published'] = merged['vdate']
+            else:
+                # No date anywhere: park it like a failed lookup so the next
+                # visit retries instead of trusting an undated cache row.
+                _store.set_yt_meta_failed(merged['video_id'])
+            _store.set_yt_meta(merged['video_id'], stored)
+        except Exception:
+            pass
+    for future in set(futures) - done:
+        # Unfinished means the deadline cut the queue short, not that the
+        # lookup failed: parking it as a failed lookup would hide the metadata
+        # for the whole failure TTL. Real failures are parked in the loop above.
+        try:
+            future.cancel()
+        except Exception:
+            pass
     if failed:
-        config.log('meta fill: {}/{} filled, {} failed'.format(
-            len(filled), len(pending), failed))
+        config.log('meta fill: {}/{} filled, {} failed (first error: {})'.format(
+            len(filled), len(pending), failed, first_error or '?'),
+            always=True)
     else:
         config.debug('meta fill: {}/{} filled'.format(len(filled),
-                                                     len(pending)))
+                                                      len(pending)))
+    filled.update(cached)
     return [filled.get(video_id(entry.get('video_id')), entry)
             for entry in entries]
+
+
+def persist_filled(source_name, original, filled):
+    try:
+        original = list(original or [])
+        filled = list(filled or [])
+        if len(original) != len(filled) or not original:
+            return
+        if all(dict(f or {}) == dict(o or {})
+               for f, o in zip(filled, original)):
+            return
+        store.set_library(str(source_name or ''), filled)
+    except Exception:
+        pass
 
 
 def fetch_listing_page(listing, per_page):
@@ -510,6 +595,8 @@ def video_item(entry, mode='play', cm=None, in_watch_later=False):
     title = clean_title(entry.get('title')) or vid
     if entry.get('is_live'):
         title = '[COLOR FFFF4500][LIVE][/COLOR] {}'.format(title)
+    if entry.get('_local_only'):
+        title = '{} [COLOR FF00FF7F][LOCAL][/COLOR]'.format(title)
     _is_blocked = _menu_is_blocked(vid)
     if _is_blocked:
         title = '{} [COLOR FFFF5555][blocked][/COLOR]'.format(title)
@@ -615,6 +702,7 @@ def paged(fetch, builder, mode, params=None, page=1, content='videos'):
         next_params = dict(params or {})
         next_params['page'] = page + 1
         items.append(folder_item(
-            '[B]Next page {}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(page + 1),
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(
+                config.T(32160).format(page + 1)),
             mode, config.icon('nextpage'), next_params))
     return items, content
