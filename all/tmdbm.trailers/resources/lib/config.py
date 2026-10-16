@@ -3,7 +3,7 @@ import json
 import os
 import re
 import socket
-import ssl
+import sys
 
 import xbmc
 import xbmcaddon
@@ -77,7 +77,8 @@ def apply_tls_profile(ctx, profile):
                 profile.get('name'), profile['curve']), xbmc.LOGWARNING)
     if profile.get('max_version') == '1.2':
         try:
-            ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+            import ssl as _ssl2
+            ctx.maximum_version = _ssl2.TLSVersion.TLSv1_2
         except Exception:
             pass
     return curve
@@ -102,6 +103,7 @@ def new_session(profile=0):
     """
     import requests as _rq
     session = _rq.Session()
+    _patch_urllib3()
     try:
         import ssl as _ssl
         from requests.adapters import HTTPAdapter as _HA
@@ -217,15 +219,41 @@ def current_ip_family():
     return IP_FAMILY_AUTO
 
 
+def _patch_urllib3():
+    """Pin urllib3's own family choice, but only when urllib3 is already loaded.
+
+    urllib3.create_connection() calls socket.getaddrinfo() with the family
+    allowed_gai_family() returns, and AF_UNSPEC is 0, so the patched resolver
+    above already decides the family. Importing urllib3 here just to rewrite
+    that function cost more (urllib3 + ssl + socket + email + logging) than the
+    whole listing, so this is the second line of defence and never the first.
+    """
+    module = sys.modules.get('urllib3.util.connection')
+    if module is None or 'allowed_gai_family' in _IP_ORIGINALS:
+        return
+    try:
+        _IP_ORIGINALS['allowed_gai_family'] = module.allowed_gai_family
+
+        def _family_allowed_gai_family():
+            if _IP_FORCED[0]:
+                return _IP_FORCED[0]
+            return _IP_ORIGINALS['allowed_gai_family']()
+
+        module.allowed_gai_family = _family_allowed_gai_family
+    except Exception:
+        pass
+
+
 def _install_ip_family_patches():
     """Route every address lookup this process makes through one family.
 
-    requests/urllib3 pick the family through allowed_gai_family(), and plain
-    socket.create_connection() goes through getaddrinfo(); patching both keeps
-    the API calls and the googlevideo segments on the same family. Lookups that
-    ask for a specific family (diagnostics, IPv6 literals) are left alone.
+    socket.getaddrinfo() is the single resolver requests/urllib3/http.client/
+    yt-dlp all go through, so patching it covers them; urllib3 gets its own
+    hook too when it happens to be loaded already. Lookups that ask for a
+    specific family (diagnostics, IPv6 literals) are left alone.
     """
-    if _IP_ORIGINALS:
+    if _IP_ORIGINALS.get('getaddrinfo'):
+        _patch_urllib3()
         return
     _IP_ORIGINALS['getaddrinfo'] = socket.getaddrinfo
 
@@ -235,18 +263,7 @@ def _install_ip_family_patches():
         return _IP_ORIGINALS['getaddrinfo'](host, port, family, type, proto, flags)
 
     socket.getaddrinfo = _family_getaddrinfo
-    try:
-        import urllib3.util.connection as _u3c
-        _IP_ORIGINALS['allowed_gai_family'] = _u3c.allowed_gai_family
-
-        def _family_allowed_gai_family():
-            if _IP_FORCED[0]:
-                return _IP_FORCED[0]
-            return _IP_ORIGINALS['allowed_gai_family']()
-
-        _u3c.allowed_gai_family = _family_allowed_gai_family
-    except Exception:
-        pass
+    _patch_urllib3()
 
 
 def force_ip_family(family):
@@ -265,21 +282,59 @@ def force_ip_family(family):
 
 _IP_PROBE = {}
 _IP_PROBE_TTL = 300
+_IP_PROBE_FILE = 'ip_family_probe.json'
+_IP_PROBE_DISK_TTL = 7200
+_IP_PROBE_TIMEOUT = 1.2
 
 
-def family_reachable(family):
+def _probe_verdicts():
+    try:
+        with open(profile_path(_IP_PROBE_FILE)) as _fh:
+            data = json.load(_fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _remember_verdict(family, reachable):
+    try:
+        import time as _time
+        data = _probe_verdicts()
+        data[family] = [int(_time.time()), bool(reachable)]
+        with open(profile_path(_IP_PROBE_FILE), 'w') as _fh:
+            json.dump(data, _fh)
+    except Exception:
+        pass
+
+
+def family_reachable(family, fresh=False):
     """True when this device really reaches YouTube over that family.
 
     Pinning a family the network cannot carry would make every YouTube request
     fail, so a specific family is only applied after one TCP connect to a
-    resolved address of that family succeeds. Cached for a few minutes so a
-    settings change does not probe again.
+    resolved address of that family succeeds. The verdict is kept on disk for
+    two hours: a fresh interpreter (plugin, service, playback) would otherwise
+    repeat the blocking connect before it can show the first listing.
+
+    fresh=True ignores both caches and probes now. Callers that have to act on
+    the answer immediately pass it - the anti-bot gate picks the other family
+    from this, and a two hour old "reachable" would send playback into a family
+    the network stopped carrying in the meantime.
     """
     import time as _time
     now = _time.time()
     known = _IP_PROBE.get(family)
-    if known and now - known[0] < _IP_PROBE_TTL:
+    if not fresh and known and now - known[0] < _IP_PROBE_TTL:
         return known[1]
+    stored = None if fresh else _probe_verdicts().get(family)
+    try:
+        usable = isinstance(stored, (list, tuple)) and len(stored) == 2 \
+            and now - float(stored[0]) < _IP_PROBE_DISK_TTL
+    except (TypeError, ValueError):
+        usable = False
+    if usable:
+        _IP_PROBE[family] = (now, bool(stored[1]))
+        return bool(stored[1])
     reachable = False
     try:
         af = socket.AF_INET6 if family == 'ipv6' else socket.AF_INET
@@ -287,7 +342,7 @@ def family_reachable(family):
         infos = lookup('www.youtube.com', 443, af, socket.SOCK_STREAM)
         if infos:
             probe = socket.socket(af, socket.SOCK_STREAM)
-            probe.settimeout(2.5)
+            probe.settimeout(_IP_PROBE_TIMEOUT)
             try:
                 probe.connect(infos[0][4][:2])
                 reachable = True
@@ -296,14 +351,22 @@ def family_reachable(family):
     except Exception:
         reachable = False
     _IP_PROBE[family] = (now, reachable)
+    _remember_verdict(family, reachable)
     return reachable
 
 
-def enforce_ip_family():
-    """Apply setting plus learned value to the process. Safe to call often."""
+def enforce_ip_family(probe=True):
+    """Apply setting plus learned value to the process. Safe to call often.
+
+    probe=False pins the family without testing it first, for callers that
+    make no network call of their own (listing routes): the family is still
+    applied, it is only not validated, which keeps a folder from waiting on a
+    TCP handshake it does not need.
+    """
     try:
         preference = ip_family_preference()
-        if preference != IP_FAMILY_AUTO and not family_reachable(preference):
+        if preference != IP_FAMILY_AUTO and probe \
+                and not family_reachable(preference):
             log('IP family {} is not usable on this network; staying on auto'.format(
                 preference), xbmc.LOGWARNING)
             preference = IP_FAMILY_AUTO
@@ -559,8 +622,9 @@ def ensure_dir(path):
 
 # Applied at import so every entry point (plugin, service, playback) reaches
 # YouTube over the family the setting - or the last successful attempt - asks
-# for, instead of each caller having to remember it.
+# for, instead of each caller having to remember it. The probe verdict comes
+# from disk, so this stays a file read instead of a connect.
 try:
-    enforce_ip_family()
+    enforce_ip_family(probe=False)
 except Exception:
     pass

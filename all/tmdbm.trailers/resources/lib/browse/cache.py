@@ -9,10 +9,7 @@
 
 import functools
 import time
-import hashlib
 import os
-import shutil
-import pickle
 try:
     import xbmcvfs
 except ImportError:
@@ -23,7 +20,9 @@ SECONDS = 1
 MINUTES = 60
 
 
-# Functions below shamelessly taken and adapted from ResolveURL, so thanks to all of its contributors
+# hashlib and pickle only matter once a listing is cached, and both are
+# expensive to import (hashlib alone loads the OpenSSL bindings), so they are
+# pulled in on first use instead of on every listing.
 
 def _debug_bypass():
     try:
@@ -35,8 +34,8 @@ def _debug_bypass():
 
 class FunctionCache:
 
-    def __init__(self, path, protocol=pickle.HIGHEST_PROTOCOL):
-        
+    def __init__(self, path, protocol=None):
+
         self.path = path
 
         if not os.path.exists(self.path):
@@ -52,6 +51,7 @@ class FunctionCache:
         every later save failed silently and no list was cached again, so
         every folder entry downloaded from YouTube all over again.
         """
+        import shutil
         try:
             shutil.rmtree(self.path, ignore_errors=True)
             if not os.path.exists(self.path):
@@ -61,6 +61,8 @@ class FunctionCache:
             return False
 
     def _get_filename(self, name, args, kwargs):
+
+        import hashlib
 
         _name = hashlib.md5(name.encode('utf-8')).hexdigest()
         _args = hashlib.md5(str(args).encode('utf-8')).hexdigest()
@@ -88,6 +90,7 @@ class FunctionCache:
                 mtime = os.path.getmtime(filename)
 
             if mtime >= max_age:
+                import pickle
                 with open(filename, 'rb') as file_handle:
                     payload = file_handle.read()
 
@@ -103,6 +106,9 @@ class FunctionCache:
             kwargs = {}
 
         try:
+            import pickle
+            if self.protocol is None:
+                self.protocol = pickle.HIGHEST_PROTOCOL
             payload = pickle.dumps(result, protocol=self.protocol)
 
             filename = os.path.join(self.path, self._get_filename(name, args, kwargs))

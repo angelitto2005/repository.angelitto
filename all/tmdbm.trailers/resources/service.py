@@ -795,6 +795,12 @@ def run():
     observer.was_playing = False
     shown = ''
     config.log('Service started')
+    # The service talks to YouTube (update check, library sync, feed), so it
+    # validates the pinned family here; importing config only applies it.
+    try:
+        config.enforce_ip_family()
+    except Exception:
+        pass
     _publish_locale(_locale_key())
     _publish_settings()
     updated = None

@@ -660,14 +660,16 @@ def _flip_ip_family_on_gate():
             return False
         current = config.current_ip_family()
         if current == config.IP_FAMILY_AUTO:
-            target = 'ipv4' if config.family_reachable('ipv6') else 'ipv6'
+            target = 'ipv4' if config.family_reachable('ipv6', fresh=True) \
+                else 'ipv6'
         else:
             target = 'ipv4' if current == 'ipv6' else 'ipv6'
-        if not config.family_reachable(target):
+        if not config.family_reachable(target, fresh=True):
             _log('Anti-bot gate; no other IP family is usable here (v4 {}, v6 {}), '
                  'the gate is not a family problem'.format(
-                     config.family_reachable('ipv4'),
-                     config.family_reachable('ipv6')), xbmc.LOGWARNING)
+                     config.family_reachable('ipv4', fresh=True),
+                     config.family_reachable('ipv6', fresh=True)),
+                 xbmc.LOGWARNING)
             return False
         if _gate_remaining(target) > 0:
             _log('Anti-bot gate; {} is also rate-limited right now, '
@@ -2044,7 +2046,7 @@ def _other_family_clean(key):
         return ''
     try:
         import config as _config
-        if not _config.family_reachable(other):
+        if not _config.family_reachable(other, fresh=True):
             return ''
     except Exception:
         pass
