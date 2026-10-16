@@ -1,6 +1,5 @@
 import sqlite3
 import os
-import requests
 import xbmc
 import xbmcgui
 import xbmcvfs
@@ -9,9 +8,10 @@ import json
 import time
 import zlib
 try:
-    from resources.lib.core.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, LAST_SYNC_FILE, utc_to_local_date, provider_title, provider_icon
+    from resources.lib.core.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, LAST_SYNC_FILE, utc_to_local_date, provider_title, provider_icon, lazy_requests as requests
 except ImportError:
     from resources.lib.core.config import ADDON, API_KEY, BASE_URL, LANG, TMDB_V4_TOKEN_FILE, IMG_BASE, LAST_SYNC_FILE
+    import requests
     def utc_to_local_date(iso_ts):
         try:
             return str(iso_ts).split('T')[0]
@@ -3392,19 +3392,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
     
     def _trigger_ui_refresh():
         try:
-            import xbmc
-            import xbmcgui
-            import time
-            try:
-                _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
-            except:
-                _binge_since = 0.0
-            if _binge_since > 0 and time.time() - _binge_since < 120:
-                return
-            container_path = xbmc.getInfoLabel('Container.FolderPath')
-            if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
-                xbmc.executebuiltin("Container.Refresh")
-                xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
+            from resources.lib.providers.watched_provider import _upnext_refresh_now
+            _upnext_refresh_now()
         except: pass
         
     try:
@@ -3470,8 +3459,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                     conn2 = get_connection(); c2 = conn2.cursor()
                     _insert_trakt_next_one(c2, (tmdb_id,show_title,next_ep['season'],next_ep['number'],ep_title,ep_overview,now_str,poster,air_date,0))
                     _db_commit_retry(conn2); conn2.close()
-                    from resources.lib.core.cache import clear_all_fast_cache
-                    clear_all_fast_cache(); _trigger_ui_refresh()
+                    from resources.lib.core.cache import clear_list_fast_cache
+                    clear_list_fast_cache(); _trigger_ui_refresh()
                     return
             log(f"[UP NEXT] '{show_title}' no longer has watched episodes. Removing from UI.")
             conn = get_connection()
@@ -3482,8 +3471,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                 pass
             try: conn.close()
             except: pass
-            from resources.lib.core.cache import clear_all_fast_cache
-            clear_all_fast_cache()
+            from resources.lib.core.cache import clear_list_fast_cache
+            clear_list_fast_cache()
             _trigger_ui_refresh()
             return
         # ---
@@ -3516,8 +3505,8 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
                 pass
             try: conn.close()
             except: pass
-            from resources.lib.core.cache import clear_all_fast_cache
-            clear_all_fast_cache()
+            from resources.lib.core.cache import clear_list_fast_cache
+            clear_list_fast_cache()
             _trigger_ui_refresh()
             return
 
@@ -3557,9 +3546,9 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
         
         log(f"[UP NEXT] ✓ {show_title} updated INSTANT and LOCAL to -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
         
-        from resources.lib.core.cache import clear_all_fast_cache
-        clear_all_fast_cache()
-        
+        from resources.lib.core.cache import clear_list_fast_cache
+        clear_list_fast_cache()
+
         _trigger_ui_refresh()
 
     except Exception as e:
@@ -4017,23 +4006,13 @@ def refresh_next_episode_tmdb(tmdb_id, _attempt=1, _max_attempts=3):
         log(f"[TMDB SYNC] Up Next refreshed {show_title} -> S{next_ep['season']:02d}E{next_ep['number']:02d}")
         _notify_tmdb_upnext_changed()
         try:
-            from resources.lib.core.cache import clear_all_fast_cache
-            clear_all_fast_cache()
+            from resources.lib.core.cache import clear_list_fast_cache
+            clear_list_fast_cache()
         except Exception:
             pass
         try:
-            import xbmcgui as _xg
-            import time as _tm
-            try:
-                _binge_since = float(_xg.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
-            except:
-                _binge_since = 0.0
-            if _binge_since > 0 and _tm.time() - _binge_since < 120:
-                return
-            _cp = xbmc.getInfoLabel('Container.FolderPath')
-            if not _cp or 'plugin.video.tmdbmovies' in _cp.lower():
-                xbmc.executebuiltin("Container.Refresh")
-                _xg.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(_tm.time()))
+            from resources.lib.providers.watched_provider import _upnext_refresh_now
+            _upnext_refresh_now()
         except Exception:
             pass
     except Exception as e:

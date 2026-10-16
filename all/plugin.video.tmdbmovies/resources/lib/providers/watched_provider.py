@@ -255,6 +255,133 @@ def refresh_ui():
     except:
         pass
 
+_PREBUILD = {'busy': False, 'pending': False}
+
+
+def _upnext_row_updated_stamp():
+    """Timestamp-ul ultimei rescrieri de rand Up Next (sau 0)."""
+    try:
+        import xbmcgui as _xg
+        return float(_xg.Window(10000).getProperty('tmdbmovies.upnext_row_updated') or 0)
+    except Exception:
+        return 0.0
+
+
+def _prebuild_upnext_cache(container_path='', min_ts=0.0):
+    """Construieste lista Up Next noua in fast cache, fara GUI.
+
+    Rulat intr-un thread de fundal la stop: cand userul inchide dialogul de binge,
+    refreshul gaseste hit si randeaza in ~250ms in loc sa reconstruiasca tot.
+
+    min_ts: asteapta ca daemonii de avansare sa fi scris randul nou (ei marcheaza
+    tmdbmovies.upnext_row_updated la intrare), altfel am construi lista vechea.
+    Nu ghicem ce lista e vizibila: in timpul redarii Container.FolderPath este
+    GOL, deci ne uitam la ultima lista Up Next randata (tmdbmovies.upnext_view).
+    """
+    variant = ''
+    try:
+        if container_path and 'plugin.video.tmdbmovies' in container_path.lower():
+            variant = 'tmdb' if 'mode=tmdb_up_next' in container_path.lower() else 'provider'
+        else:
+            import xbmcgui as _xg
+            variant = _xg.Window(10000).getProperty('tmdbmovies.upnext_view') or ''
+    except Exception:
+        variant = ''
+    if variant not in ('tmdb', 'provider'):
+        return False
+    try:
+        if min_ts:
+            import time as _t
+            _end = _t.time() + 3.0
+            while _upnext_row_updated_stamp() < min_ts and _t.time() < _end:
+                _t.sleep(0.1)
+        if _PREBUILD['busy']:
+            _PREBUILD['pending'] = True
+            return False
+        _PREBUILD['busy'] = True
+        try:
+            import xbmcgui as _xg
+            _xg.Window(10000).setProperty('tmdbmovies.prebuild_busy', 'true')
+        except Exception:
+            pass
+        params = {'use_tmdb': 'true'} if variant == 'tmdb' else {}
+        from resources.lib.api import tmdb_api
+        while True:
+            _PREBUILD['pending'] = False
+            tmdb_api.get_next_episodes(params, cache_only=True)
+            if not _PREBUILD['pending']:
+                break
+        return True
+    except Exception as e:
+        try:
+            from resources.lib.core.utils import log
+            log(f"[UP NEXT] pre-randare esuita: {e}")
+        except Exception:
+            pass
+        return False
+    finally:
+        _PREBUILD['busy'] = False
+        try:
+            import xbmcgui as _xg
+            _xg.Window(10000).clearProperty('tmdbmovies.prebuild_busy')
+        except Exception:
+            pass
+
+
+def _upnext_refresh_now():
+    """Singura poarta de re-randare a listelor Up Next dupa o scriere in DB.
+
+    Fiecare provider si fiecare lista are propriul '_trigger_ui_refresh' cu
+    guards usor diferite -> aceeasi poarta, ca sa nu se suprapuna si sa stim
+    exact cand s-a re-randat. Stamp-ul se scrie DOAR dupa un Container.Refresh
+    real: altfel gardele din player (cel de 10s din monitor si cel de 2s din
+    safety pass) credeau lista proaspata si nu o mai re-randau.
+    """
+    try:
+        import xbmcgui
+        import time
+        _w = xbmcgui.Window(10000)
+        # Semnal pentru pre-randarea din player: am fost chemati dupa o rescriere
+        # de rand, deci lista din cache poate fi construita cu date noi.
+        try:
+            _w.setProperty('tmdbmovies.upnext_row_updated', str(time.time()))
+        except Exception:
+            pass
+        # Gardele se citesc PRIMele, fara nicio lucru greu: daca un dialog modal
+        # (binge/autoplay/rating) sau playerul e deschis, NU randam nimic acum:
+        # randarea in spatele dialogului se vedea ca un flash de lista.
+        try:
+            _b = float(_w.getProperty('tmdbmovies.binge_open') or 0)
+        except Exception:
+            _b = 0.0
+        if _b > 0 and time.time() - _b < 120:
+            return False
+        try:
+            if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                return False
+        except Exception:
+            pass
+        try:
+            if xbmc.getCondVisibility('System.HasModalDialog'):
+                return False
+        except Exception:
+            pass
+        if _on_home_widget():
+            # Home sau containerul altui addon: pe Home re-randeaza widget-urile
+            # din skin (Container.Refresh nu le atinge), in rest nu ne apartine.
+            if xbmc.getInfoLabel('Container.FolderPath'):
+                return False
+            widget_refresh()
+            return False
+        _cp = xbmc.getInfoLabel('Container.FolderPath') or ''
+        if _cp and 'plugin.video.tmdbmovies' not in _cp.lower():
+            return False
+        xbmc.executebuiltin('Container.Refresh')
+        _w.setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
+        return True
+    except Exception:
+        return False
+
 def browse_command(url):
     try:
         if _on_home_widget():
@@ -1032,8 +1159,11 @@ def _refresh_tmdb_up_next(tmdb_id):
 def _verify_tmdb_upnext_heal(tmdb_id):
     """Verifica ca rindul TMDB Up Next pentru tmdb_id corespunde deja vizionate
     locale ale providerului activ; daca nu (ex: rescrierea a esuat tranzitoriu in
-    urma cu 0.2-3s), re-run refresh_next_episode_tmdb. Rulata sincron, cu 3
-    re-verificari la 500ms — rindul TMDb provine dintr-un SQLite separat.
+    urma cu 0.2-3s), re-run refresh_next_episode_tmdb.
+
+    Prima verificare se face IMEDIAT: sleep-ul vine doar inaintea unei
+    re-verificari, ca verificarea sa nu mai coste 0.5s la fiecare oprire
+    (masurat: 528ms intre rescrierea randului si pornirea dialogului de binge).
     """
     try:
         from resources.lib.core.config import TMDB_V4_TOKEN_FILE
@@ -1041,7 +1171,8 @@ def _verify_tmdb_upnext_heal(tmdb_id):
             return
         import time as _t
         for _i in range(3):
-            _t.sleep(0.5)
+            if _i:
+                _t.sleep(0.5 * _i)
             try:
                 from resources.lib.providers import trakt_sync as _ts
                 pconn = _ts.get_connection()
@@ -1105,13 +1236,13 @@ def _upnext_ui_sync(preserve_binge=True):
     chiar acum (evitam randarile in paralel care lasau pagina goala).
     """
     import time as _time
+    import xbmcgui
     try:
         from resources.lib.core.cache import clear_list_fast_cache
         clear_list_fast_cache()
     except Exception:
         pass
     try:
-        import xbmcgui
         try:
             _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
         except Exception:
@@ -1124,13 +1255,8 @@ def _upnext_ui_sync(preserve_binge=True):
             _last = 0.0
         if _time.time() - _last < 1.5:
             return
-        refresh_ui()
-        try:
-            if not _on_home_widget():
-                widget_refresh()
-        except Exception:
-            pass
-        xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(_time.time()))
+        if _upnext_refresh_now():
+            widget_refresh()
     except Exception:
         pass
 

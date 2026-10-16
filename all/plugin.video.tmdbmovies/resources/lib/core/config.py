@@ -14,6 +14,32 @@ _SETTINGS_DICT = None  # Python-level cache (RLI-safe, per-process)
 _SETTINGS_MTIME = 0    # mtime-ul fisierului la ultimul parse
 _WINDOW = None  # lazy init
 
+
+class _LazyRequests:
+    """Proxy pentru requests: importul real (urllib3 + ssl) costa 200-400ms.
+
+    Randarile de lista nu ating reteaua cand totul vine din cache, deci platim
+    acel import doar la prima folosire reala. Se foloseste ca 'requests' in modul.
+    """
+    __slots__ = ('_mod',)
+
+    def __init__(self):
+        object.__setattr__(self, '_mod', None)
+
+    def _load(self):
+        _m = self._mod
+        if _m is None:
+            import requests as _real
+            object.__setattr__(self, '_mod', _real)
+            _m = _real
+        return _m
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+lazy_requests = _LazyRequests()
+
 def _get_window():
     global _WINDOW
     if _WINDOW is None:
@@ -717,6 +743,55 @@ def calendar_localized_label(diff, ds):
     if diff <= -2:
         return f'acum {-diff} zile ({ds})' if is_ro else f'{-diff} days ago ({ds})'
     return ds
+
+
+# =============================================================================
+# Calendar window (shared by every provider's calendar: Trakt, MDBList,
+# Simkl, PunchPlay, TMDb). Sursa de adevarat pentru valori e settings.xml
+# (mdblist_cal_previous_days / mdblist_cal_future_days) - listele de mai jos
+# trebuie sa ramana in pas cu acelea. Fiecare modul avea propria copie, deci
+# o valoare noua adaugata in Settings putea ramane necapatuta intr-un calendar
+# si ferestrele difereau intre provideri.
+CAL_PREV_DAYS = (0, 1, 3, 7, 14, 30)
+CAL_FUT_DAYS = (0, 7, 14, 21, 30, 60, 90)
+_CAL_PREV_DEFAULT_IDX = 3   # 7 zile, la fel ca default din settings.xml
+_CAL_FUT_DEFAULT_IDX = 1    # 7 zile, la fel ca default din settings.xml
+
+
+def _cal_index(setting_id, values, default_idx):
+    """Indice de setare validat: 0..len-1, altfel default (nicio eroare)."""
+    try:
+        idx = int(ADDON.getSetting(setting_id) or default_idx)
+    except Exception:
+        return default_idx
+    if not 0 <= idx < len(values):
+        return default_idx
+    return idx
+
+
+def calendar_window_days():
+    """(prev_days, fut_days) din setarile de Calendar.
+
+    Fereastra unica pentru toate calendarele. Orice valoare stricata sau
+    inexista din setari cade pe default (7/7), deci niciun calendar nu mai
+    poate arunca exceptie pe o setare corupta.
+    """
+    prev_idx = _cal_index('mdblist_cal_previous_days', CAL_PREV_DAYS, _CAL_PREV_DEFAULT_IDX)
+    fut_idx = _cal_index('mdblist_cal_future_days', CAL_FUT_DAYS, _CAL_FUT_DEFAULT_IDX)
+    return (CAL_PREV_DAYS[prev_idx], CAL_FUT_DAYS[fut_idx])
+
+
+def calendar_sort_flags():
+    """(sort_asc, today_top) din setarile de Calendar."""
+    try:
+        sort_asc = int(ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
+    except Exception:
+        sort_asc = True
+    try:
+        today_top = ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    except Exception:
+        today_top = True
+    return (sort_asc, today_top)
 
 
 # =============================================================================

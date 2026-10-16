@@ -1,3 +1,14 @@
+1.1.314
+- Returning from an Up Next episode no longer buffers for several seconds: the list is already built and shows instantly.
+- Marking an episode watched no longer drops the list cache, so coming back to Up Next reuses the existing rows.
+- The new Up Next list is prepared in the background while you are still on the binge dialog, so it is ready the moment you close it.
+- Air time ("Airing today at 20:00") is now fetched in the background instead of delaying the list.
+- Plugin startup is faster: the HTTP library loads on first use instead of at import.
+- Removed a duplicate list refresh that used to happen a few seconds after every playback.
+- Air time lookup in Up Next no longer blocks the list for ~440ms; it waits at most 150ms and finishes in the background.
+- Calendar window is defined in one place for all providers (Trakt, MDBList, Simkl, PunchPlay, TMDb), so every calendar follows the same Past/Upcoming days setting.
+- Corrupted calendar settings (invalid value, out of range, missing) no longer break the calendar view - it falls back to 7 days.
+
 1.1.313
 - Resume from widgets asks every time now. Fixes silent play-from-start on Nimbus and other skins.
 - Resume seek waits for the real duration before seeking instead of a fixed delay, so slow opens no longer start from zero after choosing Resume.

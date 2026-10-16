@@ -14,7 +14,7 @@ import xbmc
 import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
-from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
+from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title, calendar_window_days, calendar_sort_flags
 from resources.lib.core.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, style_page_nav_item, next_page_label
 
 SIMKL_ACTIONS = {
@@ -523,12 +523,8 @@ def _load_calendar_data():
 
 def _calendar_window():
     import datetime as _dt
-    _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
-    prev_days = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 0)]
-    fut_days = _CAL_FUT[int(_ADDON.getSetting('mdblist_cal_future_days') or 3)]
-    sort_asc = int(_ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
-    today_top = _ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    prev_days, fut_days = calendar_window_days()
+    sort_asc, today_top = calendar_sort_flags()
     today = _dt.date.today()
     return {
         'prev_days': prev_days,

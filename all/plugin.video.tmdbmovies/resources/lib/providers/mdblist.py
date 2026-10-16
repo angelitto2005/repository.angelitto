@@ -13,7 +13,7 @@ import xbmc
 import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
-from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title
+from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title, calendar_window_days, calendar_sort_flags
 from resources.lib.core.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, get_episode_air_stamp, prefetch_air_times, style_page_nav_item, next_page_label
 
 MDBLIST_ACTIONS = {
@@ -1055,14 +1055,9 @@ def _view_dropped(page=1):
 # ==================================================================
 # MDBLIST CALENDAR
 # ==================================================================
-_CAL_PREV = [0, 1, 3, 7, 14, 30]
-_CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
-
 def _calendar_settings():
-    prev = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 0)]
-    fut  = _CAL_FUT[int(_ADDON.getSetting('mdblist_cal_future_days') or 3)]
-    sort_asc = int(_ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
-    today_top = _ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    prev, fut = calendar_window_days()
+    sort_asc, today_top = calendar_sort_flags()
     return prev, fut, sort_asc, today_top
 
 def _view_calendar(page=1):

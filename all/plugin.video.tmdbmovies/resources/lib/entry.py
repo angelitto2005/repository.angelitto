@@ -1233,6 +1233,12 @@ def run_plugin():
         tmdb_api.tmdb_calendar_my()
         return
     if mode == 'tmdb_up_next':
+        try:
+            from resources.lib.core.list_render import try_render_cached_next_episodes
+            if try_render_cached_next_episodes({'use_tmdb': 'true'}):
+                return
+        except Exception:
+            pass
         from resources.lib.api import tmdb_api
         tmdb_api.get_next_episodes({'use_tmdb': 'true'})
         return
@@ -1334,6 +1340,15 @@ def run_plugin():
         return
 
     if mode == 'next_episodes':
+        # Cale rapida: daca lista Up Next e deja in fast cache, o randam fara sa
+        # importam tmdb_api/trakt_sync (~700ms de importuri). Conteaza la intoarcerea
+        # din player, unde toate randarile pornesc cu interpretor nou.
+        try:
+            from resources.lib.core.list_render import try_render_cached_next_episodes
+            if try_render_cached_next_episodes(params):
+                return
+        except Exception:
+            pass
         from resources.lib.api import trakt_api
         trakt_api.get_next_episodes()
         return

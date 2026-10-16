@@ -36,6 +36,7 @@ from resources.lib.core.utils import read_json, write_json, log, get_json, get_l
 from resources.lib.core.cache import cache_object, MainCache
 
 from resources.lib.providers import trakt_sync
+from resources.lib.core.config import calendar_window_days, calendar_sort_flags
 from resources.lib.core.config import PAGE_LIMIT # Importam limita de 21
 from resources.lib.api.tmdb_api import prefetch_metadata_parallel, add_directory
 
@@ -3148,21 +3149,8 @@ def _view_trakt_my_calendar():
 
     xbmcplugin.setContent(HANDLE, 'episodes')
 
-    _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT  = [0, 7, 14, 21, 30, 60, 90]
-    try:
-        prev_days = _CAL_PREV[int(ADDON.getSetting('mdblist_cal_previous_days') or 0)]
-        fut_days  = _CAL_FUT[int(ADDON.getSetting('mdblist_cal_future_days') or 3)]
-    except:
-        prev_days, fut_days = 0, 30
-    try:
-        sort_asc = int(ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
-    except:
-        sort_asc = True
-    try:
-        today_top = ADDON.getSetting('mdblist_cal_today_top') != 'false'
-    except:
-        today_top = True
+    prev_days, fut_days = calendar_window_days()
+    sort_asc, today_top = calendar_sort_flags()
 
     today = _dt.date.today()
     start = today - _dt.timedelta(days=prev_days)

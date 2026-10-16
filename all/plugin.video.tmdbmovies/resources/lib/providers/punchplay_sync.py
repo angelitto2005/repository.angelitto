@@ -7,7 +7,7 @@ import threading
 import xbmc
 import xbmcgui
 
-from resources.lib.core.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, PUNCHPLAY_COLOR, provider_title
+from resources.lib.core.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, PUNCHPLAY_COLOR, provider_title, calendar_window_days
 from resources.lib.providers.punchplay_api import PunchplayAPI, PUNCHPLAY_ICON, PUNCHPLAY_CLIENT_ID
 
 DB_PATH = os.path.join(ADDON_DATA_DIR, 'punchplay_sync.db')
@@ -748,8 +748,8 @@ def _sync_single_unwatched(tmdb_id, content_type, season=None, episode=None):
 
 def _trigger_ui_refresh():
     try:
-        from resources.lib.providers.watched_provider import refresh_ui
-        refresh_ui()
+        from resources.lib.providers.watched_provider import _upnext_refresh_now
+        _upnext_refresh_now()
     except:
         pass
 
@@ -765,19 +765,8 @@ def refresh_next_episode_punchplay(tmdb_id, ignore_hidden=False):
                 clear_list_fast_cache()
             except:
                 pass
-            import xbmc
-            import xbmcgui
-            import time
-            try:
-                _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)
-            except:
-                _binge_since = 0.0
-            if _binge_since > 0 and time.time() - _binge_since < 120:
-                return
-            container_path = xbmc.getInfoLabel('Container.FolderPath')
-            if not container_path or 'plugin.video.tmdbmovies' in container_path.lower():
-                xbmc.executebuiltin("Container.Refresh")
-                xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
+            from resources.lib.providers.watched_provider import _upnext_refresh_now
+            _upnext_refresh_now()
         except:
             pass
 
@@ -1664,23 +1653,8 @@ def _precache_up_next(items):
     except:
         pass
 
-_CAL_PREV = [0, 1, 3, 7, 14, 30]
-_CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
-
 def _calendar_months():
-    try:
-        prev_idx = int(ADDON.getSetting('mdblist_cal_previous_days') or '3')
-        fut_idx = int(ADDON.getSetting('mdblist_cal_future_days') or '0')
-    except:
-        prev_idx, fut_idx = 3, 0
-    try:
-        prev_days = _CAL_PREV[prev_idx] if 0 <= prev_idx < len(_CAL_PREV) else 7
-    except:
-        prev_days = 7
-    try:
-        fut_days = _CAL_FUT[fut_idx] if 0 <= fut_idx < len(_CAL_FUT) else 7
-    except:
-        fut_days = 7
+    prev_days, fut_days = calendar_window_days()
     today = datetime.date.today()
     start = today - datetime.timedelta(days=prev_days)
     end = today + datetime.timedelta(days=fut_days)

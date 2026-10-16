@@ -6,7 +6,6 @@ import xbmc
 import xbmcvfs
 import urllib.parse
 from urllib.parse import urlencode, quote, quote_plus
-import requests
 import json
 import re
 import time
@@ -18,10 +17,14 @@ from resources.lib.core.config import (
     TMDB_LISTS_CACHE_FILE, LISTS_CACHE_TTL, TV_META_CACHE,
     TMDB_V4_BASE_URL, TMDB_IMAGE_BASE, IMAGE_RESOLUTION,
     TMDB_V4_TOKEN_FILE, TMDB_V4_READ_TOKEN, _fmt_dmy, calendar_localized_label,
-    get_plot_language_code, provider_color, provider_icon, provider_title
+    calendar_window_days, calendar_sort_flags,
+    get_plot_language_code, provider_color, provider_icon, provider_title,
+    lazy_requests as requests
 )
 from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label
 from resources.lib.core.cache import cache_object, MainCache, get_fast_cache, set_fast_cache
+from resources.lib.core.list_render import (render_from_fast_cache, _set_views_apply, _safe_set_prop,
+                                            next_episodes_cache_key)
 from resources.lib.lists import menus
 from resources.lib.providers import trakt_sync
 from resources.lib.core.config import PAGE_LIMIT
@@ -37,132 +40,6 @@ TMDB_ICON = provider_icon('tmdb')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
-
-def _set_views_apply(view_type, content=None):
-    """Set Views: aplica view-ul salvat DUPA endOfDirectory (content None -> folosim view_type)."""
-    try:
-        from resources.lib.core import views
-        views.apply_view(view_type, view_type if content is None else content)
-    except Exception:
-        pass
-
-
-def render_from_fast_cache(items, view_type=None):
-    """Deseneaza lista instantaneu din datele cached folosind Batch Add.
-
-    view_type: override Set Views pentru aceasta listare (ex. 'episode_lists').
-    """
-    # Orele de difuzare nu sint "coapte" in label: tokenul din cache e inlocuit aici
-    # cu ora reala din sqlite (o singura conexiune pentru toata lista). Asa lista
-    # cache-uita se auto-vindeca fara re-prefetch la fiecare deschidere.
-    items = apply_air_times_to_cache_items(items)
-    items_to_add = [] 
-    
-    for item in items:
-        # Reconstructie ListItem daca vine din JSON (warmup)
-        if 'li' in item and isinstance(item['li'], xbmcgui.ListItem):
-            li = item['li']
-        else:
-            li = xbmcgui.ListItem(item['label'])
-            li.setArt(item['art'])
-            
-            tag = li.getVideoInfoTag()
-            info = item['info']
-            
-            tag.setMediaType(info.get('mediatype', 'video'))
-            tag.setTitle(info.get('title', ''))
-            tag.setPlot(info.get('plot', ''))
-            
-            # --- FIX BUG AN (None) ---
-            if info.get('year'):
-                try:
-                    # Convertim in string apoi verificam daca e cifra
-                    year_str = str(info['year'])
-                    if year_str.isdigit():
-                        tag.setYear(int(year_str))
-                except:
-                    pass # Daca e "None" sau gol, pur si simplu nu setam anul
-            # -------------------------
-
-            if info.get('rating'): tag.setRating(float(info['rating']))
-            if info.get('votes'): tag.setVotes(int(info['votes']))
-            if info.get('duration'): tag.setDuration(int(info['duration']))
-            if info.get('premiered'): tag.setPremiered(info['premiered'])
-            if info.get('studio'):
-                st_val = info['studio']
-                # Verificam daca e deja o lista, daca nu, o punem noi intr-una
-                if isinstance(st_val, list):
-                    tag.setStudios(st_val)
-                else:
-                    tag.setStudios([str(st_val)])
-            if info.get('genre'):
-                if isinstance(info['genre'], list):
-                    tag.setGenres(info['genre'])
-                elif isinstance(info['genre'], str):
-                    tag.setGenres(info['genre'].split(', '))
-            if info.get('mpaa'): tag.setMpaa(str(info['mpaa']))
-            if info.get('season'):
-                try:
-                    tag.setSeason(int(info['season']))
-                except:
-                    pass
-            if info.get('episode'):
-                try:
-                    tag.setEpisode(int(info['episode']))
-                except:
-                    pass
-            if info.get('tvshowtitle'):
-                tag.setTvShowTitle(str(info['tvshowtitle']))
-            
-            # APLICAM BIFA DOAR DACA NU E FOLDER (Butonul Next nu are bifa)
-            if not item['is_folder']:
-                if info.get('playcount') == 1: 
-                    tag.setPlaycount(1)
-                else:
-                    tag.setPlaycount(0)
-                
-                # Intotdeauna verificam daca exista resume_time (chiar daca e watched, poate utilizatorul l-a reinceput)
-                if item.get('resume_time') and item.get('total_time'):
-                    set_resume_point(li, item['resume_time'], item['total_time'])
-                elif info.get('playcount') == 1:
-                    tag.setResumePoint(0.0, 0.0)
-            else:
-                if info.get('playcount') == 1:
-                    tag.setPlaycount(1)
-                else:
-                    tag.setPlaycount(0)
-
-            if item.get('cm'):
-                li.addContextMenuItems(item['cm'])
-
-            # Restaurare proprietati (badge episode_type + watched counts AF3)
-            # Fara ele, randarea din fast cache pierde badge-urile si cercul cu episoade ramase
-            _props = item.get('properties') or {}
-            for _k, _v in _props.items():
-                if _v:
-                    _safe_set_prop(li, _k, str(_v))
-
-        items_to_add.append((item['url'], li, item['is_folder']))
-    
-    xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
-    
-    _content = ''
-    if items:
-        try:
-            _content = (items[0]['info'].get('mediatype', 'movies') or 'movies') + 's'
-        except Exception:
-            _content = 'movies'
-        xbmcplugin.setContent(HANDLE, _content)
-    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
-    # Set Views: DOAR override explicit de la apelant. Derivarea din content a fost
-    # eliminata intentionat: 'episodes' si 'episode_lists' au EXACT acelasi content,
-    # deci nicio derivare nu le poate distinge. Fara override -> nu aplicam nimic
-    # (fallback sigur) si logam, ca sa depistam call site-ul care uita view_type.
-    if view_type:
-        _set_views_apply(view_type, _content or None)
-    else:
-        log('[SET VIEWS] render_from_fast_cache apelat fara view_type (content=%r) - nu se aplica nimic' % (_content,))
-    
 
 # === LOCK DE CONSTRUCTIE PE LISTA (anti-race container vs widget) ===============
 # Aceeasi lista (Up Next / In Progress) e ceruta simultan de mai multe procese:
@@ -1648,14 +1525,6 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
 
     return cm
 
-def _safe_set_prop(li, key, value):
-    try:
-        li.setProperty(str(key), str(value))
-        return True
-    except Exception as e:
-        log(f"[LIST] setProperty esuat ({key}): {e}")
-        return False
-
 def _process_movie_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
     from resources.lib.providers import watched_provider
     tmdb_id = str(item.get('id', ''))
@@ -2596,12 +2465,8 @@ def tmdb_my_lists():
 
 def _tmdb_calendar_window():
     import datetime as _dt
-    _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
-    prev_days = _CAL_PREV[int(ADDON.getSetting('mdblist_cal_previous_days') or 0)]
-    fut_days = _CAL_FUT[int(ADDON.getSetting('mdblist_cal_future_days') or 3)]
-    sort_asc = int(ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
-    today_top = ADDON.getSetting('mdblist_cal_today_top') != 'false'
+    prev_days, fut_days = calendar_window_days()
+    sort_asc, today_top = calendar_sort_flags()
     today = _dt.date.today()
     return {
         'prev_days': prev_days,
@@ -7794,8 +7659,15 @@ def in_progress_tvshows(params):
     # 3. PREFETCH METADATA
     _t_start = time.time()
     prefetch_metadata_parallel([{'id': str(i['tmdb_id']), 'media_type': 'tv'} for i in valid_shows], 'tv')
+    # Asteptare LIMITATA (150ms) pentru orele de difuzare: pe conexiuni rapide
+    # eticheta "Airing today at HH:MM" e gata si intra in randarea curenta; pe
+    # cele lente continuam fara ea, iar apply_air_times_to_cache_items o aplica la
+    # randare (list_render.py). Un prefetch plin costa ~440ms la 62 de seriale.
     try:
-        prefetch_air_times(valid_shows)
+        import threading as _thr_air_b
+        _air_b = _thr_air_b.Thread(target=prefetch_air_times, args=(valid_shows,), daemon=True)
+        _air_b.start()
+        _air_b.join(0.15)
     except:
         pass
     _t_warm = time.time()
@@ -8311,10 +8183,16 @@ def in_progress_episodes(params):
         pass
 
 
-def get_next_episodes(params=None):
+def get_next_episodes(params=None, cache_only=False):
     """Afiseaza Next Episodes (Up Next) cu sortare avansata si filtrare 'dropped'.
     Sursa e dinamica: providerul de watched status decide (MDBList → mdblist_next_episodes,
-    altfel → trakt_next_episodes)."""
+    altfel → trakt_next_episodes).
+
+    cache_only=True: construieste lista si o salveaza in fast cache, fara sa
+    creeze ListItem-uri si fara sa atinga Kodi (nici addDirectoryItems, nici
+    endOfDirectory). Folosit de threadul de avansare, ca randarea de la intoarcerea
+    din player sa fie un simplu cache-hit de ~300ms in loc de ~1800ms.
+    """
     import datetime
     from resources.lib.providers import trakt_sync
 
@@ -8329,6 +8207,13 @@ def get_next_episodes(params=None):
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
     use_punchplay = not use_tmdb and _get_prov() == 'punchplay'
+    try:
+        # threadul de avansare (la stop) nu poate citi Container.FolderPath (in timpul
+        # redarii e gol), deci-i lasam amintirea ultimei liste randate
+        from resources.lib.core.list_render import remember_upnext_view
+        remember_upnext_view('tmdb' if use_tmdb else 'provider')
+    except Exception:
+        pass
     show_color = 'FF00CED1' if use_tmdb else provider_color('local' if use_local else ('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt'))))
     if use_tmdb:
         raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
@@ -8520,6 +8405,8 @@ def get_next_episodes(params=None):
 
     # 6. CONSTRUIREA LISTEI FINALE
     if not items:
+        if cache_only:
+            return
         if use_tmdb:
             add_directory("[COLOR gray]No new episodes (Run 'Refresh TMDb Lists')[/COLOR]", {'mode': 'tmdb_refresh_lists'}, folder=False)
         elif use_mdblist:
@@ -8535,20 +8422,11 @@ def get_next_episodes(params=None):
         xbmcplugin.endOfDirectory(HANDLE)
         return
 
-    # Fast cache check (LABEL_VERSION bumped cand se schimba formatul label-urilor)
-    # 12: randurile difuzate azi primesc si ele eticheta (Astazi) + token
-    LABEL_VERSION = "12"
-    try:
-        _show_unstarted_cache = ADDON.getSetting('tmdb_upnext_show_unstarted') == 'true'
-    except:
-        _show_unstarted_cache = True
-    try:
-        _air_time_on = ADDON.getSetting('show_air_time') == 'true'
-    except:
-        _air_time_on = False
-    # Providerul in numele cheii: la switch (ex. Trakt -> Local) lista veche din RAM nu trebuie servita.
-    cache_key = f"next_episodes_all_future_{'tmdb' if use_tmdb else ('local' if use_local else ('simkl' if use_simkl else ('mdblist' if use_mdblist else ('punchplay' if use_punchplay else 'trakt'))))}_{show_future}_{int(_show_unstarted_cache)}_{LABEL_VERSION}_{int(_air_time_on)}"
-    cached_data = get_fast_cache(cache_key)
+    # Fast cache check (LABEL_VERSION e in list_render, sursa unica a cheii)
+    cache_key = next_episodes_cache_key(params, use_tmdb=use_tmdb, use_mdblist=use_mdblist,
+                                        use_simkl=use_simkl, use_punchplay=use_punchplay,
+                                        use_local=use_local)
+    cached_data = None if cache_only else get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data, view_type='episode_lists')
         log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (instant)")
@@ -8596,7 +8474,12 @@ def get_next_episodes(params=None):
     except:
         pass
     try:
-        prefetch_air_times(items)
+        # Orele de difuzare vin din Trakt/Simkl (0.5-2s cu buget de retea) si NU
+        # sunt necesare ca lista sa fie afisata: apply_air_times_to_cache_items le
+        # aplica la randare, iar randarea de dupa stop nu o mai astepta. De aceea
+        # umplerea cache-ului merge in fundal, nu in calea critica a randarii.
+        import threading as _thr_air
+        _thr_air.Thread(target=prefetch_air_times, args=(list(items),), daemon=True).start()
     except:
         pass
     _t_warm = time.time()
@@ -8928,8 +8811,8 @@ def get_next_episodes(params=None):
                                    clear_sources=True)
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"
-        li = xbmcgui.ListItem(label_live)
-        
+        li = None if cache_only else xbmcgui.ListItem(label_live)
+
         try: skin_compat = ADDON.getSetting('skin_type')
         except: skin_compat = '0'
         
@@ -8963,23 +8846,25 @@ def get_next_episodes(params=None):
             art['tvshow.logo'] = show_logo
             art['logo'] = show_logo
             art['fanart_clearlogo'] = show_logo
-        li.setArt(art)
-        _safe_set_prop(li, 'tmdb_id', str(tmdb_id))
-        if ep_type:
-            _safe_set_prop(li, 'episode_type', ep_type)
-        # Modificat watched_info pentru a seta proprietatile AF3
-        set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
-        
-        # --- ADAUGAT: Setam manual cercul de progres pentru Kodi ---
-        from resources.lib.core.utils import set_resume_point
-        set_resume_point(li, resume_seconds, duration)
-        
-        if cm: li.addContextMenuItems(cm)
-        items_to_add.append((url, li, False))
+        if not cache_only:
+            li.setArt(art)
+            _safe_set_prop(li, 'tmdb_id', str(tmdb_id))
+            if ep_type:
+                _safe_set_prop(li, 'episode_type', ep_type)
+            # Modificat watched_info pentru a seta proprietatile AF3
+            set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
+
+            # --- ADAUGAT: Setam manual cercul de progres pentru Kodi ---
+            from resources.lib.core.utils import set_resume_point
+            set_resume_point(li, resume_seconds, duration)
+
+            if cm: li.addContextMenuItems(cm)
+            items_to_add.append((url, li, False))
         cache_list.append({
             'label': label, 'air_key': air_key, 'url': url, 'is_folder': False,
             'info': info, 'art': art, 'cm': cm,
             'resume_time': resume_seconds, 'total_time': duration,
+            'unique_ids': {'tmdb': str(tmdb_id), 'imdb': imdb_id},
             'properties': {
                 'episode_type': ep_type,
                 'TotalEpisodes': str(show_watched_info['total']) if show_watched_info['total'] > 0 else '0',
@@ -8999,18 +8884,21 @@ def get_next_episodes(params=None):
     log(f"[UP NEXT] faze per rind (ms): watched={int(_perf['watched'] * 1000)}, "
         f"details={int(_perf['details'] * 1000)}, season={int(_perf['season'] * 1000)}")
 
-    if items_to_add:
-        xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
+    if not cache_only:
+        if items_to_add:
+            xbmcplugin.addDirectoryItems(HANDLE, items_to_add, len(items_to_add))
 
-    xbmcplugin.setContent(HANDLE, 'episodes')
-    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
-    _set_views_apply('episode_lists', 'episodes')
+        xbmcplugin.setContent(HANDLE, 'episodes')
+        xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
+        _set_views_apply('episode_lists', 'episodes')
 
     # Nu salva liste goale in fast cache: o randare din fereastra de sync/update
     # (tabela in rebuild, DB locked, exceptie de citire) ar ramine servita din RAM
     # pina la urmatorul clear — exact scenariul "Up Next gol dupa update".
     if cache_list:
         set_fast_cache(cache_key, cache_list)
+        if cache_only:
+            log(f"[UP NEXT] pre-randare in cache: {len(cache_list)} randuri (fara GUI)")
     # Lock-ul se elibereaza DUPA scrierea cache-ului: procesele care asteapta
     # (widget/container) il gasesc gata si randeaza instant.
     _list_build_clear(cache_key)

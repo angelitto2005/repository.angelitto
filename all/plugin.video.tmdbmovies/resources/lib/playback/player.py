@@ -2173,6 +2173,23 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.season, player_instance.episode,
                     notify=True, do_refresh=False, async_tmdb=True, skip_library_hack=True
                 )
+                # PRE-RANDARE in fundal: construim lista Up Next noua in fast cache
+                # cat timp userul inca priveste dialogul de binge. Cand inchide
+                # dialogul, refreshul din _post_playback_dialogs gaseste hit si
+                # randeaza in ~250ms in loc sa reconstruiasca tot (~1500ms).
+                # Daemon + coalescing intern: nu blocheaza monitorul si nu se
+                # declanseaza de mai multe ori la acelasi stop.
+                def _prebuild_upnext_after_stop(_min_ts):
+                    try:
+                        from resources.lib.providers.watched_provider import _prebuild_upnext_cache
+                        _prebuild_upnext_cache('', _min_ts)
+                    except Exception:
+                        pass
+                # -0.05s: daca daemonul a scris deja randul chiar inainte de
+                # acest time.time(), stampul lui e "mai vechi" cu microsecunde
+                # si am astepta 3s degeaba.
+                _prebuild_thread = threading.Thread(target=_prebuild_upnext_after_stop, args=(time.time() - 0.05,), daemon=True)
+                _prebuild_thread.start()
                 # Stergem punctul de resume
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
@@ -2352,6 +2369,10 @@ def start_playback_monitor(player_instance, dialog=None):
                 _refresh_ok = True
             if _refresh_ok and time.time() - _last_upnext_refresh > 10:
                 xbmc.executebuiltin('Container.Refresh')
+                try:
+                    xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
+                except Exception:
+                    pass
                 log("[PLAYER-MONITOR] Container refreshed")
             elif not _refresh_ok:
                 log("[PLAYER-MONITOR] Container refresh amanat (dialog modal / container ocupat) - preia safety pass")
@@ -2397,7 +2418,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         _s = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
                     except Exception:
                         _s = 0.0
-                    if time.time() - _s < 2.0:
+                    if time.time() - _s < 10.0:
                         return
                     try:
                         if xbmc.getCondVisibility('System.HasModalDialog'):

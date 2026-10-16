@@ -6,7 +6,7 @@ import xbmcgui
 import xbmcplugin
 import xbmc
 
-from resources.lib.core.config import ADDON as PROXIED_ADDON, PUNCHPLAY_COLOR, provider_color, provider_icon, provider_title
+from resources.lib.core.config import ADDON as PROXIED_ADDON, PUNCHPLAY_COLOR, provider_color, provider_icon, provider_title, calendar_window_days, calendar_sort_flags
 from resources.lib.core.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, get_episode_air_stamp, prefetch_air_times, style_page_nav_item, next_page_label
 
 PUNCHPLAY_ACTIONS = {
@@ -815,24 +815,8 @@ def _view_upnext():
 
 def _calendar_window():
     import datetime as _dt
-    _CAL_PREV = [0, 1, 3, 7, 14, 30]
-    _CAL_FUT = [0, 7, 14, 21, 30, 60, 90]
-    try:
-        prev_days = _CAL_PREV[int(_ADDON.getSetting('mdblist_cal_previous_days') or 3)]
-    except:
-        prev_days = 7
-    try:
-        fut_days = _CAL_FUT[int(_ADDON.getSetting('mdblist_cal_future_days') or 0)]
-    except:
-        fut_days = 7
-    try:
-        sort_asc = int(_ADDON.getSetting('mdblist_cal_sort_order') or 0) == 0
-    except:
-        sort_asc = True
-    try:
-        today_top = _ADDON.getSetting('mdblist_cal_today_top') != 'false'
-    except:
-        today_top = True
+    prev_days, fut_days = calendar_window_days()
+    sort_asc, today_top = calendar_sort_flags()
     today = _dt.date.today()
     return {'sort_asc': sort_asc, 'today_top': today_top, 'today': today,
             'start': today - _dt.timedelta(days=prev_days), 'end': today + _dt.timedelta(days=fut_days)}
