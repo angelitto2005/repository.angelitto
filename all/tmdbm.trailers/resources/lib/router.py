@@ -1,5 +1,8 @@
 import os
+import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
 
 import xbmc
@@ -17,6 +20,7 @@ BASE_URL = 'plugin://{}/'.format(ADDON_ID)
 
 _ROUTES = {}
 _ROOT_ITEMS = []
+_SLOW_LISTING = 1.5      # seconds before a listing is worth a log line
 
 
 def route(name):
@@ -30,10 +34,15 @@ def add_root(label, mode, image='', folder=True):
     _ROOT_ITEMS.append((label, mode, image, folder))
 
 
-def build(handle, items, content='videos', cache=True):
-    """Kodi may cache a listing on disk. That is fine as long as the
-    localisation changes: the service clears it and refreshes when the country
-    or the language setting changes, so the next build uses the new ones.
+def build(handle, items, content='videos', cache=False):
+    """Listings are not kept in Kodi's on-disk directory cache.
+
+    A context menu is baked into the ListItem when the row is built, so a
+    cached directory keeps showing "Subscribe" for a channel you just joined
+    (or "Unblock" for a video you just unblocked) until Kodi drops the cache
+    by itself. The data itself is already cached here - browse.yt keeps every
+    listing in a pickle cache for 10-15 min - so re-running the plugin only
+    costs the render, and every menu then matches the current state.
     """
     if handle <= 0:
         return
@@ -62,6 +71,8 @@ def dispatch(handle, mode, params):
         config.log('Unknown route: {}'.format(mode), xbmc.LOGWARNING)
         finish(handle)
         return
+    import time as _time
+    _started = _time.time()
     try:
         handler(handle, params)
     except Exception as exc:
@@ -69,6 +80,14 @@ def dispatch(handle, mode, params):
         config.log('Route {} failed: {}'.format(mode, exc), xbmc.LOGERROR)
         config.log(traceback.format_exc(), xbmc.LOGERROR)
         finish(handle)
+    finally:
+        # Only the slow ones, and always written: a listing that took seconds
+        # was a cache miss or a slow answer from YouTube, and that is exactly
+        # what is invisible with detailed logging off.
+        _spent = _time.time() - _started
+        if _spent >= _SLOW_LISTING:
+            config.log('{} took {:.1f}s (cache expired or slow network)'.format(
+                mode, _spent), always=True)
 
 
 def _page(params):
@@ -230,6 +249,7 @@ def search_results(handle, params):
                 entry['title'] or entry['channel_id'], 'channel',
                 entry['image'], {'url': 'https://www.youtube.com/channel/' +
                                  entry['channel_id'],
+                                 'title': entry.get('title') or '',
                                  'image': entry.get('image') or ''},
                 description=' '.join(x for x in (entry['subs'], entry['count']) if x)),
             'search_results', {'q': query, 'kind': 'channel'}, page=page)
@@ -301,16 +321,93 @@ def _save_music_pool(entries, hint=''):
 
 
 # ----------------------------------------------------------------------- browsing
+def _trending_query():
+    from browse import constants, localization
+    return localization.trending_query(constants.trending_category())
+
+
+def _live_query():
+    from browse import constants, localization
+    return localization.category_query(constants.live_category(), live=True)
+
+
+def _trailer_query():
+    from browse import localization
+    return localization.trailer_query()
+
+
+def _music_query():
+    from browse import localization
+    return localization.category_query('music')
+
+
+# Random music always asks for a deep page (the route shuffles whatever comes
+# back), so its cache key never matches the plain Trending one.
+_RANDOM_MUSIC_FLOOR = 60
+
+
+def warm_first_pages():
+    """Fetch the first page of the heavy listings up front.
+
+    The arguments are the ones the routes build for page 1 (see lists.paged:
+    limit = per_page + 1), so opening those lists later is a cache hit instead
+    of a request. Random music is included because it only shuffles what the
+    cache returns, so warming changes nothing about what it shows. Opt-in
+    through the prefetch setting, because a request the user never needed is
+    exactly what we do not want to spend.
+    """
+    from browse import constants, yt
+    import lists
+    import time
+    per_page = constants.results_per_page()
+    # The amounts come from the very helpers the routes use, so warming a
+    # listing and opening it can never ask for different numbers. With block
+    # rules active that difference is real: Trending asks for forty nine rows
+    # while warming thirty one, and the cache keys on the amount, so the warmed
+    # copy was never the one the route asked for.
+    trending_one = lists.rows_to_fetch(per_page)
+    random_one = max(lists.rows_to_fetch(per_page), _RANDOM_MUSIC_FLOOR)
+    blocked_one = lists.page_fetch_amount(1, blocked=True)
+    targets = (
+        ('trending', _trending_query(), yt.trending_videos, trending_one),
+        ('live', _live_query(), yt.live_videos, blocked_one),
+        ('trailers', _trailer_query(), yt.trailer_videos, blocked_one),
+        ('random music', _music_query(), yt.trending_videos, random_one),
+    )
+    # Side by side, not one after another: Live alone takes about ten seconds
+    # on a cold cache, and doing them in turn left Trailers and Random Music
+    # unwarmed for ten seconds after start. Four threads, four requests, one
+    # burst instead of a queue - the same shape the feed warming already uses.
+    started = time.time()
+
+    def _warm(target):
+        name, query, fetch, limit = target
+        mark = time.time()
+        try:
+            fetch(query, limit=limit)
+            config.log('prefetch: {} warmed ({} items) in {:.1f}s'.format(
+                name, limit, time.time() - mark), always=True)
+        except Exception as exc:
+            config.log('prefetch {} failed: {}'.format(name, str(exc)[:120]),
+                       xbmc.LOGWARNING, always=True)
+
+    with ThreadPoolExecutor(max_workers=len(targets)) as pool:
+        list(pool.submit(_warm, target) for target in targets)
+    config.log('prefetch: all warm after {:.1f}s'.format(time.time() - started),
+               always=True)
+
+
 @route('trending')
 def trending(handle, params):
     import lists
-    from browse import constants, localization, yt
+    from browse import constants, yt
     from music import detect, queue
     category_id = constants.trending_category()
-    category = localization.trending_query(category_id)
     music_folder = category_id == 'music'
     page = _page(params)
-    entries = yt.trending_videos(category, limit=page * constants.results_per_page() + 1)
+    entries = yt.trending_videos(_trending_query(),
+                             limit=lists.rows_to_fetch(
+                                 page * constants.results_per_page()))
     if music_folder:
         queue.save_pool([entry for entry in entries if detect.looks_like_music(entry)])
 
@@ -318,33 +415,31 @@ def trending(handle, params):
         mode = 'music_play' if (music_folder and detect.looks_like_music(entry)) else 'play'
         return lists.video_item(entry, mode)
     items, content = lists.paged(lambda limit: entries, builder, 'trending',
-                                 {}, page=page)
+                                 {}, page=page, blocked=True)
     build(handle, items, content=content)
 
 
 @route('live')
 def live(handle, params):
     import lists
-    from browse import constants, localization, yt
-    category = localization.category_query(constants.live_category(), live=True)
+    from browse import yt
     page = _page(params)
     items, content = lists.paged(
-        lambda limit: yt.live_videos(category, limit=limit),
+        lambda limit: yt.live_videos(_live_query(), limit=limit),
         lambda entry: lists.video_item(entry, 'play'),
-        'live', {}, page=page)
+        'live', {}, page=page, blocked=True)
     build(handle, items, content=content)
 
 
 @route('trailers')
 def trailers(handle, params):
     import lists
-    from browse import constants, localization, yt
-    query = localization.trailer_query()
+    from browse import yt
     page = _page(params)
     items, content = lists.paged(
-        lambda limit: yt.trailer_videos(query, limit=limit),
+        lambda limit: yt.trailer_videos(_trailer_query(), limit=limit),
         lambda entry: lists.video_item(entry, 'play'),
-        'trailers', {}, page=page)
+        'trailers', {}, page=page, blocked=True)
     build(handle, items, content=content)
 
 
@@ -374,12 +469,17 @@ def charts(handle, params):
 _FILL_DATES = {'busy': False}
 
 
-def _fill_dates_bg(entries):
+def _fill_dates_bg(entries, refresh=False):
     """Finish the metadata fill the directory timeout had to cut off.
 
     Music charts carry no date at all, so the first visit only fills what fits
     in the listing deadline. This runs the rest in the background and the next
     visit shows them.
+
+    The lists that are read from local files (History, Watch Later, a local
+    playlist) paint straight away and pass refresh=True, because their rows
+    only miss the channel, views, date and plot - so there is something to show
+    immediately, and the repaint puts the details in as they arrive.
     """
     import threading as _threading
     entries = [dict(entry or {}) for entry in entries or []]
@@ -393,6 +493,8 @@ def _fill_dates_bg(entries):
             dated = sum(1 for entry in done if lists.entry_date(entry))
             config.log('background meta fill: {}/{} with a date'.format(
                 dated, len(done)), always=True)
+            if refresh and not _modal_open():
+                xbmc.executebuiltin('Container.Refresh')
         except Exception as exc:
             config.log('background meta fill failed: {}'.format(exc))
         finally:
@@ -402,16 +504,52 @@ def _fill_dates_bg(entries):
     _threading.Thread(target=_run, daemon=True).start()
 
 
+def _modal_open():
+    try:
+        return bool(xbmc.getCondVisibility('System.HasModalDialog'))
+    except Exception:
+        return False
+
+
+_CHART_FULL_FETCH = 250   # the longest YouTube Music chart is 100
+_CHART_RANK_RE = re.compile(r'^\s*(\d{1,3})\s*[.)]\s*')
+
+
+def _split_chart_rank(text):
+    """Split YouTube's own chart position off a chart title.
+
+    The number is the real place in the chart, so it is worth keeping, but it
+    comes with gaps once rows are blocked and the list then reads 3, 4, 5 with
+    nothing before them."""
+    value = str(text or '')
+    match = _CHART_RANK_RE.match(value)
+    if not match:
+        return '', value
+    return match.group(1), value[match.end():]
+
+
 @route('chart_artists')
 def chart_artists(handle, params):
     import lists
     from browse import yt
-    items = [lists.folder_item(
-        entry['title'], 'channel', entry.get('image') or config.icon('topartists'),
-        {'url': entry.get('url'), 'title': entry.get('title')},
-        description=entry.get('subs', ''))
-        for entry in yt.chart_artists() if entry.get('url')]
-    build(handle, [item[0:3] for item in items], content=None)
+    page = _page(params)
+    entries = [entry for entry in yt.chart_artists() if entry.get('url')]
+    total = len(entries)
+    entries = lists.filter_blocked(entries, name_key='title')
+
+    def fetch(limit):
+        return entries
+
+    def builder(entry):
+        return lists.folder_item(
+            entry['title'], 'channel',
+            entry.get('image') or config.icon('topartists'),
+            {'url': entry.get('url'), 'title': entry.get('title')},
+            description=entry.get('subs', ''))
+
+    items, content = lists.paged(fetch, builder, 'chart_artists', {}, page=page,
+                                 total=total)
+    build(handle, items, content=content)
 
 
 @route('chart_videos')
@@ -423,23 +561,40 @@ def chart_videos(handle, params):
     title = params.get('title') or ''
     page = _page(params)
     per_page = constants.results_per_page()
-    requested = page * per_page + 1
+    # Charts are short and fixed, so the whole one is fetched once and every
+    # page is cut out of it. The fetch is cached, so page 2 costs no request,
+    # and the page length comes from the chart itself rather than from what
+    # survived the block filter.
     try:
-        source = yt.chart_tracks(url, limit=requested)
+        source = yt.chart_tracks(url, limit=_CHART_FULL_FETCH)
     except Exception as exc:
         config.log('chart_videos page {} failed: {}'.format(page, exc))
         source = []
-    source = lists.fill_missing_meta(source)
-    undated = [entry for entry in source if not lists.entry_date(entry)]
+    total = len(source)
+    _start = (page - 1) * per_page
+    _kept = lists.filter_blocked(source)
+    undated = [entry for entry in source[_start:_start + per_page]
+               if not lists.entry_date(entry)]
+    # the visible position, counted across pages and skipping hidden rows, so
+    # the list reads 1, 2, 3 even when a blocked artist took the first two
+    _number = [len(_kept[:_start])]
 
     def fetch(limit):
         return source
 
     def builder(entry):
-        mode = 'music_play' if detect.looks_like_music(entry) else 'play'
-        return lists.video_item(entry, mode)
+        _number[0] += 1
+        real_rank, plain = _split_chart_rank(entry.get('title'))
+        row = dict(entry)
+        row['title'] = '%d. %s' % (_number[0], plain)
+        if real_rank and real_rank != str(_number[0]):
+            row['snippet'] = config.T(32520).format(real_rank,
+                                                    title or '')
+        mode = 'music_play' if detect.looks_like_music(row) else 'play'
+        return lists.video_item(row, mode)
     items, content = lists.paged(fetch, builder, 'chart_videos',
-                                 {'url': url, 'title': title}, page=page)
+                                 {'url': url, 'title': title}, page=page,
+                                 blocked=True, total=total)
     build(handle, items, content=content)
     if undated:
         _fill_dates_bg(undated)
@@ -448,19 +603,20 @@ def chart_videos(handle, params):
 @route('random_music')
 def random_music(handle, params):
     import lists
-    from browse import constants, localization, yt
+    from browse import constants, yt
     from music import queue
-    category = localization.category_query('music')
     page = _page(params)
-    entries = yt.trending_videos(category,
-                                 limit=max(page * constants.results_per_page() + 1, 60))
+    entries = yt.trending_videos(_music_query(),
+                                 limit=max(lists.rows_to_fetch(
+                                     page * constants.results_per_page()),
+                                     _RANDOM_MUSIC_FLOOR))
     import random as _random
     _random.SystemRandom().shuffle(entries)
     queue.save_pool(entries)
     items, content = lists.paged(
         lambda limit: entries,
         lambda entry: lists.video_item(entry, 'music_play'),
-        'random_music', {}, page=page)
+        'random_music', {}, page=page, blocked=True)
     build(handle, items, content=content, cache=False)
 
 
@@ -482,6 +638,12 @@ def go_channel(handle, params):
 
 @route('sub_channel')
 def sub_channel(handle, params):
+    """Subscribe or unsubscribe from a video whose channel is not known yet.
+
+    The context menu cannot know the channel at build time (see
+    lists._menu_channel_id), so this decides here: pressing it again on a
+    channel you already joined unsubscribes instead of silently re-joining.
+    """
     import lists
     import store
     from browse import meta
@@ -493,13 +655,25 @@ def sub_channel(handle, params):
         return
     title = (info or {}).get('channel') or ''
     _curl = 'https://www.youtube.com/channel/' + channel_id
-    store.subscribe(title, _curl)
-    import threading as _threading
-    _threading.Thread(target=_backfill_sub_thumbs, args=([_curl],),
-                      daemon=True).start()
-    import lists
-    lists.clear_menu_memo()
-    _notify(config.T(32164).format(title))
+    if store.is_subscribed(_curl):
+        marked = _unsubscribe_label(_curl, title)
+        named = _unsubscribe_label(_curl, title, allow_id=False)
+        if not xbmcgui.Dialog().yesno(config.T(32154),
+                                      config.T(32311).format(marked)):
+            return
+        store.unsubscribe(_curl)
+        lists.clear_menu_memo()
+        named = _unsubscribe_label(_curl, title, allow_id=False)
+        _notify(config.T(32310).format(named) if named else config.T(32185))
+    else:
+        store.subscribe(title, _curl)
+        import threading as _threading
+        _threading.Thread(target=_backfill_sub_thumbs, args=([_curl],),
+                          daemon=True).start()
+        lists.clear_menu_memo()
+        _marked = _channel_markup(title)
+        _notify(config.T(32164).format(_marked) if _marked else config.T(32308))
+    xbmc.executebuiltin('Container.Refresh')
 
 
 @route('channel')
@@ -510,21 +684,26 @@ def channel(handle, params):
     title = params.get('title') or ''
     known = next((item for item in store.get_subscriptions()
                   if item.get('url') == url), None)
-    name = title or (known or {}).get('title') or url
-    toggle = ('unsubscribe', '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32154))) if known \
-        else ('subscribe', '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32153)))
+    # Only a real name travels down: with an unnamed channel the url used to
+    # become the channel name in the notification, in the subscriptions file
+    # and on every video row of the page.
+    real_name = title if not store.is_url_title(title, url) \
+        else ((known or {}).get('title') or '')
+    toggle = ('unsubscribe', '[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32154))) if known \
+        else ('subscribe', '[B][COLOR FF00FF7F]{}[/COLOR][/B]'.format(config.T(32153)))
     items = [
         lists.folder_item(config.T(32117), 'channel_videos', config.icon('videos'),
-                          {'url': url, 'tab': 'videos', 'title': name}),
+                          {'url': url, 'tab': 'videos', 'title': real_name}),
         lists.folder_item(config.T(32180), 'channel_videos', config.icon('shorts'),
-                          {'url': url, 'tab': 'shorts', 'title': name}),
+                          {'url': url, 'tab': 'shorts', 'title': real_name}),
         lists.folder_item(config.T(32103), 'channel_videos', config.icon('live'),
-                          {'url': url, 'tab': 'streams', 'title': name}),
+                          {'url': url, 'tab': 'streams', 'title': real_name}),
         lists.folder_item(config.T(32119), 'channel_playlists',
-                          config.icon('playlists'), {'url': url}),
+                          config.icon('playlists'),
+                          {'url': url, 'title': real_name}),
         lists.action_item(toggle[1], toggle[0],
                           config.icon('unsubscribe' if known else 'subscribe'),
-                          {'url': url, 'title': name,
+                          {'url': url, 'title': real_name,
                            'image': params.get('image') or (known or {}).get('image', '')},
                           folder=False),
     ]
@@ -734,6 +913,16 @@ def _resolve_sub_info(url):
     return thumb, owner
 
 
+def _channel_handle(url):
+    """Last path segment of a channel url: the UC id or the @handle.
+
+    Used as a placeholder label while the real name is still being resolved,
+    which reads far better in a list than the whole youtube link.
+    """
+    tail = str(url or '').rstrip('/').rsplit('/', 1)[-1]
+    return tail or str(url or '')
+
+
 def _resolve_sub_image(url, image=''):
     import store
     image = str(image or '')
@@ -774,15 +963,21 @@ def subscribe(handle, params):
     title = params.get('title') or ''
     url = params.get('url') or ''
     image = params.get('image') or ''
+    # A channel reached without its name (search > Channels) arrives with the
+    # url in the title; the store already drops that, and the notification must
+    # not show a link either.
+    if store.is_url_title(title, url):
+        title = ''
     store.subscribe(title, url, image)
-    if store.needs_avatar(image):
+    if store.needs_avatar(image) or not title:
         threading.Thread(target=_backfill_sub_thumbs, args=([url],),
                          daemon=True).start()
     import lists
     lists.clear_menu_memo()
+    _marked = _channel_markup(title)
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        config.T(32164).format(params.get('title') or ''),
+        config.T(32164).format(_marked) if _marked else config.T(32308),
         config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
@@ -791,12 +986,23 @@ def subscribe(handle, params):
 @route('unsubscribe')
 def unsubscribe(handle, params):
     import store
-    store.unsubscribe(params.get('url') or '')
+    url = params.get('url') or ''
+    title = params.get('title') or ''
+    # Both names are resolved before the record is dropped, otherwise the
+    # stored fallback is already gone by the time the notification needs it.
+    marked = _unsubscribe_label(url, title)
+    named = _unsubscribe_label(url, title, allow_id=False)
+    if not xbmcgui.Dialog().yesno(config.T(32154),
+                                  config.T(32311).format(marked)):
+        finish(handle)
+        return
+    store.unsubscribe(url)
     import lists
     lists.clear_menu_memo()
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
-        config.T(32185), config.addon_icon(), time=2500, sound=False)
+        config.T(32310).format(named) if named else config.T(32185),
+        config.addon_icon(), time=2500, sound=False)
     finish(handle)
     xbmc.executebuiltin('Container.Refresh')
 
@@ -819,7 +1025,7 @@ def watch_later(handle, params):
     from browse import constants
     entries = _merge_remote(store.get_watch_later(),
                             store.get_library('watch_later_remote'))
-    entries = lists.fill_missing_meta(entries)
+    _fill_dates_bg(entries, refresh=True)
     page = _page(params)
     per_page = constants.results_per_page()
     start = (page - 1) * per_page
@@ -881,9 +1087,8 @@ def local_playlist(handle, params):
     import lists
     import store
     pid = params.get('pid') or ''
-    original = store.get_local_playlist_tracks(pid)
-    entries = lists.fill_missing_meta(original)
-    lists.persist_filled('local_playlist_' + pid, original, entries)
+    entries = store.get_local_playlist_tracks(pid)
+    _fill_dates_bg(entries, refresh=True)
     lists.set_listing('local_playlist', {'pid': pid}, 1)
     lists.set_context(entries)
 
@@ -1077,7 +1282,7 @@ def history(handle, params):
     from browse import constants
     entries = _merge_remote(store.get_history(),
                             store.get_library('remote_history'))
-    entries = lists.fill_missing_meta(entries)
+    _fill_dates_bg(entries, refresh=True)
     page = _page(params)
     per_page = constants.results_per_page()
     start = (page - 1) * per_page
@@ -1113,10 +1318,168 @@ def clear_history(handle, params):
 
 
 # --------------------------------------------------------------------- account
+def _unsubscribe_label(url, title='', allow_id=True):
+    """Channel name for the confirmation and the notification.
+
+    Read before the record is dropped, and the menu sometimes carries only the
+    url - the stored title is the fallback. The confirmation falls back to the
+    channel id as well, so the dialog never asks about an unnamed blank; the
+    notification keeps the plain wording instead of naming an id.
+    """
+    import store
+    name = title if title and not store.is_url_title(title, url) else ''
+    if not name:
+        name = (store.subscription(url) or {}).get('title') or ''
+    if not name and allow_id:
+        return _channel_markup(_channel_handle(url))
+    return _channel_markup(name)
+
+
+def _channel_markup(name):
+    """Channel name for a notification: always bold and in the addon colour.
+
+    The name reaches us straight from YouTube, so any markup it carries is
+    dropped first, otherwise the wrapping tags could end up unbalanced.
+    """
+    import re as _re
+    try:
+        import lists as _lists
+        text = _lists.clean_title(str(name or ''), single_line=True)
+    except Exception:
+        text = str(name or '').strip()
+    text = _re.sub(r'\[/?(?:B|I)\]|\[COLOR[^\]]*\]|\[/COLOR\]', '',
+                   text).strip()
+    if not text:
+        return ''
+    return '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(text)
+
+
 def _notify(message, time_ms=4000):
     xbmcgui.Dialog().notification(
         '[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]',
         message, config.addon_icon(), time=time_ms, sound=False)
+
+
+def _blocked_markup(name, kind=None):
+    """A blocked name in a notification: bold, and in the colour its kind
+    wears in the blocked list."""
+    import store
+    colours = {store.KIND_CHANNEL: 'FF00CED1', store.KIND_ARTIST: 'FFCCCCFF'}
+    return '[B][COLOR %s]%s[/COLOR][/B]' % (
+        colours.get(kind, 'FFCCCCFF'), name)
+
+
+def _row_block_entry(params):
+    """The row the menu was opened on, as the filter sees it."""
+    import lists
+    import store
+    vid = params.get('video_id') or ''
+    channel = str(params.get('channel') or '').strip()
+    if not channel:
+        try:
+            channel = str((store.get_yt_meta(vid) or {}).get('channel')
+                          or '').strip()
+        except Exception:
+            channel = ''
+    return {'video_id': vid, 'channel': channel,
+            'title': params.get('title') or '',
+            'artist': lists.artist_from_title(params.get('title'))}
+
+
+def _add_block_rule(handle, params, kind):
+    import lists
+    import store
+    entry = _row_block_entry(params)
+    name = entry.get('artist') if kind == store.KIND_ARTIST else entry.get('channel')
+    if not name:
+        _notify(config.T(32508))
+        cancel(handle)
+        return
+    store.add_blocked_name(name, kind)
+    lists.clear_menu_memo()
+    _notify(config.T(32510).format(_blocked_markup(name, kind)))
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('block_channel')
+def block_channel(handle, params):
+    """Hide every row of this row's channel."""
+    import store
+    _add_block_rule(handle, params, store.KIND_CHANNEL)
+
+
+@route('block_artist')
+def block_artist(handle, params):
+    """Hide only the rows that name this artist, so a channel that posts
+    several of them keeps the rest."""
+    import store
+    _add_block_rule(handle, params, store.KIND_ARTIST)
+
+
+@route('unblock_artist')
+def unblock_artist(handle, params):
+    """Take back whichever rule hides this row: the channel one, the artist one,
+    or both when the row is hidden by both."""
+    import lists
+    import store
+    entry = _row_block_entry(params)
+    hits = store.blocked_matches(entry, entry.get('artist'))
+    for kind, label in hits:
+        store.remove_blocked_name(label, kind)
+    if hits:
+        lists.clear_menu_memo()
+        _notify(config.T(32511).format(
+            ', '.join('%s (%s)' % (_blocked_markup(label, kind), kind)
+                      for kind, label in hits)))
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('remove_rule')
+def remove_rule(handle, params):
+    """Drop one rule from the blocked list page."""
+    import lists
+    import store
+    label = params.get('name') or ''
+    kind = params.get('kind') or ''
+    if label and store.remove_blocked_name(label, kind):
+        lists.clear_menu_memo()
+        _notify(config.T(32512).format(_blocked_markup(label, kind)))
+    finish(handle)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+@route('blocked_artists')
+def blocked_artists(handle, params):
+    """A plain listing, one row per rule, unblocked from its own context menu.
+
+    The two kinds carry different colours so they can be told apart at a
+    glance: turquoise for a channel rule, soft white for an artist one.
+    """
+    import lists
+    import store
+    colours = {store.KIND_CHANNEL: 'FF00CED1', store.KIND_ARTIST: 'FFCCCCFF'}
+    entries = store.get_blocked_names()
+    items = []
+    for entry in entries.values():
+        kind = entry.get('kind') or store.KIND_CHANNEL
+        label = entry.get('label') or ''
+        marker = config.T(32518 if kind == store.KIND_ARTIST else 32519)
+        remove = 'RunPlugin({}?mode=remove_rule&{})'.format(
+            BASE_URL, urlencode({'name': label, 'kind': kind}))
+        items.append(lists.folder_item(
+            '[B][COLOR %s]%s[/COLOR][/B]  [COLOR FF888888]%s[/COLOR]'
+            % (colours.get(kind, 'FFCCCCFF'), label, marker),
+            'blocked_artists', config.icon('unsubscribe'),
+            description=marker,
+            cm=[('[B][COLOR FF00FF7F]{}[/COLOR][/B]'.format(config.T(32515)),
+                 remove)]))
+    if not items:
+        items.append(lists.folder_item(config.T(32506), 'blocked_artists',
+                                      config.icon('unsubscribe'), folder=False))
+    xbmcplugin.addDirectoryItems(handle, items, len(items))
+    finish(handle)
 
 
 @route('my_youtube')
@@ -1137,6 +1500,9 @@ def my_youtube(handle, params):
             config.T(32123), 'saved_playlists', config.icon('playlists')))
         items.append(lists.folder_item(
             config.T(32124), 'history', config.icon('history')))
+        items.append(lists.action_item(
+            '[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32513)),
+            'blocked_artists', config.icon('unsubscribe')))
         items.append(lists.action_item(
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32125)), 'sync_now',
             config.icon('sync'), folder=False))
@@ -1232,6 +1598,7 @@ def subscription_feed(handle, params):
                                         (entry.get('channel') or '').lower()))
     page = _page(params)
     per_page = results_per_page()
+    entries = lists.filter_blocked(entries)
     start = (page - 1) * per_page
     end = start + per_page
     lists.set_listing('subscription_feed', {}, page)
@@ -1245,11 +1612,93 @@ def subscription_feed(handle, params):
     build(handle, items, content='videos', cache=False)
 
 
+# The feed is the only listing that fans out over the subscribed channels, so
+# it is the only one whose entry time grows with the account size. Requests run
+# in small waves instead of one after another: the same calls to YouTube, but a
+# wave costs the slowest channel instead of the sum of all of them. Results are
+# still consumed in subscription order, so the listing stays stable.
+_FEED_WORKERS = 6
+_feed_refresh_lock = threading.Lock()
+
+
+def _feed_channel_videos(url, per_channel):
+    from browse import yt
+    try:
+        return yt.channel_videos(url, limit=per_channel)[:per_channel]
+    except Exception as exc:
+        config.log('feed {} failed: {}'.format(url, str(exc)[:100]))
+        return []
+
+
+def _iter_feed_channels(subs, per_channel, need):
+    pool = ThreadPoolExecutor(max_workers=_FEED_WORKERS)
+    fetched = 0
+    try:
+        for start in range(0, len(subs), _FEED_WORKERS):
+            wave = [sub for sub in subs[start:start + _FEED_WORKERS]
+                    if (sub or {}).get('url')]
+            if not wave:
+                continue
+            futures = [(sub, pool.submit(_feed_channel_videos,
+                                         sub.get('url') or '', per_channel))
+                       for sub in wave]
+            for sub, future in futures:
+                videos = future.result()
+                fetched += len(videos)
+                yield sub, videos
+                if fetched >= need:
+                    return
+    finally:
+        pool.shutdown(wait=False)
+
+
+def _collect_feed(need, per_channel):
+    import store
+    subs = sorted(store.get_subscriptions(),
+                  key=lambda sub: -((sub or {}).get('added') or 0))
+    collected = []
+    for sub, videos in _iter_feed_channels(subs, per_channel, need):
+        name = sub.get('title') or sub.get('url') or ''
+        for entry in videos:
+            item = dict(entry or {})
+            if not item.get('video_id'):
+                continue
+            item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
+            item['channel'] = item.get('channel') or name
+            if sub.get('source') == 'local':
+                item['_local_only'] = True
+            collected.append(item)
+    exhausted = len(collected) < need
+    store.set_feed_full_cache(collected, need, exhausted)
+    return collected, exhausted
+
+
+def _refresh_feed_in_background(need, per_channel):
+    if not _feed_refresh_lock.acquire(False):
+        return
+
+    def _run():
+        try:
+            if xbmc.Monitor().abortRequested():
+                return
+            collected, _exhausted = _collect_feed(need, per_channel)
+            if collected:
+                xbmc.executeBuiltin('Container.Refresh')
+        except Exception as exc:
+            config.log('feed background refresh failed: {}'.format(str(exc)[:120]))
+        finally:
+            _feed_refresh_lock.release()
+
+    thread = threading.Thread(target=_run, name='feed-refresh')
+    thread.daemon = True
+    thread.start()
+
+
 @route('feed')
 def feed(handle, params):
     import lists
     import store
-    from browse import constants, yt
+    from browse import constants
     from music import detect
     page = _page(params)
     per_page = constants.results_per_page()
@@ -1262,31 +1711,17 @@ def feed(handle, params):
         collected = _full.get('entries') or []
         exhausted = _full.get('exhausted', True)
     else:
-        _subs = sorted(store.get_subscriptions(),
-                       key=lambda sub: -((sub or {}).get('added') or 0))
-        for sub in _subs:
-            if len(collected) >= need:
-                exhausted = False
-                break
-            url = sub.get('url') or ''
-            name = sub.get('title') or url
-            if not url:
-                continue
-            try:
-                videos = yt.channel_videos(url, limit=per_channel)[:per_channel]
-            except Exception as exc:
-                config.log('feed {} failed: {}'.format(url, str(exc)[:100]))
-                continue
-            for entry in videos:
-                item = dict(entry or {})
-                if not item.get('video_id'):
-                    continue
-                item['title'] = '{} - {}'.format(name, item.get('title') or item['video_id'])
-                item['channel'] = item.get('channel') or name
-                if sub.get('source') == 'local':
-                    item['_local_only'] = True
-                collected.append(item)
-        store.set_feed_full_cache(collected, need, exhausted)
+        _stale = store.get_feed_full_cache(allow_stale=True)
+        if _stale and (_stale.get('entries') or []):
+            # Show the expired copy straight away and refill it behind the
+            # listing. The wait is what people notice, not the staleness, and
+            # this costs no extra request: the refresh is the one the user
+            # would have triggered anyway by opening the feed.
+            collected = _stale.get('entries') or []
+            exhausted = _stale.get('exhausted', True)
+            _refresh_feed_in_background(need, per_channel)
+        else:
+            collected, exhausted = _collect_feed(need, per_channel)
     collected = lists.fill_missing_meta(collected)
     try:
         _hide_all = bool(config.get_bool('hide_shorts', False))
@@ -1294,6 +1729,7 @@ def feed(handle, params):
         _hide_all = False
     if _hide_all:
         collected = [item for item in collected if not item.get('is_shorts')]
+    collected = lists.filter_blocked(collected)
     lists.set_context(collected)
     start = (page - 1) * per_page
     end = start + per_page
@@ -1315,10 +1751,18 @@ def subscribed_channels(handle, params):
     entries = [entry for entry in store.get_subscriptions()
                if isinstance(entry, dict) and entry.get('url')]
     entries.sort(key=lambda entry: -(entry.get('added') or 0))
-    _missing = [entry.get('url') for entry in entries
-                if store.needs_avatar(entry.get('image'))
-                or store.is_url_title(entry.get('title'),
-                                      entry.get('url'))][:3]
+    # Names first: an unnamed channel used to be listed as its whole url until
+    # the resolver caught up, which is the first thing you see after a quick
+    # Subscribe. Avatars are cosmetic, so they only get the leftover budget.
+    _unnamed = [entry.get('url') for entry in entries
+                if store.is_url_title(entry.get('title'), entry.get('url'))][:10]
+    _missing = list(_unnamed)
+    for entry in entries:
+        if len(_missing) >= 13:
+            break
+        if store.needs_avatar(entry.get('image')) and entry.get('url') \
+                not in _missing:
+            _missing.append(entry['url'])
     if _missing:
         import threading as _threading
         _threading.Thread(target=_backfill_sub_thumbs, args=(_missing,),
@@ -1329,12 +1773,15 @@ def subscribed_channels(handle, params):
     end = start + per_page
     items = []
     for entry in entries[start:end]:
-        _label = entry.get('title') or entry.get('url')
+        _title = entry.get('title') or ''
+        _label = _title if not store.is_url_title(_title, entry.get('url')) \
+            else _channel_handle(entry.get('url'))
         if entry.get('source') == 'local':
             _label = '{} [COLOR FF00FF7F][LOCAL][/COLOR]'.format(_label)
         items.append(lists.folder_item(_label, 'channel',
                                        entry.get('image'),
-                                       {'url': entry.get('url')}))
+                                       {'url': entry.get('url'),
+                                        'title': _title}))
     if len(entries) > end:
         items.append(lists.folder_item(
             '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(config.T(32160).format(page + 1)),

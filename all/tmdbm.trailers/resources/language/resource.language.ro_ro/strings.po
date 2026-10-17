@@ -15,7 +15,7 @@ msgstr "General"
 
 msgctxt "#32001"
 msgid "YouTube Account"
-msgstr "YouTube Account"
+msgstr "Cont YouTube"
 
 msgctxt "#32002"
 msgid "Video"
@@ -23,171 +23,171 @@ msgstr "Video"
 
 msgctxt "#32003"
 msgid "Localisation"
-msgstr "Localisation"
+msgstr "Localizare"
 
 msgctxt "#32004"
 msgid "Categories"
-msgstr "Categories"
+msgstr "Categorii"
 
 msgctxt "#32005"
 msgid "Playback"
-msgstr "Playback"
+msgstr "Redare"
 
 msgctxt "#32006"
 msgid "Maintenance"
-msgstr "Maintenance"
+msgstr "Mentenanta"
 
 msgctxt "#32007"
 msgid "Account"
-msgstr "Account"
+msgstr "Cont"
 
 msgctxt "#32010"
-msgid "[B]Maximum video resolution[/B]"
-msgstr "[B]Maximum video resolution[/B]"
+msgid "[B]Maximum resolution[/B]"
+msgstr "[B]Rezolutie maxima[/B]"
 
 msgctxt "#32011"
 msgid "Subtitles"
-msgstr "Subtitles"
+msgstr "Subtitrare"
 
 msgctxt "#32012"
 msgid "Subtitle language override (optional)"
-msgstr "Subtitle language override (optional)"
+msgstr "Limita limbii subtitrarilor (optional)"
 
 msgctxt "#32013"
 msgid "Content country (ISO 3166-1)"
-msgstr "Content country (ISO 3166-1)"
+msgstr "Tara continutului (ISO 3166-1)"
 
 msgctxt "#32014"
 msgid "Custom country code (optional)"
-msgstr "Custom country code (optional)"
+msgstr "Cod de tara personalizat (optional)"
 
 msgctxt "#32015"
 msgid "Content language"
-msgstr "Content language"
+msgstr "Limba continutului"
 
 msgctxt "#32016"
 msgid "Custom language code (optional)"
-msgstr "Custom language code (optional)"
+msgstr "Cod de limba personalizat (optional)"
 
 msgctxt "#32017"
 msgid "Default Trending category"
-msgstr "Default Trending category"
+msgstr "Categorie implicita la Trenduri"
 
 msgctxt "#32018"
 msgid "Default Live category"
-msgstr "Default Live category"
+msgstr "Categorie implicita la Live"
 
 msgctxt "#32019"
 msgid "Trailer audio"
-msgstr "Trailer audio"
+msgstr "Audio la trailere"
 
 msgctxt "#32020"
-msgid "[B]Autoplay next video[/B]"
-msgstr "[B]Autoplay next video[/B]"
+msgid "[B]Autoplay UP NEXT[/B]"
+msgstr "[B]Redare automata UP NEXT[/B]"
 
 msgctxt "#32021"
 msgid "Shuffle play"
-msgstr "Shuffle play"
+msgstr "Redare in ordine aleatorie"
 
 msgctxt "#32022"
 msgid "Results per page"
-msgstr "Results per page"
+msgstr "Rezultate pe pagina"
 
 msgctxt "#32023"
 msgid "Feed items per channel"
-msgstr "Feed items per channel"
+msgstr "Elemente pe canal in flux"
 
 msgctxt "#32024"
 msgid "Debug logging (disables cache)"
-msgstr "Debug logging (disables cache)"
+msgstr "Log detaliat (dezactiveaza cache-ul)"
 
 msgctxt "#32025"
 msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
-msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Goleste cache-ul[/COLOR][/B]"
 
 msgctxt "#32026"
 msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
-msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]Conecteaza contul YouTube[/COLOR][/B] (cod QR)"
 
 msgctxt "#32027"
 msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
-msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]Deconecteaza contul YouTube[/COLOR][/B]"
 
 msgctxt "#32040"
 msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
-msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Auto detecteaza rezolutia televizorului si limiteaza calitatea in consecinta (pana la 4K pe un ecran 4K, pana la 1080p pe Full HD). Alege o valoare fixa pentru a limita calitatea pe dispozitive mai slabe."
 
 msgctxt "#32041"
 msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
-msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Oprit = fara subtitrare. Original = pista de subtitrare pe care YouTube o marcheaza ca implicita. Limba preferata = pista in limba continutului, tradusa automat de YouTube cand uploaderul nu are o astfel de pista."
 
 msgctxt "#32042"
 msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
-msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Lasa gol pentru a folosi limba continutului. Exemplu: pt pentru subtitrare in portugheza la un clip in engleza."
 
 msgctxt "#32043"
 msgid "Country used for search, Trending, Live and Trailers results."
-msgstr "Country used for search, Trending, Live and Trailers results."
+msgstr "Tara folosita pentru cautare, trenduri, live si trailere."
 
 msgctxt "#32044"
 msgid "Two-letter country code not listed above, for example PL, KR, VN."
-msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Cod de tara de doua litere care nu apare mai sus, de exemplu PL, KR, VN."
 
 msgctxt "#32045"
 msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
-msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "Limba metadatelor returnate si a cautarilor de categorii din trenduri, live si trailere."
 
 msgctxt "#32046"
 msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
-msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Cod de limba care nu apare mai sus, de exemplu he, fa, uk, zh-TW, fil. Cautarile de categorii folosesc cuvinte in engleza pentru limbile fara tabel de traduceri."
 
 msgctxt "#32047"
 msgid "Category listed when Trending is opened without a choice."
-msgstr "Category listed when Trending is opened without a choice."
+msgstr "Categoria afisata cand Trenduri se deschide fara alegere."
 
 msgctxt "#32048"
 msgid "Category listed when Live is opened without a choice."
-msgstr "Category listed when Live is opened without a choice."
+msgstr "Categoria afisata cand Live se deschide fara alegere."
 
 msgctxt "#32049"
 msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
-msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Original reda doar pista audio originala. Localizat prefera o pista audio in limba continutului si revine la original cand nu exista."
 
 msgctxt "#32050"
 msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
-msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr " Pornit: cand se termina un clip, continua cu urmatorul din aceeasi lista, exact in ordinea afisata (trenduri, muzica aleatoare, live, rezultatele cautarii, un canal). Un clip pornit din alt addon (TMDb Movies) primeste in schimb o piesa aleatoare. Oprit: nimic nu se reda singur."
 
 msgctxt "#32051"
 msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
-msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "Pornit: clipul pe care l-ai apasat se reda tot primul, dar ce urmeaza este amestecat in loc de a respecta ordinea listei. Aceeasi sursa ca la Redare automata, doar aleator."
 
 msgctxt "#32052"
 msgid "How many videos a list page shows. Larger pages build longer playlists."
-msgstr "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "Cate clipuri arata o pagina de lista. Pagini mai mari construiesc liste de redare mai lungi."
 
 msgctxt "#32053"
 msgid "How many videos each subscribed channel contributes to the feed."
-msgstr "How many videos each subscribed channel contributes to the feed."
+msgstr "Cate clipuri contribuie fiecare canal abonat la flux."
 
 msgctxt "#32054"
 msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
-msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Scrie in kodi.log detalii despre extragere si redare si ocoleste cache-ul listelor."
 
 msgctxt "#32055"
 msgid "Deletes the downloaded listings, the music pool and the queue state."
-msgstr "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Sterge listele descarcate, poolul de muzica si starea cozii."
 
 msgctxt "#32056"
 msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
-msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Conecteaza-ti contul YouTube pentru a vedea abonamentele, Vezi mai tarziu, listele si istoricul."
 
 msgctxt "#32057"
 msgid "Removes the linked YouTube account and its local snapshot."
-msgstr "Removes the linked YouTube account and its local snapshot."
+msgstr "Elimina contul YouTube conectat si copia locala a lui."
 
 msgctxt "#32060"
 msgid "Off"
-msgstr "Off"
+msgstr "Oprit"
 
 msgctxt "#32061"
 msgid "Original"
@@ -195,23 +195,23 @@ msgstr "Original"
 
 msgctxt "#32062"
 msgid "Preferred language"
-msgstr "Preferred language"
+msgstr "Limba preferata"
 
 msgctxt "#32063"
 msgid "Music"
-msgstr "Music"
+msgstr "Muzica"
 
 msgctxt "#32064"
 msgid "Gaming"
-msgstr "Gaming"
+msgstr "Jocuri"
 
 msgctxt "#32065"
 msgid "News"
-msgstr "News"
+msgstr "Stiri"
 
 msgctxt "#32066"
 msgid "Movies"
-msgstr "Movies"
+msgstr "Filme"
 
 msgctxt "#32067"
 msgid "Live"
@@ -219,71 +219,71 @@ msgstr "Live"
 
 msgctxt "#32068"
 msgid "Games"
-msgstr "Games"
+msgstr "Jocuri"
 
 msgctxt "#32069"
 msgid "Sports"
-msgstr "Sports"
+msgstr "Sport"
 
 msgctxt "#32070"
 msgid "Podcasts"
-msgstr "Podcasts"
+msgstr "Podcasturi"
 
 msgctxt "#32071"
 msgid "Localized"
-msgstr "Localized"
+msgstr "Localizat"
 
 msgctxt "#32028"
 msgid "Extraction cache"
-msgstr "Extraction cache"
+msgstr "Cache extragere"
 
 msgctxt "#32058"
 msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
-msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "Cat timp reluarea unui trailer reutilizeaza fluxurile salvate in loc sa apele din nou API-ul YouTube"
 
 msgctxt "#32029"
 msgid "Custom trending search"
-msgstr "Custom trending search"
+msgstr "Cautare personalizata pentru trenduri"
 
 msgctxt "#32059"
 msgid "Search text for Trending instead of the category word, e.g. etno folk music"
-msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "Text de cautare pentru trenduri in loc de cuvantul categoriei, de exemplu muzica etno"
 
 msgctxt "#32030"
 msgid "Hide Shorts"
-msgstr "Hide Shorts"
+msgstr "Ascunde Shorts"
 
 msgctxt "#32072"
 msgid "Hide vertical short videos from subscription lists"
-msgstr "Hide vertical short videos from subscription lists"
+msgstr "Ascunde clipurile scurte verticale din listele de abonamente"
 
 msgctxt "#32031"
-msgid "Up Next"
-msgstr "Up Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32073"
 msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
-msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "oprit redare in ordine, amestecat amesteca urmatoarele, asemanatoare continua cu piese similare"
 
 msgctxt "#32074"
 msgid "In order"
-msgstr "In order"
+msgstr "In ordine"
 
 msgctxt "#32075"
 msgid "Shuffled"
-msgstr "Shuffled"
+msgstr "Amestecat"
 
 msgctxt "#32076"
 msgid "Similar songs"
-msgstr "Similar songs"
+msgstr "Piese similare"
 
 msgctxt "#32077"
 msgid "YouTube network family"
-msgstr "YouTube network family"
+msgstr "Familia de retea YouTube"
 
 msgctxt "#32078"
 msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
-msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Auto incearca familia de retea pe care poarta anti-bot nu o blocheaza si o retine; fixeaza IPv4 sau IPv6 doar daca stii care functioneaza"
 
 msgctxt "#32079"
 msgid "Auto"
@@ -291,11 +291,11 @@ msgstr "Auto"
 
 msgctxt "#32080"
 msgid "IPv4 only"
-msgstr "IPv4 only"
+msgstr "Doar IPv4"
 
 msgctxt "#32081"
 msgid "IPv6 only"
-msgstr "IPv6 only"
+msgstr "Doar IPv6"
 
 msgctxt "#32032"
 msgid "UI language"
@@ -437,10 +437,6 @@ msgctxt "#32128"
 msgid "Connect YouTube account (QR code)"
 msgstr "Conecteaza contul YouTube (cod QR)"
 
-
-
-
-
 msgctxt "#32133"
 msgid "Cancel"
 msgstr "Anuleaza"
@@ -538,8 +534,8 @@ msgid "Unblock this video"
 msgstr "Deblocheaza acest clip"
 
 msgctxt "#32158"
-msgid "No autoplay for this video"
-msgstr "Fara redare automata pentru acest clip"
+msgid "Block this video"
+msgstr "Blocheaza acest clip"
 
 msgctxt "#32159"
 msgid "Play"
@@ -550,8 +546,8 @@ msgid "Next page {}"
 msgstr "Pagina urmatoare {}"
 
 msgctxt "#32161"
-msgid "UP Next"
-msgstr "Urmeaza"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32162"
 msgid "Blocked from autoplay"
@@ -565,8 +561,6 @@ msgctxt "#32164"
 msgid "Subscribed to {}"
 msgstr "Abonat la {}"
 
-
-
 msgctxt "#32167"
 msgid "Connect YouTube account"
 msgstr "Conecteaza contul YouTube"
@@ -579,8 +573,6 @@ msgctxt "#32169"
 msgid "The activation code expired, start again"
 msgstr "Codul de activare a expirat, ia-o de la capat"
 
-
-
 msgctxt "#32172"
 msgid "Still waiting for approval on your phone"
 msgstr "Inca astept aprobarea pe telefon"
@@ -592,8 +584,6 @@ msgstr "Sincronizez YouTube..."
 msgctxt "#32174"
 msgid "Sync failed: {}"
 msgstr "Sincronizare esuata: {}"
-
-
 
 msgctxt "#32177"
 msgid "No YouTube account connected"
@@ -642,8 +632,6 @@ msgstr "Nu am putut porni activarea: {}"
 msgctxt "#32188"
 msgid "Open this address: {}\n\nEnter this code:\n{}"
 msgstr "Deschide adresa: {}\n\nIntrodu codul:\n{}"
-
-
 
 msgctxt "#32191"
 msgid "Synced: {} channels, {} videos"
@@ -705,7 +693,6 @@ msgctxt "#32277"
 msgid "Portuguese (Brazil)"
 msgstr "Portugheza (Brazilia)"
 
-
 msgctxt "#32306"
 msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
 msgstr "[B][COLOR FF7B68EE]Incarca logul Kodi pe Pastebin[/COLOR][/B]"
@@ -720,20 +707,96 @@ msgstr "Incarca kodi.log sau kodi.old.log pe paste.kodi.tv pentru raportarea ero
 
 msgctxt "#32092"
 msgid "Show a QR card with the donation link."
-msgstr "Arata un card QR cu linkul de donatie."
+msgstr "Afiseaza un card cu cod QR cu linkul de donatie."
 
 msgctxt "#32093"
 msgid "YouTube account status"
-msgstr "Status cont YouTube"
+msgstr "Starea contului YouTube"
 
 msgctxt "#32094"
 msgid "Status: Connected"
-msgstr "Status: Conectat"
+msgstr "Stare: Conectat"
 
 msgctxt "#32095"
 msgid "Channels: {} | Feed videos: {}"
-msgstr "Canale: {} | Clipuri in feed: {}"
+msgstr "Canale: {} | Clipuri in flux: {}"
 
 msgctxt "#32088"
 msgid "Troubleshooting"
-msgstr "Troubleshooting"
+msgstr "Diagnostic"
+
+msgctxt "#32308"
+msgid "Subscribed"
+msgstr "Abonat"
+
+msgctxt "#32309"
+msgid "Subscribe / Unsubscribe"
+msgstr "Aboneaza-te / Dezaboneaza-te"
+
+msgctxt "#32310"
+msgid "Unsubscribed from {}"
+msgstr "Dezabonat de la {}"
+
+msgctxt "#32311"
+msgid "Unsubscribe from {}?"
+msgstr "Dezabonezi de la {}?"
+
+msgctxt "#32400"
+msgid "Warm up the main lists after Kodi starts"
+msgstr "Incarca listele principale dupa pornirea lui Kodi"
+
+msgctxt "#32401"
+msgid "Fetch Trending, Live and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+msgstr "Preia Trending, Live, Trailers, Muzica aleatoare si Feed-ul in fundal la scurt timp dupa pornirea lui Kodi, ca sa se deschida instant. Sunt aceleasi cereri pe care le-ai face deschizandu-le singur."
+
+msgctxt "#32506"
+msgid "Nothing blocked yet. Block the artist of the row you came from with the button below."
+msgstr "Nimic blocat inca. Foloseste meniul contextual al unui video pentru a bloca canalul sau artistul."
+
+msgctxt "#32508"
+msgid "No artist name on this row."
+msgstr "Niciun nume de artist pe acest rand."
+
+msgctxt "#32510"
+msgid "Blocked artist: {}"
+msgstr "Artist blocat: {}"
+
+msgctxt "#32511"
+msgid "Unblocked artist: {}"
+msgstr "Artist deblocat: {}"
+
+msgctxt "#32512"
+msgid "Unblocked artist: {}"
+msgstr "Artist deblocat: {}"
+
+msgctxt "#32513"
+msgid "Blocked artists"
+msgstr "Artisti blocati"
+
+msgctxt "#32514"
+msgid "Block this artist or channel"
+msgstr "Blocheaza acest artist sau canal"
+
+msgctxt "#32515"
+msgid "Unblock this artist or channel"
+msgstr "Deblocheaza acest artist sau canal"
+
+msgctxt "#32516"
+msgid "Block whole channel"
+msgstr "Blocheaza tot canalul"
+
+msgctxt "#32517"
+msgid "Block only this artist"
+msgstr "Blocheaza doar acest artist"
+
+msgctxt "#32518"
+msgid "artist"
+msgstr "artist"
+
+msgctxt "#32519"
+msgid "channel"
+msgstr "canal"
+
+msgctxt "#32520"
+msgid "Chart position {} in {}"
+msgstr "Pozitia {} in {}"

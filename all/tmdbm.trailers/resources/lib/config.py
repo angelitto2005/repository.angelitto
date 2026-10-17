@@ -402,7 +402,8 @@ SNAPSHOT_KEYS = ('ip_family', 'content_country', 'content_language',
                  'trailer_max_res', 'subtitles', 'subtitle_language',
                  'results_per_page', 'feed_per_channel', 'autoplay_next',
                  'shuffle_play', 'playback_mode', 'debug', 'extract_cache_ttl',
-                  'trending_query_custom', 'hide_shorts', 'ui_language')
+                  'trending_query_custom', 'hide_shorts', 'ui_language',
+                 'prefetch_lists')
 _SNAP_RAW = ['']
 _SNAP_DATA = [None]
 _RPC_WORKS = [None]

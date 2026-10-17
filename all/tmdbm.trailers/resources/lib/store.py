@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 import uuid
 
 import xbmc
@@ -45,6 +46,13 @@ def _write(name, payload):
             json.dump(payload, handle, ensure_ascii=False, indent=1)
     except OSError as exc:
         config.log('write {} failed: {}'.format(name, exc), xbmc.LOGWARNING)
+
+
+def _unlink(name):
+    try:
+        os.remove(_path(name))
+    except OSError:
+        pass
 
 
 def _read_obj(name):
@@ -149,6 +157,17 @@ def is_subscribed(url):
     key = _sub_key(url)
     return any(_sub_key(item.get('url')) == key
                for item in _read(_SUBS, []))
+
+
+def subscription(url):
+    """The stored record for a channel url, matched on the same key as
+    is_subscribed, so a different url form for the same channel still finds it.
+    """
+    key = _sub_key(url)
+    for item in _read(_SUBS, []):
+        if isinstance(item, dict) and _sub_key(item.get('url')) == key:
+            return item
+    return {}
 
 
 _BROKEN_THUMB_PREFIX = 'https://yt3.googleusercontent.com/UC'
@@ -425,13 +444,13 @@ def set_feed_cache(entries):
     _write_obj(_LIBRARY, library)
 
 
-def get_feed_full_cache():
+def get_feed_full_cache(allow_stale=False):
     if _debug_no_cache():
         return {}
     data = _read_obj(_LIBRARY).get(_FEED_FULL_CACHE)
-    if not _feed_cache_valid(data):
+    if not allow_stale and not _feed_cache_valid(data):
         return {}
-    entries = data.get('entries')
+    entries = data.get('entries') if isinstance(data, dict) else None
     if not isinstance(entries, list):
         return {}
     return {'entries': entries, 'need': int(data.get('need') or 0),
@@ -619,3 +638,187 @@ def set_device_id(device_id=None):
     data['device_id'] = device_id or str(uuid.uuid4())
     _write_obj(_OAUTH, data)
     return data['device_id']
+
+
+# --------------------------------------------------------------- blocked names
+# Two kinds of rule, because YouTube has no artist field at all: browse only
+# says who uploaded a video. A "channel" rule hides every row of that channel,
+# while an "artist" rule hides just the rows whose title names that artist, so a
+# channel posting several artists keeps the rest. Both can be held for the same
+# name - an artist who owns their channel should disappear from it and from
+# everywhere else at the same time.
+_BLOCKED = 'blocked_artists.json'
+_BLOCKED_NAMES = 'blocked_names'   # only read once, to move old entries over
+KIND_CHANNEL = 'channel'
+KIND_ARTIST = 'artist'
+
+
+def _name_key(value):
+    """Comparison key for an artist or channel name.
+
+    Has to survive the three ways the same name reaches us: the user types
+    "tzanca uraganu" without accents, the listing row spells it with the
+    comma-below letters, and a row may arrive with a legacy cedilla instead.
+    So the text is decomposed, the combining marks dropped, then casefolded and
+    squeezed - NFKC alone keeps them, because the comma-below capital has no
+    canonical decomposition and casefold only turns it into the lowercase one.
+    """
+    text = unicodedata.normalize('NFKD', str(value or ''))
+    text = ''.join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r'\s+', ' ', text.casefold()).strip()
+
+
+def _entry_kind(value):
+    kind = str(value or '').strip().lower()
+    return kind if kind in (KIND_CHANNEL, KIND_ARTIST) else KIND_CHANNEL
+
+
+def _migrate_blocked():
+    """Move a block list written into state.json into its own file."""
+    raw = _read_obj(_STATE).get(_BLOCKED_NAMES)
+    if raw is None:
+        return False
+    names = raw.get('names') if isinstance(raw, dict) else None
+    if not names:
+        state = _read_obj(_STATE)
+        state.pop(_BLOCKED_NAMES, None)
+        _write_obj(_STATE, state)
+        return False
+    _write_obj(_BLOCKED, raw)
+    state = _read_obj(_STATE)
+    state.pop(_BLOCKED_NAMES, None)
+    _write_obj(_STATE, state)
+    return True
+
+
+def _blocked_by_kind():
+    """{'channel': {key: label}, 'artist': {key: label}}.
+
+    Reads both the nested layout it writes and the flat one from before the
+    kinds existed ({key: label}), where every entry was a channel rule.
+    """
+    if not os.path.isfile(_path(_BLOCKED)):
+        _migrate_blocked()
+    raw = _read_obj(_BLOCKED)
+    names = raw.get('names') if isinstance(raw, dict) else None
+    out = {KIND_CHANNEL: {}, KIND_ARTIST: {}}
+    if not isinstance(names, dict):
+        return out
+    nested = bool(names) and all(
+        key in (KIND_CHANNEL, KIND_ARTIST) and isinstance(value, dict)
+        for key, value in names.items())
+    if nested:
+        for kind in (KIND_CHANNEL, KIND_ARTIST):
+            for key, label in (names.get(kind) or {}).items():
+                clean = str(key or '').strip()
+                if clean:
+                    out[kind][clean] = str(label or clean).strip() or clean
+        return out
+    for key, value in names.items():
+        clean = str(key or '').strip()
+        if not clean:
+            continue
+        if isinstance(value, dict):
+            kind = _entry_kind(value.get('kind'))
+            label = str(value.get('label') or clean).strip() or clean
+        elif isinstance(value, str):
+            # written before the types existed: it was the channel rule
+            kind = KIND_CHANNEL
+            label = value.strip() or clean
+        else:
+            kind = _entry_kind(value)
+            label = str(value).strip() or clean
+        out[kind][clean] = label
+    return out
+
+
+def get_blocked_names():
+    """{key: {'label', 'kind'}}, sorted by label for display."""
+    flat = {}
+    for kind, entries in _blocked_by_kind().items():
+        for key, label in entries.items():
+            flat['%s:%s' % (kind, key)] = {'label': label, 'kind': kind}
+    return dict(sorted(flat.items(),
+                       key=lambda pair: pair[1]['label'].casefold()))
+
+
+def get_blocked_keys(kind=None):
+    by_kind = _blocked_by_kind()
+    if kind is None:
+        return set(by_kind[KIND_CHANNEL]) | set(by_kind[KIND_ARTIST])
+    return set(by_kind[_entry_kind(kind)])
+
+
+def is_name_blocked(name, keys=None):
+    key = _name_key(name)
+    if not key:
+        return False
+    return key in (keys if keys is not None else get_blocked_keys())
+
+
+def add_blocked_name(name, kind=KIND_CHANNEL):
+    label = str(name or '').strip()
+    key = _name_key(label)
+    if not key:
+        return False
+    kind = _entry_kind(kind)
+    by_kind = _blocked_by_kind()
+    if key in by_kind[kind]:
+        return False
+    by_kind[kind][key] = label
+    data = _read_obj(_BLOCKED)
+    data['names'] = by_kind
+    data['ts'] = int(time.time())
+    _write_obj(_BLOCKED, data)
+    return True
+
+
+def remove_blocked_name(name, kind=None):
+    """Drop a rule. With no kind the name is dropped for both."""
+    key = _name_key(name)
+    by_kind = _blocked_by_kind()
+    if key not in by_kind[KIND_CHANNEL] and key not in by_kind[KIND_ARTIST]:
+        return False
+    if kind is not None:
+        wanted = _entry_kind(kind)
+        if key not in by_kind[wanted]:
+            return False
+        by_kind[wanted].pop(key, None)
+    else:
+        by_kind[KIND_CHANNEL].pop(key, None)
+        by_kind[KIND_ARTIST].pop(key, None)
+    data = _read_obj(_BLOCKED)
+    if by_kind[KIND_CHANNEL] or by_kind[KIND_ARTIST]:
+        data['names'] = by_kind
+        data['ts'] = int(time.time())
+    else:
+        data.pop('names', None)
+        if not data:
+            _unlink(_BLOCKED)
+            return True
+    _write_obj(_BLOCKED, data)
+    return True
+
+
+def blocked_matches(entry, artist=None):
+    """Which rules hide this row, as (kind, label) pairs.
+
+    ``artist`` is the artist read off the title; the caller passes it because
+    only it has the title, and passing it in keeps this free of parsing rules.
+    """
+    entry = entry or {}
+    by_kind = _blocked_by_kind()
+    if not (by_kind[KIND_CHANNEL] or by_kind[KIND_ARTIST]):
+        return []
+    hits = []
+    channel_key = _name_key(entry.get('channel') or '')
+    if channel_key and channel_key in by_kind[KIND_CHANNEL]:
+        hits.append((KIND_CHANNEL, by_kind[KIND_CHANNEL][channel_key]))
+    artist_key = _name_key(artist or '')
+    if artist_key and artist_key in by_kind[KIND_ARTIST]:
+        hits.append((KIND_ARTIST, by_kind[KIND_ARTIST][artist_key]))
+    return hits
+
+
+def clear_blocked_names():
+    _unlink(_BLOCKED)

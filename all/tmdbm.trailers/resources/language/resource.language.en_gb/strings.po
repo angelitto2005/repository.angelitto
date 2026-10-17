@@ -42,8 +42,8 @@ msgid "Account"
 msgstr "Account"
 
 msgctxt "#32010"
-msgid "[B]Maximum video resolution[/B]"
-msgstr "[B]Maximum video resolution[/B]"
+msgid "[B]Maximum resolution[/B]"
+msgstr "[B]Maximum resolution[/B]"
 
 msgctxt "#32011"
 msgid "Subtitles"
@@ -82,8 +82,8 @@ msgid "Trailer audio"
 msgstr "Trailer audio"
 
 msgctxt "#32020"
-msgid "[B]Autoplay next video[/B]"
-msgstr "[B]Autoplay next video[/B]"
+msgid "[B]Autoplay UP NEXT[/B]"
+msgstr "[B]Autoplay UP NEXT[/B]"
 
 msgctxt "#32021"
 msgid "Shuffle play"
@@ -258,8 +258,8 @@ msgid "Hide vertical short videos from subscription lists"
 msgstr "Hide vertical short videos from subscription lists"
 
 msgctxt "#32031"
-msgid "Up Next"
-msgstr "Up Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32073"
 msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
@@ -332,6 +332,22 @@ msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
 msgctxt "#32307"
 msgid "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
 msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
+
+msgctxt "#32308"
+msgid "Subscribed"
+msgstr "Subscribed"
+
+msgctxt "#32309"
+msgid "Subscribe / Unsubscribe"
+msgstr "Subscribe / Unsubscribe"
+
+msgctxt "#32310"
+msgid "Unsubscribed from {}"
+msgstr "Unsubscribed from {}"
+
+msgctxt "#32311"
+msgid "Unsubscribe from {}?"
+msgstr "Unsubscribe from {}?"
 
 msgctxt "#32091"
 msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
@@ -457,10 +473,6 @@ msgctxt "#32128"
 msgid "Connect YouTube account (QR code)"
 msgstr "Connect YouTube account (QR code)"
 
-
-
-
-
 msgctxt "#32133"
 msgid "Cancel"
 msgstr "Cancel"
@@ -558,8 +570,8 @@ msgid "Unblock this video"
 msgstr "Unblock this video"
 
 msgctxt "#32158"
-msgid "No autoplay for this video"
-msgstr "No autoplay for this video"
+msgid "Block this video"
+msgstr "Block this video"
 
 msgctxt "#32159"
 msgid "Play"
@@ -570,8 +582,8 @@ msgid "Next page {}"
 msgstr "Next page {}"
 
 msgctxt "#32161"
-msgid "UP Next"
-msgstr "UP Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32162"
 msgid "Blocked from autoplay"
@@ -585,8 +597,6 @@ msgctxt "#32164"
 msgid "Subscribed to {}"
 msgstr "Subscribed to {}"
 
-
-
 msgctxt "#32167"
 msgid "Connect YouTube account"
 msgstr "Connect YouTube account"
@@ -599,8 +609,6 @@ msgctxt "#32169"
 msgid "The activation code expired, start again"
 msgstr "The activation code expired, start again"
 
-
-
 msgctxt "#32172"
 msgid "Still waiting for approval on your phone"
 msgstr "Still waiting for approval on your phone"
@@ -612,8 +620,6 @@ msgstr "Syncing YouTube..."
 msgctxt "#32174"
 msgid "Sync failed: {}"
 msgstr "Sync failed: {}"
-
-
 
 msgctxt "#32177"
 msgid "No YouTube account connected"
@@ -662,8 +668,6 @@ msgstr "Could not start the activation: {}"
 msgctxt "#32188"
 msgid "Open this address: {}\n\nEnter this code:\n{}"
 msgstr "Open this address: {}\n\nEnter this code:\n{}"
-
-
 
 msgctxt "#32191"
 msgid "Synced: {} channels, {} videos"
@@ -725,7 +729,6 @@ msgctxt "#32277"
 msgid "Portuguese (Brazil)"
 msgstr "Portuguese (Brazil)"
 
-
 msgctxt "#32093"
 msgid "YouTube account status"
 msgstr "YouTube account status"
@@ -737,3 +740,63 @@ msgstr "Status: Connected"
 msgctxt "#32095"
 msgid "Channels: {} | Feed videos: {}"
 msgstr "Channels: {} | Feed videos: {}"
+
+msgctxt "#32400"
+msgid "Warm up the main lists after Kodi starts"
+msgstr "Warm up the main lists after Kodi starts"
+
+msgctxt "#32401"
+msgid "Fetch Trending, Live and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+msgstr "Fetch Trending, Live, Trailers, Random music and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+
+msgctxt "#32506"
+msgid "Nothing blocked yet. Block the artist of the row you came from with the button below."
+msgstr "Nothing blocked yet. Use the context menu on a video to block its channel or artist."
+
+msgctxt "#32508"
+msgid "No artist name on this row."
+msgstr "No artist name on this row."
+
+msgctxt "#32510"
+msgid "Blocked artist: {}"
+msgstr "Blocked artist: {}"
+
+msgctxt "#32511"
+msgid "Unblocked artist: {}"
+msgstr "Unblocked artist: {}"
+
+msgctxt "#32512"
+msgid "Unblocked artist: {}"
+msgstr "Unblocked artist: {}"
+
+msgctxt "#32513"
+msgid "Blocked artists"
+msgstr "Blocked artists"
+
+msgctxt "#32514"
+msgid "Block this artist or channel"
+msgstr "Block this artist or channel"
+
+msgctxt "#32515"
+msgid "Unblock this artist or channel"
+msgstr "Unblock this artist or channel"
+
+msgctxt "#32516"
+msgid "Block whole channel"
+msgstr "Block whole channel"
+
+msgctxt "#32517"
+msgid "Block only this artist"
+msgstr "Block only this artist"
+
+msgctxt "#32518"
+msgid "artist"
+msgstr "artist"
+
+msgctxt "#32519"
+msgid "channel"
+msgstr "channel"
+
+msgctxt "#32520"
+msgid "Chart position {} in {}"
+msgstr "Chart position {} in {}"

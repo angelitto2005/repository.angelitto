@@ -1,5 +1,3 @@
-import time
-import threading
 import xbmc
 import xbmcgui
 
@@ -8,15 +6,22 @@ _CLOSING_ACTIONS = (9, 10, 13, 92, 110, 511, 7, 100)
 
 class QRProgressDialog(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
+        heading = kwargs.pop('heading', 'Authorization')
+        qr_image = kwargs.pop('qr_image', None) or ''
+        icon = kwargs.pop('icon', None) or ''
+        addon_icon = kwargs.pop('addon_icon', None) or ''
+        content = kwargs.pop('content', '')
+        percent = kwargs.pop('percent', 100)
+        super().__init__(*args)
         self._closed = False
         self.expired = False
         self._ready = False
-        self.heading = kwargs.get('heading', 'Authorization')
-        self.qr_image = kwargs.get('qr_image') or ''
-        self.icon = kwargs.get('icon') or ''
-        self.addon_icon = kwargs.get('addon_icon') or ''
-        self.content = kwargs.get('content', '')
-        self.percent = kwargs.get('percent', 100)
+        self.heading = heading
+        self.qr_image = qr_image
+        self.icon = icon
+        self.addon_icon = addon_icon
+        self.content = content
+        self.percent = percent
 
     def onInit(self):
         self._ready = True
@@ -75,17 +80,12 @@ class QRProgressDialog(xbmcgui.WindowXMLDialog):
 
 def run_modal_main_thread(dialog):
     mon = xbmc.Monitor()
-    _done = {'flag': False}
-
-    def _watch():
-        while not mon.abortRequested() and not _done['flag']:
-            time.sleep(0.5)
-        if mon.abortRequested():
-            try:
-                dialog.close()
-            except Exception:
-                pass
-
-    threading.Thread(target=_watch, daemon=True).start()
-    dialog.doModal()
-    _done['flag'] = True
+    try:
+        dialog.show()
+        while not dialog._closed and not mon.abortRequested():
+            mon.waitForAbort(0.2)
+    finally:
+        try:
+            dialog.close()
+        except Exception:
+            pass

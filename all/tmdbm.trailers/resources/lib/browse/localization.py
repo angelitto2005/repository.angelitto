@@ -1,4 +1,5 @@
 import re
+import threading
 
 import config
 
@@ -25,6 +26,7 @@ _original_get_session = None
 _original_get_ajax_data = None
 _active_language = 'en'
 _active_country = 'US'
+_configure_lock = threading.Lock()
 
 LOCALE_PROP = 'tmdbm.trailers.locale'
 
@@ -226,14 +228,18 @@ def configure():
     global _original_get_session, _original_get_ajax_data
     global _active_language, _active_country
 
-    _active_language = content_language()
-    _active_country = content_country()
+    # Channel fetches run in parallel, so several of them can land here at the
+    # same moment. The scrapetube patch must happen exactly once, otherwise the
+    # second thread would wrap our own wrapper.
+    with _configure_lock:
+        _active_language = content_language()
+        _active_country = content_country()
 
-    if _original_get_session is None:
-        _original_get_session = _scrapetube.get_session
-        _scrapetube.get_session = _localized_session
-    if _original_get_ajax_data is None:
-        _original_get_ajax_data = _scrapetube.get_ajax_data
-        _scrapetube.get_ajax_data = _localized_ajax_data
+        if _original_get_session is None:
+            _original_get_session = _scrapetube.get_session
+            _scrapetube.get_session = _localized_session
+        if _original_get_ajax_data is None:
+            _original_get_ajax_data = _scrapetube.get_ajax_data
+            _scrapetube.get_ajax_data = _localized_ajax_data
 
-    return '{}:{}'.format(_active_language, _active_country)
+        return '{}:{}'.format(_active_language, _active_country)

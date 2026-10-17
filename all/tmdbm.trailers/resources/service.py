@@ -20,6 +20,7 @@ _UP_NEXT_SECONDS = 15
 _UP_NEXT_DURATION = 15000
 _POLL_SECONDS = 0.5
 _POLL_SECONDS_NEAR_END = 0.25
+_PREFETCH_DONE = [False]
 
 
 def notify(message, image='', time_ms=_UP_NEXT_DURATION):
@@ -788,6 +789,62 @@ def _apply_shuffle_live(shuffle_on):
         config.log('live shuffle failed: {}'.format(exc))
 
 
+def _prefetch_lists_bg(delay):
+    """Warm the heavy listings shortly after start.
+
+    Opt-in, because these are real requests: doing them at start instead of on
+    open keeps the first entry instant, but if a listing is never opened its
+    request was spent for nothing. We hold off a little so the start itself
+    stays quick, and skip it entirely while something is playing so we never
+    compete with playback for the connection.
+    """
+    if xbmc.Monitor().waitForAbort(delay):
+        return
+    try:
+        player = xbmc.Player()
+        if player.isPlayingVideo():
+            config.log('prefetch: skipped, something is playing')
+            return
+    except Exception:
+        pass
+    try:
+        import router
+        router.warm_first_pages()
+    except Exception as exc:
+        config.log('prefetch failed: {}'.format(str(exc)[:160]))
+        return
+    try:
+        import store
+        from browse import constants
+        subscriptions = store.get_subscriptions()
+        if not subscriptions:
+            config.log('prefetch: no subscriptions, feed skipped')
+            return
+        need = 2 * constants.results_per_page() + 1
+        entries, _exhausted = router._collect_feed(
+            need, constants.feed_per_channel())
+        config.log('prefetch: feed warmed ({} entries)'.format(len(entries)),
+                   always=True)
+    except Exception as exc:
+        config.log('prefetch feed failed: {}'.format(str(exc)[:160]),
+                   xbmc.LOGWARNING, always=True)
+
+
+def _maybe_prefetch_lists():
+    if _PREFETCH_DONE[0]:
+        return
+    try:
+        if not config.get_bool('prefetch_lists', False):
+            return
+    except Exception:
+        return
+    _PREFETCH_DONE[0] = True
+    thread = threading.Thread(target=_prefetch_lists_bg, args=(45,),
+                              name='list-prefetch')
+    thread.daemon = True
+    thread.start()
+
+
 def run():
     monitor = _LocaleMonitor()
     player = xbmc.Player()
@@ -834,6 +891,7 @@ def run():
             queue.cancel()
     except Exception:
         pass
+    _maybe_prefetch_lists()
     watching = os.path.exists(_oauth_file())
     last_poll = 0.0
     last_periodic = 0.0

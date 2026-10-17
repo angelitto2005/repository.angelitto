@@ -250,6 +250,11 @@
           </constraints>
           <control type="list" format="string"/>
         </setting>
+        <setting id="prefetch_lists" type="boolean" label="32400" help="32401">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
+        </setting>
       </group>
     </category>
     <category id="account" label="32001">

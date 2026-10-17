@@ -203,12 +203,32 @@ def _menu_is_blocked(vid):
     return bool(vid) and vid in _MENU_MEMO_BLOCKED[0]
 
 
+def _menu_channel_id(entry, vid):
+    """Channel id for the subscribe menu: the entry, else the metadata cache.
+
+    Trending and friends only keep a channel id that starts with UC, so plenty
+    of rows arrive without one - and without it the menu had no way to tell
+    whether the channel was already joined, which is why it kept saying
+    Subscribe forever. The metadata cache the listing already filled in holds
+    it, and reading it is a file read, not a network call.
+    """
+    channel_id = str(entry.get('channel_id') or '').strip()
+    if channel_id:
+        return channel_id
+    try:
+        return str((store.get_yt_meta(vid) or {}).get('channel_id')
+                   or '').strip()
+    except Exception:
+        return ''
+
+
 def _song_menus(entry, vid, in_watch_later=False):
     entry = entry or {}
     menus = []
     channel_url = ''
-    if entry.get('channel_id'):
-        channel_url = 'https://www.youtube.com/channel/' + entry['channel_id']
+    channel_id = _menu_channel_id(entry, vid)
+    if channel_id:
+        channel_url = 'https://www.youtube.com/channel/' + channel_id
         menus.append((
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32152)),
             'ActivateWindow(Videos,{})'.format(
@@ -217,18 +237,20 @@ def _song_menus(entry, vid, in_watch_later=False):
                      'title': entry.get('channel') or ''}))))
         known = _menu_is_subscribed(channel_url)
         menus.append((
-            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(
+            '[B][COLOR {}]{}[/COLOR][/B]'.format(
+                'FFFF5555' if known else 'FF00FF7F',
                 config.T(32154) if known else config.T(32153)),
             run_plugin('unsubscribe' if known else 'subscribe',
                        {'url': channel_url,
                         'title': entry.get('channel') or '',
                         'image': ''})))
     elif vid:
+        # Channel still unknown at build time: the action decides when clicked.
         menus.append((
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32152)),
             run_plugin('go_channel', {'video_id': vid})))
         menus.append((
-            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32153)),
+            '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32309)),
             run_plugin('sub_channel', {'video_id': vid})))
     if vid:
         if not in_watch_later:
@@ -238,11 +260,27 @@ def _song_menus(entry, vid, in_watch_later=False):
                       run_plugin('local_playlist_add', entry_params(entry))))
         _is_blocked = _menu_is_blocked(vid)
         if _is_blocked:
-            menus.append(('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32157)),
+            menus.append(('[B][COLOR FF00FF7F]{}[/COLOR][/B]'.format(config.T(32157)),
                           run_plugin('unblock', {'video_id': vid})))
         else:
             menus.append(('[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32158)),
                           run_plugin('no_autoplay', {'video_id': vid})))
+        artist = str(entry.get('channel') or '').strip()
+        title_artist = artist_from_title(entry.get('title'))
+        if artist or store.is_name_blocked(title_artist):
+            hits = store.blocked_matches(entry, title_artist)
+            if hits:
+                menus.append((
+                    '[B][COLOR FF00FF7F]{}[/COLOR][/B]'.format(config.T(32515)),
+                    run_plugin('unblock_artist', entry_params(entry))))
+            else:
+                menus.append((
+                    '[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32516)),
+                    run_plugin('block_channel', entry_params(entry))))
+                if title_artist:
+                    menus.append((
+                        '[B][COLOR FFFF5555]{}[/COLOR][/B]'.format(config.T(32517)),
+                        run_plugin('block_artist', entry_params(entry))))
     return menus
 
 
@@ -684,21 +722,207 @@ def action_item(label, mode, image, params=None, description='', folder=True):
     return url, li, folder
 
 
-def paged(fetch, builder, mode, params=None, page=1, content='videos'):
+_TITLE_SEPARATOR = re.compile(r'\s+[-\u2013\u2014]\s+')
+_TRACK_SUFFIX = re.compile(r'\s*[\(\[][^)\]]*[\)\]]\s*$')
+# what the last filtered listing had to drop, reused to size the next fetch
+_DROP_RATE = [0.0]
+
+
+def artist_from_title(title):
+    """The artist part of an "Artist - Song" title, or '' when there is none.
+
+    Music video titles are written that way almost every time, and the browse
+    response carries no artist field, so this is what lets an artist rule hide
+    one artist on a channel that posts many. Deliberately conservative: no
+    separator, no match, and a first part long enough to be a sentence is
+    rejected rather than guessed at.
+    """
+    text = _TRACK_SUFFIX.sub('', str(title or '').strip())
+    parts = _TITLE_SEPARATOR.split(text, 1)
+    if len(parts) < 2:
+        return ''
+    artist = parts[0].strip(' \t-\u2013\u2014')
+    if not artist or len(artist) > 60:
+        return ''
+    return artist
+
+
+def filter_blocked(entries, name_key='channel'):
+    """Drop the rows a block rule hides.
+
+    A channel rule hides every row whose channel matches; an artist rule hides
+    only the rows whose title names that artist, so a channel with several
+    artists keeps the rest. The two kinds never cross over: a channel rule does
+    not hide an artist that merely appears on that channel, and an artist rule
+    does not hide the rest of the channel.
+
+    Name based on both counts, because most browse rows arrive without a
+    channel id and a name typed by hand is all we have. The dictionary is read
+    once per listing, so this is a set lookup per row and no network.
+    name_key is where the chart artist list keeps its name - it is a list of
+    artists, so it is matched against the artist rules.
+    """
+    entries = list(entries or [])
+    channel_keys = store.get_blocked_keys(store.KIND_CHANNEL)
+    artist_keys = store.get_blocked_keys(store.KIND_ARTIST)
+    if not channel_keys and not artist_keys:
+        return entries
+    out = []
+    for entry in entries:
+        entry = entry or {}
+        artist = artist_from_title(entry.get('title'))
+        if artist and store.is_name_blocked(artist, artist_keys):
+            continue
+        if name_key:
+            name = entry.get(name_key) or ''
+            # The chart artist list is a list of artists, so either kind of
+            # rule removes the entry there: blocking an artist's channel should
+            # also take it out of the charts. For video rows the two stay
+            # apart, which is the whole point of having both.
+            wanted = (artist_keys | channel_keys) if name_key == 'title' \
+                else channel_keys
+            if store.is_name_blocked(name, wanted):
+                continue
+        out.append(entry)
+    return out
+
+
+def filter_blocked_names(names):
+    """Same rule for a list of plain names (the chart artists)."""
+    items = [str(name or '') for name in names or []]
+    keys = store.get_blocked_keys()
+    if not keys:
+        return items
+    return [name for name in items if not store.is_name_blocked(name, keys)]
+
+
+def blocked_headroom():
+    """Extra rows to ask for while a block list is active.
+
+    The listings fetch one row past the page to decide on the Next page button,
+    and dropping blocked rows can eat that spare row, so ask for enough to cover
+    it. How much is enough depends on the drop rate, which the first listing
+    measures (see paged) and the next ones reuse, because guessing it wrong is
+    what made an entry cost a request several times its normal size. With
+    nothing blocked this is zero and the request stays identical to before.
+    """
+    try:
+        rules = len(store.get_blocked_names())
+    except Exception:
+        return 0
+    if not rules:
+        return 0
+    # generous on purpose: one request that is a little too big is cheaper
+    # than a first page that comes up short and asks again
+    return min(rules * 8, 40) / 100.0
+
+
+def _note_drop_rate(raw, kept):
+    """Record how much the last filter dropped, for the debug line only.
+
+    It must not feed back into how many rows are asked for: the browse cache
+    keys on the limit, so a measured amount would change the key and miss the
+    cache on the next visit.
+    """
+    if len(raw) >= 20:
+        _DROP_RATE[0] = max(0.0, min(0.6, 1 - float(len(kept)) / len(raw)))
+
+
+def _want_rows(end):
+    """Raw rows needed for `end` rows to survive the filter.
+
+    Built from the rule count only, never from a measurement: the browse cache
+    keys on the limit as well as the query, so an amount that moved between
+    visits would miss the cache every time and re-fetch on every entry - which
+    is exactly the ten second Trending this is meant to avoid. Stability beats
+    precision here.
+    """
+    rate = min(0.35, blocked_headroom())
+    if rate <= 0:
+        return end + 1
+    try:
+        need = int((end + 1) / (1 - rate)) + 2
+    except ZeroDivisionError:
+        need = end + 1
+    return min(need, end * 3 + results_per_page())
+
+
+def rows_to_fetch(end):
+    """How many rows a route should ask for to fill `end` rows.
+
+    The routes that fetch before calling paged() - Trending and Random music -
+    use this, so they ask for the same amount paged() would and the two paths
+    cannot drift apart.
+    """
+    if not blocked_headroom():
+        return end + 1
+    return _want_rows(end)
+
+
+def page_fetch_amount(page, blocked=False):
+    """How many rows a listing asks for on this page.
+
+    Shared with the prefetch so the warmed amount is exactly the amount the
+    route will ask for later. That is what makes a warmed listing a cache
+    hit: the cache keys on the amount too, so warming 31 and then asking 42
+    misses and costs a fresh request."""
     page = max(1, int(page or 1))
     per_page = results_per_page()
-    try:
-        source = list(fetch(page * per_page + 1) or [])
-    except Exception as exc:
-        config.log('{} page {} failed: {}'.format(mode, page, exc))
-        source = []
+    end = page * per_page
+    if blocked and blocked_headroom():
+        return _want_rows(end)
+    return end + 1
+
+
+def paged(fetch, builder, mode, params=None, page=1, content='videos',
+          blocked=False, total=None):
+    """Build one page of a listing.
+
+    `total` is for listings that already hold every entry in memory, like the
+    charts: the Next page button then follows the real length of the list
+    instead of what survived the filter, so blocking rows in the middle never
+    makes the button disappear.
+    """
+    page = max(1, int(page or 1))
+    per_page = results_per_page()
     start = (page - 1) * per_page
     end = start + per_page
+    active = blocked and bool(blocked_headroom())
+    want = page_fetch_amount(page, blocked)
+    source = []
+    # One extra request at most, and only when the guess came out short: the
+    # retry rescues the Next page button, it does not chase a long tail. Both
+    # amounts derive from the rule count, so repeated visits ask for the same
+    # thing and the browse cache keeps hitting.
+    ceiling = min(_want_rows(end * 2) if active else want,
+                  end * 3 + per_page)
+    for attempt in range(2):
+        try:
+            raw = list(fetch(want) or [])
+        except Exception as exc:
+            config.log('{} page {} failed: {}'.format(mode, page, exc))
+            source = []
+            break
+        source = raw
+        if blocked:
+            # before the slice, otherwise a blocked artist shortens the page
+            # and the Next page button walks into nothing
+            source = filter_blocked(source)
+            _note_drop_rate(raw, source)
+        if total is not None:
+            if total <= end:
+                break
+            if len(source) > start:
+                break
+        elif len(source) > end or want >= ceiling:
+            break
+        want = ceiling
     set_context(source)
     set_listing(mode, params, page)
     items = [built for built in
              (builder(entry) for entry in source[start:end]) if built]
-    if len(source) > end:
+    more = (total > end) if total is not None else (len(source) > end)
+    if more:
         next_params = dict(params or {})
         next_params['page'] = page + 1
         items.append(folder_item(

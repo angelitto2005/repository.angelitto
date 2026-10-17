@@ -11,11 +11,11 @@ msgstr ""
 
 msgctxt "#32000"
 msgid "General"
-msgstr "General"
+msgstr "Algemeen"
 
 msgctxt "#32001"
 msgid "YouTube Account"
-msgstr "YouTube Account"
+msgstr "YouTube-account"
 
 msgctxt "#32002"
 msgid "Video"
@@ -23,195 +23,195 @@ msgstr "Video"
 
 msgctxt "#32003"
 msgid "Localisation"
-msgstr "Localisation"
+msgstr "Lokalisatie"
 
 msgctxt "#32004"
 msgid "Categories"
-msgstr "Categories"
+msgstr "Categorieën"
 
 msgctxt "#32005"
 msgid "Playback"
-msgstr "Playback"
+msgstr "Afspelen"
 
 msgctxt "#32006"
 msgid "Maintenance"
-msgstr "Maintenance"
+msgstr "Onderhoud"
 
 msgctxt "#32007"
 msgid "Account"
 msgstr "Account"
 
 msgctxt "#32010"
-msgid "[B]Maximum video resolution[/B]"
-msgstr "[B]Maximum video resolution[/B]"
+msgid "[B]Maximum resolution[/B]"
+msgstr "[B]Maximale resolutie[/B]"
 
 msgctxt "#32011"
 msgid "Subtitles"
-msgstr "Subtitles"
+msgstr "Ondertiteling"
 
 msgctxt "#32012"
 msgid "Subtitle language override (optional)"
-msgstr "Subtitle language override (optional)"
+msgstr "Ondertiteltaal overschrijven (optioneel)"
 
 msgctxt "#32013"
 msgid "Content country (ISO 3166-1)"
-msgstr "Content country (ISO 3166-1)"
+msgstr "Inhoudland (ISO 3166-1)"
 
 msgctxt "#32014"
 msgid "Custom country code (optional)"
-msgstr "Custom country code (optional)"
+msgstr "Eigen landcode (optioneel)"
 
 msgctxt "#32015"
 msgid "Content language"
-msgstr "Content language"
+msgstr "Inhoudstaal"
 
 msgctxt "#32016"
 msgid "Custom language code (optional)"
-msgstr "Custom language code (optional)"
+msgstr "Eigen taalcode (optioneel)"
 
 msgctxt "#32017"
 msgid "Default Trending category"
-msgstr "Default Trending category"
+msgstr "Standaardcategorie voor Trends"
 
 msgctxt "#32018"
 msgid "Default Live category"
-msgstr "Default Live category"
+msgstr "Standaardcategorie voor Live"
 
 msgctxt "#32019"
 msgid "Trailer audio"
-msgstr "Trailer audio"
+msgstr "Audiotaal van trailers"
 
 msgctxt "#32020"
-msgid "[B]Autoplay next video[/B]"
-msgstr "[B]Autoplay next video[/B]"
+msgid "[B]Autoplay UP NEXT[/B]"
+msgstr "[B]UP NEXT automatisch afspelen[/B]"
 
 msgctxt "#32021"
 msgid "Shuffle play"
-msgstr "Shuffle play"
+msgstr "Willekeurig afspelen"
 
 msgctxt "#32022"
 msgid "Results per page"
-msgstr "Results per page"
+msgstr "Resultaten per pagina"
 
 msgctxt "#32023"
 msgid "Feed items per channel"
-msgstr "Feed items per channel"
+msgstr "Items per kanaal in de feed"
 
 msgctxt "#32024"
 msgid "Debug logging (disables cache)"
-msgstr "Debug logging (disables cache)"
+msgstr "Debuglogboek (schakelt de cache uit)"
 
 msgctxt "#32025"
 msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
-msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Cache wissen[/COLOR][/B]"
 
 msgctxt "#32026"
 msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
-msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]YouTube-account koppelen[/COLOR][/B] (QR)"
 
 msgctxt "#32027"
 msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
-msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]YouTube-account loskoppelen[/COLOR][/B]"
 
 msgctxt "#32040"
 msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
-msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Automatisch detecteert de resolutie van de tv en beperkt de kwaliteit daaropvolgens (tot 4K op een 4K-paneel, tot 1080p op Full HD). Kies een vaste waarde om de kwaliteit op zwakkere apparaten te beperken."
 
 msgctxt "#32041"
 msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
-msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Uit = geen ondertiteling. Origineel = het ondertitelspoor dat YouTube als standaard markeert. Voorkeurstaal = het spoor in de inhoudstaal, door YouTube automatisch vertaald als de maker geen dergelijk spoor heeft."
 
 msgctxt "#32042"
 msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
-msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Laat leeg om de inhoudstaal te gebruiken. Voorbeeld: nl voor Nederlandse ondertiteling bij een Engels video."
 
 msgctxt "#32043"
 msgid "Country used for search, Trending, Live and Trailers results."
-msgstr "Country used for search, Trending, Live and Trailers results."
+msgstr "Land dat wordt gebruikt voor zoeken, trends, live en trailers."
 
 msgctxt "#32044"
 msgid "Two-letter country code not listed above, for example PL, KR, VN."
-msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Tweeletterige landcode die hierboven niet staat, bijvoorbeeld PL, KR, VN."
 
 msgctxt "#32045"
 msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
-msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "Taal van de teruggegeven metadata en van de categoriezoekopdrachten in trends, live en trailers."
 
 msgctxt "#32046"
 msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
-msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Taalcode die hierboven niet staat, bijvoorbeeld he, fa, uk, zh-TW, fil. Categoriezoekopdrachten vallen terug op Engelse woorden voor talen zonder vertaaltabel."
 
 msgctxt "#32047"
 msgid "Category listed when Trending is opened without a choice."
-msgstr "Category listed when Trending is opened without a choice."
+msgstr "Categorie die wordt getoond als Trends wordt geopend zonder keuze."
 
 msgctxt "#32048"
 msgid "Category listed when Live is opened without a choice."
-msgstr "Category listed when Live is opened without a choice."
+msgstr "Categorie die wordt getoond als Live wordt geopend zonder keuze."
 
 msgctxt "#32049"
 msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
-msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Origineel speelt alleen het oorspronkelijke audiospoor af. Gelokaliseerd verkiest een audiospoor in je inhoudstaal en valt terug op het origineel als dat er niet is."
 
 msgctxt "#32050"
 msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
-msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr "Aan: als een video eindigt gaat de volgende uit dezelfde lijst door, precies in de volgorde die je ziet (trends, willekeurige muziek, live, zoekresultaten, een kanaal). Een video die vanuit een andere addon start (TMDb Movies) krijgt in plaats daarvan een willekeurig nummer. Uit: er wordt niets vanzelf afgespeeld."
 
 msgctxt "#32051"
 msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
-msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "Aan: de aangeklikte video speelt als eerste, maar wat daarna komt is gemengd in plaats van de volgorde van de lijst. Dezelfde voorraad als Automatisch afspelen, alleen willekeurig."
 
 msgctxt "#32052"
 msgid "How many videos a list page shows. Larger pages build longer playlists."
-msgstr "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "Hoeveel video’s een lijstpagina toont. Grotere pagina’s maken langere afspeellijsten."
 
 msgctxt "#32053"
 msgid "How many videos each subscribed channel contributes to the feed."
-msgstr "How many videos each subscribed channel contributes to the feed."
+msgstr "Hoeveel video’s elk geabonneerd kanaal aan de feed bijdraagt."
 
 msgctxt "#32054"
 msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
-msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Schrijft gedetailleerde regels over extractie en afspelen naar kodi.log en slaat de lijstcache over."
 
 msgctxt "#32055"
 msgid "Deletes the downloaded listings, the music pool and the queue state."
-msgstr "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Verwijdert de gedownloade lijsten, de muziekpool en de wachtrijstatus."
 
 msgctxt "#32056"
 msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
-msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Koppel je YouTube-account om abonnementen, Later bekijken, afspeellijsten en geschiedenis te bekijken."
 
 msgctxt "#32057"
 msgid "Removes the linked YouTube account and its local snapshot."
-msgstr "Removes the linked YouTube account and its local snapshot."
+msgstr "Verwijdert het gekoppelde YouTube-account en de lokale kopie."
 
 msgctxt "#32060"
 msgid "Off"
-msgstr "Off"
+msgstr "Uit"
 
 msgctxt "#32061"
 msgid "Original"
-msgstr "Original"
+msgstr "Origineel"
 
 msgctxt "#32062"
 msgid "Preferred language"
-msgstr "Preferred language"
+msgstr "Voorkeurstaal"
 
 msgctxt "#32063"
 msgid "Music"
-msgstr "Music"
+msgstr "Muziek"
 
 msgctxt "#32064"
 msgid "Gaming"
-msgstr "Gaming"
+msgstr "Gamen"
 
 msgctxt "#32065"
 msgid "News"
-msgstr "News"
+msgstr "Nieuws"
 
 msgctxt "#32066"
 msgid "Movies"
-msgstr "Movies"
+msgstr "Films"
 
 msgctxt "#32067"
 msgid "Live"
@@ -223,7 +223,7 @@ msgstr "Games"
 
 msgctxt "#32069"
 msgid "Sports"
-msgstr "Sports"
+msgstr "Sport"
 
 msgctxt "#32070"
 msgid "Podcasts"
@@ -231,71 +231,71 @@ msgstr "Podcasts"
 
 msgctxt "#32071"
 msgid "Localized"
-msgstr "Localized"
+msgstr "Gelokaliseerd"
 
 msgctxt "#32028"
 msgid "Extraction cache"
-msgstr "Extraction cache"
+msgstr "Extractiecache"
 
 msgctxt "#32058"
 msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
-msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "Hoe lang het opnieuw afspelen van een trailer de opgeslagen streams hergebruikt in plaats van de YouTube-API opnieuw aan te roepen"
 
 msgctxt "#32029"
 msgid "Custom trending search"
-msgstr "Custom trending search"
+msgstr "Eigen zoekterm voor trends"
 
 msgctxt "#32059"
 msgid "Search text for Trending instead of the category word, e.g. etno folk music"
-msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "Zoektekst voor trends in plaats van het categoriewoord, bijv. etno folk music"
 
 msgctxt "#32030"
 msgid "Hide Shorts"
-msgstr "Hide Shorts"
+msgstr "Shorts verbergen"
 
 msgctxt "#32072"
 msgid "Hide vertical short videos from subscription lists"
-msgstr "Hide vertical short videos from subscription lists"
+msgstr "Verberg verticale korte video’s in abonnementslijsten"
 
 msgctxt "#32031"
-msgid "Up Next"
-msgstr "Up Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32073"
 msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
-msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "uit speelt op volgorde af, gemengd schud de volgende door, vergelijkbaar blijft vergelijkbare nummers brengen"
 
 msgctxt "#32074"
 msgid "In order"
-msgstr "In order"
+msgstr "Op volgorde"
 
 msgctxt "#32075"
 msgid "Shuffled"
-msgstr "Shuffled"
+msgstr "Gmengd"
 
 msgctxt "#32076"
 msgid "Similar songs"
-msgstr "Similar songs"
+msgstr "Vergelijkbare nummers"
 
 msgctxt "#32077"
 msgid "YouTube network family"
-msgstr "YouTube network family"
+msgstr "YouTube-netwerkfamilie"
 
 msgctxt "#32078"
 msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
-msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Automatisch probeert de netwerkfamilie die de anti-botpoort niet blokkeert en onthoudt die; zet IPv4 of IPv6 alleen vast als je weet welke werkt"
 
 msgctxt "#32079"
 msgid "Auto"
-msgstr "Auto"
+msgstr "Automatisch"
 
 msgctxt "#32080"
 msgid "IPv4 only"
-msgstr "IPv4 only"
+msgstr "Alleen IPv4"
 
 msgctxt "#32081"
 msgid "IPv6 only"
-msgstr "IPv6 only"
+msgstr "Alleen IPv6"
 
 msgctxt "#32032"
 msgid "UI language"
@@ -303,7 +303,7 @@ msgstr "Taal van de interface"
 
 msgctxt "#32083"
 msgid "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
-msgstr "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+msgstr "Taal voor menu’s, dialoogvensters en meldingen. Labels in de instellingen volgen altijd de taal van Kodi."
 
 msgctxt "#32084"
 msgid "Auto"
@@ -437,10 +437,6 @@ msgctxt "#32128"
 msgid "Connect YouTube account (QR code)"
 msgstr "YouTube-account koppelen (QR)"
 
-
-
-
-
 msgctxt "#32133"
 msgid "Cancel"
 msgstr "Annuleren"
@@ -538,8 +534,8 @@ msgid "Unblock this video"
 msgstr "Deze video deblokkeren"
 
 msgctxt "#32158"
-msgid "No autoplay for this video"
-msgstr "Geen autoplay voor deze video"
+msgid "Block this video"
+msgstr "Deze video blokkeren"
 
 msgctxt "#32159"
 msgid "Play"
@@ -550,8 +546,8 @@ msgid "Next page {}"
 msgstr "Volgende pagina {}"
 
 msgctxt "#32161"
-msgid "UP Next"
-msgstr "Hierna"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32162"
 msgid "Blocked from autoplay"
@@ -565,7 +561,6 @@ msgctxt "#32164"
 msgid "Subscribed to {}"
 msgstr "Geabonneerd op {}"
 
-
 msgctxt "#32167"
 msgid "Connect YouTube account"
 msgstr "YouTube-account koppelen"
@@ -578,8 +573,6 @@ msgctxt "#32169"
 msgid "The activation code expired, start again"
 msgstr "Code verlopen, begin opnieuw"
 
-
-
 msgctxt "#32172"
 msgid "Still waiting for approval on your phone"
 msgstr "Wacht nog op goedkeuring op je telefoon"
@@ -591,7 +584,6 @@ msgstr "YouTube synchroniseren..."
 msgctxt "#32174"
 msgid "Sync failed: {}"
 msgstr "Synchronisatie mislukt: {}"
-
 
 msgctxt "#32177"
 msgid "No YouTube account connected"
@@ -640,8 +632,6 @@ msgstr "Activering starten mislukt: {}"
 msgctxt "#32188"
 msgid "Open this address: {}\n\nEnter this code:\n{}"
 msgstr "Open dit adres: {}\n\nVoer deze code in:\n{}"
-
-
 
 msgctxt "#32191"
 msgid "Synced: {} channels, {} videos"
@@ -703,7 +693,6 @@ msgctxt "#32277"
 msgid "Portuguese (Brazil)"
 msgstr "Portugheza (Brazilia)"
 
-
 msgctxt "#32306"
 msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
 msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
@@ -714,24 +703,100 @@ msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
 
 msgctxt "#32091"
 msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
-msgstr "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+msgstr "Uploadt kodi.log of kodi.old.log naar paste.kodi.tv om fouten te melden."
 
 msgctxt "#32092"
 msgid "Show a QR card with the donation link."
-msgstr "Show a QR card with the donation link."
+msgstr "Toont een QR-kaart met de donatielink."
 
 msgctxt "#32093"
 msgid "YouTube account status"
-msgstr "YouTube account status"
+msgstr "Status van het YouTube-account"
 
 msgctxt "#32094"
 msgid "Status: Connected"
-msgstr "Status: Connected"
+msgstr "Status: Gekoppeld"
 
 msgctxt "#32095"
 msgid "Channels: {} | Feed videos: {}"
-msgstr "Channels: {} | Feed videos: {}"
+msgstr "Kanalen: {} | Video’s in de feed: {}"
 
 msgctxt "#32088"
 msgid "Troubleshooting"
-msgstr "Troubleshooting"
+msgstr "Problemen oplossen"
+
+msgctxt "#32308"
+msgid "Subscribed"
+msgstr "Geabonneerd"
+
+msgctxt "#32309"
+msgid "Subscribe / Unsubscribe"
+msgstr "Abonneren / Afmelden"
+
+msgctxt "#32310"
+msgid "Unsubscribed from {}"
+msgstr "Afgemeld bij {}"
+
+msgctxt "#32311"
+msgid "Unsubscribe from {}?"
+msgstr "Afmelden bij {}?"
+
+msgctxt "#32400"
+msgid "Warm up the main lists after Kodi starts"
+msgstr "Hoofdlijsten opwarmen na het starten van Kodi"
+
+msgctxt "#32401"
+msgid "Fetch Trending, Live and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+msgstr "Haalt Trending, Live, Trailers, Willekeurige muziek en je Feed kort na het starten van Kodi op de achtergrond, zodat ze meteen openen. Dit zijn dezelfde verzoeken als wanneer je ze zelf opent."
+
+msgctxt "#32506"
+msgid "Nothing blocked yet. Block the artist of the row you came from with the button below."
+msgstr "Nog geblokkeerd. Blokkeer met de knop hieronder de artiest van de rij waar je vandaan komt."
+
+msgctxt "#32508"
+msgid "No artist name on this row."
+msgstr "Geen artiestnaam in deze regel."
+
+msgctxt "#32510"
+msgid "Blocked artist: {}"
+msgstr "Artiest geblokkeerd: {}"
+
+msgctxt "#32511"
+msgid "Unblocked artist: {}"
+msgstr "Artiest gedeblokkeerd: {}"
+
+msgctxt "#32512"
+msgid "Unblocked artist: {}"
+msgstr "Artiest gedeblokkeerd: {}"
+
+msgctxt "#32513"
+msgid "Blocked artists"
+msgstr "Geblokkeerde artiesten"
+
+msgctxt "#32514"
+msgid "Block this artist or channel"
+msgstr "Deze artiest of kanaal blokkeren"
+
+msgctxt "#32515"
+msgid "Unblock this artist or channel"
+msgstr "Deze artiest of kanaal deblokkeren"
+
+msgctxt "#32516"
+msgid "Block whole channel"
+msgstr "Hele kanaal blokkeren"
+
+msgctxt "#32517"
+msgid "Block only this artist"
+msgstr "Alleen deze artiest blokkeren"
+
+msgctxt "#32518"
+msgid "artist"
+msgstr "artiest"
+
+msgctxt "#32519"
+msgid "channel"
+msgstr "kanaal"
+
+msgctxt "#32520"
+msgid "Chart position {} in {}"
+msgstr "Positie {} van {}"

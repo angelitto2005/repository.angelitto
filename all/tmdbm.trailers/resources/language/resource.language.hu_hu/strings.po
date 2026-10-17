@@ -11,291 +11,291 @@ msgstr ""
 
 msgctxt "#32000"
 msgid "General"
-msgstr "General"
+msgstr "Általános"
 
 msgctxt "#32001"
 msgid "YouTube Account"
-msgstr "YouTube Account"
+msgstr "YouTube-fiók"
 
 msgctxt "#32002"
 msgid "Video"
-msgstr "Video"
+msgstr "Videó"
 
 msgctxt "#32003"
 msgid "Localisation"
-msgstr "Localisation"
+msgstr "Lokalizáció"
 
 msgctxt "#32004"
 msgid "Categories"
-msgstr "Categories"
+msgstr "Kategóriák"
 
 msgctxt "#32005"
 msgid "Playback"
-msgstr "Playback"
+msgstr "Lejátszás"
 
 msgctxt "#32006"
 msgid "Maintenance"
-msgstr "Maintenance"
+msgstr "Karbantartás"
 
 msgctxt "#32007"
 msgid "Account"
-msgstr "Account"
+msgstr "Fiók"
 
 msgctxt "#32010"
-msgid "[B]Maximum video resolution[/B]"
-msgstr "[B]Maximum video resolution[/B]"
+msgid "[B]Maximum resolution[/B]"
+msgstr "[B]Legnagyobb felbontás[/B]"
 
 msgctxt "#32011"
 msgid "Subtitles"
-msgstr "Subtitles"
+msgstr "Feliratok"
 
 msgctxt "#32012"
 msgid "Subtitle language override (optional)"
-msgstr "Subtitle language override (optional)"
+msgstr "Felirat nyelvének felülírása (nem kötelező)"
 
 msgctxt "#32013"
 msgid "Content country (ISO 3166-1)"
-msgstr "Content country (ISO 3166-1)"
+msgstr "Tartalom országa (ISO 3166-1)"
 
 msgctxt "#32014"
 msgid "Custom country code (optional)"
-msgstr "Custom country code (optional)"
+msgstr "Egyéni országkód (nem kötelező)"
 
 msgctxt "#32015"
 msgid "Content language"
-msgstr "Content language"
+msgstr "Tartalom nyelve"
 
 msgctxt "#32016"
 msgid "Custom language code (optional)"
-msgstr "Custom language code (optional)"
+msgstr "Egyéni nyelvkód (nem kötelező)"
 
 msgctxt "#32017"
 msgid "Default Trending category"
-msgstr "Default Trending category"
+msgstr "Alapértelmezett kategória a Felkapottban"
 
 msgctxt "#32018"
 msgid "Default Live category"
-msgstr "Default Live category"
+msgstr "Alapértelmezett kategória az Élőben"
 
 msgctxt "#32019"
 msgid "Trailer audio"
-msgstr "Trailer audio"
+msgstr "Előzetesek hangja"
 
 msgctxt "#32020"
-msgid "[B]Autoplay next video[/B]"
-msgstr "[B]Autoplay next video[/B]"
+msgid "[B]Autoplay UP NEXT[/B]"
+msgstr "[B]UP NEXT automatikus lejátszása[/B]"
 
 msgctxt "#32021"
 msgid "Shuffle play"
-msgstr "Shuffle play"
+msgstr "Véletlenszerű lejátszás"
 
 msgctxt "#32022"
 msgid "Results per page"
-msgstr "Results per page"
+msgstr "Eredmények oldalanként"
 
 msgctxt "#32023"
 msgid "Feed items per channel"
-msgstr "Feed items per channel"
+msgstr "Elemek csatornánként a hírfolyamban"
 
 msgctxt "#32024"
 msgid "Debug logging (disables cache)"
-msgstr "Debug logging (disables cache)"
+msgstr "Hibakeresési napló (letiltja a gyorsítótárat)"
 
 msgctxt "#32025"
 msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
-msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Gyorsítótár ürítése[/COLOR][/B]"
 
 msgctxt "#32026"
 msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
-msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]YouTube-fiók csatlakoztatása[/COLOR][/B] (QR-kód)"
 
 msgctxt "#32027"
 msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
-msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]YouTube-fiók leválasztása[/COLOR][/B]"
 
 msgctxt "#32040"
 msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
-msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Az Automatikus felismeri a televízió felbontását és ennek megfelelően korlátozza a minőséget (4K kijelzőn akár 4K, Full HD kijelzőn akár 1080p). Válassz rögzített értéket a minőség korlátozásához a gyengébb eszközökön."
 
 msgctxt "#32041"
 msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
-msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Kikapcsolva = nincs felirat. Eredeti = a feliratsáv, amelyet a YouTube alapértelmezettnek jelöl. Elsődleges nyelv = a tartalom nyelvén lévő sáv, amelyet a YouTube automatikusan lefordít, ha a feltöltőnek nincs ilyen sávja."
 
 msgctxt "#32042"
 msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
-msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Hagyd üresen a tartalom nyelvének használatához. Példa: hu magyar felirathoz egy angol videón."
 
 msgctxt "#32043"
 msgid "Country used for search, Trending, Live and Trailers results."
-msgstr "Country used for search, Trending, Live and Trailers results."
+msgstr "A keresés, a Felkapott, az Élő és az előzetesek eredményeihez használt ország."
 
 msgctxt "#32044"
 msgid "Two-letter country code not listed above, for example PL, KR, VN."
-msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Kétbetűs országkód, amely nem szerepel a fenti listán, például PL, KR, VN."
 
 msgctxt "#32045"
 msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
-msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "A visszaadott metaadatok és a Felkapott, Élő, előzetesek kategóriakeresések nyelve."
 
 msgctxt "#32046"
 msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
-msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Nyelvkód, amely nem szerepel a fenti listán, például he, fa, uk, zh-TW, fil. A kategóriakeresések fordítási táblázat nélküli nyelveknél angol szavakat használnak."
 
 msgctxt "#32047"
 msgid "Category listed when Trending is opened without a choice."
-msgstr "Category listed when Trending is opened without a choice."
+msgstr "A kategória, amely akkor látható, amikor a Felkapott választás nélkül nyílik meg."
 
 msgctxt "#32048"
 msgid "Category listed when Live is opened without a choice."
-msgstr "Category listed when Live is opened without a choice."
+msgstr "A kategória, amely akkor látható, amikor az Élő választás nélkül nyílik meg."
 
 msgctxt "#32049"
 msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
-msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Az Eredeti csak az eredeti hangsávot szólaltatja meg. A Lokalizált a tartalom nyelvén lévő hangsávot részesíti előnyben, és az eredetire vált vissza, ha nincs ilyen."
 
 msgctxt "#32050"
 msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
-msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr "Bekapcsolva: egy videó vége után ugyanannak a listának a következő eleme szólal meg pontosan abban a sorrendben, ahogyan látod (felkapott, véletlen zene, élő, keresési találatok, csatorna). A másik kiegészítőből (TMDb Movies) indított videó helyett véletlenszerű zeneszám indul. Kikapcsolva: semmi nem szólal meg magától."
 
 msgctxt "#32051"
 msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
-msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "Bekapcsolva: a kattintott videó szólal meg először, de ami utána következik, a lista sorrendje helyett keveredik. Ugyanaz a készlet, mint az Automatikus lejátszásnál, csak véletlenszerűen."
 
 msgctxt "#32052"
 msgid "How many videos a list page shows. Larger pages build longer playlists."
-msgstr "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "Hány videót mutat egy listaoldal. A nagyobb oldalak hosszabb lejátszási listákat hoznak létre."
 
 msgctxt "#32053"
 msgid "How many videos each subscribed channel contributes to the feed."
-msgstr "How many videos each subscribed channel contributes to the feed."
+msgstr "Hány videóval járul hozzá minden feliratkozott csatorna a hírfolyamhoz."
 
 msgctxt "#32054"
 msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
-msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Részletes kinyerési és lejátszási sorokat ír a kodi.log fájlba, és megkerüli a listák gyorsítótárát."
 
 msgctxt "#32055"
 msgid "Deletes the downloaded listings, the music pool and the queue state."
-msgstr "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Törli a letöltött listákat, a zenekészletet és a sor állapotát."
 
 msgctxt "#32056"
 msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
-msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Csatlakoztasd a YouTube-fiókodat a feliratkozások, a Később megnézem, a lejátszási listák és az előzmények böngészéséhez."
 
 msgctxt "#32057"
 msgid "Removes the linked YouTube account and its local snapshot."
-msgstr "Removes the linked YouTube account and its local snapshot."
+msgstr "Eltávolítja a csatlakoztatott YouTube-fiókot és a helyi másolatát."
 
 msgctxt "#32060"
 msgid "Off"
-msgstr "Off"
+msgstr "Kikapcsolva"
 
 msgctxt "#32061"
 msgid "Original"
-msgstr "Original"
+msgstr "Eredeti"
 
 msgctxt "#32062"
 msgid "Preferred language"
-msgstr "Preferred language"
+msgstr "Elsődleges nyelv"
 
 msgctxt "#32063"
 msgid "Music"
-msgstr "Music"
+msgstr "Zene"
 
 msgctxt "#32064"
 msgid "Gaming"
-msgstr "Gaming"
+msgstr "Játék"
 
 msgctxt "#32065"
 msgid "News"
-msgstr "News"
+msgstr "Hírek"
 
 msgctxt "#32066"
 msgid "Movies"
-msgstr "Movies"
+msgstr "Filmek"
 
 msgctxt "#32067"
 msgid "Live"
-msgstr "Live"
+msgstr "Élő"
 
 msgctxt "#32068"
 msgid "Games"
-msgstr "Games"
+msgstr "Játékok"
 
 msgctxt "#32069"
 msgid "Sports"
-msgstr "Sports"
+msgstr "Sport"
 
 msgctxt "#32070"
 msgid "Podcasts"
-msgstr "Podcasts"
+msgstr "Podcastok"
 
 msgctxt "#32071"
 msgid "Localized"
-msgstr "Localized"
+msgstr "Lokalizált"
 
 msgctxt "#32028"
 msgid "Extraction cache"
-msgstr "Extraction cache"
+msgstr "Kinyerési gyorsítótár"
 
 msgctxt "#32058"
 msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
-msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "Mennyi ideig használja újra egy előzetese lejátszása a mentett adatfolyamokat a YouTube API újrahívása helyett"
 
 msgctxt "#32029"
 msgid "Custom trending search"
-msgstr "Custom trending search"
+msgstr "Egyéni keresés a Felkapotthoz"
 
 msgctxt "#32059"
 msgid "Search text for Trending instead of the category word, e.g. etno folk music"
-msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "A Felkapott keresőszövege a kategória szava helyett, például etno zene"
 
 msgctxt "#32030"
 msgid "Hide Shorts"
-msgstr "Hide Shorts"
+msgstr "Shorts elrejtése"
 
 msgctxt "#32072"
 msgid "Hide vertical short videos from subscription lists"
-msgstr "Hide vertical short videos from subscription lists"
+msgstr "Elrejti a függőleges rövid videókat a feliratkozási listákból"
 
 msgctxt "#32031"
-msgid "Up Next"
-msgstr "Up Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32073"
 msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
-msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "kikapcsolva sorrendben szólaltat meg, keverve összekeveri a következőket, hasonló folytatja a hasonló számokkal"
 
 msgctxt "#32074"
 msgid "In order"
-msgstr "In order"
+msgstr "Sorrendben"
 
 msgctxt "#32075"
 msgid "Shuffled"
-msgstr "Shuffled"
+msgstr "Keverve"
 
 msgctxt "#32076"
 msgid "Similar songs"
-msgstr "Similar songs"
+msgstr "Hasonló számok"
 
 msgctxt "#32077"
 msgid "YouTube network family"
-msgstr "YouTube network family"
+msgstr "YouTube hálózatcsalád"
 
 msgctxt "#32078"
 msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
-msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Az Automatikus azt a hálózatcsaládot próbálja, amelyet az antibot-szűrő nem blokkol, és megjegyzi; az IPv4 vagy IPv6 rögzítését csak akkor végezd el, ha tudod, melyik működik"
 
 msgctxt "#32079"
 msgid "Auto"
-msgstr "Auto"
+msgstr "Automatikus"
 
 msgctxt "#32080"
 msgid "IPv4 only"
-msgstr "IPv4 only"
+msgstr "Csak IPv4"
 
 msgctxt "#32081"
 msgid "IPv6 only"
-msgstr "IPv6 only"
+msgstr "Csak IPv6"
 
 msgctxt "#32032"
 msgid "UI language"
@@ -303,7 +303,7 @@ msgstr "Felhasználói felület nyelve"
 
 msgctxt "#32083"
 msgid "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
-msgstr "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+msgstr "A menük, az ablakok és az értesítések nyelve. A beállítások feliratai mindig a Kodi nyelvét követik."
 
 msgctxt "#32084"
 msgid "Auto"
@@ -437,10 +437,6 @@ msgctxt "#32128"
 msgid "Connect YouTube account (QR code)"
 msgstr "YouTube-fiók csatlakoztatása (QR-kód)"
 
-
-
-
-
 msgctxt "#32133"
 msgid "Cancel"
 msgstr "Mégse"
@@ -538,8 +534,8 @@ msgid "Unblock this video"
 msgstr "Videó tiltásának feloldása"
 
 msgctxt "#32158"
-msgid "No autoplay for this video"
-msgstr "Nincs automatikus lejátszás ennél a videónál"
+msgid "Block this video"
+msgstr "Vidéó tiltása"
 
 msgctxt "#32159"
 msgid "Play"
@@ -550,8 +546,8 @@ msgid "Next page {}"
 msgstr "Következő oldal: {}"
 
 msgctxt "#32161"
-msgid "UP Next"
-msgstr "Következik"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32162"
 msgid "Blocked from autoplay"
@@ -565,8 +561,6 @@ msgctxt "#32164"
 msgid "Subscribed to {}"
 msgstr "Feliratkoztál: {}"
 
-
-
 msgctxt "#32167"
 msgid "Connect YouTube account"
 msgstr "YouTube-fiók csatlakoztatása"
@@ -579,8 +573,6 @@ msgctxt "#32169"
 msgid "The activation code expired, start again"
 msgstr "Az aktiváló kód lejárt, kezdd újra"
 
-
-
 msgctxt "#32172"
 msgid "Still waiting for approval on your phone"
 msgstr "Még várom a jóváhagyást a telefonodon"
@@ -592,8 +584,6 @@ msgstr "YouTube szinkronizálása..."
 msgctxt "#32174"
 msgid "Sync failed: {}"
 msgstr "Szinkronizálás sikertelen: {}"
-
-
 
 msgctxt "#32177"
 msgid "No YouTube account connected"
@@ -642,8 +632,6 @@ msgstr "Az aktiválást nem sikerült elindítani: {}"
 msgctxt "#32188"
 msgid "Open this address: {}\n\nEnter this code:\n{}"
 msgstr "Nyisd meg ezt a címet: {}\n\nÍrd be ezt a kódot:\n{}"
-
-
 
 msgctxt "#32191"
 msgid "Synced: {} channels, {} videos"
@@ -705,7 +693,6 @@ msgctxt "#32277"
 msgid "Portuguese (Brazil)"
 msgstr "Portuguese (Brazil)"
 
-
 msgctxt "#32306"
 msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
 msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
@@ -716,24 +703,100 @@ msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
 
 msgctxt "#32091"
 msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
-msgstr "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+msgstr "Feltölti a kodi.log vagy a kodi.old.log fájlt a paste.kodi.tv oldalra hibajelentéshez."
 
 msgctxt "#32092"
 msgid "Show a QR card with the donation link."
-msgstr "Show a QR card with the donation link."
+msgstr "QR-kód kártyát jelenít meg az adományozási hivatkozással."
 
 msgctxt "#32093"
 msgid "YouTube account status"
-msgstr "YouTube account status"
+msgstr "A YouTube-fiók állapota"
 
 msgctxt "#32094"
 msgid "Status: Connected"
-msgstr "Status: Connected"
+msgstr "Állapot: Csatlakoztatva"
 
 msgctxt "#32095"
 msgid "Channels: {} | Feed videos: {}"
-msgstr "Channels: {} | Feed videos: {}"
+msgstr "Csatornák: {} | Videók a hírfolyamban: {}"
 
 msgctxt "#32088"
 msgid "Troubleshooting"
-msgstr "Troubleshooting"
+msgstr "Hibakeresés"
+
+msgctxt "#32308"
+msgid "Subscribed"
+msgstr "Feliratkozva"
+
+msgctxt "#32309"
+msgid "Subscribe / Unsubscribe"
+msgstr "Feliratkozás / Leiratkozás"
+
+msgctxt "#32310"
+msgid "Unsubscribed from {}"
+msgstr "Leiratkozva innen: {}"
+
+msgctxt "#32311"
+msgid "Unsubscribe from {}?"
+msgstr "Leiratkozol innen: {}?"
+
+msgctxt "#32400"
+msgid "Warm up the main lists after Kodi starts"
+msgstr "A fő listák előtöltése a Kodi indítása után"
+
+msgctxt "#32401"
+msgid "Fetch Trending, Live and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+msgstr "A Trendeket, az Élőt, a Trailereket, a Véletlen zenét és a Feedet háttérben letölti röviddel a Kodi indítása után, hogy azonnal megnyíljanak. Ugyanazok a kérések, amelyeket te magad küldenél a megnyitásukkor."
+
+msgctxt "#32506"
+msgid "Nothing blocked yet. Block the artist of the row you came from with the button below."
+msgstr "Még nincs blokkolt előadó. A gombbal blokkolhatod azt az előadót, ahonnan jöttél."
+
+msgctxt "#32508"
+msgid "No artist name on this row."
+msgstr "Nincs előadó neve ezen a soron."
+
+msgctxt "#32510"
+msgid "Blocked artist: {}"
+msgstr "Blokkolt előadó: {}"
+
+msgctxt "#32511"
+msgid "Unblocked artist: {}"
+msgstr "Letiltás feloldva: {}"
+
+msgctxt "#32512"
+msgid "Unblocked artist: {}"
+msgstr "Letiltás feloldva: {}"
+
+msgctxt "#32513"
+msgid "Blocked artists"
+msgstr "Blokkolt előadók"
+
+msgctxt "#32514"
+msgid "Block this artist or channel"
+msgstr "Ezt az előadót vagy csatornát letiltása"
+
+msgctxt "#32515"
+msgid "Unblock this artist or channel"
+msgstr "Ennek az előadónak vagy csatornának a feloldása"
+
+msgctxt "#32516"
+msgid "Block whole channel"
+msgstr "Teljes csatorna letiltása"
+
+msgctxt "#32517"
+msgid "Block only this artist"
+msgstr "Csak ezt az előadót letiltása"
+
+msgctxt "#32518"
+msgid "artist"
+msgstr "előadó"
+
+msgctxt "#32519"
+msgid "channel"
+msgstr "csatorna"
+
+msgctxt "#32520"
+msgid "Chart position {} in {}"
+msgstr "{} lista {}. helye"

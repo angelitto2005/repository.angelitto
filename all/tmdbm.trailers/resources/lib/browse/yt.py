@@ -50,7 +50,7 @@ def search_playlists(query, limit=25):
     return _search(query, limit, 'relevance', 'playlist', configure())
 
 
-@cache_function(cache_duration(15))
+@cache_function(cache_duration(15), stale=True)
 def _trending(query, limit, locale):
     localization.configure()
     raw = rich.search(localization.regional_category_query(query), limit=limit,
@@ -62,7 +62,7 @@ def trending_videos(query, limit=25):
     return _trending(query, limit, configure())
 
 
-@cache_function(cache_duration(10))
+@cache_function(cache_duration(10), stale=True)
 def _live(query, limit, locale):
     localization.configure()
     query = localization.regional_category_query(query)
@@ -77,7 +77,8 @@ def _live(query, limit, locale):
             and entry.get('video_id') not in seen]
     combined = live + fill
     if len(combined) < limit:
-        raw = rich.search(query + ' live', limit=limit * 3,
+        top_up = query if 'live' in query.casefold() else query + ' live'
+        raw = rich.search(top_up, limit=limit * 3,
                           sort='relevance', results_type='video')
         for entry in _dedupe(limit * 3)(raw):
             if len(combined) >= limit:
@@ -104,7 +105,7 @@ def live_videos(query, limit=25):
     return _live(query, limit, configure())
 
 
-@cache_function(cache_duration(15))
+@cache_function(cache_duration(15), stale=True)
 def _trailers(query, limit, locale):
     localization.configure()
     return _dedupe(limit)(rich.search(query, limit=limit, sort='upload_date',

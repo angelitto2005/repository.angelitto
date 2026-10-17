@@ -11,11 +11,11 @@ msgstr ""
 
 msgctxt "#32000"
 msgid "General"
-msgstr "General"
+msgstr "Generale"
 
 msgctxt "#32001"
 msgid "YouTube Account"
-msgstr "YouTube Account"
+msgstr "Account YouTube"
 
 msgctxt "#32002"
 msgid "Video"
@@ -23,167 +23,167 @@ msgstr "Video"
 
 msgctxt "#32003"
 msgid "Localisation"
-msgstr "Localisation"
+msgstr "Localizzazione"
 
 msgctxt "#32004"
 msgid "Categories"
-msgstr "Categories"
+msgstr "Categorie"
 
 msgctxt "#32005"
 msgid "Playback"
-msgstr "Playback"
+msgstr "Riproduzione"
 
 msgctxt "#32006"
 msgid "Maintenance"
-msgstr "Maintenance"
+msgstr "Manutenzione"
 
 msgctxt "#32007"
 msgid "Account"
 msgstr "Account"
 
 msgctxt "#32010"
-msgid "[B]Maximum video resolution[/B]"
-msgstr "[B]Maximum video resolution[/B]"
+msgid "[B]Maximum resolution[/B]"
+msgstr "[B]Risoluzione massima[/B]"
 
 msgctxt "#32011"
 msgid "Subtitles"
-msgstr "Subtitles"
+msgstr "Sottotitoli"
 
 msgctxt "#32012"
 msgid "Subtitle language override (optional)"
-msgstr "Subtitle language override (optional)"
+msgstr "Forza la lingua dei sottotitoli (facoltativo)"
 
 msgctxt "#32013"
 msgid "Content country (ISO 3166-1)"
-msgstr "Content country (ISO 3166-1)"
+msgstr "Paese del contenuto (ISO 3166-1)"
 
 msgctxt "#32014"
 msgid "Custom country code (optional)"
-msgstr "Custom country code (optional)"
+msgstr "Codice del paese personalizzato (facoltativo)"
 
 msgctxt "#32015"
 msgid "Content language"
-msgstr "Content language"
+msgstr "Lingua del contenuto"
 
 msgctxt "#32016"
 msgid "Custom language code (optional)"
-msgstr "Custom language code (optional)"
+msgstr "Codice della lingua personalizzato (facoltativo)"
 
 msgctxt "#32017"
 msgid "Default Trending category"
-msgstr "Default Trending category"
+msgstr "Categoria predefinita per Tendenze"
 
 msgctxt "#32018"
 msgid "Default Live category"
-msgstr "Default Live category"
+msgstr "Categoria predefinita per In diretta"
 
 msgctxt "#32019"
 msgid "Trailer audio"
-msgstr "Trailer audio"
+msgstr "Audio dei trailer"
 
 msgctxt "#32020"
-msgid "[B]Autoplay next video[/B]"
-msgstr "[B]Autoplay next video[/B]"
+msgid "[B]Autoplay UP NEXT[/B]"
+msgstr "[B]Riproduci automaticamente UP NEXT[/B]"
 
 msgctxt "#32021"
 msgid "Shuffle play"
-msgstr "Shuffle play"
+msgstr "Riproduzione casuale"
 
 msgctxt "#32022"
 msgid "Results per page"
-msgstr "Results per page"
+msgstr "Risultati per pagina"
 
 msgctxt "#32023"
 msgid "Feed items per channel"
-msgstr "Feed items per channel"
+msgstr "Elementi per canale nel feed"
 
 msgctxt "#32024"
 msgid "Debug logging (disables cache)"
-msgstr "Debug logging (disables cache)"
+msgstr "Log di debug (disabilita la cache)"
 
 msgctxt "#32025"
 msgid "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
-msgstr "[B][COLOR FF87CEEB]Clear cache[/COLOR][/B]"
+msgstr "[B][COLOR FF87CEEB]Svuota la cache[/COLOR][/B]"
 
 msgctxt "#32026"
 msgid "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
-msgstr "[B][COLOR FF00CED1]Connect YouTube account[/COLOR][/B] (QR code)"
+msgstr "[B][COLOR FF00CED1]Collega account YouTube[/COLOR][/B] (QR)"
 
 msgctxt "#32027"
 msgid "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
-msgstr "[B][COLOR FFFF5555]Disconnect YouTube account[/COLOR][/B]"
+msgstr "[B][COLOR FFFF5555]Disconnetti account YouTube[/COLOR][/B]"
 
 msgctxt "#32040"
 msgid "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
-msgstr "Auto detects the TV resolution and caps the quality accordingly (up to 4K on a 4K panel, up to 1080p on Full HD). Pick a fixed value to limit quality on weaker devices."
+msgstr "Auto rileva la risoluzione del televisore e di conseguenza limita la qualità (fino a 4K su uno schermo 4K, fino a 1080p in Full HD). Scegli un valore fisso per limitare la qualità sui dispositivi meno potenti."
 
 msgctxt "#32041"
 msgid "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
-msgstr "Off = no subtitles. Original = the subtitle track YouTube marks as default. Preferred language = the Content language track, auto-translated by YouTube when the uploader has no such track."
+msgstr "Off = nessun sottotitolo. Originale = la traccia di sottotitoli che YouTube segnala come predefinita. Lingua preferita = la traccia nella lingua del contenuto, tradotta automaticamente da YouTube quando chi ha caricato il video non ne ha una."
 
 msgctxt "#32042"
 msgid "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
-msgstr "Leave empty to use the Content language. Example: ro for Romanian subtitles on an English video."
+msgstr "Lascia vuoto per usare la lingua del contenuto. Esempio: it per sottotitoli italiani su un video in inglese."
 
 msgctxt "#32043"
 msgid "Country used for search, Trending, Live and Trailers results."
-msgstr "Country used for search, Trending, Live and Trailers results."
+msgstr "Paese usato per i risultati di ricerca, tendenze, dirette e trailer."
 
 msgctxt "#32044"
 msgid "Two-letter country code not listed above, for example PL, KR, VN."
-msgstr "Two-letter country code not listed above, for example PL, KR, VN."
+msgstr "Codice paese di due lettere non elencato sopra, per esempio PL, KR, VN."
 
 msgctxt "#32045"
 msgid "Language of the returned metadata and of the Trending/Live/Trailers category searches."
-msgstr "Language of the returned metadata and of the Trending/Live/Trailers category searches."
+msgstr "Lingua dei metadati restituiti e delle ricerche per categoria di tendenze, dirette e trailer."
 
 msgctxt "#32046"
 msgid "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
-msgstr "Language code not listed above, for example he, fa, uk, zh-TW, fil. Category searches fall back to English words for languages without a translation table."
+msgstr "Codice lingua non elencato sopra, per esempio he, fa, uk, zh-TW, fil. Le ricerche per categoria usano parole in inglese per le lingue senza tabella di traduzione."
 
 msgctxt "#32047"
 msgid "Category listed when Trending is opened without a choice."
-msgstr "Category listed when Trending is opened without a choice."
+msgstr "Categoria mostrata quando Tendenze si apre senza scegliere."
 
 msgctxt "#32048"
 msgid "Category listed when Live is opened without a choice."
-msgstr "Category listed when Live is opened without a choice."
+msgstr "Categoria mostrata quando In diretta si apre senza scegliere."
 
 msgctxt "#32049"
 msgid "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
-msgstr "Original plays the original audio track only. Localized prefers an audio track in your Content language and falls back to the original when none exists."
+msgstr "Originale riproduce solo la traccia audio originale. Localizzato preferisce una traccia audio nella lingua del contenuto e torna all’originale quando non ce n’è."
 
 msgctxt "#32050"
 msgid "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
-msgstr "On: after a video ends the next one from the same list keeps playing, in the exact order you see (Trending, Random music, Live, Search results, a channel). A video started from outside this add-on (TMDb Movies) gets a random music track instead. Off: nothing plays on its own."
+msgstr "Attivo: quando un video finisce continua il successivo della stessa lista, esattamente nell’ordine che vedi (tendenze, musica casuale, dirette, risultati di ricerca, un canale). Un video avviato da un altro addon (TMDb Movies) riceve invece un brano casuale. Off: niente si riproduce da solo."
 
 msgctxt "#32051"
 msgid "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
-msgstr "On: the clicked video still plays first, but what follows is shuffled instead of the list order. Same pool as Autoplay, just random."
+msgstr "Attivo: il video cliccato viene riprodotto per primo, ma quelli che seguono sono mescolati invece di seguire l’ordine della lista. Stessa sorgente di Riproduzione automatica, solo casuale."
 
 msgctxt "#32052"
 msgid "How many videos a list page shows. Larger pages build longer playlists."
-msgstr "How many videos a list page shows. Larger pages build longer playlists."
+msgstr "Quanti video mostra una pagina di lista. Pagine più grandi creano playlist più lunghe."
 
 msgctxt "#32053"
 msgid "How many videos each subscribed channel contributes to the feed."
-msgstr "How many videos each subscribed channel contributes to the feed."
+msgstr "Quanti video porta ogni canale seguito nel feed."
 
 msgctxt "#32054"
 msgid "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
-msgstr "Writes detailed extraction and playback lines to kodi.log and bypasses the listing cache."
+msgstr "Scrive in kodi.log righe dettagliate di estrazione e riproduzione e salta la cache delle liste."
 
 msgctxt "#32055"
 msgid "Deletes the downloaded listings, the music pool and the queue state."
-msgstr "Deletes the downloaded listings, the music pool and the queue state."
+msgstr "Elimina le liste scaricate, la riserva di musica e lo stato della coda."
 
 msgctxt "#32056"
 msgid "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
-msgstr "Link your YouTube account to browse subscriptions, Watch Later, playlists and history."
+msgstr "Collega il tuo account YouTube per sfogliare gli abbonamenti, Guarda dopo, le playlist e la cronologia."
 
 msgctxt "#32057"
 msgid "Removes the linked YouTube account and its local snapshot."
-msgstr "Removes the linked YouTube account and its local snapshot."
+msgstr "Rimuove l’account YouTube collegato e la sua copia locale."
 
 msgctxt "#32060"
 msgid "Off"
@@ -191,99 +191,99 @@ msgstr "Off"
 
 msgctxt "#32061"
 msgid "Original"
-msgstr "Original"
+msgstr "Originale"
 
 msgctxt "#32062"
 msgid "Preferred language"
-msgstr "Preferred language"
+msgstr "Lingua preferita"
 
 msgctxt "#32063"
 msgid "Music"
-msgstr "Music"
+msgstr "Musica"
 
 msgctxt "#32064"
 msgid "Gaming"
-msgstr "Gaming"
+msgstr "Videogiochi"
 
 msgctxt "#32065"
 msgid "News"
-msgstr "News"
+msgstr "Notizie"
 
 msgctxt "#32066"
 msgid "Movies"
-msgstr "Movies"
+msgstr "Film"
 
 msgctxt "#32067"
 msgid "Live"
-msgstr "Live"
+msgstr "In diretta"
 
 msgctxt "#32068"
 msgid "Games"
-msgstr "Games"
+msgstr "Giochi"
 
 msgctxt "#32069"
 msgid "Sports"
-msgstr "Sports"
+msgstr "Sport"
 
 msgctxt "#32070"
 msgid "Podcasts"
-msgstr "Podcasts"
+msgstr "Podcast"
 
 msgctxt "#32071"
 msgid "Localized"
-msgstr "Localized"
+msgstr "Localizzato"
 
 msgctxt "#32028"
 msgid "Extraction cache"
-msgstr "Extraction cache"
+msgstr "Cache di estrazione"
 
 msgctxt "#32058"
 msgid "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
-msgstr "How long replaying a trailer reuses the saved streams instead of calling the YouTube API again"
+msgstr "Per quanto tempo la riproduzione di un trailer riutilizza i flussi salvati invece di chiamare di nuovo l’API di YouTube"
 
 msgctxt "#32029"
 msgid "Custom trending search"
-msgstr "Custom trending search"
+msgstr "Ricerca personalizzata per le tendenze"
 
 msgctxt "#32059"
 msgid "Search text for Trending instead of the category word, e.g. etno folk music"
-msgstr "Search text for Trending instead of the category word, e.g. etno folk music"
+msgstr "Testo di ricerca per le tendenze al posto della parola della categoria, per esempio musica etno"
 
 msgctxt "#32030"
 msgid "Hide Shorts"
-msgstr "Hide Shorts"
+msgstr "Nascondi Shorts"
 
 msgctxt "#32072"
 msgid "Hide vertical short videos from subscription lists"
-msgstr "Hide vertical short videos from subscription lists"
+msgstr "Nascondi i video brevi verticali nelle liste degli abbonamenti"
 
 msgctxt "#32031"
-msgid "Up Next"
-msgstr "Up Next"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32073"
 msgid "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
-msgstr "off plays in order, shuffle mixes upcoming, related keeps bringing similar songs"
+msgstr "off riproduce in ordine, casuale mescola i successivi, simili continua a portare brani simili"
 
 msgctxt "#32074"
 msgid "In order"
-msgstr "In order"
+msgstr "In ordine"
 
 msgctxt "#32075"
 msgid "Shuffled"
-msgstr "Shuffled"
+msgstr "Casuale"
 
 msgctxt "#32076"
 msgid "Similar songs"
-msgstr "Similar songs"
+msgstr "Brani simili"
 
 msgctxt "#32077"
 msgid "YouTube network family"
-msgstr "YouTube network family"
+msgstr "Famiglia di rete YouTube"
 
 msgctxt "#32078"
 msgid "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
-msgstr "Auto tries the family that the anti-bot gate is not blocking and remembers it; pin IPv4 or IPv6 only if you know which one works"
+msgstr "Auto prova la famiglia di rete che il filtro anti-bot non sta bloccando e la ricorda; blocca IPv4 o IPv6 solo se sai quale funziona"
 
 msgctxt "#32079"
 msgid "Auto"
@@ -291,11 +291,11 @@ msgstr "Auto"
 
 msgctxt "#32080"
 msgid "IPv4 only"
-msgstr "IPv4 only"
+msgstr "Solo IPv4"
 
 msgctxt "#32081"
 msgid "IPv6 only"
-msgstr "IPv6 only"
+msgstr "Solo IPv6"
 
 msgctxt "#32032"
 msgid "UI language"
@@ -303,7 +303,7 @@ msgstr "Lingua dell'interfaccia"
 
 msgctxt "#32083"
 msgid "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
-msgstr "Interface language for menus, dialogs and notifications. Settings labels always follow the Kodi language."
+msgstr "Lingua di menu, finestre e notifiche. Le etichette delle impostazioni seguono sempre la lingua di Kodi."
 
 msgctxt "#32084"
 msgid "Auto"
@@ -437,10 +437,6 @@ msgctxt "#32128"
 msgid "Connect YouTube account (QR code)"
 msgstr "Collega account YouTube (QR)"
 
-
-
-
-
 msgctxt "#32133"
 msgid "Cancel"
 msgstr "Annulla"
@@ -538,8 +534,8 @@ msgid "Unblock this video"
 msgstr "Sblocca questo video"
 
 msgctxt "#32158"
-msgid "No autoplay for this video"
-msgstr "Niente autoplay per questo video"
+msgid "Block this video"
+msgstr "Blocca questo video"
 
 msgctxt "#32159"
 msgid "Play"
@@ -550,8 +546,8 @@ msgid "Next page {}"
 msgstr "Pagina successiva {}"
 
 msgctxt "#32161"
-msgid "UP Next"
-msgstr "A seguire"
+msgid "UP NEXT"
+msgstr "UP NEXT"
 
 msgctxt "#32162"
 msgid "Blocked from autoplay"
@@ -565,7 +561,6 @@ msgctxt "#32164"
 msgid "Subscribed to {}"
 msgstr "Iscritto a {}"
 
-
 msgctxt "#32167"
 msgid "Connect YouTube account"
 msgstr "Collega account YouTube"
@@ -578,8 +573,6 @@ msgctxt "#32169"
 msgid "The activation code expired, start again"
 msgstr "Codice scaduto, ricomincia"
 
-
-
 msgctxt "#32172"
 msgid "Still waiting for approval on your phone"
 msgstr "In attesa di conferma sul telefono"
@@ -591,7 +584,6 @@ msgstr "Sincronizzo YouTube..."
 msgctxt "#32174"
 msgid "Sync failed: {}"
 msgstr "Sincronizzazione fallita: {}"
-
 
 msgctxt "#32177"
 msgid "No YouTube account connected"
@@ -640,8 +632,6 @@ msgstr "Impossibile avviare l'attivazione: {}"
 msgctxt "#32188"
 msgid "Open this address: {}\n\nEnter this code:\n{}"
 msgstr "Apri questo indirizzo: {}\n\nInserisci il codice:\n{}"
-
-
 
 msgctxt "#32191"
 msgid "Synced: {} channels, {} videos"
@@ -703,7 +693,6 @@ msgctxt "#32277"
 msgid "Portuguese (Brazil)"
 msgstr "Portugheza (Brazilia)"
 
-
 msgctxt "#32306"
 msgid "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
 msgstr "[B][COLOR FF7B68EE]Upload Kodi Log to Pastebin[/COLOR][/B]"
@@ -714,24 +703,100 @@ msgstr "[B][COLOR FF6AFB92]Support the Project (Donate)[/COLOR][/B]"
 
 msgctxt "#32091"
 msgid "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
-msgstr "Upload kodi.log or kodi.old.log to paste.kodi.tv for error reporting."
+msgstr "Carica kodi.log o kodi.old.log su paste.kodi.tv per segnalare un errore."
 
 msgctxt "#32092"
 msgid "Show a QR card with the donation link."
-msgstr "Show a QR card with the donation link."
+msgstr "Mostra una scheda QR con il link per la donazione."
 
 msgctxt "#32093"
 msgid "YouTube account status"
-msgstr "YouTube account status"
+msgstr "Stato dell’account YouTube"
 
 msgctxt "#32094"
 msgid "Status: Connected"
-msgstr "Status: Connected"
+msgstr "Stato: Collegato"
 
 msgctxt "#32095"
 msgid "Channels: {} | Feed videos: {}"
-msgstr "Channels: {} | Feed videos: {}"
+msgstr "Canali: {} | Video nel feed: {}"
 
 msgctxt "#32088"
 msgid "Troubleshooting"
-msgstr "Troubleshooting"
+msgstr "Risoluzione dei problemi"
+
+msgctxt "#32308"
+msgid "Subscribed"
+msgstr "Iscritto"
+
+msgctxt "#32309"
+msgid "Subscribe / Unsubscribe"
+msgstr "Iscriviti / Annulla iscrizione"
+
+msgctxt "#32310"
+msgid "Unsubscribed from {}"
+msgstr "Iscrizione annullata da {}"
+
+msgctxt "#32311"
+msgid "Unsubscribe from {}?"
+msgstr "Annullare l’iscrizione da {}?"
+
+msgctxt "#32400"
+msgid "Warm up the main lists after Kodi starts"
+msgstr "Preriscalda le liste principali dopo l'avvio di Kodi"
+
+msgctxt "#32401"
+msgid "Fetch Trending, Live and your Feed in the background shortly after Kodi starts, so they open straight away. These are the same requests you would make by opening them yourself."
+msgstr "Recupera Trending, Live, Trailer, Musica casuale e il tuo Feed in background poco dopo l'avvio di Kodi, così si aprono subito. Sono le stesse richieste che faresti aprendole tu."
+
+msgctxt "#32506"
+msgid "Nothing blocked yet. Block the artist of the row you came from with the button below."
+msgstr "Nessun artista bloccato. Blocca con il pulsante qui sotto l’artista della riga da cui sei arrivato."
+
+msgctxt "#32508"
+msgid "No artist name on this row."
+msgstr "Nessun nome artista in questa riga."
+
+msgctxt "#32510"
+msgid "Blocked artist: {}"
+msgstr "Artista bloccato: {}"
+
+msgctxt "#32511"
+msgid "Unblocked artist: {}"
+msgstr "Blocco rimosso: {}"
+
+msgctxt "#32512"
+msgid "Unblocked artist: {}"
+msgstr "Blocco rimosso: {}"
+
+msgctxt "#32513"
+msgid "Blocked artists"
+msgstr "Artisti bloccati"
+
+msgctxt "#32514"
+msgid "Block this artist or channel"
+msgstr "Blocca questo artista o canale"
+
+msgctxt "#32515"
+msgid "Unblock this artist or channel"
+msgstr "Sblocca questo artista o canale"
+
+msgctxt "#32516"
+msgid "Block whole channel"
+msgstr "Blocca tutto il canale"
+
+msgctxt "#32517"
+msgid "Block only this artist"
+msgstr "Blocca solo questo artista"
+
+msgctxt "#32518"
+msgid "artist"
+msgstr "artista"
+
+msgctxt "#32519"
+msgid "channel"
+msgstr "canale"
+
+msgctxt "#32520"
+msgid "Chart position {} in {}"
+msgstr "Posizione {} di {}"
