@@ -2207,6 +2207,58 @@ def get_tmdb_season_details_from_db(tmdb_id, season_num):
         
     return None
 
+def get_tmdb_season_details_bulk(pairs):
+    """Detalii de sezon pentru mai multe perechi, dintr-o SINGURA interogare.
+
+    get_tmdb_season_details_from_db deschide o conexiune SQLite noua per pereche;
+    Up Next apela asta o data pe rand, deci pe Android (ARM 32-bit, 164 randuri)
+    costau ~2,5s doar in deschiderile de conexiune.
+
+    pairs: iterable de (tmdb_id, season_num).
+    Returneaza {(tmdb_id, season_num): data} pentru randurile gasite si nevicate.
+    Perechile absente sau expirate NU apar in dict (callerul cere de la API).
+    """
+    out = {}
+    try:
+        keys = []
+        for tmdb_id, season_num in pairs or []:
+            try:
+                keys.append((str(tmdb_id), int(season_num)))
+            except Exception:
+                continue
+        if not keys:
+            return out
+        if not os.path.exists(DB_PATH):
+            return out
+        current_time = int(time.time())
+        conn = get_connection()
+        c = conn.cursor()
+        try:
+            # SQLite are sub limita de variabile per statement, deci taiem in
+            # loturi de 400 perechi (800 variabile).
+            for _i in range(0, len(keys), 400):
+                chunk = keys[_i:_i + 400]
+                q = ('SELECT tmdb_id, season_num, data, expires FROM meta_cache_seasons '
+                     'WHERE (tmdb_id, season_num) IN (%s)'
+                     % ','.join(['(?,?)'] * len(chunk)))
+                c.execute(q, [v for pair in chunk for v in pair])
+                for tmdb_id, season_num, data_blob, expires in c.fetchall():
+                    try:
+                        if current_time > int(expires):
+                            continue
+                        if isinstance(data_blob, bytes):
+                            out[(str(tmdb_id), int(season_num))] = json.loads(zlib.decompress(data_blob))
+                        else:
+                            out[(str(tmdb_id), int(season_num))] = json.loads(data_blob)
+                    except Exception:
+                        continue
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    return out
+
+
 def set_tmdb_season_details_to_db(cursor, tmdb_id, season_num, data):
     """Salveaza detaliile sezonului comprimate cu zlib."""
     if not data: return

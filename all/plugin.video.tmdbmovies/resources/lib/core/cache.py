@@ -205,6 +205,75 @@ def set_fast_cache(key, items):
         window.setProperty(f"tmdbmovies_fast_{actual_key}", json.dumps(cache_obj))
     except: pass
 
+# Cat timp e servita lista "veche" dupa un marcaj, inainte de a fi reconstruita
+# oricum. Stale-while-revalidate tine containerul plin (fara pagina neagra), dar
+# NU poate permite ca episodul tocmai vizionat sa nu dispara niciodata. Dupa acest
+# prag: golirile de lista reince, iar randarea ignora cache-ul vechi.
+# Locuit in cache.py pentru ca clear_list_fast_cache() sa nu depinda de tmdb_api
+# (import circular); tmdb_api il importa pentru carpe-ul de corectitudine.
+UP_NEXT_STALE_MAX_S = 30.0
+
+
+def upnext_stale_since():
+    """Timestamp-ul la care s-a deschis fereastra stale-while-revalidate, sau 0.0.
+
+    Defensiv pe citire: o valoare corupta NU trebuie sa blocheze invalidarea
+    cache-urilor (float('abc') arunca si, intr-un try comun, ar opri tot blocul).
+    """
+    try:
+        import xbmcgui
+        v = xbmcgui.Window(10000).getProperty("tmdbmovies.upnext_stale_since")
+        return float(v) if v else 0.0
+    except Exception:
+        return 0.0
+
+
+def upnext_stale_active():
+    try:
+        _ss = upnext_stale_since()
+        return _ss > 0 and (time.time() - _ss) < UP_NEXT_STALE_MAX_S
+    except Exception:
+        return False
+
+
+def _playback_active():
+    """True cat timp ruleaza un episod.
+
+    In timpul redarii lista Up Next nu e pe ecran, deci nu are rost sa o
+    golim - si nimeni nu se uita la ea pana la urmatorul Container.Refresh.
+    Masurat pe debug log: lista era scrisa la 00:30:02 (85%), si la randarea
+    de la stop (00:30:24) cache-ul era din nou gol -> light path-ul rata ->
+    ~2.8s de import tmdb_api + DialogBusy peste 6s. Nu am urmarit cine o
+    goleste (ghost scraper, daemonii de refresh, sync-urile) pentru ca orice
+    gard pus la un singur apelator se poate ocoli. Gardul e aici, in punctul
+    central, si acopera orice golire, indiferent de origine.
+    Plagiu de 6h: daca monitorul ar muri inainte sa stinga flagul, lista ar
+    ramane blocata pana la restart. Timestampul face gardul sa se auto-repara.
+    """
+    try:
+        import xbmcgui
+        w = xbmcgui.Window(10000)
+        if w.getProperty('tmdbmovies.playback_active') != 'true':
+            return False
+        return (time.time() - float(w.getProperty('tmdbmovies.playback_since') or 0)) < 21600
+    except Exception:
+        return False
+
+
+def set_playback_active(active):
+    try:
+        import xbmcgui
+        w = xbmcgui.Window(10000)
+        if active:
+            w.setProperty('tmdbmovies.playback_active', 'true')
+            w.setProperty('tmdbmovies.playback_since', str(time.time()))
+        else:
+            w.clearProperty('tmdbmovies.playback_active')
+            w.clearProperty('tmdbmovies.playback_since')
+    except Exception:
+        pass
+
+
 def clear_list_fast_cache():
     """Invalideaza DOAR listele (fast cache), pastrind cache-ul RAM de metadate.
 
@@ -213,7 +282,20 @@ def clear_list_fast_cache():
     vazut, listele se re-construiau cu toate cererile TMDb de la zero (secunde
     bune de spinner la revenirea in Up Next). Aici listele se re-build din DB,
     iar metadatele rămân instant din cache.
+
+    FEREASTA STALE-WHILE-REVALIDATE: dupa un marcaj, lista se pastreaza intentionat
+    ca "veche" (max UP_NEXT_STALE_MAX_S), ca sa nu ramana containerul negru cu
+    BusyDialog in timp ce pre-randarea rescrie lista in fundal. Orice golire in
+    acest interval - inclusiv cea din daemonii de refresh ai providerului
+    (trakt/mdblist/simkl/punchplay/local) - ar reface lista de la zero si ar
+    reintroduce exact problema pe care o rezolvam. Deci golirea e amanata.
+    Corectitudinea nu depinde de asta: carpe-ul din tmdb_api ignora cache-ul
+    dupa prag, iar pre-randarea il rescrie imediat ce termina.
     """
+    if upnext_stale_active():
+        return
+    if _playback_active():
+        return
     try:
         import xbmcgui
         window = xbmcgui.Window(10000)
@@ -225,8 +307,16 @@ def clear_all_fast_cache():
     try:
         import xbmcgui
         window = xbmcgui.Window(10000)
-        window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
-        # Also bump RAM meta cache version
+        # Fereastra stale-while-revalidate (vezi clear_list_fast_cache): versiunea
+        # de LISTE se pastreaza, ca lista veche sa poata fi randata imediat dupa
+        # un marcaj. Metadatele (RAM) se invalideaza oricum - nu produc pagina
+        # neagra, doar re-fetch. Fara asta, cele ~22 de apeluri din toate modulele
+        # (sync, ghost scraper, warm-up) goleau lista pe la gardul din
+        # clear_list_fast_cache, iar randarea de la intoarcerea din playercadea din
+        # cache la build complet - BusyDialog peste lista.
+        _stale = upnext_stale_active() or _playback_active()
+        if not _stale:
+            window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
         window.setProperty("tmdbmovies_ram_cache_version", str(time.time()))
     except: pass
 

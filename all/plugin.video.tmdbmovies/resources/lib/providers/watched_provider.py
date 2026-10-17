@@ -221,13 +221,60 @@ def clear_cache():
     """No-op pastrat pentru compatibilitate (nu mai exista cache de invalidat)."""
     pass
 
-def _invalidate_fast_cache():
+# Flag de modul: cand e True, _invalidate_fast_cache() NU sterge lista, pentru
+# orice subapel facut in timpul unui dispatch_mark_watched(defer_cache_clear=True).
+# Mai robust decat sa thread-Parametrul prin fiecare semnatura intermediara
+# (dispatch -> mark_watched_on_providers -> _fanout_mark -> ...).
+_DEFER_CACHE_CLEAR = {'on': False, 'at': 0.0}
+
+# Deferul trebuie sa acopere doar marcarea + pornirea pre-randarii (sub 2s).
+# Ca boolean simplu, ramanea True cand procesul Python era reutilizat (RLI) si
+# nu mai venea niciun dispatch cu defer=False - blocand invalidarile urmatoare.
+# Ca fereastra de timp, se auto-stinge si nu poate bloca nimic la nesfarsit.
+_DEFER_WINDOW_S = 60.0
+
+
+def _defer_active():
+    try:
+        import time as _t
+        return bool(_DEFER_CACHE_CLEAR['on']) and \
+            (_t.time() - float(_DEFER_CACHE_CLEAR.get('at') or 0)) < _DEFER_WINDOW_S
+    except Exception:
+        return False
+
+
+def _invalidate_fast_cache(defer=False):
     """Invalideaza listele din fast cache (RAM) dupa o schimbare de watched status.
 
-    Doar LISTELE: metadatele (titluri/ploturi/sezoane) nu se schimba cind marchezi
-    un episod vazut, iar pastrarea lor face refresh-ul de Up Next instant in loc
-    de re-constructie completa din TMDb (rotita de ~5s la revenirea din player).
+    Doar LISTELE: metadatele (titluri/ploturi/sezoane) nu se schimba cind
+    marchezi un episod vazut, iar pastrarea lor face refresh-ul de Up Next
+    instant in loc de re-constructie completa din TMDb.
+
+    defer=True: NU stergem lista, o lasam sa fie servita ca "veche" (stale).
+    Folosit la oprirea din player: pe liste mari (160 de randuri) reconstructia
+    dureaza secunde, iar daca golim cache-ul, containerul ramine NEGRU cu
+    BusyDialog pana se termina. Cu stale-while-revalidate lista veche ramane
+    vizibila, iar pre-randarea o rescrie in fundal si re-randeaza singura.
     """
+    # Setul de "complet vizionate" se goleste MEREU (e derivat din acelasi DB
+    # care tocmai s-a modificat); altfel un serial nou complet vizionat ar
+    # ramane fara bifa pana la urmatorul build.
+    try:
+        clear_fully_watched_cache()
+    except:
+        pass
+    if defer or _defer_active():
+        # Marcam lista ca "veche": o servim ca stale ca sa nu ramanem cu container
+        # negru, dar NU la nesfarsit. Carpe-ul din tmdb_api (UP_NEXT_STALE_MAX_S)
+        # ignora cache-ul dupa acel interval, deci corectitudinea e garantata
+        # chiar daca pre-randarea nu reuseste sa rescrie lista.
+        try:
+            import time as _t
+            import xbmcgui as _xg
+            _xg.Window(10000).setProperty('tmdbmovies.upnext_stale_since', str(_t.time()))
+        except Exception:
+            pass
+        return
     try:
         from resources.lib.core.cache import clear_list_fast_cache
         clear_list_fast_cache()
@@ -267,7 +314,7 @@ def _upnext_row_updated_stamp():
         return 0.0
 
 
-def _prebuild_upnext_cache(container_path='', min_ts=0.0):
+def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
     """Construieste lista Up Next noua in fast cache, fara GUI.
 
     Rulat intr-un thread de fundal la stop: cand userul inchide dialogul de binge,
@@ -288,6 +335,19 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0):
     except Exception:
         variant = ''
     if variant not in ('tmdb', 'provider'):
+        try:
+            from resources.lib.core.utils import log
+            _path = container_path or '(gol)'
+            _v = ''
+            try:
+                import xbmcgui as _xg
+                _v = _xg.Window(10000).getProperty('tmdbmovies.upnext_view') or '(gol)'
+            except Exception:
+                pass
+            log(f"[UP NEXT] warm/pre-randare omise: varianta necunoscuta "
+                f"(warm_only={warm_only}, path={_path}, upnext_view={_v})")
+        except Exception:
+            pass
         return False
     try:
         if min_ts:
@@ -295,6 +355,14 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0):
             _end = _t.time() + 3.0
             while _upnext_row_updated_stamp() < min_ts and _t.time() < _end:
                 _t.sleep(0.1)
+        params = {'use_tmdb': 'true'} if variant == 'tmdb' else {}
+        from resources.lib.api import tmdb_api
+        # WARM_ONLY: doar cache-urile. Nu ne atingem de _PREBUILD['busy'] si nici de
+        # proprietatea prebuild_busy: randarea reala n-are de ce sa astepte un
+        # warm-up, iar asta era intentionat de la inceput.
+        if warm_only:
+            tmdb_api.get_next_episodes(params, warm_only=True)
+            return True
         if _PREBUILD['busy']:
             _PREBUILD['pending'] = True
             return False
@@ -304,13 +372,110 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0):
             _xg.Window(10000).setProperty('tmdbmovies.prebuild_busy', 'true')
         except Exception:
             pass
-        params = {'use_tmdb': 'true'} if variant == 'tmdb' else {}
-        from resources.lib.api import tmdb_api
+        # Pre-randarea ruleaza PE TOATE dispozitivele, chiar si lente. Motivul
+        # pentru care o saram (sa nu compita cu randarea) nu mai exista: cu
+        # stale-while-revalidate randarea e un cache-hit de ~200ms si nu consuma
+        # practic nimic, deci backgroundul nu se mai ciocneste cu nimic.
+        # Corectitudinea e garantata de carpe-ul de 30s de mai jos (stale_since),
+        # nu de faptul ca o sarim.
+        try:
+            from resources.lib.core.utils import log
+            _last_ms = float(tmdb_api.get_last_next_build_ms() or 0)
+            log(f"[UP NEXT] pre-randare pornita (ultimul build {_last_ms:.0f}ms)")
+        except Exception:
+            pass
+        # Daca randarea reala ruleaza acum, _list_build_wait aici NU construieste
+        # in paralel: asteapta cache-ul ei (sau preia daca ea moare).
         while True:
             _PREBUILD['pending'] = False
             tmdb_api.get_next_episodes(params, cache_only=True)
             if not _PREBUILD['pending']:
                 break
+        # Re-randarea exista DOAR ca sa corecteze lista "veche" pe care containerul
+        # a servit-o dupa un marcaj. Daca nu s-a deschis fereastra stale (nimic
+        # marcat), nu e nimic de corectat si Container.Refresh ar fi gratuit -
+        # ba chiar daunator: pe calea de incalzire de la 85% s-a declansat astfel
+        # IN TIMPUL REDARII (fereastra neagra + BusyDialog).
+        try:
+            from resources.lib.core.cache import upnext_stale_since as _read_ss
+            _ss = _read_ss()
+        except Exception:
+            _ss = 0.0
+        if not (_ss > 0):
+            try:
+                from resources.lib.core.utils import log
+                log("[UP NEXT] pre-randare gata, dar nu s-a marcat nimic - fara re-randare")
+            except Exception:
+                pass
+            return True
+
+        # STALE-WHILE-REVALIDATE: lista a fost servita "veche" la revenire, ca
+        # containerul sa nu ramana negru. Acum cache-ul contine datele noi.
+        #
+        # ATENTIE - CRASH pe Android: prima varianta pornea Container.Refresh imediat
+        # din thread de fundal si a corupt containerul (fereastra goala + crash).
+        # In log, ultimele doua randuri erau chiar:
+        #   [UP NEXT] lista rescinsa in fundal, re-randare instant
+        #   CGUIMediaWindow::OnMessage - updating in progress
+        # Deci: intarziere de asentare, asteptam sa se linisteasca containerul,
+        # verificare de abort, si ne oprim daca tot se actualizeaza. Nu fortam.
+        # Replica garzile din player._safety_refresh, care sunt stabile.
+        try:
+            from resources.lib.core.cache import UP_NEXT_STALE_MAX_S as _STALE_MAX
+        except Exception:
+            _STALE_MAX = 30.0
+        try:
+            import time as _t
+            import xbmc as _x
+            # 1. Asetare: dialogul de binge tocmai s-a inchis, containerul inca se
+            # rearanjeaza. 2s e suficient si nu se simte.
+            _settle = _t.time() + 2.0
+            while _t.time() < _settle:
+                try:
+                    if _x.Monitor().abortRequested():
+                        return True
+                except Exception:
+                    pass
+                _t.sleep(0.2)
+            # 2. Asteptam ca containerul sa se linisteasca (max 3s).
+            _end = _t.time() + 3.0
+            while _t.time() < _end:
+                try:
+                    if _x.Monitor().abortRequested():
+                        return True
+                except Exception:
+                    pass
+                try:
+                    if not _x.getCondVisibility('Container.IsUpdating'):
+                        break
+                except Exception:
+                    break
+                _t.sleep(250)
+            # 3. Daca tot se actualizeaza, nu insistam: e mai bine o lista
+            #    veche decat un container corupt. Ramane carpe-ul de 30s.
+            try:
+                if _x.getCondVisibility('Container.IsUpdating'):
+                    from resources.lib.core.utils import log
+                    log("[UP NEXT] container inca in update, renunt la re-randare")
+                    return True
+            except Exception:
+                pass
+        except Exception:
+            return True
+        try:
+            import xbmcgui as _xg
+            _xg.Window(10000).clearProperty('tmdbmovies.upnext_stale_since')
+        except Exception:
+            pass
+        try:
+            from resources.lib.core.utils import log
+            log("[UP NEXT] lista rescinsa in fundal, re-randare instant")
+        except Exception:
+            pass
+        try:
+            _upnext_refresh_now()
+        except Exception:
+            pass
         return True
     except Exception as e:
         try:
@@ -767,7 +932,13 @@ def get_source_module():
         return __import__('resources.lib.providers.mdblist_sync', fromlist=['mdblist_sync'])
     return __import__('resources.lib.providers.trakt_sync', fromlist=['trakt_sync'])
 
-def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True, async_tmdb=False, skip_library_hack=False):
+def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, notify=True, sync_provider=True, do_refresh=True, async_tmdb=False, skip_library_hack=False, defer_cache_clear=False):
+    _DEFER_CACHE_CLEAR['on'] = bool(defer_cache_clear)
+    try:
+        import time as _t0
+        _DEFER_CACHE_CLEAR['at'] = _t0.time()
+    except Exception:
+        pass
     targets = _mark_targets()
     prov = _get_provider_raw()
     # 'local' nu e target de fanout online: il extragem si il scriem pe un traseu
@@ -1058,6 +1229,67 @@ def get_watched_counts_map(tmdb_ids):
         return None
 
 
+# Cache pentru setul de seriale "complet vizionate", pe durata unui build de
+# lista. is_fully_watched_show deschide O CONEXIUNE SQLITE NOUA per apel, iar
+# Up Next apela o data pe rand: pe Android, 164 de randuri = 164 de conexiuni
+# = ~3,4s doar pentru asta. Setul se citeste o singura data si se tine in RAM.
+_FULLY_WATCHED_CACHE = {'prov': None, 'ids': None}
+
+_FULLY_WATCHED_TABLES = {
+    'local': 'local_fully_watched_shows',
+    'punchplay': 'punchplay_fully_watched_shows',
+    'mdblist': 'mdblist_fully_watched_shows',
+    'simkl': 'simkl_fully_watched_shows',
+}
+
+
+def clear_fully_watched_cache():
+    _FULLY_WATCHED_CACHE['prov'] = None
+    _FULLY_WATCHED_CACHE['ids'] = None
+
+
+def get_fully_watched_set():
+    """Set de tmdb_id marcate complet vizionate, sau None daca nu se poate citi.
+
+    None = apelantul cade pe is_fully_watched_show per serial (comportamentul
+    de dinainte). Set gol = serialul nu e complet vizionat.
+    """
+    prov = None
+    try:
+        prov = _get_provider_raw()
+    except Exception:
+        return None
+    table = _FULLY_WATCHED_TABLES.get(prov)
+    if not table:
+        # Trakt nu tine tabel de "complet vizionate" (nu are nevoie de el).
+        return None
+    if _FULLY_WATCHED_CACHE['prov'] == prov and _FULLY_WATCHED_CACHE['ids'] is not None:
+        return _FULLY_WATCHED_CACHE['ids']
+    try:
+        import sqlite3
+        mod = get_source_module()
+        db_path = getattr(mod, 'DB_PATH', '')
+        if not db_path or not os.path.exists(db_path):
+            return None
+        if hasattr(mod, '_ensure_db'):
+            try:
+                mod._ensure_db()
+            except Exception:
+                pass
+        conn = sqlite3.connect(db_path)
+        try:
+            c = conn.cursor()
+            c.execute('SELECT tmdb_id FROM ' + table)
+            ids = set(str(r[0]) for r in c.fetchall() if r and r[0] is not None)
+        finally:
+            conn.close()
+        _FULLY_WATCHED_CACHE['prov'] = prov
+        _FULLY_WATCHED_CACHE['ids'] = ids
+        return ids
+    except Exception:
+        return None
+
+
 def is_movie_watched(tmdb_id):
     return get_source_module().is_movie_watched(tmdb_id)
 
@@ -1237,11 +1469,16 @@ def _upnext_ui_sync(preserve_binge=True):
     """
     import time as _time
     import xbmcgui
-    try:
-        from resources.lib.core.cache import clear_list_fast_cache
-        clear_list_fast_cache()
-    except Exception:
-        pass
+    # Respectam defer_cache_clear: la oprirea din player vrem sa SERVIM lista
+    # veche (stale-while-revalidate), ca sa nu ramana containerul negru. Daca
+    # golim aici, orice randare de dupa marcaj reconstruiește tot (6-8s pe
+    # Android) si lista reapare doar dupa acea reconstructie, cu BusyDialog.
+    if not _defer_active():
+        try:
+            from resources.lib.core.cache import clear_list_fast_cache
+            clear_list_fast_cache()
+        except Exception:
+            pass
     try:
         try:
             _binge_since = float(xbmcgui.Window(10000).getProperty('tmdbmovies.binge_open') or 0)

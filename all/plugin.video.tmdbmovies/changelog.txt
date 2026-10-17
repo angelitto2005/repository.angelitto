@@ -1,3 +1,7 @@
+1.1.315
+- Fixed long buffering after stopping an episode on slow devices
+- Up Next builds faster on slow devices and phones
+
 1.1.314
 - Returning from an Up Next episode no longer buffers for several seconds: the list is already built and shows instantly.
 - Marking an episode watched no longer drops the list cache, so coming back to Up Next reuses the existing rows.

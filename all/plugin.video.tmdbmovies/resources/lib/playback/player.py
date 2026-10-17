@@ -1971,6 +1971,15 @@ def start_playback_monitor(player_instance, dialog=None):
     
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
+        # Cata timp ruleaza episodul, lista Up Next nu se goleste (vezi
+        # cache._playback_active). Altfel ghost scraper-ul de la 80% si daemonii
+        # de refresh o stergeau intre 85% si stop, iar light path-ul rata la
+        # revenire -> ~2.8s de import tmdb_api peste lista goala.
+        try:
+            from resources.lib.core.cache import set_playback_active as _spa
+            _spa(True)
+        except Exception:
+            pass
         
         # Asteptam sa porneasca playerul (30 secunde, cu inchidere agresiva a dialogurilor de eroare Kodi)
         # 30s: open-ul poate dura ~20s pe surse lente (Stat intern Kodi); abandonul la 15s
@@ -2058,6 +2067,38 @@ def start_playback_monitor(player_instance, dialog=None):
                         player_instance.watched_marked = True
                         if not getattr(player_instance, 'next_episode_scraped', False):
                             threading.Thread(target=_warmup_next_season, args=(player_instance,), daemon=True).start()
+                        # PRE-RANDARE COMPLETA a listei Up Next, cu ~35s inainte de stop: construieste
+                        # si SCRIE lista in cache, nu doar incalzeste.
+                        #
+                        # Motivul, masurat pe debug log (00:16:52.690 -> 00:16:57.015):
+                        # la revenire, light path-ul (list_render, fara tmdb_api) rata
+                        # pentru ca cache-ul era gol, si routerul cadea pe calea grea.
+                        # Costul NU era build-ul, ci IMPORTUL lui tmdb_api:
+                        #   52.690 initializing python engine
+                        #   52.944 Python Interpreter Initialized      (+254ms)
+                        #   53.243 [ROUTER] invoke                     (+297ms)
+                        #   57.015 [UP NEXT] prima noastra linie      (+3.77s)
+                        # DialogBusy a stat deschis 4.88s, din care 3.77s import.
+                        #
+                        # Cache-ul era gol pentru ca ghost scraper-ul de la 80% il
+                        # goleste, iar pana acum nimic nu il repopula pana la stop.
+                        # Construindu-l aici (in fundal, cat timp redarea continua),
+                        # la stop light path-ul loveste si randarea e instant.
+                        #
+                        # SIGUR: pe aceasta cale nu se aplica niciun Container.Refresh
+                        # - invariantul din _prebuild_upnext_cache face return anticipat
+                        # cand nu s-a marcat nimic (nicio fereastra stale deschisa).
+                        # O versiune anterioara, fara invariant, facea refresh IN TIMPUL
+                        # REDARII si producea fereastra neagra.
+                        if not getattr(player_instance, 'upnext_warmed', False):
+                            player_instance.upnext_warmed = True
+                            def _warm_upnext_list():
+                                try:
+                                    from resources.lib.providers.watched_provider import _prebuild_upnext_cache
+                                    _prebuild_upnext_cache('', 0.0, warm_only=False)
+                                except Exception:
+                                    pass
+                            threading.Thread(target=_warm_upnext_list, daemon=True).start()
                     
                     if abs(progress - player_instance.last_progress_sent) >= player_instance.scrobble_threshold:
                         player_instance._send_trakt_scrobble('scrobble', progress, duration_seconds=total, position_seconds=curr)
@@ -2171,7 +2212,8 @@ def start_playback_monitor(player_instance, dialog=None):
                 dispatch_mark_watched(
                     player_instance.tmdb_id, player_instance.content_type,
                     player_instance.season, player_instance.episode,
-                    notify=True, do_refresh=False, async_tmdb=True, skip_library_hack=True
+                    notify=True, do_refresh=False, async_tmdb=True, skip_library_hack=True,
+                    defer_cache_clear=True
                 )
                 # PRE-RANDARE in fundal: construim lista Up Next noua in fast cache
                 # cat timp userul inca priveste dialogul de binge. Cand inchide
@@ -2456,9 +2498,34 @@ def start_playback_monitor(player_instance, dialog=None):
         except Exception:
             pass
         threading.Thread(target=_post_playback_dialogs, daemon=True).start()
+        # Redarea s-a terminat: de acum lista Up Next poate fi golita normal.
+        # Flagul ramane oricum auto-reparabil (plagiu de 6h in cache.py), dar
+        # il stingem aici ca nu seinga peste o sesiune lunga.
+        try:
+            from resources.lib.core.cache import set_playback_active as _spa0
+            _spa0(False)
+        except Exception:
+            pass
         log("[PLAYER-MONITOR] Monitor thread finished")
     
-    _player_monitor = threading.Thread(target=monitor_loop, daemon=True)
+    def _monitor_entry():
+        """Infasuratoare: garanteaza stingerea flagului 'redare activa'.
+
+        monitor_loop() are 11 return-uri anticipate (playerul nu porneste, eroare
+        de scanare, abandon de la scrobble etc.). Fara acest wrapper, oricare dintre
+        ele ar lasa flagul aprins si, pana la plagiu, AR BLOCA invalidarea listelor
+        in tot addonul (watchlist, favorite, cautare, trending) - nu doar Up Next.
+        """
+        try:
+            monitor_loop()
+        finally:
+            try:
+                from resources.lib.core.cache import set_playback_active as _spa1
+                _spa1(False)
+            except Exception:
+                pass
+
+    _player_monitor = threading.Thread(target=_monitor_entry, daemon=True)
     _player_monitor.start()
 
 
