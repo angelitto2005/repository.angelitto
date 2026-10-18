@@ -62,6 +62,7 @@ https://angelitto2005.github.io/repository.angelitto/
 | Add-on | What it does |
 | ------ | ------------ |
 | **TMDb Movies** | Movies & TV shows via **HTTP, P2P and debrid services**. Powered by **AIO Streams, Torrentio, MediaFusion, Comet, Meteor, StremThru** and many more. **TorrServer supported.** Trakt / Simkl / MDBList / TMDb lists included. See [Spotlight](#-spotlight-tmdb-movies) + [Video Demos](#-video-demos--tmdb-movies-on-rumble). |
+| **TMDbM Trailers** | A full **YouTube browser and player** inside Kodi: search, Trending, Live, Trailers, random music with autoplay and My YouTube (QR login). **Pure-Python playback** - no third-party binaries, original audio only, up to 4K. Works on its own and inside TMDb Movies. |
 | **MRSP Lite** | Torrent streaming done right. Integrated support for **torrent2http, Elementum and TorrServer** for fast, smooth playback. |
 | **SubStudio** | **Instant subtitle translator.** Start your movie and get subtitles translated on the fly into multiple languages — no interruptions. |
 | **Fast AutoSubs** | **Fully automatic subtitles — zero clicks.** Pairs with **Subs.ro** (Romanian only) or **SubStudio** (any language). Searches Wyzie and OpenSubtitles, and translates with Gemini when the localized subtitle is missing. |
