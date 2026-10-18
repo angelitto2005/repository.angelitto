@@ -226,6 +226,7 @@
               <option>40</option>
               <option>45</option>
               <option>50</option>
+              <option>100</option>
             </options>
           </constraints>
           <control type="list" format="string"/>

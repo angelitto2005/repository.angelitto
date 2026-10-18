@@ -103,6 +103,29 @@ def get_channel(
     for video in videos:
         yield video
 
+# A playlist page states its own length in the header stats ("130 videos").
+# The page is downloaded anyway for the first batch of rows, so the number
+# costs nothing to read. It is also the only honest answer to "is there more":
+# the rows that come back are fewer than that whenever the parser skips one or
+# the same song sits in the list twice, and a Next page button that follows
+# the rows alone stops halfway through a long playlist.
+PLAYLIST_VIDEO_COUNT = {}
+_PLAYLIST_COUNT_RE = re.compile(r'"stats":\[\{"runs":\[\{"text":"(\d+)"\}')
+
+
+def _remember_playlist_count(url, html):
+    if 'playlist?list=' not in (url or ''):
+        return
+    match = _PLAYLIST_COUNT_RE.search(html or '')
+    if not match:
+        return
+    playlist_id = url.split('playlist?list=', 1)[1].split('&', 1)[0]
+    try:
+        PLAYLIST_VIDEO_COUNT[playlist_id] = int(match.group(1))
+    except (TypeError, ValueError):
+        pass
+
+
 def get_playlist(
     playlist_id: str, limit: int = None, sleep: int = 1, proxies: dict = None,
     cookies: Union[dict, str] = None,
@@ -253,6 +276,7 @@ def get_videos(
     while True:
         if is_first:
             html = get_initial_data(session, url)
+            _remember_playlist_count(url, html)
             context = _extract_innertube_context(html)
             if not context:
                 client = json.loads(

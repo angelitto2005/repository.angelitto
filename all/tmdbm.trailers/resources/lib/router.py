@@ -529,7 +529,20 @@ def _playlist_counter(declared, page, per_page):
 
 
 def _declared_playlist_count(playlist_id):
-    """How many tracks YouTube says this playlist holds."""
+    """How many tracks YouTube says this playlist holds.
+
+    Two sources: the length seen while the playlist was last read, and the
+    saved playlists list. The first one also covers a playlist that was only
+    ever opened from a link, which never sits in the library at all.
+    """
+    key = str(playlist_id or '')
+    try:
+        import store
+        seen = store.get_state('playlist_counts')
+        if isinstance(seen, dict) and int(seen.get(key) or 0) > 0:
+            return int(seen.get(key) or 0)
+    except Exception:
+        pass
     try:
         import store
         block = store.get_library('saved_playlists')
@@ -864,7 +877,9 @@ def playlist(handle, params):
 
     items, content = lists.paged(
         fetch, builder, 'playlist', {'url': url}, page=page, content='videos',
-        next_extra=_playlist_counter(declared, page, results_per_page()))
+        total=lambda: _declared_playlist_count(pid),
+        next_extra=lambda: _playlist_counter(
+            _declared_playlist_count(pid), page, results_per_page()))
     build(handle, items, content=content)
 
 

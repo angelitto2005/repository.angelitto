@@ -299,9 +299,9 @@ def video_meta(video_id):
         # like. Named here because the bulk metadata fill only reports a count,
         # which hides whether the cause is the anti-bot gate or something else.
         ps = payload.get('playabilityStatus') or {}
-        config.log('meta {} empty: playability {} {}'.format(
+        config.debug('meta {} empty: playability {} {}'.format(
             video_id, ps.get('status') or '?',
-            (ps.get('reason') or '-')[:90]), always=True)
+            (ps.get('reason') or '-')[:90]))
         return {}
     return {
         'title': details.get('title') or '',
@@ -320,6 +320,67 @@ def video_meta_cached(video_id):
     if not data:
         raise ValueError('empty video meta')
     return data
+
+
+@cache_function(7 * 24 * 60)
+def watch_page_meta(video_id):
+    """Length, description and title read from the watch page itself.
+
+    A burst of player calls is answered with "sign in to confirm you are not a
+    bot", and the videos refused that way are fine ones: their watch page
+    still answers 200 with the length and the description in it. Without this a
+    long playlist comes out with rows that have neither, and an empty answer
+    being treated as a failed lookup means those rows are then skipped for a
+    whole hour instead of simply being read again.
+    """
+    import json as _json
+    import re as _re
+    import requests as _rq
+    try:
+        response = _rq.get(
+            'https://www.youtube.com/watch?v={}'.format(video_id),
+            headers={'User-Agent': _HEADERS['User-Agent'],
+                     'Accept-Language': 'en-US,en;q=0.9'},
+            cookies={'CONSENT': 'YES+cb'}, timeout=15)
+    except Exception:
+        return {}
+    if response.status_code != 200:
+        return {}
+    page = response.text or ''
+    # anchor on this video's own details, so a recommended video sitting in the
+    # sidebar cannot hand over its length
+    at = page.find('"videoId":"{}"'.format(video_id))
+    window = page[at:at + 30000] if at >= 0 else page
+    out = {}
+
+    def grab(pattern, key, cast=None):
+        found = _re.search(pattern, window)
+        if not found:
+            return
+        value = found.group(1)
+        try:
+            out[key] = cast(value) if cast else value
+        except (TypeError, ValueError):
+            pass
+
+    def unescape(value):
+        try:
+            return _json.loads('"{}"'.format(value))
+        except Exception:
+            return value
+
+    grab(r'"lengthSeconds":"(\d+)"', 'duration', int)
+    grab(r'"title":"((?:[^"\\]|\\.){3,200}?)"', 'title')
+    grab(r'"ownerChannelName":"((?:[^"\\]|\\.)+?)"', 'channel')
+    grab(r'"viewCount":"(\d+)"', 'views')
+    grab(r'"uploadDate":"(\d{4}-\d{2}-\d{2})"', 'published')
+    for key in ('title', 'channel'):
+        if out.get(key):
+            out[key] = unescape(out[key])
+    found = _re.search(r'"shortDescription":"((?:[^"\\]|\\.)*)"', window)
+    if found:
+        out['description'] = unescape(found.group(1))
+    return out
 
 
 @cache_function(7 * 24 * 60)
@@ -412,7 +473,9 @@ def full_entry_meta(video_id):
     except Exception:
         info = {}
     if not info:
-        return {}
+        info = watch_page_meta(video_id)
+        if not info:
+            return {}
     out = dict(info)
     if not out.get('published'):
         import re as _re2

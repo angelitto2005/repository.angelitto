@@ -170,7 +170,35 @@ def channel_header(url):
 @cache_function(cache_duration(15), stale=True)
 def _playlist(playlist_id, limit, locale):
     localization.configure()
-    return _dedupe(limit)(rich.playlist_videos(playlist_id, limit=limit))
+    entries = _dedupe(limit)(rich.playlist_videos(playlist_id, limit=limit))
+    _remember_playlist_count(playlist_id)
+    return entries
+
+
+def _remember_playlist_count(playlist_id):
+    """Keep the length YouTube states next to the playlist.
+
+    Duplicate songs and rows the parser skips make the rows that arrive
+    fewer than that number, so the Next page button follows the number
+    instead of the rows: otherwise a long playlist ends without a way
+    forward, which is how a 130 track playlist stopped at 50.
+    """
+    try:
+        from browse.scrapetube import scrapetube as _scrapetube
+        count = int(_scrapetube.PLAYLIST_VIDEO_COUNT.get(str(playlist_id)) or 0)
+        if not count:
+            return
+        import store
+        known = store.get_state('playlist_counts')
+        if not isinstance(known, dict):
+            known = {}
+        key = str(playlist_id)
+        if int(known.get(key) or 0) == count:
+            return
+        known[key] = count
+        store.set_state('playlist_counts', known)
+    except Exception:
+        pass
 
 
 def playlist_videos(playlist_id, limit=50):

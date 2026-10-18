@@ -7,7 +7,9 @@ _FUNCTION_CACHE = FunctionCache(CACHE_DIR)
 cache_function = _FUNCTION_CACHE.cache_function
 reset_cache = _FUNCTION_CACHE.reset_cache
 
-PER_PAGE = (5, 10, 15, 20, 25, 30, 35, 40, 45, 50)
+# 100 is what a playlist page arrives with, so a page that size is served
+# by a single request; kept last so the saved indexes do not move
+PER_PAGE = (5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 100)
 FEED_PER_CHANNEL = (1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20)
 
 COUNTRIES = ('AO', 'AR', 'AT', 'AU', 'BE', 'BR', 'CA', 'CH', 'CL', 'CO', 'CV',

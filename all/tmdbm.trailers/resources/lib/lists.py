@@ -874,14 +874,31 @@ def page_fetch_amount(page, blocked=False):
     return end + 1
 
 
+def _paged_number(value):
+    """A page total may arrive late, so it may be a callable.
+
+    A playlist only states its length on the page that also brings the first
+    rows, so the route cannot know it before fetching and passes a function.
+    """
+    try:
+        value = value() if callable(value) else value
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def paged(fetch, builder, mode, params=None, page=1, content='videos',
           blocked=False, total=None, next_extra=''):
     """Build one page of a listing.
 
-    `total` is for listings that already hold every entry in memory, like the
-    charts: the Next page button then follows the real length of the list
-    instead of what survived the filter, so blocking rows in the middle never
-    makes the button disappear.
+    `total` is the length of the whole list when it is known, as a number or as
+    a callable for one that only shows up after fetching. The Next page button
+    follows the rows that arrived rather than the number, because rows go down
+    in the making: the parser skips some and a song listed twice counts once.
+    With 50 per page a 130 track playlist asked for 51 rows, received 50 and
+    took that as the end of the list, so it stopped with no way forward. When
+    the list is known to be longer and the rows came up short, the page asks
+    once more for the whole length it was promised.
     """
     page = max(1, int(page or 1))
     per_page = results_per_page()
@@ -890,6 +907,7 @@ def paged(fetch, builder, mode, params=None, page=1, content='videos',
     active = blocked and bool(blocked_headroom())
     want = page_fetch_amount(page, blocked)
     source = []
+    known = None
     # One extra request at most, and only when the guess came out short: the
     # retry rescues the Next page button, it does not chase a long tail. Both
     # amounts derive from the rule count, so repeated visits ask for the same
@@ -909,24 +927,33 @@ def paged(fetch, builder, mode, params=None, page=1, content='videos',
             # and the Next page button walks into nothing
             source = filter_blocked(source)
             _note_drop_rate(raw, source)
-        if total is not None:
-            if total <= end:
+        if known is None:
+            known = _paged_number(total)
+        if known is not None:
+            if known <= end:
                 break
-            if len(source) > start:
+            if len(source) > end:
                 break
-        elif len(source) > end or want >= ceiling:
+            if want < known and attempt == 0:
+                want = min(known, end * 3 + per_page)
+                continue
+            break
+        if len(source) > end or want >= ceiling:
             break
         want = ceiling
     set_context(source)
     set_listing(mode, params, page)
     items = [built for built in
              (builder(entry) for entry in source[start:end]) if built]
-    more = (total > end) if total is not None else (len(source) > end)
+    more = len(source) > end
+    if known is not None and known <= end:
+        more = False
     if more:
         next_params = dict(params or {})
         next_params['page'] = page + 1
+        extra = next_extra() if callable(next_extra) else next_extra
         items.append(folder_item(
             '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(
-                config.T(32160).format(page + 1)) + next_extra,
+                config.T(32160).format(page + 1)) + (extra or ''),
             mode, config.icon('nextpage'), next_params))
     return items, content
