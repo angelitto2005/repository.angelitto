@@ -1,3 +1,7 @@
+1.1.316
+- Skip Intro now uses TheIntroDB API v4 (v3 is deprecated and will be shut down).
+- Skip Intro now also works on episodes whose intro starts at the very beginning of the video.
+
 1.1.315
 - Fixed long buffering after stopping an episode on slow devices
 - Up Next builds faster on slow devices and phones

@@ -37,13 +37,15 @@ class SegmentScraper:
     def fetch_theintrodb(self):
         result = {'intro': None}
         try:
-            response = requests.get('https://api.theintrodb.org/v3/media', params=self.params, timeout=_HTTP_TIMEOUT)
+            response = requests.get('https://api.theintrodb.org/v4/media', params=self.params, timeout=_HTTP_TIMEOUT)
             rjson = response.json()
             intro_list = rjson.get('intro') or []
             if intro_list:
                 intro = next(iter(intro_list))
                 intro_start, intro_end = intro.get('start_ms'), intro.get('end_ms')
-                if intro_start is not None and intro_end is not None:
+                if intro_start is None:
+                    intro_start = 0
+                if intro_end is not None and int(intro_end) > int(intro_start):
                     result['intro'] = (int(intro_start / 1000), int(intro_end / 1000))
         except Exception as e:
             log(f"[SKIP-INTRO] theintrodb fetch error: {e}", xbmc.LOGWARNING)
