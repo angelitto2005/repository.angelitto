@@ -1,3 +1,6 @@
+1.1.317
+- YouTube search no longer shows Shorts: they are filtered out of the results
+
 1.1.316
 - Skip Intro now uses TheIntroDB API v4 (v3 is deprecated and will be shut down).
 - Skip Intro now also works on episodes whose intro starts at the very beginning of the video.

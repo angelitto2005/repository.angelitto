@@ -369,7 +369,7 @@ def _yt_cache_get(query):
         pass
     try:
         from resources.lib.core.cache import MainCache
-        data = MainCache().get('ytsearch_' + query)
+        data = MainCache().get('ytsearchv2_' + query)
         if data:
             try:
                 _YT_SEARCH_CACHE[query] = (time.time(), data)
@@ -388,9 +388,31 @@ def _yt_cache_set(query, items):
         pass
     try:
         from resources.lib.core.cache import MainCache
-        MainCache().set('ytsearch_' + query, items, expiration=168)
+        MainCache().set('ytsearchv2_' + query, items, expiration=168)
     except:
         pass
+
+
+def _yt_is_short(node, url=''):
+    """True daca randul e un YouTube Short (vertical, sub 3 min).
+
+    Shorts vin pe trei cai diferite in raspunsul de cautare, iar semnul comun
+    e reelWatchEndpoint (nu watchEndpoint) sau URL /shorts/. Fara filtru
+    rezultau amestecate cu clipurile normale, iar trailerele/compilatiile de
+    deschidere se pierdeau in scurt-uri.
+    """
+    if isinstance(node, dict):
+        if 'reelWatchEndpoint' in node or 'shortsLockupViewModel' in node:
+            return True
+        nav = node.get('navigationEndpoint') or {}
+        if isinstance(nav, dict) and 'reelWatchEndpoint' in nav:
+            return True
+        ov = node.get('thumbnailOverlayTimeStatusRenderer') or {}
+        if isinstance(ov, dict) and ov.get('style') == 'SHORTS':
+            return True
+    if '/shorts/' in str(url or ''):
+        return True
+    return False
 
 
 def search_youtube_innertube(query, max_results=25):
@@ -442,18 +464,28 @@ def search_youtube_innertube(query, max_results=25):
         if len(out) >= max_results:
             return True
         if isinstance(node, dict):
+            # Gard la intrare: daca nodul e Short, sarim tot subarborele.
+            # Walk-ul recurseaza in profunzime (chiar si in interiorul
+            # videoRenderer), iar marcajul poate sta cu niveluri mai sus decat
+            # ramura pe care l-am prins - de aici, filtrul se aplica la
+            # fiecare nod, nu doar in handler-ele specifice.
+            if _yt_is_short(node):
+                return False
             vr = node.get('videoRenderer')
             if isinstance(vr, dict):
-                runs = (vr.get('title') or {}).get('runs') or []
-                t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
-                if push({'id': vr.get('videoId') or '', 'title': t}):
-                    return True
+                if not _yt_is_short(vr):
+                    runs = (vr.get('title') or {}).get('runs') or []
+                    t = ''.join(x.get('text', '') for x in runs) if runs else ((vr.get('title') or {}).get('simpleText') or '')
+                    if push({'id': vr.get('videoId') or '', 'title': t}):
+                        return True
             cvm_title = ''
             try:
                 vd = (node.get('compactVideoModel') or {}).get('compactVideoData', {}).get('videoData', {})
                 if isinstance(vd, dict) and vd.get('dragAndDropUrl'):
                     durl = vd.get('dragAndDropUrl') or ''
                     vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                    if _yt_is_short(vd, durl):
+                        vid = ''
                     md = vd.get('metadata') or {}
                     vt = md.get('title') or ''
                     if isinstance(vt, dict):
@@ -481,6 +513,8 @@ def search_youtube_innertube(query, max_results=25):
                 vd = ((node.get('videoWithContextData') or {}).get('videoData')) or {}
                 durl = vd.get('dragAndDropUrl') or ''
                 vid = durl.split('watch?v=')[1].split('&')[0].split('#')[0] if 'watch?v=' in durl else ''
+                if _yt_is_short(vd, durl):
+                    vid = ''
                 if vid and len(vid) == 11:
                     t = ''
                     try:

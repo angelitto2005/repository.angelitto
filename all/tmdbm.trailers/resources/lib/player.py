@@ -78,7 +78,34 @@ def _log(msg, level=xbmc.LOGINFO, always=False):
     config.log(msg, level, always=always)
 
 
+# An MPD is written by the clip that is about to play, and Kodi reads it a few
+# hundred milliseconds later through the proxy. Removing every one of them at
+# the start of the next playback therefore deletes the manifest of a clip that
+# is still opening: opening another track a couple of seconds apart, or Kodi
+# retrying a failed start, then asks the proxy for a file that is gone, and the
+# answer is a playback failed dialog. Anything younger than this is left alone,
+# and the manifest is also kept in memory so the file cannot break playback.
+_MPD_GRACE_SECS = 10 * 60
+_MPD_MEM = {}
+_MPD_MEM_MAX = 8
+
+
+def _mpd_remember(path, text):
+    """Hold the manifest beside its file, so the file is only a convenience."""
+    payload = text.encode('utf-8') if isinstance(text, str) else text
+    _MPD_MEM[path] = (time.time(), payload)
+    while len(_MPD_MEM) > _MPD_MEM_MAX:
+        oldest = min(_MPD_MEM, key=lambda key: _MPD_MEM[key][0])
+        _MPD_MEM.pop(oldest, None)
+
+
+def _mpd_from_memory(path):
+    item = _MPD_MEM.get(path)
+    return item[1] if item else None
+
+
 def _cleanup_old_mpd():
+    cutoff = time.time() - _MPD_GRACE_SECS
     dirs = set()
     dirs.add(xbmcvfs.translatePath('special://temp'))
     profile = xbmcvfs.translatePath('special://profile')
@@ -90,10 +117,15 @@ def _cleanup_old_mpd():
             continue
         for f in os.listdir(temp_dir):
             if f.startswith('yt') and f.endswith('.mpd'):
+                full = os.path.join(temp_dir, f)
                 try:
-                    os.remove(os.path.join(temp_dir, f))
+                    if os.path.getmtime(full) > cutoff:
+                        continue
+                    os.remove(full)
                 except Exception:
                     pass
+    for path in [key for key, item in _MPD_MEM.items() if item[0] <= cutoff]:
+        _MPD_MEM.pop(path, None)
 
 
 def _find_free_port():
@@ -201,11 +233,22 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         if raw.startswith('special://'):
             local_path = xbmcvfs.translatePath(raw)
             if raw.endswith('.mpd'):
+                payload = _mpd_from_memory(raw)
+                if payload is None and os.path.exists(local_path):
+                    try:
+                        with open(local_path, 'rb') as f:
+                            payload = f.read()
+                    except Exception:
+                        payload = None
+                if payload is None:
+                    # nothing to serve: a plain 404 keeps ISA and the log calm
+                    # instead of an unreadable file raised inside the handler
+                    self.send_error(404)
+                    return
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/dash+xml')
                 self.end_headers()
-                with open(local_path, 'rb') as f:
-                    self.wfile.write(f.read())
+                self.wfile.write(payload)
                 return
 
             if os.path.exists(local_path):
@@ -2397,8 +2440,13 @@ def play_youtube(video_id, title=None, genre=None, year=None,
 
         mpd_path = 'special://temp/yt_{}.mpd'.format(video_id)
         local_mpd = xbmcvfs.translatePath(mpd_path)
-        with open(local_mpd, 'w') as f:
-            f.write(mpd)
+        try:
+            with open(local_mpd, 'w') as f:
+                f.write(mpd)
+        except Exception as exc:
+            _log('MPD write failed: {}'.format(str(exc)[:90]),
+                 xbmc.LOGWARNING)
+        _mpd_remember(mpd_path, mpd)
 
         # Set stream_headers so Kodi sends YouTube UA/Origin/Referer directly to CDN
         hdr_parts = []
