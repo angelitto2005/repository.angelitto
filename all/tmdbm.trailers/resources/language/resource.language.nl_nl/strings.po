@@ -800,3 +800,11 @@ msgstr "kanaal"
 msgctxt "#32520"
 msgid "Chart position {} in {}"
 msgstr "Positie {} van {}"
+
+msgctxt "#32521"
+msgid "Showing {} of {}"
+msgstr "{} van {} getoond"
+
+msgctxt "#32522"
+msgid "This playlist cannot be read from YouTube"
+msgstr "Deze afspeellijst kan niet van YouTube worden gelezen"

@@ -512,6 +512,38 @@ def _modal_open():
 
 
 _CHART_FULL_FETCH = 250   # the longest YouTube Music chart is 100
+# YouTube's own pseudo playlists: they are not real ids and cannot be read
+_PLAYLIST_PSEUDO_IDS = ('LL', 'WL')
+
+
+def _playlist_counter(declared, page, per_page):
+    """The running count that rides on the Next page row, e.g. 60/240.
+
+    It says where the reader is and how long the playlist is without spending a
+    row of its own on the sentence.
+    """
+    if not declared:
+        return ''
+    shown = min(page * per_page, declared)
+    return '  [B][COLOR FFFFA500]{}/{}[/COLOR][/B]'.format(shown, declared)
+
+
+def _declared_playlist_count(playlist_id):
+    """How many tracks YouTube says this playlist holds."""
+    try:
+        import store
+        block = store.get_library('saved_playlists')
+        entries = (block.get('items') or block.get('entries') or []) \
+            if isinstance(block, dict) else (block or [])
+        for entry in entries:
+            if str(entry.get('playlist_id') or '') == str(playlist_id or ''):
+                try:
+                    return int(entry.get('count') or 0)
+                except (TypeError, ValueError):
+                    return 0
+    except Exception:
+        pass
+    return 0
 _CHART_RANK_RE = re.compile(r'^\s*(\d{1,3})\s*[.)]\s*')
 
 
@@ -804,22 +836,36 @@ def channel_playlists(handle, params):
 @route('playlist')
 def playlist(handle, params):
     import lists
+    from browse.constants import results_per_page
     from browse import yt
     url = params.get('url') or ''
     pid = _playlist_id(url)
-    if not pid:
-        build(handle, [], content='videos')
+    page = _page(params)
+    if not pid or pid in _PLAYLIST_PSEUDO_IDS:
+        build(handle, [lists.folder_item(
+            config.T(32522), 'playlist', config.icon('playlists'), {'url': url},
+            folder=False)[0:3]], content='videos')
         return
-    try:
-        source = yt.playlist_videos(pid, limit=200)
-    except Exception as exc:
-        config.log('playlist failed: {}'.format(exc))
-        source = []
-    source = lists.fill_missing_meta(source)
-    lists.set_listing('playlist', {'url': url}, 1)
-    lists.set_context(source)
-    items = [lists.video_item(entry, 'play') for entry in source]
-    build(handle, [item[0:3] for item in items], content='videos')
+    # One page at a time, like every other listing here. Asking for a whole
+    # long playlist in one go meant page one walked every continuation YouTube
+    # had, which measured at 30 to 42 seconds on real playlists. This asks for
+    # the page plus one row, the one extra row being what says there is more.
+    declared = _declared_playlist_count(pid)
+
+    def fetch(limit):
+        rows = list(yt.playlist_videos(pid, limit=limit) or [])
+        # the playlist parser gives title, channel, views and date, but no
+        # description and no duration, so the rows are completed here or the
+        # listing shows an empty plot and no length
+        return lists.fill_missing_meta(rows)
+
+    def builder(entry):
+        return lists.video_item(entry, 'play')
+
+    items, content = lists.paged(
+        fetch, builder, 'playlist', {'url': url}, page=page, content='videos',
+        next_extra=_playlist_counter(declared, page, results_per_page()))
+    build(handle, items, content=content)
 
 
 # ----------------------------------------------------------------------- playback
@@ -1792,9 +1838,9 @@ def subscribed_channels(handle, params):
 @route('saved_playlists')
 def saved_playlists(handle, params):
     import lists
-    from browse.constants import results_per_page
-    from browse import yt
     import store
+    from browse import yt
+    from browse.constants import results_per_page
     entries = store.get_library('saved_playlists')
     page = _page(params)
     per_page = results_per_page()
@@ -1802,11 +1848,38 @@ def saved_playlists(handle, params):
     end = start + per_page
 
     def _label(entry):
-        title = entry.get('title') or ''
+        # the skin fonts have no glyph for emoji, and a name made of nothing
+        # but emoji would come out as a row of empty boxes
+        title = lists.clean_title(entry.get('title') or '') or config.T(32194)
         try:
             count = int(entry.get('count') or 0)
         except (TypeError, ValueError):
             count = 0
+        if count > 0:
+            title += ' [B][COLOR FFFFA500]({})[/COLOR][/B]'.format(count)
+        if yt.is_private_playlist(entry.get('playlist_id')):
+            title += ' [B][COLOR FFFF5555](Privat)[/COLOR][/B]'
+        return title
+
+    items = [lists.folder_item(_label(entry), 'playlist',
+                               entry.get('image'),
+                               {'url': entry.get('playlist_id')})
+             for entry in entries[start:end]]
+    if len(entries) > end:
+        items.append(lists.folder_item(
+            '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(
+                config.T(32160).format(page + 1)),
+            'saved_playlists', config.icon('nextpage'), {'page': page + 1}))
+    build(handle, items, content=None)
+
+def _label(entry):
+    # the skin fonts have no glyph for emoji, and a playlist name that is
+    # nothing but emoji is left empty rather than shown as empty boxes
+    title = lists.clean_title(entry.get('title') or '') or config.T(32194)
+    try:
+        count = int(entry.get('count') or 0)
+    except (TypeError, ValueError):
+        count = 0
         if count > 0:
             title += ' [B][COLOR FFFFA500]({})[/COLOR][/B]'.format(count)
         if yt.is_private_playlist(entry.get('playlist_id')):

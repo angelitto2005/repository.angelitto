@@ -875,7 +875,7 @@ def page_fetch_amount(page, blocked=False):
 
 
 def paged(fetch, builder, mode, params=None, page=1, content='videos',
-          blocked=False, total=None):
+          blocked=False, total=None, next_extra=''):
     """Build one page of a listing.
 
     `total` is for listings that already hold every entry in memory, like the
@@ -927,6 +927,6 @@ def paged(fetch, builder, mode, params=None, page=1, content='videos',
         next_params['page'] = page + 1
         items.append(folder_item(
             '[B]{}  [COLOR FFFF4500]>>>[/COLOR][/B]'.format(
-                config.T(32160).format(page + 1)),
+                config.T(32160).format(page + 1)) + next_extra,
             mode, config.icon('nextpage'), next_params))
     return items, content

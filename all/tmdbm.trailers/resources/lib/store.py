@@ -19,6 +19,10 @@ _WATCH_LATER = 'watch_later.json'
 _LIBRARY = 'library.json'
 _STATE = 'state.json'
 _OAUTH = 'youtube_oauth.json'
+# Parsed copy of library.json, kept between reads and dropped when the file
+# changes. It is the one file here that grows with the account and is read once
+# per video while a listing is being completed.
+_LIBRARY_CACHE = {'stamp': None, 'data': None}
 
 _SEARCHES_CAP = 25
 _HISTORY_CAP = 100
@@ -31,7 +35,35 @@ def _path(name):
     return os.path.join(PROFILE, name)
 
 
+def _library_stamp():
+    """Fingerprint of library.json, fine grained enough that a write a moment
+    ago is always seen as a change."""
+    try:
+        info = os.stat(_path(_LIBRARY))
+    except OSError:
+        return None
+    return (info.st_mtime_ns, info.st_size)
+
+
 def _read(name, default):
+    if name == _LIBRARY:
+        # library.json is read once per video while a listing fills its
+        # metadata, and it is close to a megabyte once the account has played
+        # with it, so parsing it per call was costing seconds on every listing.
+        # The parsed copy is kept and only thrown away when the file itself
+        # changes, which also covers another addon process writing it.
+        stamp = _library_stamp()
+        if stamp is not None and _LIBRARY_CACHE['stamp'] == stamp \
+                and _LIBRARY_CACHE['data'] is not None:
+            return _LIBRARY_CACHE['data']
+        payload = _read_uncached(name, default)
+        _LIBRARY_CACHE['stamp'] = stamp
+        _LIBRARY_CACHE['data'] = payload
+        return payload
+    return _read_uncached(name, default)
+
+
+def _read_uncached(name, default):
     try:
         with open(_path(name), encoding='utf-8') as handle:
             payload = json.load(handle)
@@ -46,9 +78,17 @@ def _write(name, payload):
             json.dump(payload, handle, ensure_ascii=False, indent=1)
     except OSError as exc:
         config.log('write {} failed: {}'.format(name, exc), xbmc.LOGWARNING)
+    if name == _LIBRARY:
+        # the copy on disk is now this payload, so keep the parsed one and let
+        # the next read go through the cache instead of parsing again
+        _LIBRARY_CACHE['data'] = payload
+        _LIBRARY_CACHE['stamp'] = _library_stamp()
 
 
 def _unlink(name):
+    if name == _LIBRARY:
+        _LIBRARY_CACHE['stamp'] = None
+        _LIBRARY_CACHE['data'] = None
     try:
         os.remove(_path(name))
     except OSError:

@@ -208,6 +208,10 @@ class FunctionCache:
             # can save while a listing is being read, and a half written file
             # would make that listing fail instead of being slightly old.
             aside = filename + '.tmp'
+            # The folder can be gone: clearing the cache, or a profile cleaned
+            # while Kodi was closed. Saving into a missing folder fails
+            # silently and nothing is cached again for the whole session.
+            os.makedirs(self.path, exist_ok=True)
             with open(aside, 'wb') as file_handle:
                 file_handle.write(payload)
             os.replace(aside, filename)

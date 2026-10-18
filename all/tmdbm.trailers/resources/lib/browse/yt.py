@@ -167,6 +167,7 @@ def channel_header(url):
 
 
 @cache_function(cache_duration(30))
+@cache_function(cache_duration(15), stale=True)
 def _playlist(playlist_id, limit, locale):
     localization.configure()
     return _dedupe(limit)(rich.playlist_videos(playlist_id, limit=limit))
