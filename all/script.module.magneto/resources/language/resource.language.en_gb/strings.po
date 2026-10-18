@@ -1,8 +1,0 @@
- # Kodi Media Center language file
-# Addon Name: Magneto
-# Addon id: script.module.magneto
-# Addon Provider: Mr-Kodi
-# Translator English: Mr-Kodi
-# Translator English:
-msgid ""
-msgstr ""
