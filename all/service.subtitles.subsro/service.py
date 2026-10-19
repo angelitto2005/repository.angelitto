@@ -1028,7 +1028,7 @@ def get_title_variations(title):
             
     return final_variations
 
-def parse_results(html_content, languages_to_keep, required_season=None, search_year=None, search_query_title=None, is_manual_search=False):
+def parse_results_legacy(html_content, languages_to_keep, required_season=None, search_year=None, search_query_title=None, is_manual_search=False):
     soup = BeautifulSoup(html_content, 'html.parser')
     
     download_links = soup.find_all('a', href=re.compile(r'/subtitrare/descarca/'))
@@ -1175,6 +1175,166 @@ def parse_results(html_content, languages_to_keep, required_season=None, search_
             
     sorted_result = sorted(result, key=lambda sub: 0 if sub['ISO639'] == 'ro' else 1)
     return (sorted_result, raw_count)
+
+def parse_results_cards(cards, required_season=None, search_year=None, search_query_title=None, is_manual_search=False):
+    result = []
+    processed_links = set()
+
+    is_searching_movie = True
+    if required_season and str(required_season) not in ('0', 'None', ''):
+        is_searching_movie = False
+
+    def clean_for_compare(text):
+        if not text: return ""
+        t = text.lower()
+        t = re.sub(r'\(.*?\)', '', t)
+        if '+' in t: t = t.split('+')[0]
+        t = re.sub(r'[^a-z0-9\s]', '', t)
+        return ' '.join(t.split())
+
+    clean_search_query = clean_for_compare(search_query_title) if search_query_title else ""
+
+    for card in cards:
+        try:
+            dl_link = card.find('a', {'data-action': 'download'})
+            if not dl_link: continue
+            legatura_raw = dl_link.get('href', '')
+            if not legatura_raw: continue
+
+            if not legatura_raw.startswith('http'):
+                legatura = BASE_URL.rstrip('/') + legatura_raw
+            else:
+                legatura = legatura_raw
+
+            if legatura in processed_links: continue
+            processed_links.add(legatura)
+
+            nume, an_str = 'N/A', 'N/A'
+            traducator, uploader = 'N/A', 'N/A'
+            limba_text = 'N/A'
+
+            title_tag = card.find('h3', {'data-field': 'title'}) or card.find('h3')
+            if title_tag:
+                name_a = title_tag.find('a')
+                if name_a:
+                    nume = name_a.get_text(' ', strip=True)
+                elif title_tag.get_text(strip=True):
+                    nume = title_tag.get_text(' ', strip=True)
+                year_span = title_tag.find('span', {'data-field': 'year'})
+                if year_span:
+                    match_an = re.search(r'\((\d{4})\)', year_span.get_text(' ', strip=True))
+                    if match_an:
+                        an_str = match_an.group(1)
+            if nume and an_str != 'N/A':
+                nume = nume.replace('(%s)' % an_str, '').replace('()', '').strip()
+
+            row = card.find('div', {'data-field': 'translator'})
+            if row:
+                dd = row.find('dd')
+                if dd and dd.get_text(strip=True):
+                    traducator = dd.get_text(' ', strip=True)
+            row = card.find('div', {'data-field': 'uploader'})
+            if row:
+                dd = row.find('dd')
+                if dd and dd.get_text(strip=True):
+                    uploader = dd.get_text(' ', strip=True)
+
+            card_lang = (card.get('data-language') or '').strip().lower()
+            flag_img = card.find('img', {'data-field': 'language-flag'}) or card.find('img', src=re.compile(r'flag-'))
+            if card_lang:
+                limba_text = 'Romana'
+                if card_lang not in ('ro', 'ron', 'rum'):
+                    continue
+            elif flag_img:
+                flag_src = (flag_img.get('src') or '').lower()
+                if 'rom' not in flag_src and 'rum' not in flag_src and '.ro.' not in flag_src:
+                    continue
+                limba_text = 'Romana'
+
+            if is_searching_movie and clean_search_query and not is_manual_search:
+                clean_result_name = clean_for_compare(nume)
+                if clean_result_name != clean_search_query:
+                    tokens_search = set(clean_search_query.split())
+                    tokens_result = set(clean_result_name.split())
+                    diff = tokens_result - tokens_search
+                    allowed_diffs = {'the', 'a', 'an', 'movie', 'film', 'part', 'vol', 'volume', 'chapter'}
+                    if diff and not diff.issubset(allowed_diffs):
+                        continue
+
+            titlu_lower = nume.lower()
+
+            should_skip_series_check = is_manual_search
+
+            if is_searching_movie and not should_skip_series_check:
+                if 'sezon' in titlu_lower or 'season' in titlu_lower or 'series' in titlu_lower:
+                    continue
+
+            if search_year and an_str and an_str.isdigit() and not is_manual_search:
+                try:
+                    req_y = int(search_year)
+                    res_y = int(an_str)
+                    if abs(res_y - req_y) > 1:
+                        if is_searching_movie:
+                            continue
+                except: pass
+
+            if not is_searching_movie and not is_manual_search:
+                try:
+                    curr_s = int(required_season)
+                    is_match = False
+                    match_range = re.search(r'\b(?:sez|seas|series)\w*\W*(\d+)\s*-\s*(\d+)', titlu_lower)
+                    match_single = re.search(r'\b(?:sez|seas|series)\w*\W*0*(\d+)', titlu_lower)
+
+                    if not match_single:
+                        match_single = re.search(r'\bs(\d{1,2})\b', titlu_lower)
+
+                    if match_range:
+                        s_start, s_end = int(match_range.group(1)), int(match_range.group(2))
+                        if s_start <= curr_s <= s_end: is_match = True
+                    elif match_single:
+                        if int(match_single.group(1)) == curr_s: is_match = True
+
+                    if not is_match:
+                        continue
+                except: continue
+
+            if not traducator: traducator = 'N/A'
+            if not uploader: uploader = 'N/A'
+            if limba_text == 'N/A': limba_text = 'Romana'
+
+            main_part = u'[B]%s (%s)[/B]' % (nume, an_str)
+            trad_part = u'Trad: [B][COLOR FFFDBD01]%s[/COLOR][/B]' % (traducator)
+            lang_part = u'Limba: [B][COLOR FF00FA9A]%s[/COLOR][/B]' % (limba_text)
+            upl_part = u'Up: [B][COLOR FFFF69B4]%s[/COLOR][/B]' % (uploader)
+
+            display_name = u'%s | %s | %s | %s' % (main_part, trad_part, lang_part, upl_part)
+
+            result.append({
+                'SubFileName': display_name,
+                'ZipDownloadLink': legatura,
+                'LanguageName': 'Romanian',
+                'ISO639': 'ro',
+                'SubRating': '5',
+                'Traducator': traducator
+            })
+        except Exception:
+            continue
+
+    sorted_result = sorted(result, key=lambda sub: 0 if sub['ISO639'] == 'ro' else 1)
+    return sorted_result
+
+
+def parse_results(html_content, languages_to_keep, required_season=None, search_year=None, search_query_title=None, is_manual_search=False):
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    cards = soup.select('div[data-subtitle-result="true"]')
+    if cards:
+        raw_count = len(soup.find_all('a', {'data-action': 'download'}))
+        results = parse_results_cards(cards, required_season, search_year, search_query_title, is_manual_search)
+        return (results, raw_count)
+
+    return parse_results_legacy(html_content, languages_to_keep, required_season, search_year, search_query_title, is_manual_search)
+
 
 def searchsubtitles(item):
     log(__name__, ">>>>>>>>>> PORNIRE CĂUTARE SUBTITRARE (SUBS.RO) <<<<<<<<<<")
