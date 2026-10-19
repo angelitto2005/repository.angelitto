@@ -243,18 +243,59 @@ def _defer_active():
         return False
 
 
-def _invalidate_fast_cache(defer=False):
+def _snapshot_upnext():
+    """Copieaza listele Up Next din cache, inainte de orice golire.
+
+    Ordinea conteaza: _upnext_ui_sync() si providerii (mark_as_*_internal)
+    apeleaza clear_list_fast_cache(). Daca am prelua copia abia la final,
+    am porni de la un cache deja gol - si atunci "pastrarea" nu pastreaza
+    nimic (masurat: Up Next era cold dupa fiecare marcaj de film).
+    """
+    try:
+        from resources.lib.core.list_render import snapshot_upnext_cache
+        _snap = snapshot_upnext_cache()
+        return _snap
+    except Exception:
+        return None
+
+
+def _is_movie_change(content_type):
+    """True daca schimbarea e pe un FILM (nu pe un episod de serial).
+
+    Lista Up Next e despre episoade de serial, deci un film marcat nu o
+    schimba. Invalidarea globala o stergea oricum, iar deschiderea ei dupa
+    aceea reconstruia tot (masurat: 13.8s de BusyDialog pe Android).
+    """
+    try:
+        return str(content_type or '').lower() in ('movie', 'movies', 'film')
+    except Exception:
+        return False
+
+
+def _invalidate_fast_cache(defer=False, keep_upnext=False, snap=None):
     """Invalideaza listele din fast cache (RAM) dupa o schimbare de watched status.
 
     Doar LISTELE: metadatele (titluri/ploturi/sezoane) nu se schimba cind
     marchezi un episod vazut, iar pastrarea lor face refresh-ul de Up Next
     instant in loc de re-constructie completa din TMDb.
 
-    defer=True: NU stergem lista, o lasam sa fie servita ca "veche" (stale).
-    Folosit la oprirea din player: pe liste mari (160 de randuri) reconstructia
-    dureaza secunde, iar daca golim cache-ul, containerul ramine NEGRU cu
-    BusyDialog pana se termina. Cu stale-while-revalidate lista veche ramane
-    vizibila, iar pre-randarea o rescrie in fundal si re-randeaza singura.
+    defer=True: se invalideaza TOT, dar se PASTREAZA listele Up Next peste
+    invalidare (si apoi se rescriu inapoi). De ce:
+
+    - Daca nu s-ar invalida nimic, listele ar continua sa arate starea de
+      dinaintea marcajului, deci bifa de vizionat ar intarzia pana la
+      urmatoarea invalidare (in practica: pana la sync-ul automat, ~30s).
+    - Daca s-ar invalida tot, Up Next (160 de randuri) s-ar reconstrui de la
+      zero la intoarcerea din player -> container negru cu BusyDialog.
+
+    Pastrand doar Up Next, celelalte liste se reconstruiesc (bifa apare
+    imediat) iar Up Next randeaza instant din cache. Corectitudinea e
+    asigurata oricum de carpe-ul de 30s din tmdb_api, care ignora cache-ul
+    dupa acel interval si reconstruiește din DB.
+
+    keep_upnext=True: cache-ul Up Next nu se atinge deloc. Se foloseste la
+    marcajele de FILM - lista Up Next e despre episoade de serial, deci un
+    film marcat nu o schimba, iar invalidarea globala o stergea oricum.
     """
     # Setul de "complet vizionate" se goleste MEREU (e derivat din acelasi DB
     # care tocmai s-a modificat); altfel un serial nou complet vizionat ar
@@ -263,7 +304,9 @@ def _invalidate_fast_cache(defer=False):
         clear_fully_watched_cache()
     except:
         pass
-    if defer or _defer_active():
+    _snap = None
+    _defer = bool(defer or _defer_active())
+    if _defer:
         # Marcam lista ca "veche": o servim ca stale ca sa nu ramanem cu container
         # negru, dar NU la nesfarsit. Carpe-ul din tmdb_api (UP_NEXT_STALE_MAX_S)
         # ignora cache-ul dupa acel interval, deci corectitudinea e garantata
@@ -274,12 +317,44 @@ def _invalidate_fast_cache(defer=False):
             _xg.Window(10000).setProperty('tmdbmovies.upnext_stale_since', str(_t.time()))
         except Exception:
             pass
-        return
+    if keep_upnext and _snap is None:
+        # Pastram Up Next peste invalidare: un marcaj de FILM nu schimba
+        # lista de episoade, deci nu are rost sa o reconstruim (masurat:
+        # deschiderea Up Next dupa un unwatch de film reconstruia 13.8s).
+        #
+        # ATENTIE la ordine: providerii (mark_as_watched_internal) apeleaza
+        # clear_list_fast_cache() in worker, INAINTE de invalidarea de aici.
+        # Daca am face snapshotul aici, am prelua deja cache-ul gol. De aceea
+        # _fanout_mark ia snapshotul INAINTE sa porneasca workerii si il
+        # transmite prin parametrul snap.
+        _snap = _snapshot_upnext()
+        if not _snap:
+            # Cache-ul era deja gol (o golire anterioara l-a sters). Fara
+            # copie, lista Up Next ar ramane rece pana la urmatoarea
+            # constructie. O reconstruim in fundal - cu datele proaspete,
+            # ca prima deschidere sa fie instanta.
+            try:
+                import threading as _th_r
+                from resources.lib.core.list_render import _prebuild_both_variants
+                _th_r.Thread(target=_prebuild_both_variants, daemon=True).start()
+            except Exception:
+                pass
     try:
         from resources.lib.core.cache import clear_list_fast_cache
-        clear_list_fast_cache()
+        # stale_ok=True: lista veche ramane utilizabila ca fallback (vezi
+        # cache.get_fast_cache), deci randarea e instantana. Bifa de vizionare
+        # e corectata la randare, din DB-ul local (list_render._patch_watched_flags),
+        # deci ce se vedea e corect chiar daca lista e "veche". Dupa 30s
+        # fallback-ul expira si lista se reconstruieste normal.
+        clear_list_fast_cache(force=_defer, stale_ok=_defer)
     except:
         pass
+    if _snap:
+        try:
+            from resources.lib.core.list_render import restore_upnext_cache
+            restore_upnext_cache(_snap)
+        except Exception:
+            pass
 
 def _on_home_widget():
     try:
@@ -314,7 +389,7 @@ def _upnext_row_updated_stamp():
         return 0.0
 
 
-def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
+def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False, variant=None):
     """Construieste lista Up Next noua in fast cache, fara GUI.
 
     Rulat intr-un thread de fundal la stop: cand userul inchide dialogul de binge,
@@ -325,9 +400,11 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
     Nu ghicem ce lista e vizibila: in timpul redarii Container.FolderPath este
     GOL, deci ne uitam la ultima lista Up Next randata (tmdbmovies.upnext_view).
     """
-    variant = ''
+    variant = variant or ''
     try:
-        if container_path and 'plugin.video.tmdbmovies' in container_path.lower():
+        if variant:
+            pass
+        elif container_path and 'plugin.video.tmdbmovies' in container_path.lower():
             variant = 'tmdb' if 'mode=tmdb_up_next' in container_path.lower() else 'provider'
         else:
             import xbmcgui as _xg
@@ -335,6 +412,18 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
     except Exception:
         variant = ''
     if variant not in ('tmdb', 'provider'):
+        # NU mai renuntam. Construim lista Up Next oricum, ca sa fie gata
+        # pentru momentul in care userul o deschide.
+        #
+        # Motivul (masurat): la marcarea unui FILM, cache-ul Up Next era
+        # invalidat (invalidarea e globala) si pre-randarea de la stop era
+        # sarita - pentru ca lista vizibila nu era Up Next. Cand userul
+        # deschidea Up Next peste 30s, cache-ul pierduse fallback-ul si lista
+        # se reconstruia de la zero: 14.5s de BusyDialog pe un device lent.
+        #
+        # Varianta: cea randata ultima data daca o stimem (upnext_view), altfel
+        # cea a providerului activ. Re-randarea (Container.Refresh) ramane
+        # conditionata de lista vizibila - vezi blocul de mai jos.
         try:
             from resources.lib.core.utils import log
             _path = container_path or '(gol)'
@@ -344,11 +433,20 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
                 _v = _xg.Window(10000).getProperty('tmdbmovies.upnext_view') or '(gol)'
             except Exception:
                 pass
-            log(f"[UP NEXT] warm/pre-randare omise: varianta necunoscuta "
-                f"(warm_only={warm_only}, path={_path}, upnext_view={_v})")
+            # Ultima varianta folosita de user (persistata in setari) - daca
+            # o stimtem, e mai bine decat o ghicitura: o ghicitura gresita
+            # construia lista gresita, iar deschiderea celei reale reconstruia
+            # tot de la zero (masurat: 8.7s pe Android).
+            try:
+                from resources.lib.core.list_render import get_last_upnext_variant
+                _last = get_last_upnext_variant()
+            except Exception:
+                _last = ''
+            variant = _last if _last in ('tmdb', 'provider') else 'provider'
+            log(f"[UP NEXT] varianta necunoscuta (path={_path}, upnext_view={_v}) - "
+                f"construim lista Up Next varianta '{variant}'")
         except Exception:
-            pass
-        return False
+            variant = 'provider'
     try:
         if min_ts:
             import time as _t
@@ -427,6 +525,24 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False):
         try:
             import time as _t
             import xbmc as _x
+            # 0. Daca lista vizibila NU e Up Next, re-randarea noastra nu are ce
+            #    corecta: ar redesena orice alta lista (ex. Trending) fara sa
+            #    schimbe nimic, doar cu o rotita busy in plus. Cache-ul e scris
+            #    oricum, deci lista Up Next va fi corecta cand o deschizi.
+            #    (Masurat: userul era in Trending, iar re-randarea a redesenat
+            #    Trending cu 0.7s de BusyDialog pentru nimic.)
+            try:
+                _folder = (_x.getInfoLabel('Container.FolderPath') or '').lower()
+            except Exception:
+                _folder = ''
+            # NU se restrictioneaza la lista Up Next: re-randarea este si
+            # MECANISMUL DE REPARARE al listei vizibile. Daca refreshul imediat
+            # al playerului a picat in fereastra in care fereastra media se
+            # re-initializeaza, lista ramane corupta (goala, sau titluri dublate
+            # cu thumbnail in fata numelui). Re-randarea de la +5-8s o
+            # reconstruieste corect. Fara ea, utilizatorul trebuie sa iasa si sa
+            # intre din nou in lista.
+            #
             # 1. Asetare: dialogul de binge tocmai s-a inchis, containerul inca se
             # rearanjeaza. 2s e suficient si nu se simte.
             _settle = _t.time() + 2.0
@@ -592,30 +708,54 @@ _WATCHED_MARK_TOGGLES = {
 }
 
 
+# Starea 'nu am putut citi' a providerului activ, pentru ultima verificare.
+_PROVIDER_UNKNOWN = {'list': []}
+
+
 def _connected_mark_providers():
+    """Providerii la care putem salva marcaje.
+
+    Distinge TREI stari, nu doua:
+      - conectat: tokenul a fost citit si exista
+      - neconectat: tokenul a fost citit si NU exista (userul n-a conectat)
+      - NECUNOSCUT: citirea a ARUNCAT o exceptie (de ex. in fereastra de
+        update a addonului, cand xbmcaddon.Addon e temporar invalid)
+
+    Diferenta conteaza: "necunoscut" NU e "neconectat". In fereastra de
+    update, orice setare care nu e declarata in settings.xml cade pe
+    xbmcaddon.Addon si arunca "Unknown addon id" -> tokenul parea gol ->
+    addonul credea ca providerul e deconectat si afisa un dialog inselator
+    la pornire. Acum starea e raportata corect si nu se prompt-eaza nimic.
+    """
     connected = ['local']  # local: mereu conectat (nicio retea, zero pop-up)
+    unknown = []
     try:
         from resources.lib.api import trakt_api
         if trakt_api.get_trakt_token():
             connected.append('trakt')
     except Exception:
-        pass
+        unknown.append('trakt')
     try:
         from resources.lib.providers import mdblist
         if mdblist.is_authenticated():
             connected.append('mdblist')
     except Exception:
-        pass
+        unknown.append('mdblist')
     try:
         from resources.lib.providers import simkl
         if simkl.is_authenticated():
             connected.append('simkl')
     except Exception:
-        pass
+        unknown.append('simkl')
     try:
         from resources.lib.providers import punchplay
         if punchplay.is_authenticated():
             connected.append('punchplay')
+    except Exception:
+        unknown.append('punchplay')
+    try:
+        from resources.lib.core.cache import _PROVIDER_UNKNOWN
+        _PROVIDER_UNKNOWN['list'] = unknown
     except Exception:
         pass
     return connected
@@ -679,6 +819,44 @@ def _prompt_enabled():
         return True
 
 
+_PROVIDER_RETRY_DELAY_S = 15
+_PROVIDER_RECHECK_DONE = {'ts': 0.0}
+
+
+def _schedule_provider_recheck():
+    """Reverifica providerul activ peste ~15s, o singura data la 5 minute.
+
+    Fereastra de update a addonului dura câteva secunde. Daca atunci tokenul
+    n-a putut fi citit, nu e un semn ca providerul e deconectat - de aceea
+    verificam din nou, inainte de a spune ceva userului.
+    """
+    try:
+        import time as _t
+        now = _t.time()
+        if now - float(_PROVIDER_RECHECK_DONE.get('ts') or 0) < 300:
+            return
+        _PROVIDER_RECHECK_DONE['ts'] = now
+    except Exception:
+        return
+
+    def _recheck():
+        try:
+            import time as _t
+            _t.sleep(_PROVIDER_RETRY_DELAY_S)
+        except Exception:
+            return
+        try:
+            ensure_active_provider()
+        except Exception:
+            pass
+
+    try:
+        import threading
+        threading.Thread(target=_recheck, daemon=True).start()
+    except Exception:
+        pass
+
+
 def ensure_active_provider(notify=True, interactive=True):
     # Local: mereu conectat -> zero pop-up la boot. Fix-ul pentru userii fara cont.
     if _get_provider_raw() == 'local':
@@ -692,6 +870,19 @@ def ensure_active_provider(notify=True, interactive=True):
     except Exception:
         return False
     if prov in connected:
+        return False
+    # Starea "nu am putut citi" (ex. fereastra de update a addonului, cand
+    # xbmcaddon.Addon e temporar invalid) NU e "deconectat". Nu promptam
+    # nimic in acest caz - altfel apare un dialog inselator la pornire, iar
+    # userul poate schimba providerul activ fara sa stie. Retry mai jos.
+    try:
+        unknown = list(_PROVIDER_UNKNOWN.get('list') or [])
+    except Exception:
+        unknown = []
+    if prov in unknown:
+        xbmc.log('[TMDb Movies] Provider check: %s - stare necunoscuta (citire esuata), '
+                 'reverific in %ds.' % (prov, _PROVIDER_RETRY_DELAY_S), xbmc.LOGINFO)
+        _schedule_provider_recheck()
         return False
     # Tinta e MEREU Kodi (Local), pe ambele cai: dialog (alegerea userului) si
     # silentioasa (avertizarea oprita). Regula: addonul nu muta NICIODATA singur
@@ -810,12 +1001,16 @@ def mark_menu_label(is_watched):
     return '[B][COLOR FF6AFB92]Mark [/COLOR]%s[/B]' % _split_colored('Watched', ordered)
 
 
-def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh):
+def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh, keep_upnext=False):
     targets = [p for p in _WATCHED_MARK_PROVIDERS if p in (providers or [])]
     if not targets:
         return []
     done = []
     lock = threading.Lock()
+    # Snapshot-ul Up Next se ia ACUM, inainte de workeri: fiecare provider
+    # apeleaza clear_list_fast_cache() in mark_as_*_internal, deci daca am
+    # astepta pana la invalidarea finala, am prelua deja cache-ul gol.
+    _upnext_snap = _snapshot_upnext() if keep_upnext else None
 
     def _one(prov):
         try:
@@ -857,7 +1052,7 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
         t.join(30)
     _refresh_tmdb_up_next(tmdb_id)
     _verify_tmdb_upnext_heal(tmdb_id)
-    _invalidate_fast_cache()
+    _invalidate_fast_cache(keep_upnext=keep_upnext, snap=_upnext_snap)
     ordered_done = [p for p in _WATCHED_MARK_PROVIDERS if p in done]
     if notify:
         import xbmcgui
@@ -876,12 +1071,12 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
     return ordered_done
 
 
-def mark_watched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True):
-    return _fanout_mark(True, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh)
+def mark_watched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True, keep_upnext=False):
+    return _fanout_mark(True, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh, keep_upnext=keep_upnext)
 
 
-def mark_unwatched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True):
-    return _fanout_mark(False, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh)
+def mark_unwatched_on_providers(tmdb_id, content_type, season=None, episode=None, providers=None, notify=True, sync_provider=True, do_refresh=True, keep_upnext=False):
+    return _fanout_mark(False, tmdb_id, content_type, season, episode, providers, notify, sync_provider, do_refresh, keep_upnext=keep_upnext)
 
 def get_provider():
     return _get_provider_raw()
@@ -971,8 +1166,9 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         # Randul TMDB Up Next (sursa listei "TMDb UP Next") trebuie rescris INTOTDEAUNA
         # in acest flux, nu async: async lasa lista TMDB cu episodul vechi daca UI-ul
         # s-a randat inaintea thread-ului (fara refresh ulterior).
+        _upnext_snap = _snapshot_upnext() if _is_movie_change(content_type) else None
         _upnext_ui_sync(preserve_binge=(not do_refresh))
-        _invalidate_fast_cache()
+        _invalidate_fast_cache(snap=_upnext_snap, keep_upnext=_is_movie_change(content_type))
         if do_refresh: refresh_ui()
         return
     # Fanout online: scriem si local (daca e pending), apoi providerii online.
@@ -985,11 +1181,12 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
     if not targets:
         _refresh_tmdb_up_next(tmdb_id)
         _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_snap = _snapshot_upnext() if _is_movie_change(content_type) else None
         _upnext_ui_sync(preserve_binge=(not do_refresh))
-        _invalidate_fast_cache()
+        _invalidate_fast_cache(snap=_upnext_snap, keep_upnext=_is_movie_change(content_type))
         if do_refresh: refresh_ui()
         return
-    mark_watched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=notify, sync_provider=sync_provider, do_refresh=do_refresh)
+    mark_watched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=notify, sync_provider=sync_provider, do_refresh=do_refresh, keep_upnext=_is_movie_change(content_type))
 
 def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sync_provider=True, do_refresh=True):
     targets = _mark_targets()
@@ -1018,8 +1215,10 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
             mark_as_unwatched_internal(tmdb_id, content_type, season, episode, sync_punchplay=sync_provider, refresh_ui=do_refresh)
         _refresh_tmdb_up_next(tmdb_id)
         _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_snap = _snapshot_upnext() if _is_movie_change(content_type) else None
         _upnext_ui_sync(preserve_binge=True)
-        _invalidate_fast_cache()
+        _invalidate_fast_cache(snap=_upnext_snap, defer=True,
+                                       keep_upnext=_is_movie_change(content_type))
         if do_refresh: refresh_ui()
         return
     if local_pending:
@@ -1031,11 +1230,13 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
     if not targets:
         _refresh_tmdb_up_next(tmdb_id)
         _verify_tmdb_upnext_heal(tmdb_id)
+        _upnext_snap = _snapshot_upnext() if _is_movie_change(content_type) else None
         _upnext_ui_sync(preserve_binge=True)
-        _invalidate_fast_cache()
+        _invalidate_fast_cache(snap=_upnext_snap, defer=True,
+                                       keep_upnext=_is_movie_change(content_type))
         if do_refresh: refresh_ui()
         return
-    mark_unwatched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=True, sync_provider=sync_provider, do_refresh=do_refresh)
+    mark_unwatched_on_providers(tmdb_id, content_type, season, episode, providers=targets, notify=True, sync_provider=sync_provider, do_refresh=do_refresh, keep_upnext=_is_movie_change(content_type))
 
 def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, duration_seconds=0, position_seconds=0, watched=None, watched_threshold=None):
     prov = _get_provider_raw()
@@ -1045,7 +1246,10 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, 
         # scris local de player.py (tabela partajata playback_progress) — doar listele
         # se invalideaza la stop.
         if action == 'stop':
-            _invalidate_fast_cache()
+            # Un scrobble de FILM nu schimba lista Up Next (ea e despre episoade de
+            # serial), deci o pastram - altfel cache-ul se pierdea la fiecare
+            # actualizare de progres si prima deschidere dupa aceea era rece.
+            _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
         return
     if prov == 'trakt':
         from resources.lib.api.trakt_api import send_trakt_scrobble
@@ -1061,7 +1265,10 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, 
             api.scrobble_pause(content_type, tmdb_id, progress, season, episode)
         elif action == 'stop':
             api.scrobble_stop(content_type, tmdb_id, progress, season, episode)
-            _invalidate_fast_cache()
+            # Un scrobble de FILM nu schimba lista Up Next (ea e despre episoade de
+            # serial), deci o pastram - altfel cache-ul se pierdea la fiecare
+            # actualizare de progres si prima deschidere dupa aceea era rece.
+            _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
     elif prov == 'simkl':
         from resources.lib.providers.simkl_api import SIMKLAPI
         api = SIMKLAPI()
@@ -1071,7 +1278,10 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, 
             api.scrobble_pause(content_type, tmdb_id, progress, season, episode)
         elif action == 'stop':
             api.scrobble_stop(content_type, tmdb_id, progress, season, episode)
-            _invalidate_fast_cache()
+            # Un scrobble de FILM nu schimba lista Up Next (ea e despre episoade de
+            # serial), deci o pastram - altfel cache-ul se pierdea la fiecare
+            # actualizare de progres si prima deschidere dupa aceea era rece.
+            _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
     else:
         from resources.lib.providers.punchplay_api import PunchplayAPI, _pp_enqueue
         api = PunchplayAPI()
@@ -1088,7 +1298,10 @@ def dispatch_scrobble(action, tmdb_id, content_type, season, episode, progress, 
             _pp_enqueue('resume', lambda: api.scrobble_resume(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds))
         elif action == 'stop':
             _pp_enqueue('stop', lambda: api.scrobble_stop(content_type, tmdb_id, progress, season, episode, duration_seconds=duration_seconds, position_seconds=position_seconds, watched=watched, watched_threshold=watched_threshold))
-            _invalidate_fast_cache()
+            # Un scrobble de FILM nu schimba lista Up Next (ea e despre episoade de
+            # serial), deci o pastram - altfel cache-ul se pierdea la fiecare
+            # actualizare de progres si prima deschidere dupa aceea era rece.
+            _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
 
 def _kodi_delete_resume_bookmark(tmdb_id, content_type, season=None, episode=None):
     try:
@@ -1202,7 +1415,7 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     _kodi_delete_resume_bookmark(tmdb_id, content_type, season, episode)
     # 4. Refresh widget-uri de pe Home (UpdateLibrary) — Container.Refresh din
     #    remove_from_progress doar reimprospateaza containerul activ, nu widget-urile.
-    _invalidate_fast_cache()
+    _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
     refresh_ui()
 
 def get_watched_counts_map(tmdb_ids):
@@ -1341,6 +1554,38 @@ def get_watched_episodes_set(tmdb_id):
     except Exception:
         pass
     return res
+
+def get_watched_movies_set_batch(tmdb_ids):
+    """Filmele vizonate din providerul activ, intr-un singur query.
+
+    Folosit la randare, ca bifa sa fie corectata fara sa reconstruim lista
+    (vezi list_render._patch_watched_flags).
+    """
+    prov = _get_provider_raw()
+    tbl = {'trakt': 'trakt_watched_movies', 'mdblist': 'mdblist_watched_movies',
+           'simkl': 'simkl_watched_movies', 'punchplay': 'punchplay_watched_movies',
+           'local': 'local_watched_movies'}.get(prov, 'trakt_watched_movies')
+    result = set()
+    ids = [str(x) for x in (tmdb_ids or []) if x]
+    if not ids:
+        return result
+    try:
+        mod = get_source_module()
+        conn = mod.get_connection()
+        cur = conn.cursor()
+        chunk_size = 400
+        for i in range(0, len(ids), chunk_size):
+            chunk = ids[i:i + chunk_size]
+            placeholders = ','.join(['?'] * len(chunk))
+            cur.execute(f"SELECT DISTINCT tmdb_id FROM {tbl} WHERE tmdb_id IN ({placeholders})", chunk)
+            for row in cur.fetchall():
+                if row and row[0] is not None:
+                    result.add(str(row[0]))
+        conn.close()
+    except Exception:
+        pass
+    return result
+
 
 def get_watched_episodes_set_batch(tmdb_ids):
     prov = _get_provider_raw()
@@ -1844,6 +2089,22 @@ def sync_full_library(silent=False, force=False, source='manual', post_update=Fa
             window.setProperty(_LAST_SYNC_STAMP_KEY, str(_t0))
             _say(100, 'FF00CED1', 'TMDb Movies', 'Sync complete')
             xbmc.log('[SYNC DISPATCH] === SYNC COMPLETE (%d/%d legs ok) ===' % (succeeded, connected), xbmc.LOGINFO)
+            # Incalzeste AMBELE liste Up Next (TMDb + provider) in cache.
+            #
+            # De ce aici si nu in fiecare lega: legile se pot sari (ex. TMDb leg
+            # skipped daca s-a sincronizat cu 28 min in urma) si o lega care ruleaza
+            # la randul ei goleeste cache-ul la final -> pre-randarea legii
+            # anterioare se pierdea. Aici, dupa tot sync-ul, nimic nu mai sterge
+            # nimic, deci ambele liste raman calde.
+            #
+            # Masurat: fara asta, prima deschidere dupa restart reconstruia tot
+            # de la zero (13.3s pentru varianta TMDb).
+            try:
+                import threading as _th_wu
+                from resources.lib.core.list_render import _prebuild_both_variants
+                _th_wu.Thread(target=_prebuild_both_variants, daemon=True).start()
+            except Exception:
+                pass
             if not silent:
                 _xg.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
                                           "Sync Complete",

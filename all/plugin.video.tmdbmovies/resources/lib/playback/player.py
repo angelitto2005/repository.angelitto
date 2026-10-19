@@ -2230,6 +2230,36 @@ def start_playback_monitor(player_instance, dialog=None):
                 # -0.05s: daca daemonul a scris deja randul chiar inainte de
                 # acest time.time(), stampul lui e "mai vechi" cu microsecunde
                 # si am astepta 3s degeaba.
+                #
+                # SEMNALUL "vine o re-randare": marcajul stinge toate listele, dar
+                # pastreaza cache-ul Up Next peste invalidare. Randarea de la
+                # intoarcerea din player ar redesena ACEEASI lista, fara bifa
+                # (data noua vine abia dupa ce se termina pre-randarea) - deci
+                # era o rotita busy degeaba, in plus fata de cea care aduce bifa.
+                # Cu semnalul asta, refreshul intermediar se sare, iar lista
+                # ramane curata pana cand pre-randarea rescrie cache-ul si
+                # re-randeaza singura.
+                try:
+                    import xbmcgui as _xg2
+                    _xg2.Window(10000).setProperty('tmdbmovies.upnext_rerender_pending', 'true')
+                except Exception:
+                    pass
+
+                def _prebuild_upnext_after_stop(_min_ts):
+                    try:
+                        from resources.lib.providers.watched_provider import _prebuild_upnext_cache
+                        _prebuild_upnext_cache('', _min_ts)
+                    except Exception:
+                        pass
+                    finally:
+                        # Semnalul se stinge ORIUNE s-a terminat pre-randarea
+                        # (cu re-randare sau fara - de ex. "varianta necunoscuta",
+                        # caz in care refreshul intermediar TREBUIE sa ramana).
+                        try:
+                            import xbmcgui as _xg3
+                            _xg3.Window(10000).clearProperty('tmdbmovies.upnext_rerender_pending')
+                        except Exception:
+                            pass
                 _prebuild_thread = threading.Thread(target=_prebuild_upnext_after_stop, args=(time.time() - 0.05,), daemon=True)
                 _prebuild_thread.start()
                 # Stergem punctul de resume
@@ -2404,11 +2434,26 @@ def start_playback_monitor(player_instance, dialog=None):
             # paralel lasa containerul GOL (sau crash in GUI). Cazul il preia
             # safety pass-ul de mai jos, cind userul a inchis dialogul.
             _refresh_ok = True
+            _skipped_for_rerender = False
             try:
                 if xbmc.getCondVisibility('System.HasModalDialog') or xbmc.getCondVisibility('Container.IsUpdating'):
                     _refresh_ok = False
             except:
                 _refresh_ok = True
+            # Daca o re-randare e deja in asteptare (pre-randarea dupa marcaj),
+            # refreshul de aici ar redesena aceeasi lista, fara bifa - pana
+            # cand pre-randarea termina. Era o rotita busy degeaba. Il sarim,
+            # iar re-randarea care vine face toata treaba (lista corecta + bifa).
+            _rerender_pending = False
+            try:
+                _rerender_pending = (xbmcgui.Window(10000).getProperty(
+                    'tmdbmovies.upnext_rerender_pending') == 'true')
+            except Exception:
+                _rerender_pending = False
+            if _rerender_pending and _refresh_ok:
+                _refresh_ok = False
+                _skipped_for_rerender = True
+                log("[PLAYER-MONITOR] Container refresh sarit (vine re-randare cu bifa)")
             if _refresh_ok and time.time() - _last_upnext_refresh > 10:
                 xbmc.executebuiltin('Container.Refresh')
                 try:
@@ -2416,7 +2461,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 except Exception:
                     pass
                 log("[PLAYER-MONITOR] Container refreshed")
-            elif not _refresh_ok:
+            elif not _refresh_ok and not _skipped_for_rerender:
                 log("[PLAYER-MONITOR] Container refresh amanat (dialog modal / container ocupat) - preia safety pass")
             # PLASA DE SIGURANTA (5s): refresh-ul de mai sus poate cadea in
             # milisecunda in care fereastra media se initializeaza (log real:
@@ -2462,6 +2507,14 @@ def start_playback_monitor(player_instance, dialog=None):
                         _s = 0.0
                     if time.time() - _s < 10.0:
                         return
+                    # NU se sare aici: safety pass-ul este MECHANISMUL DE
+                    # REPARARE. Refreshul imediat al playerului poate cadea in
+                    # fereastra in care fereastra media se re-initializeaza
+                    # (race cunoscut: "Container.Refresh 24.262" vs "Window Init
+                    # MyVideoNav 24.261") si lasa lista corupta - goala, sau cu
+                    # titluri dublate si thumbnails in fata numelui. Acest refresh
+                    # de la +5s re-randeaza corect. Fara el, utilizatorul trebuie
+                    # sa iasa si sa intre din nou in lista.
                     try:
                         if xbmc.getCondVisibility('System.HasModalDialog'):
                             log("[PLAYER-MONITOR] Safety refresh amanat (dialog modal deschis)")

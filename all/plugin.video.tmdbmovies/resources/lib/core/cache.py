@@ -185,6 +185,19 @@ def get_fast_cache(key):
             cache_obj = json.loads(data)
             if cache_obj.get('ver') == ver:
                 return cache_obj.get('items')
+            # FALLBACK "stale": daca ultima invalidare a fost un MARCAJ (nu un
+            # sync), lista veche e inca utilizabila. Altfel randarea ar trebui
+            # sa reconstruiasca lista de la zero (secunde bune de BusyDialog
+            # peste lista goala), doar pentru ca un film/serial tocmai a fost
+            # marcat. Bifa de vizionare e corectata la randare, din DB-ul
+            # local (vezi list_render._patch_watched_flags), deci ce se vedea
+            # e corect chiar daca lista e "veche".
+            try:
+                _ss = float(window.getProperty("tmdbmovies_watched_stale_since") or 0)
+                if _ss > 0 and (time.time() - _ss) < UP_NEXT_STALE_MAX_S:
+                    return cache_obj.get('items')
+            except Exception:
+                pass
     except: pass
     return None
 
@@ -274,7 +287,9 @@ def set_playback_active(active):
         pass
 
 
-def clear_list_fast_cache():
+
+
+def clear_list_fast_cache(force=False, stale_ok=False):
     """Invalideaza DOAR listele (fast cache), pastrind cache-ul RAM de metadate.
 
     Watched status nu schimba metadatele (titluri/ploturi/sezoane/imagini), dar
@@ -292,18 +307,32 @@ def clear_list_fast_cache():
     Corectitudinea nu depinde de asta: carpe-ul din tmdb_api ignora cache-ul
     dupa prag, iar pre-randarea il rescrie imediat ce termina.
     """
-    if upnext_stale_active():
-        return
-    if _playback_active():
-        return
+    # force=True: invalidam ORICE, chiar si in fereastra stale sau in timpul
+    # redarii. Folosit la oprirea din player, unde listele trebuie sa se
+    # reconstruiasca (bifa de vizionat sa apara imediat) - iar Up Next e
+    # pastrat separat, peste invalidare, ca sa nu produca pagina neagra.
+    if not force:
+        if upnext_stale_active():
+            return
+        if _playback_active():
+            return
     try:
         import xbmcgui
         window = xbmcgui.Window(10000)
         window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
+        if stale_ok:
+            # Invalidare de la un marcaj: lista veche ramane utilizabila ca
+            # fallback (vezi get_fast_cache), ca randarea sa nu devina o
+            # reconstructie completa.
+            window.setProperty("tmdbmovies_watched_stale_since", str(time.time()))
+        else:
+            # Invalidare normala (sync, setari): lista veche NU mai poate fi
+            # servita, continutul s-a schimbat real.
+            window.clearProperty("tmdbmovies_watched_stale_since")
     except: pass
 
 
-def clear_all_fast_cache():
+def clear_all_fast_cache(force=False):
     try:
         import xbmcgui
         window = xbmcgui.Window(10000)
@@ -314,9 +343,13 @@ def clear_all_fast_cache():
         # (sync, ghost scraper, warm-up) goleau lista pe la gardul din
         # clear_list_fast_cache, iar randarea de la intoarcerea din playercadea din
         # cache la build complet - BusyDialog peste lista.
-        _stale = upnext_stale_active() or _playback_active()
+        _stale = (not force) and (upnext_stale_active() or _playback_active())
         if not _stale:
             window.setProperty("tmdbmovies_fast_cache_version", str(time.time()))
+            try:
+                window.clearProperty("tmdbmovies_watched_stale_since")
+            except Exception:
+                pass
         window.setProperty("tmdbmovies_ram_cache_version", str(time.time()))
     except: pass
 

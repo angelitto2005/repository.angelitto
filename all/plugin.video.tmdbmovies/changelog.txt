@@ -1,3 +1,7 @@
+1.1.318
+- Added some speed to Up Next lists
+- No more misleading "provider is not connected" message after an update.
+
 1.1.317
 - YouTube search no longer shows Shorts: they are filtered out of the results
 
