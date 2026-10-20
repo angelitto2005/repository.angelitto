@@ -1,3 +1,7 @@
+1.1.320
+- Fixed: a trailer started from the context menu showed no motto, no genres and no plot in the
+  info panel of the player.
+
 1.1.319
 - Added an option to turn off the separate "TMDb UP NEXT" list, for those who only use the
   Up Next of their watched provider.

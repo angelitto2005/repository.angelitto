@@ -162,29 +162,40 @@ def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
             d = get_json(f"{BASE_URL}/{path}?api_key={API_KEY}&language=en-US") or {}
         return d
 
+    def _get_en(path):
+        return get_json(f"{BASE_URL}/{path}?api_key={API_KEY}&language=en-US") or {}
+
     try:
         if dbtype == 'movie':
-            item, show = _get(f'movie/{tmdb_id}'), {}
+            _item_path, _show_path = f'movie/{tmdb_id}', None
         elif dbtype == 'season' and season is not None:
-            show = _get(f'tv/{tmdb_id}')
-            item = _get(f'tv/{tmdb_id}/season/{season}')
+            _item_path, _show_path = f'tv/{tmdb_id}/season/{season}', f'tv/{tmdb_id}'
         elif dbtype == 'episode' and season is not None and episode:
-            show = _get(f'tv/{tmdb_id}')
-            item = _get(f'tv/{tmdb_id}/season/{season}/episode/{episode}')
+            _item_path = f'tv/{tmdb_id}/season/{season}/episode/{episode}'
+            _show_path = f'tv/{tmdb_id}'
         else:
-            item, show = _get(f'tv/{tmdb_id}'), {}
+            _item_path, _show_path = f'tv/{tmdb_id}', None
+
+        show = _get(_show_path) if _show_path else {}
+        item = _get(_item_path)
 
         overview = (item.get('overview') or '').strip() or (show.get('overview') or '').strip()
         # Genuri/tagline: la serial vin din 'show', la film sunt pe 'item'
         # (sezoanele/episoadele TMDb nu au aceste campuri deloc).
         _gsrc = show if show else item
         tagline_text = ((show.get('tagline') or item.get('tagline') or '')).strip()
-        # TMDb nu traduce motto-ul in multe limbi (de multe ori nici nu il are
-        # localizat): fallback la EN ca randul "motto | gen" sa nu dispara.
-        if not tagline_text:
-            _en_path = 'movie/{}'.format(tmdb_id) if dbtype == 'movie' else 'tv/{}'.format(tmdb_id)
-            _en = get_json(f"{BASE_URL}/{_en_path}?api_key={API_KEY}&language=en-US") or {}
-            tagline_text = (_en.get('tagline') or '').strip()
+        # TMDb nu traduce nici motto-ul, nici descrierea in multe limbi (de
+        # multe ori nu are deloc traducere) si raspunde 200 cu obiectul gol,
+        # deci fallback-ul de mai sus nu se declanseaza pentru ele. Aici se
+        # cere explicit versiunea in englezza: fara asta un film netradus
+        # arata motto-ul, dar nu si descrierea.
+        if not tagline_text or not overview:
+            _en_item = _get_en(_item_path)
+            if not overview:
+                overview = (_en_item.get('overview') or '').strip() or overview
+            if not tagline_text:
+                _en_show = _get_en(_show_path) if _show_path else _en_item
+                tagline_text = (_en_show.get('tagline') or '').strip()
         genres_str = ', '.join(g.get('name') for g in (_gsrc.get('genres') or []) if g.get('name'))
 
         def _head():
@@ -205,15 +216,13 @@ def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
             log('OSD meta (seas/ep): plot={}c (cu antet motto|gen)'.format(len(plot_out or '')))
             return plot_out or None, None
 
-        tagline_param = None
-        if tagline_text and genres_str:
-            tagline_param = f"[COLOR yellow]{tagline_text}[/COLOR]   |   [COLOR FF00CED1]{genres_str}[/COLOR]"
-        elif tagline_text:
-            tagline_param = f"[COLOR yellow]{tagline_text}[/COLOR]"
-        elif genres_str:
-            tagline_param = f"[COLOR FF00CED1]{genres_str}[/COLOR]"
-        log('OSD meta: plot={}c tagline={}'.format(len(overview or ''), bool(tagline_param)))
-        return overview or None, tagline_param
+        # La fel ca la TMDb Info si Extended Info: motto-ul si genurile merg
+        # IN plot, nu intr-un rand TagLine separat - multe skinuri nu
+        # arata randul TagLine, iar acolo informatia se pierdea. Tagline
+        # separat ar dubla motto-ul in OSD.
+        plot_out = _head() + overview
+        log('OSD meta: plot={}c (cu antet motto|gen)'.format(len(plot_out or '')))
+        return plot_out or None, None
     except Exception as e:
         log('OSD meta error: {}'.format(e))
         return None, None
