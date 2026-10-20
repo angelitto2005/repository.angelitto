@@ -379,15 +379,20 @@ def remember_upnext_view(variant):
         pass
     try:
         import os
+        import xbmcvfs
         from resources.lib.core.config import ADDON_DATA_DIR
         _p = os.path.join(ADDON_DATA_DIR, 'upnext_variant.txt')
         _cur = ''
-        if os.path.exists(_p):
-            with open(_p, 'r', encoding='utf-8') as _f:
-                _cur = _f.read().strip()
+        try:
+            _f = xbmcvfs.File(_p, 'r')
+            _cur = _f.read()
+            _f.close()
+        except Exception:
+            _cur = ''
         if _cur != (variant or ''):
-            with open(_p, 'w', encoding='utf-8') as _f:
-                _f.write(variant or '')
+            _f = xbmcvfs.File(_p, 'w')
+            _f.write(variant or '')
+            _f.close()
     except Exception:
         pass
 
@@ -400,12 +405,13 @@ def get_last_upnext_variant():
     """
     try:
         import os
+        import xbmcvfs
         from resources.lib.core.config import ADDON_DATA_DIR
         _p = os.path.join(ADDON_DATA_DIR, 'upnext_variant.txt')
-        if not os.path.exists(_p):
-            return ''
-        with open(_p, 'r', encoding='utf-8') as _f:
-            _v = _f.read().strip()
+        _f = xbmcvfs.File(_p, 'r')
+        _v = _f.read()
+        _f.close()
+        _v = (_v or '').strip()
         return _v if _v in ('tmdb', 'provider') else ''
     except Exception:
         return ''
@@ -461,7 +467,14 @@ def _prebuild_both_variants():
     Ruleaza dupa sync: listele trebuie sa fie gata la prima accesare dupa un
     restart, fara sa reconstruiasca tot de la zero.
     """
-    for _v in ('provider', 'tmdb'):
+    _variants = ['provider']
+    try:
+        from resources.lib.core.config import ADDON
+        if (ADDON.getSetting('tmdb_upnext_enabled') or 'true') != 'false':
+            _variants.append('tmdb')
+    except Exception:
+        _variants.append('tmdb')
+    for _v in _variants:
         try:
             from resources.lib.providers.watched_provider import _prebuild_upnext_cache
             _prebuild_upnext_cache('', 0.0, False, _v)
@@ -469,7 +482,10 @@ def _prebuild_both_variants():
             continue
     try:
         from resources.lib.core.utils import log
-        log("[UP NEXT] ambele variante incalzite in cache")
+        if len(_variants) > 1:
+            log("[UP NEXT] ambele variante incalzite in cache")
+        else:
+            log(f"[UP NEXT] lista Up Next incalzita in cache (varianta {_variants[0]})")
     except Exception:
         pass
 

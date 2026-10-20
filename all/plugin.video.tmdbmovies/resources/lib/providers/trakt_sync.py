@@ -2836,6 +2836,48 @@ def _is_show_hidden(show_ids, hidden):
     return False
 
 
+def _reconcile_tmdb_up_next_mirror():
+    """Aliniaza randurile "TMDb UP NEXT" cu cele ale providerului activ.
+
+    Lista "TMDb UP NEXT" este o extensie a Up Next-ului providerului (pool de
+    seriale), deci randurile comune trebuie sa arate ACELASI episod. Le
+    rescriem in aceeasi trecere in care providerul isi reconstruieste lista,
+    pentru ca legile de sync sa se poata sari (ex: "TMDb leg skipped (last
+    sync 14 min ago)") fara ca listele sa ramana divergente.
+    """
+    try:
+        from resources.lib.providers.watched_provider import _get_provider_raw
+        prov = _get_provider_raw()
+        ptbl = {'trakt': 'trakt_next_episodes', 'mdblist': 'mdblist_next_episodes',
+                'simkl': 'simkl_next_episodes', 'punchplay': 'punchplay_next_episodes',
+                'local': 'local_next_episodes'}.get(prov)
+        if not ptbl:
+            return 0
+        conn = get_connection()
+        c = conn.cursor()
+        # randurile comune: exista si in lista providerului, si in oglinda TMDb
+        c.execute("""SELECT t.tmdb_id, t.season, t.episode, t.ep_title, t.overview,
+                            t.air_date, t.show_title
+                     FROM %s t JOIN tmdb_next_episodes m ON t.tmdb_id = m.tmdb_id
+                     WHERE t.season IS NOT NULL AND t.episode IS NOT NULL
+                       AND (t.season != m.season OR t.episode != m.episode)""" % ptbl)
+        rows = c.fetchall()
+        if not rows:
+            conn.close()
+            return 0
+        c.executemany(
+            "UPDATE tmdb_next_episodes SET season=?, episode=?, ep_title=?, "
+            "overview=?, air_date=?, show_title=? WHERE tmdb_id=?",
+            [(r[1], r[2], r[3], r[4], r[5], r[6], r[0]) for r in rows])
+        _db_commit_retry(conn)
+        conn.close()
+        log(f"[TMDB SYNC] Up Next: {len(rows)} randuri aliniate cu providerul")
+        return len(rows)
+    except Exception as e:
+        log(f"[TMDB SYNC] reconciliere randuri Up Next esuata: {e}", xbmc.LOGWARNING)
+        return 0
+
+
 def _sync_up_next(c, token):
     """Coordoneaza thread-urile si salveaza totul la final. FILTREAZA hidden/dropped."""
     from resources.lib.api import trakt_api
@@ -3000,6 +3042,15 @@ def _sync_up_next(c, token):
     else:
         _db_commit_retry(c.connection)
         log(f"[TRAKT SYNC] Up Next: 0 seriale (toate filtrate/dropped).")
+
+    # Aliniem oglinda TMDb cu randurile tocmai reconstruite ale providerului.
+    # Altfel, daca lega TMDb a fost sarita la sync, listele ramane divergente
+    # (masurat: The Flash S06E10 in Trakt, S05E01 in TMDb).
+    try:
+        import threading as _th_rec
+        _th_rec.Thread(target=_reconcile_tmdb_up_next_mirror, daemon=True).start()
+    except Exception:
+        pass
     
     # Pre-cache season details for instant Next Episodes display
     if clean_rows:
@@ -3603,6 +3654,24 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 
         _trigger_ui_refresh()
 
+        # Randul "TMDb UP NEXT" (pool) trebuie sa urmeze randul providerului.
+        # Marcarile din lista de sezoane apeleaza DOAR refresh-ul providerului
+        # (vezi trakt_api: acțiunile de meniu pornesc doar refresh_next_episode),
+        # deci fara asta cele doua liste raman cu episoade diferite.
+        try:
+            import threading as _th_tmdb
+            from resources.lib.core.config import TMDB_V4_TOKEN_FILE
+            if os.path.exists(TMDB_V4_TOKEN_FILE):
+                _th_tmdb.Thread(target=refresh_next_episode_tmdb,
+                                args=(tmdb_id,), daemon=True).start()
+            else:
+                log("[UP NEXT] fara token TMDb v4 - randul TMDB Up Next nu se rescrie",
+                    xbmc.LOGDEBUG)
+        except Exception as _e:
+            # NU lasam sa treaca in tacerere: odata NameError a facut ca
+            # randul TMDB sa nu fie rescris niciodata (fara nicio urma in log).
+            log(f"[UP NEXT] rescriere rand TMDB Up Next esuata: {_e}", xbmc.LOGWARNING)
+
     except Exception as e:
         log(f"[UP NEXT] Error calculating local episode: {e}", xbmc.LOGERROR)
 
@@ -3610,7 +3679,22 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 # =============================================================================
 # TMDB UP NEXT (watchlist TMDb + progresul providerului activ de watched status)
 # =============================================================================
-def _tmdb_next_episode_scan(show_details, watched_set, watched_last):
+def _tmdb_next_episode_scan(show_details, watched_set, watched_last, tmdb_id=None):
+    """Urmatorul episod nevizionat.
+
+    Cu tmdb_id, folosim ACEEASI functie ca lista providerului
+    (_tmdb_next_unwatched). Diferenta intre cele doua ducea la rezultate
+    diferite: _tmdb_next_unwatched verifica sezonul REAL cand episode_count de
+    la nivelul serialului nu acopera intervalul (episoade recent difuzate care
+    lipsesc inca din TMDb), pe cand _tmdb_next_episode_scan cadea pe "scaneaza
+    de la inceput" si returna primul episod nevizionat. Masurat: The Flash
+    S06E10 in lista providerului, S05E01 in lista TMDb.
+    """
+    if tmdb_id:
+        try:
+            return _tmdb_next_unwatched(show_details, watched_set, watched_last, tmdb_id)
+        except Exception:
+            pass
     next_ep = None
     if watched_last:
         last_s, last_e = watched_last
@@ -3836,7 +3920,7 @@ def sync_tmdb_up_next(c):
                 continue
             w = watched_map.get(tid) or {'set': set(), 'last': None, 'last_at': ''}
             if w['set']:
-                next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+                next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'], tid)
             else:
                 next_ep = _tmdb_first_episode(show_details)
             if not next_ep:
@@ -3859,7 +3943,7 @@ def sync_tmdb_up_next(c):
             w = watched_map.get(tid) or {'set': set(), 'last': None, 'last_at': ''}
             if not w['set']:
                 continue
-            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'], tid)
             if not next_ep:
                 continue
             pending.append({
@@ -4024,8 +4108,34 @@ def refresh_next_episode_tmdb(tmdb_id, _attempt=1, _max_attempts=3):
 
         w = get_watched_episodes_set(tid)
 
-        if w['set']:
-            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'])
+        # Randul TMDB trebuie sa fie IDENTIC cu randul providerului activ:
+        # lista "TMDb UP NEXT" e o EXTENSIE a Up Next-ului providerului (pool
+        # de seriale), deci "urmatorul episod" e acelasi in ambele liste.
+        # Calculat separat, cele doua liste arata episoade diferite - masurat:
+        # Hacks S01E02 in Trakt, S01E03 in TMDb. Deci preluam direct episodul
+        # din randul providerului (aceeasi sursa de adevar pentru ambele).
+        _ref = None
+        try:
+            _ptbl = {'trakt': 'trakt_next_episodes', 'mdblist': 'mdblist_next_episodes',
+                     'simkl': 'simkl_next_episodes', 'punchplay': 'punchplay_next_episodes',
+                     'local': 'local_next_episodes'}.get(prov)
+            if _ptbl:
+                _pc = get_connection().cursor()
+                _pc.execute("SELECT season, episode FROM %s WHERE tmdb_id=?" % _ptbl, (str(tid),))
+                _prow = _pc.fetchone()
+                try:
+                    _pc.connection.close()
+                except Exception:
+                    pass
+                if _prow and _prow[0] is not None and _prow[1] is not None:
+                    _ref = {'season': int(_prow[0]), 'number': int(_prow[1])}
+        except Exception:
+            _ref = None
+
+        if _ref is not None:
+            next_ep = _ref
+        elif w['set']:
+            next_ep = _tmdb_next_episode_scan(show_details, w['set'], w['last'], tid)
         elif in_watchlist:
             next_ep = _tmdb_first_episode(show_details)
         else:

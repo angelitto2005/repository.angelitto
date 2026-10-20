@@ -782,7 +782,7 @@ def run_plugin():
             tmdb_api.run_background_warmup('tv')
             window.setProperty('tmdb_last_warmup_tv', str(now))
             
-        build_fast_menu(menus.tvshow_list)
+        build_fast_menu(menus.tvshow_menu())
         return
 
     if mode == 'favorites_menu':

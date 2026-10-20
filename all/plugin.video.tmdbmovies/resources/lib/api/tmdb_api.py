@@ -21,7 +21,7 @@ from resources.lib.core.config import (
     get_plot_language_code, provider_color, provider_icon, provider_title,
     lazy_requests as requests
 )
-from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label
+from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label, PLUGIN_URL
 from resources.lib.core.cache import cache_object, MainCache, get_fast_cache, set_fast_cache, UP_NEXT_STALE_MAX_S
 from resources.lib.core.list_render import (render_from_fast_cache, _set_views_apply, _safe_set_prop,
                                             next_episodes_cache_key)
@@ -541,7 +541,7 @@ def movies_menu():
 
 
 def tv_menu():
-    build_menu(menus.tvshow_list)
+    build_menu(menus.tvshow_menu())
 
 
 def get_search_history():
@@ -642,8 +642,8 @@ def search_menu():
             
             # Context Menu pentru Edit si Delete
             cm = [
-                ('Edit Search', f"RunPlugin({sys.argv[0]}?mode=edit_search&query={quote(query)}&type={stype})"),
-                ('Delete Search', f"RunPlugin({sys.argv[0]}?mode=delete_search&query={quote(query)}&type={stype})")
+                ('Edit Search', f"RunPlugin({PLUGIN_URL}?mode=edit_search&query={quote(query)}&type={stype})"),
+                ('Delete Search', f"RunPlugin({PLUGIN_URL}?mode=delete_search&query={quote(query)}&type={stype})")
             ]
             
             # Parametrii pentru a rula din nou cautarea la click
@@ -1397,16 +1397,16 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if select_ext_info_params(content_type, tmdb_id, season=season, episode=episode, tv_name=title, title=title):
         if content_type == 'movie':
             _swap_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year})
-            cm.append(('[B][COLOR FF6AFB92]Play Movie[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+            cm.append(('[B][COLOR FF6AFB92]Play Movie[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{_swap_params})"))
         elif content_type == 'episode' and season is not None and episode is not None:
             _swap_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name or title, 'tv_show_title': title})
-            cm.append(('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+            cm.append(('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{_swap_params})"))
         elif content_type in ('tv', 'show', 'tvshow'):
             _swap_params = urlencode({'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title})
-            cm.append(('[B][COLOR cyan]Browse Seasons[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_swap_params})"))
+            cm.append(('[B][COLOR cyan]Browse Seasons[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{_swap_params})"))
     # ------------------------------------------------------------------
     # info_params = urlencode({'mode': 'show_info', 'type': content_type, 'tmdb_id': tmdb_id})
-    # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{info_params})"))
+    # cm.append(('[B][COLOR FFFDBD01]TMDb Info[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{info_params})"))
     
     # --- ADAUGAT EXTENDED INFO (Metoda cu argumente explicite) ---
     # Folosim calea speciala pentru a fi siguri ca gaseste scriptul
@@ -1425,34 +1425,34 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if season: trakt_params_dict['season'] = season
     if episode: trakt_params_dict['episode'] = episode
     if _cm_setting('show_cm_trakt') != 'false':
-        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(trakt_params_dict)})"))
+        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(trakt_params_dict)})"))
 
     tmdb_params_dict = {'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title}
     if season: tmdb_params_dict['season'] = season
     if episode: tmdb_params_dict['episode'] = episode
     if _cm_setting('show_cm_tmdb') != 'false':
-        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(tmdb_params_dict)})"))
+        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(tmdb_params_dict)})"))
 
     # --- INSEREAZA RANDURILE ASTEA PENTRU MDB: ---
     mdb_params_dict = {'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
     if season: mdb_params_dict['season'] = season
     if episode: mdb_params_dict['episode'] = episode
     if _cm_setting('show_cm_mdblist') != 'false':
-        cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(mdb_params_dict)})"))
+        cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(mdb_params_dict)})"))
 
     # --- SIMKL: ---
     simkl_params_dict = {'mode': 'simkl_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
     if season: simkl_params_dict['season'] = season
     if episode: simkl_params_dict['episode'] = episode
     if _cm_setting('show_cm_simkl') != 'false':
-        cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(simkl_params_dict)})"))
+        cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(simkl_params_dict)})"))
 
     # --- PUNCHPLAY: ---
     pp_params_dict = {'mode': 'punchplay_context_menu', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'imdb_id': imdb_id}
     if season: pp_params_dict['season'] = season
     if episode: pp_params_dict['episode'] = episode
     if _cm_setting('show_cm_punchplay') != 'false':
-        cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(pp_params_dict)})"))
+        cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(pp_params_dict)})"))
 
     # --- ALL PROVIDERS (batch pe TMDb + Trakt + MDBList — toggle in Settings) ---
     if _cm_setting('all_providers_menu') == 'true':
@@ -1460,7 +1460,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         if season: allp_params_dict['season'] = season
         if episode: allp_params_dict['episode'] = episode
         if imdb_id: allp_params_dict['imdb_id'] = imdb_id
-        cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{urlencode(allp_params_dict)})"))
+        cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(allp_params_dict)})"))
 
     # --- INCEPUT MODIFICARE: MY PLAYS MENU ---
     plays_params = {
@@ -1477,7 +1477,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if premiered: plays_params['premiered'] = premiered
     
     if _cm_setting('show_cm_my_plays') != 'false':
-        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
+        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(plays_params)})"))
     # --- SFARSIT MODIFICARE ---
 
     # --- Mark as Watched/Unwatched direct in root menu ---
@@ -1491,41 +1491,41 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         _is_w = _is_mw(tmdb_id)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'movie'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'movie'})
-        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({PLUGIN_URL}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type in ('tv', 'show'):
         from resources.lib.providers.watched_provider import get_watched_counts as _get_wc
         _is_w = (_get_wc(tmdb_id, 'tv') > 0)
         _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'tv'})
         _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'tv'})
-        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+        cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({PLUGIN_URL}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type == 'episode':
         if season is not None and episode is not None:
             from resources.lib.providers.watched_provider import is_episode_watched as _is_epw
             _is_w = _is_epw(tmdb_id, season, episode)
             _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
             _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
-            cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({sys.argv[0]}?{_uw_sp if _is_w else _w_sp})"))
+            cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({PLUGIN_URL}?{_uw_sp if _is_w else _w_sp})"))
     # ---------------------------------------------------------
     
     # --- MODIFICARE: DOAR PENTRU FILME (nu seriale/foldere) ---
     if content_type == 'movie':
         clear_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title})
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_params})"))
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{clear_params})"))
     # ----------------------------------------------------------
     
     if is_in_favorites_view:
         rem_params = urlencode({'mode': 'remove_favorite', 'type': content_type, 'tmdb_id': tmdb_id})
-        cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{rem_params})"))
+        cm.append(('[B][COLOR yellow]Remove from My Favorites[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{rem_params})"))
     else:
         fav_params = urlencode({'mode': 'add_favorite', 'type': content_type, 'tmdb_id': tmdb_id, 'title': title})
-        cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+        cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{fav_params})"))
 
     if content_type in ('movie', 'episode'):
         if content_type == 'movie':
             scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'custom_title': '', 'custom_interactive': 'true'})
         else:
             scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title, 'season': str(season), 'episode': str(episode), 'custom_title': '', 'custom_interactive': 'true'})
-        cm.append(('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?{scrape_params})"))
+        cm.append(('[B]Scrape with Custom Values[/B]', f"RunPlugin({PLUGIN_URL}?{scrape_params})"))
 
     from resources.lib.providers import trakt_sync
     progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
@@ -1535,7 +1535,7 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         rem_params = {'mode': 'remove_progress', 'tmdb_id': tmdb_id, 'type': content_type}
         if season: rem_params['season'] = str(season)
         if episode: rem_params['episode'] = str(episode)
-        cm.append(('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(rem_params)})"))
+        cm.append(('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{urlencode(rem_params)})"))
 
     # --- PLAY WITH SOURCE SELECT: are rost doar cand auto-play este pornit
     # (altfel selectul randului deschide deja fereastra surselor). Pozitionat
@@ -1543,10 +1543,10 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if _cm_setting('auto_play') == 'true':
         if content_type == 'movie':
             _sel_auto = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year, 'no_auto': '1'})
-            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_sel_auto})"))
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{_sel_auto})"))
         elif content_type == 'episode' and season is not None and episode is not None:
             _sel_auto = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name or title, 'tv_show_title': title, 'no_auto': '1'})
-            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{_sel_auto})"))
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{_sel_auto})"))
 
     yt_params_dict = {'mode': 'youtube_search', 'tmdb_id': tmdb_id, 'type': content_type, 'title': title, 'year': year}
     if season is not None: yt_params_dict['season'] = str(season)
@@ -2446,7 +2446,12 @@ def tmdb_my_lists():
         return
 
     add_directory("[B][COLOR FF00CED1]TMDB Account[/COLOR][/B]", {'mode': 'tmdb_account_info'}, icon='DefaultUser.png', thumb='DefaultUser.png', folder=False)
-    add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    try:
+        from resources.lib.providers.watched_provider import tmdb_upnext_enabled
+        if tmdb_upnext_enabled():
+            add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
+    except Exception:
+        add_directory("[B][COLOR FF00CED1]TMDb [COLOR FFFF4444]UP NEXT[/COLOR][/B]", {'mode': 'tmdb_up_next'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     add_directory("[B][COLOR FF00CED1]TMDB [COLOR yellow]My Calendar[/COLOR][/B]", {'mode': 'tmdb_calendar_my'}, icon=TMDB_ICON, thumb=TMDB_ICON, folder=True)
     _wl_total = 0
     _fav_total = 0
@@ -2487,7 +2492,7 @@ def tmdb_my_lists():
             fanart = get_list_image_url(backdrop_path, 'fanart') if backdrop_path else ''
             
             cm = [
-                ('Refresh Lists', f"RunPlugin({sys.argv[0]}?mode=tmdb_refresh_lists)"), 
+                ('Refresh Lists', f"RunPlugin({PLUGIN_URL}?mode=tmdb_refresh_lists)"), 
             ]
 
             # ✅ ADAUGAT: info cu plot (description)
@@ -3093,7 +3098,7 @@ def _render_tmdb_calendar_entries(entries, wnd):
         else:
             cm = calendar_context_menu(_get_full_context_menu(tmdb_id, 'episode', show_title, season=e['season'], episode=e['episode']),
                                        'episode', tmdb_id, show_title, e['season'], e['episode'],
-                                       base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
+                                       base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
         if cm:
             li.addContextMenuItems(cm)
         if is_movie:
@@ -5389,29 +5394,29 @@ def show_details(tmdb_id, content_type):
         _prov_clr = _prov_color()
         _mw_multi = _mml(is_fully_watched)
         if is_fully_watched:
-            cm.append((_mw_multi or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{unwatched_params})"))
+            cm.append((_mw_multi or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{unwatched_params})"))
         else:
-            cm.append((_mw_multi or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{watched_params})"))
+            cm.append((_mw_multi or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{watched_params})"))
             
         if ADDON.getSetting('show_cm_trakt') != 'false':
             trakt_params = urlencode({'mode': 'trakt_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{trakt_params})"))
+            cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{trakt_params})"))
         if ADDON.getSetting('show_cm_tmdb') != 'false':
             tmdb_params = urlencode({'mode': 'tmdb_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{tmdb_params})"))
+            cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{tmdb_params})"))
         if ADDON.getSetting('show_cm_mdblist') != 'false':
             mdb_params = urlencode({'mode': 'mdblist_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{mdb_params})"))
+            cm.append(('[B][COLOR lightskyblue]My MDBList[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{mdb_params})"))
         if ADDON.getSetting('show_cm_simkl') != 'false':
             simkl_params = urlencode({'mode': 'simkl_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{simkl_params})"))
+            cm.append(('[B][COLOR mediumpurple]My Simkl[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{simkl_params})"))
         if ADDON.getSetting('show_cm_punchplay') != 'false':
             pp_params = urlencode({'mode': 'punchplay_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{pp_params})"))
+            cm.append(('[B][COLOR FFFF6600]My PunchPlay[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{pp_params})"))
         # --- ALL PROVIDERS (batch — toggle in Settings) ---
         if ADDON.getSetting('all_providers_menu') == 'true':
             allp_params = urlencode({'mode': 'all_providers_context_menu', 'tmdb_id': tmdb_id, 'type': 'season', 'title': name, 'season': s_num})
-            cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({sys.argv[0]}?{allp_params})"))
+            cm.append((f'[B]{_allprov_colored("All Providers", (3, 4, 3, 3), ("trakt", "tmdb", "mdblist", "simkl"))}[/B]', f"RunPlugin({PLUGIN_URL}?{allp_params})"))
         # -----------------------------------------------------------------------------
 
         # Trebuie sa trimitem si uids={'tmdb': tmdb_id} pentru ca AF3 sa lege Logo-ul de serial!
@@ -5475,6 +5480,33 @@ def get_episode_numbering_map(tmdb_id):
     except:
         return {}
 
+# Sezoane care NU exista pe TMDb (ex. sezon anuntat, dar fara episoade/metadata).
+# TMDb raspunde 404, iar fara cache negativ retinem la fiecare constructie de lista
+# - 15 warning-uri identice intr-o singura sesiune, pentru acelasi serial.
+_SEASON_404 = {}
+_SEASON_404_TTL = 3600
+
+
+def _season_404_seen(tmdb_id, season_num):
+    try:
+        import time as _t
+        k = (str(tmdb_id), int(season_num))
+        ts = _SEASON_404.get(k)
+        if ts and (_t.time() - ts) < _SEASON_404_TTL:
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _season_404_mark(tmdb_id, season_num):
+    try:
+        import time as _t
+        _SEASON_404[(str(tmdb_id), int(season_num))] = _t.time()
+    except Exception:
+        pass
+
+
 def get_smart_season_details(tmdb_id, season_num):
     from resources.lib.providers import trakt_sync
     from resources.lib.core.cache import ram_cache_get_season, ram_cache_set_season
@@ -5510,6 +5542,9 @@ def get_smart_season_details(tmdb_id, season_num):
             _season_memo_set(_mkey, data)
             return data
             
+    if _season_404_seen(tmdb_id, season_num):
+        return None
+
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
     
     for _attempt in range(3):
@@ -5519,6 +5554,9 @@ def get_smart_season_details(tmdb_id, season_num):
                 xbmc.sleep(1000 * (_attempt + 1))
                 continue
             if res_en.status_code != 200:
+                if res_en.status_code == 404:
+                    # sezon inexistent pe TMDb -> cache negativ (nu mai repetam)
+                    _season_404_mark(tmdb_id, season_num)
                 log(f"[SEASON] tv/{tmdb_id}/season/{season_num}: HTTP {res_en.status_code}", xbmc.LOGWARNING)
                 return None
             data = res_en.json()
@@ -5783,7 +5821,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         )
 
         clear_ep_params = urlencode({'mode': 'clear_sources_context', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': f"{tv_show_title} S{season_num}E{ep_num}"})
-        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{clear_ep_params})"))
+        cm.append(('[B][COLOR orange]Clear sources cache[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{clear_ep_params})"))
         
         url_params = select_ext_info_params('episode', tmdb_id, season_num, ep_num, tv_show_title, ep.get('name', '')) or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season_num), 'episode': str(ep_num), 'title': ep.get('name', ''), 'tv_show_title': tv_show_title}
         
@@ -7526,7 +7564,7 @@ def in_progress_movies(params):
         
         cm = _get_full_context_menu(tmdb_id, 'movie', title, imdb_id=imdb_id, year=year)
         from resources.lib.providers.watched_provider import get_label as _prov_label, get_color as _prov_color, mark_menu_label as _mml
-        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
+        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_color()}]({_prov_label()})[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=mark_watched&tmdb_id={tmdb_id}&type=movie)"))
 
         if _skip_ip():
             url_params = None
@@ -8126,23 +8164,23 @@ def in_progress_episodes(params):
         _prov_lbl = _prov_label()
         _prov_clr = _prov_color()
         cm = [
-            (_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
-            ('[B]Scrape with Custom Values[/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
-            ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
+            (_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=mark_watched&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode})"),
+            ('[B]Scrape with Custom Values[/B]', f"RunPlugin({PLUGIN_URL}?mode=sources&tmdb_id={tmdb_id}&type=tv&title={quote_plus(show_name)}&season={season}&episode={episode}&custom_interactive=true)"),
+            ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=remove_progress&tmdb_id={tmdb_id}&type=episode&season={season}&episode={episode}&tv_show_title={quote_plus(show_name)})")
         ]
         # Are rost doar cu auto-play pornit (altfel selectul randului deschide
         # deja fereastra surselor); no_auto=1 ocoleste autoplay-ul.
         if ADDON.getSetting('auto_play') == 'true':
-            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)}&no_auto=1)"))
+            cm.append(('[B][COLOR cyan]Play with source select[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)}&no_auto=1)"))
         # --- SELECT ACTION: rindul e redirectionat catre Extended Info -> Play in CM ---
         if select_ext_info_params('episode', tmdb_id, season, episode, show_name, ep_name):
-            cm.insert(0, ('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)})"))
+            cm.insert(0, ('[B][COLOR FF6AFB92]Play Episode[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=sources&tmdb_id={tmdb_id}&type=tv&season={season}&episode={episode}&title={quote_plus(ep_name)}&tv_show_title={quote_plus(show_name)})"))
         # -------------------------------------------------------------------------
         if ADDON.getSetting('show_cm_my_plays') != 'false':
-            cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
+            cm.insert(1, ('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=show_my_plays_menu&tmdb_id={tmdb_id}&type=episode&title={quote_plus(show_name)}&ep_name={quote_plus(ep_name)}&season={season}&episode={episode}&imdb_id={show_imdb_id}&premiered={premiered})"))
         
         cm = calendar_context_menu(cm, 'episode', tmdb_id, show_name, season=season, episode=episode,
-                                   base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode,
+                                   base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode,
                                    clear_sources=True)
         
         if _skip_ip():
@@ -8913,7 +8951,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         
         # --- Browse Show / Browse Season / Clear sources cache (helper comun) ---
         cm = calendar_context_menu(cm, 'episode', tmdb_id, it['show_title'], season=it['season'], episode=it['episode'],
-                                   base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode,
+                                   base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode,
                                    clear_sources=True)
         
         url = f"{sys.argv[0]}?{urlencode(url_params)}"

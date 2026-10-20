@@ -259,6 +259,79 @@ def _snapshot_upnext():
         return None
 
 
+def _rebuild_upnext_after_mark(content_type):
+    """Dupa un marcaj de EPISOD, lista Up Next trebuie reconstruita in fundal.
+
+    Cand marchezi un episod din lista de sezoane (context menu -> Browse Season),
+    lista Up Next pe care erai nu se mai reimprospateaza: Kodi restaureaza
+    containerul din memorie la Back, fara sa re-invoce pluginul. Rezultatul:
+    episodul marcat ramane in lista, ca si cum n-ar fi marcat.
+
+    Aici:
+      1. reconstruim lista Up Next in fundal (cu datele noi)
+      2. pornim un supraveghetor care reimprospateaza Up Next-ul imediat ce
+         userul se intoarce la el
+    """
+    if _is_movie_change(content_type):
+        return
+    try:
+        import threading as _th_u
+        from resources.lib.core.list_render import _prebuild_both_variants
+        _th_u.Thread(target=_prebuild_both_variants, daemon=True).start()
+    except Exception:
+        pass
+    try:
+        import threading as _th_v
+        _th_v.Thread(target=_watch_upnext_visible, daemon=True).start()
+    except Exception:
+        pass
+
+
+def _watch_upnext_visible(max_wait=45.0):
+    """Reimprospateaza lista Up Next cand userul se intoarce la ea.
+
+    Kodi nu re-invoaca pluginul la Back (restaureaza containerul din memorie),
+    deci singura cale de a re-randa e un Container.Refresh in momentul in
+    care lista Up Next devine vizibila.
+    """
+    try:
+        import time as _t
+        import xbmc as _x
+    except Exception:
+        return
+    end = _t.time() + max_wait
+    while _t.time() < end:
+        try:
+            if _x.Monitor().abortRequested():
+                return
+        except Exception:
+            return
+        _t.sleep(1.0)
+        try:
+            _folder = (_x.getInfoLabel('Container.FolderPath') or '').lower()
+        except Exception:
+            return
+        if 'up_next' in _folder or 'next_episodes' in _folder:
+            try:
+                _x.executebuiltin('Container.Refresh')
+            except Exception:
+                pass
+            return
+
+
+def tmdb_upnext_enabled():
+    """True daca lista "TMDb UP NEXT" e activata (setare comutator).
+
+    Unii userii folosesc doar Up Next-ul providerului activ - pentru ei, a doua
+    lista inseamna un build de 160 de randuri la fiecare sync, fara rost.
+    """
+    try:
+        from resources.lib.core.config import ADDON
+        return (ADDON.getSetting('tmdb_upnext_enabled') or 'true') != 'false'
+    except Exception:
+        return True
+
+
 def _is_movie_change(content_type):
     """True daca schimbarea e pe un FILM (nu pe un episod de serial).
 
@@ -1169,6 +1242,7 @@ def dispatch_mark_watched(tmdb_id, content_type, season=None, episode=None, noti
         _upnext_snap = _snapshot_upnext() if _is_movie_change(content_type) else None
         _upnext_ui_sync(preserve_binge=(not do_refresh))
         _invalidate_fast_cache(snap=_upnext_snap, keep_upnext=_is_movie_change(content_type))
+        _rebuild_upnext_after_mark(content_type)
         if do_refresh: refresh_ui()
         return
     # Fanout online: scriem si local (daca e pending), apoi providerii online.
@@ -1219,6 +1293,7 @@ def dispatch_mark_unwatched(tmdb_id, content_type, season=None, episode=None, sy
         _upnext_ui_sync(preserve_binge=True)
         _invalidate_fast_cache(snap=_upnext_snap, defer=True,
                                        keep_upnext=_is_movie_change(content_type))
+        _rebuild_upnext_after_mark(content_type)
         if do_refresh: refresh_ui()
         return
     if local_pending:

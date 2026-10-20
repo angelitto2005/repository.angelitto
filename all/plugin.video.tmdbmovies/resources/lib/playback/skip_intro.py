@@ -13,6 +13,14 @@ _HTTP_TIMEOUT = (3.05, 6.05)
 _SKIP_COUNTDOWN_SEC = 15
 
 
+def _app_user_agent():
+    try:
+        version = ADDON.getAddonInfo('version')
+    except Exception:
+        version = ''
+    return f'TMDbMovies/{version}' if version else 'TMDbMovies'
+
+
 # =============================================================================
 # Segment Scraper (introdb + theintrodb)
 # =============================================================================
@@ -37,7 +45,8 @@ class SegmentScraper:
     def fetch_theintrodb(self):
         result = {'intro': None}
         try:
-            response = requests.get('https://api.theintrodb.org/v4/media', params=self.params, timeout=_HTTP_TIMEOUT)
+            response = requests.get('https://api.theintrodb.org/v4/media', params=self.params,
+                                    headers={'User-Agent': _app_user_agent()}, timeout=_HTTP_TIMEOUT)
             rjson = response.json()
             intro_list = rjson.get('intro') or []
             if intro_list:

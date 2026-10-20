@@ -1112,8 +1112,15 @@ def process_media_item(item, kind, return_data=True, skip_details=True):
     except Exception:
         return None
 
+# URL-ul pluginului. NU folosim sys.argv[0] pentru URL-uri de meniu: in
+# pre-randarea din fundal (thread al serviciului) sys.argv[0] este gol sau
+# apartine altui script -> se construiesc URL-uri relative ("?mode=episodes")
+# pe care Kodi nu le mai rezolva -> "Error getting directory" la click.
+PLUGIN_URL = 'plugin://plugin.video.tmdbmovies/'
+
+
 def calendar_context_menu(base_cm, content_type, tmdb_id, show_title, season=None, episode=None,
-                          base_url='', browse_cmd=None, urlencode_fn=None, clear_sources=True):
+                          base_url=None, browse_cmd=None, urlencode_fn=None, clear_sources=True):
     """Meniul contextual comun al unui rand de calendar: Browse Show / Browse Season
     (+ Clear sources cache) pe randurile de EPISOD. Returneaza o lista noua cu
     cm-ul de baza + intrarile comune. base_url = sys.argv[0] sau _BASE_URL al modulului."""
@@ -1123,6 +1130,8 @@ def calendar_context_menu(base_cm, content_type, tmdb_id, show_title, season=Non
             return cm
         enc = urlencode_fn or urlencode
         bcmd = browse_cmd or (lambda url: 'Container.Update(%s)' % url)
+        if not base_url:
+            base_url = PLUGIN_URL
         season = int(season or 0)
         episode = int(episode or 0)
         tid = str(tmdb_id)

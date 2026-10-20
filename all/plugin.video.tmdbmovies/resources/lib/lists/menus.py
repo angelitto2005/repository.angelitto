@@ -100,6 +100,22 @@ movie_list = [
 ]
 
 # Meniul TV Shows
+def tvshow_menu():
+    """Lista meniului TV Shows, fara "TMDb UP NEXT" daca e oprit in setari.
+
+    Functie, nu filtru la import: la nivel de modul, importul lui
+    watched_provider poate esua (import circular) si filtrarea ar ramane
+    neaplicata - intrarea ar continua sa apara in meniu.
+    """
+    try:
+        from resources.lib.providers.watched_provider import tmdb_upnext_enabled
+        if not tmdb_upnext_enabled():
+            return [i for i in tvshow_list if i.get('mode') != 'tmdb_up_next']
+    except Exception:
+        pass
+    return tvshow_list
+
+
 tvshow_list = [
     {'name': 'Trending Today', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_day'},
     {'name': 'Trending This Week', 'iconImage': 'trending.png', 'mode': 'build_tvshow_list', 'action': 'tmdb_tv_trending_week'},

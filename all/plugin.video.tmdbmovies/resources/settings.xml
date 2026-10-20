@@ -14,6 +14,11 @@
 		<setting id="skip_intro.enable" type="bool" label="[B][COLOR FFCCCCFF]Show [COLOR FFFF4444]Skip Intro[COLOR FFCCCCFF] dialog[/COLOR][/B]" default="true"/>
 		<setting id="upnext_show_future" type="bool" label="[B][COLOR FF33CCFF]Up Next:[/COLOR][/B] Show future episodes (over 7 days / TBA)" default="false"/>
         <setting id="tmdb_upnext_show_unstarted" type="bool" label="[B][COLOR FFFF4444]UP NEXT:[/COLOR][/B] Show Unstarted Watchlist Shows" default="false"/>
+        <!-- Daca e oprit, lista "TMDb UP NEXT" nu se mai construieste in fundal
+             dupa sync (si nu apare in meniuri). Pentru userii care folosesc doar
+             Up Next-ul providerului activ - nu are rost sa construim si a doua
+             lista, cu 160 de randuri, la fiecare sync. -->
+        <setting id="tmdb_upnext_enabled" type="bool" label="[B][COLOR FF00CED1]TMDb[/COLOR][COLOR FFCCCCFF] UP NEXT[/COLOR][/B]: enabled" default="true"/>
         <setting id="hide_unaired_episodes" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Hide unaired episodes" default="false"/>
 		<setting id="show_specials" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Show Specials" default="false"/>
         <setting id="flatten_single_season" type="bool" label="[B][COLOR FF33CCFF]TV Shows:[/COLOR][/B] Flatten single-season shows" default="false"/>

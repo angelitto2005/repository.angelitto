@@ -1,3 +1,12 @@
+1.1.319
+- Added an option to turn off the separate "TMDb UP NEXT" list, for those who only use the
+  Up Next of their watched provider.
+- Marking an episode from a season list now updates Up Next as well, instead of the old
+  entry staying there.
+- The Up Next lists of the watched provider and of TMDb now always show the same episode for
+  the same series, even when a sync is skipped.
+- Skip Intro requests now identify the addon to TheIntroDB.
+
 1.1.318
 - Added some speed to Up Next lists
 - No more misleading "provider is not connected" message after an update.
