@@ -265,13 +265,20 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
 
         subs_path = ''
-        if '/api/timedtext' in url:
+        is_timedtext = '/api/timedtext' in url
+        if is_timedtext:
             subs_path = _ProxyHandler._subs_cache_path(url)
             if subs_path and self._serve_cached_subs(subs_path):
                 return
 
         max_attempts = 5
         backoff = (0.3, 0.6, 1.2, 2.4)
+        # A subtitle track is optional, but the stream adapter waits for it
+        # before the picture shows up. A rate limited timedtext request
+        # (HTTP 429) therefore has to fail at once: spending the whole retry
+        # budget there (4.5s of sleep) delays the video for nothing.
+        if is_timedtext:
+            max_attempts = 1
         for attempt in range(max_attempts):
             try:
                 if not _ProxyHandler._session:
@@ -287,7 +294,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                     headers['Range'] = range_header
                 headers['Accept-Encoding'] = 'identity'
 
-                resp = _ProxyHandler._session.get(url, headers=headers, timeout=120, stream=True)
+                resp = _ProxyHandler._session.get(
+                    url, headers=headers,
+                    timeout=10 if is_timedtext else 120, stream=True)
                 do_retry = attempt < max_attempts - 1 and (
                     (resp.status_code in (403, 429)
                      and ('googlevideo.com' in url or 'youtube.com' in url))
@@ -1565,7 +1574,12 @@ def _max_res_height():
 
     Stored either as text (Auto, 720p, 1080p, 2160p) or as the previous
     enum index (0=Auto, 1=720p, 2=1080p, 3=4K). Auto follows the TV's native
-    resolution and falls back to 1080p when the display size is unknown."""
+    resolution and falls back to 1080p when the display size is unknown.
+
+    A fixed choice is a ceiling, never a target: 4K stays 4K even on a
+    1080p panel, so the clip is grabbed at the highest quality YouTube has
+    for it. The screen only decides the Auto mode.
+    """
     raw = str(_get_setting('trailer_max_res', '') or '').strip()
     low = raw.lower()
     if low in _RES_HEIGHTS:
@@ -1577,8 +1591,9 @@ def _max_res_height():
             idx = 0
         height = {1: 720, 2: 1080, 3: 2160}.get(idx, 0)
     h = _screen_height()
-    _log('max_res: raw={} screen={}'.format(raw, h), getattr(xbmc, 'LOGDEBUG', 4))
     if height:
+        _log('max_res: raw={} screen={} cap={}'.format(raw, h, height),
+             always=True)
         return height
     if h >= 2160:
         return 2160
@@ -1587,6 +1602,114 @@ def _max_res_height():
     if h > 0:
         return 720
     return 1080
+
+
+def _max_video_height(data):
+    """Tallest video format in an extraction (0 when there is none)."""
+    best = 0
+    for fmt in (data or {}).get('formats', []):
+        if fmt.get('vcodec', 'none') == 'none':
+            continue
+        height = fmt.get('height', 0) or 0
+        if height > best:
+            best = height
+    return best
+
+
+_HIRES_FILE = 'yt_hires.json'
+_HIRES_TTL = 86400
+
+
+def _hires_read():
+    try:
+        p = xbmcvfs.translatePath('special://temp/' + _HIRES_FILE)
+        with open(p, 'r') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _hires_write(data):
+    try:
+        p = xbmcvfs.translatePath('special://temp/' + _HIRES_FILE)
+        with open(p, 'w') as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def _hires_known_absent(video_id):
+    """True when this clip was already answered without a 4K version."""
+    try:
+        stamp = float(_hires_read().get(video_id) or 0)
+    except (TypeError, ValueError):
+        return False
+    return stamp > 0 and (time.time() - stamp) < _HIRES_TTL
+
+
+def _hires_mark_absent(video_id):
+    try:
+        data = _hires_read()
+        data[video_id] = time.time()
+        while len(data) > 300:
+            data.pop(min(data, key=lambda k: data[k]), None)
+        _hires_write(data)
+    except Exception:
+        pass
+
+
+def _hires_forget_absent(video_id):
+    try:
+        data = _hires_read()
+        if video_id in data:
+            data.pop(video_id, None)
+            _hires_write(data)
+    except Exception:
+        pass
+
+
+def _maybe_fetch_hires(video_id, data, fresh=True):
+    """Ask again when a clip asked for in 4K came back without a 4K version.
+
+    YouTube answers the same request with the high resolutions only now and
+    then (measured on one clip: 6 of 8 answers carried 1440p/2160p, 2 did
+    not), so the same trailer can come as 4K on one device and as 1080p on
+    another one, minutes apart. The ask is repeated and the next answer
+    usually carries the full set. A clip that really has no high resolution
+    is remembered, so the extra requests happen once and not on every
+    playback, and a clip that came from the cache is left alone - its
+    answer was already asked for.
+    """
+    if not data or not fresh:
+        return data
+    if _max_res_height() < 2160:
+        return data
+    if _hires_known_absent(video_id):
+        return data
+    best = _max_video_height(data)
+    if best >= 1440:
+        _hires_forget_absent(video_id)
+        return data
+    for _try in range(2):
+        _log('No 4K in this answer (max {}); asking again'.format(best),
+             always=True)
+        xbmc.sleep(1200)
+        better = _fast_extract(video_id)
+        if not better:
+            break
+        taller = _max_video_height(better)
+        if taller > best:
+            data = better
+            best = taller
+        if best >= 1440:
+            break
+    if best >= 1440:
+        _hires_forget_absent(video_id)
+    else:
+        _hires_mark_absent(video_id)
+    _log('Highest version found: {}p'.format(best), always=True)
+    return data
 
 
 _RANGE_CACHE = {}
@@ -1621,6 +1744,45 @@ def _range_cache_store(video_id, format_id, dinit, dindex):
         p = xbmcvfs.translatePath('special://temp/yt_ranges.json')
         with open(p, 'w') as f:
             json.dump(_RANGE_CACHE, f)
+    except:
+        pass
+
+
+_FPS_CACHE = {}
+_FPS_CACHE_LOADED = False
+
+
+def _fps_cache_load():
+    global _FPS_CACHE_LOADED
+    if _FPS_CACHE_LOADED:
+        return
+    _FPS_CACHE_LOADED = True
+    try:
+        p = xbmcvfs.translatePath('special://temp/yt_fps.json')
+        with open(p, 'r') as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            now = time.time()
+            _FPS_CACHE = {k: v for k, v in data.items()
+                          if isinstance(v, dict) and now - v.get('ts', 0) < 2592000}
+    except:
+        pass
+
+
+def _fps_cache_store(video_id, format_id, fps):
+    """The measured frame rate never changes for a given video, so it is
+    asked for once. It used to be measured on every single start, which cost
+    an extra range request (and the time it takes) per playback."""
+    if not video_id or not format_id or not fps:
+        return
+    try:
+        _FPS_CACHE['{}:{}'.format(video_id, format_id)] = {
+            'fps': str(fps), 'ts': time.time()}
+        while len(_FPS_CACHE) > 200:
+            _FPS_CACHE.pop(next(iter(_FPS_CACHE)))
+        p = xbmcvfs.translatePath('special://temp/yt_fps.json')
+        with open(p, 'w') as f:
+            json.dump(_FPS_CACHE, f)
     except:
         pass
 
@@ -1689,7 +1851,16 @@ def _build_mpd(data, proxy_base='', video_id=''):
                 probe = fmt
                 break
     if probe is not None:
-        exact = _true_fps(probe['url'], declared=probe['fps'])
+        exact = None
+        if video_id:
+            _fps_cache_load()
+            hit = _FPS_CACHE.get('{}:{}'.format(video_id, probe.get('format_id')))
+            if hit:
+                exact = hit.get('fps')
+        if not exact:
+            exact = _true_fps(probe['url'], declared=probe['fps'])
+            if exact and video_id:
+                _fps_cache_store(video_id, probe.get('format_id'), exact)
         if exact and exact != probe['fps']:
             _log('Measured fps {} instead of declared {}'.format(exact, probe['fps']))
             for fmt in data.get('formats', []):
@@ -1773,6 +1944,31 @@ def _build_mpd(data, proxy_base='', video_id=''):
                         _range_cache_store(video_id, fmt.get('format_id'), dinit, dindex)
             except Exception as e:
                 _log('Parallel range discovery error: {}'.format(str(e)[:120]), xbmc.LOGWARNING)
+
+    # A second video group in another codec, at a resolution the mp4 group
+    # already covers, is a trap. The stream adapter takes the representation
+    # with the lowest bandwidth, so a box that reports a VP9 decoder silently
+    # switches to VP9 - and software VP9 on a weak 32 bit ARM box needs
+    # seconds for the first frame (measured: 8.8s instead of 0.25s). The
+    # webm group only earns its place above 1080p, where YouTube offers no
+    # H.264 at all.
+    mp4_video_heights = set()
+    for fmt in groups.get('video/mp4', []):
+        if (fmt.get('indexRange') and fmt.get('initRange')) \
+                or disc_results.get(id(fmt)):
+            mp4_video_heights.add(fmt.get('height', 0))
+    if mp4_video_heights and groups.get('video/webm'):
+        kept = [fmt for fmt in groups['video/webm']
+                if fmt.get('height', 0) not in mp4_video_heights]
+        if len(kept) != len(groups['video/webm']):
+            dropped = sorted({fmt.get('height', 0) for fmt in groups['video/webm']
+                              if fmt.get('height', 0) in mp4_video_heights})
+            _log('VP9 dropped at {} - H.264 covers it'.format(dropped), always=True)
+            groups['video/webm'] = kept
+    _log('MPD video groups: {}'.format(', '.join(
+        '{}={}'.format(g, sorted({f.get('height', 0) for f in fs}))
+        for g, fs in groups.items() if g.startswith('video'))), always=True)
+
     for idx, (group, formats) in enumerate(groups.items()):
         contentType = 'audio' if group == 'audio/mp4' else 'video'
         reps = []
@@ -2185,6 +2381,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                  tmdb_id=None, dbtype=None, season=None, episode_num=None,
                  plot=None, studio=None, tagline=None, lang=None,
                  channel=None, views=None, vdate=None, dur=None, snippet=None):
+    _t_start = time.time()
     _cleanup_old_mpd()
 
     _gate_family = _gate_key()
@@ -2306,6 +2503,16 @@ def play_youtube(video_id, title=None, genre=None, year=None,
             config.current_ip_family()), xbmc.LOGWARNING)
         config.learn_ip_family(config.current_ip_family())
 
+    # A clip asked for in 4K and answered with 1080p is asked again: YouTube
+    # hands out the high resolutions only now and then, so the same trailer
+    # can come as 4K on one device and as 1080p on another one, minutes
+    # apart. The better answer is the one that gets cached.
+    if data:
+        _better = _maybe_fetch_hires(video_id, data, fresh=fresh)
+        if _better is not data:
+            data = _better
+            fresh = True
+
     if data:
         _store_extract(video_id, data)
     _log('Title: {} | Duration: {}s'.format(
@@ -2423,6 +2630,8 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         port = _start_proxy()
     proxy_base = 'http://127.0.0.1:{}/'.format(port) if port else ''
     mpd, headers = _build_mpd(data, proxy_base, video_id) if data else (None, {})
+    _log('Startup: {:.2f}s from the play request to the stream, {} formats'.format(
+        time.time() - _t_start, len((data or {}).get('formats', []))), always=True)
 
     if fallback_fmt:
         direct_url = fallback_fmt.get('url')

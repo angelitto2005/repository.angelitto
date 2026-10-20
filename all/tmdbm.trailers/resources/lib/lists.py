@@ -301,7 +301,13 @@ def _queue_entry(entry):
     }
 
 
-def fill_missing_meta(entries, timeout=5.0):
+def _year_only(value):
+    """True for a bare year: the year of the film, not the date of a clip."""
+    text = str(value or '').strip()
+    return text.isdigit() and len(text) == 4
+
+
+def fill_missing_meta(entries, timeout=5.0, return_healed=False):
     from browse import meta
     from concurrent.futures import ThreadPoolExecutor, wait
     import store as _store
@@ -310,9 +316,32 @@ def fill_missing_meta(entries, timeout=5.0):
                if (entry or {}).get('video_id')
                and (not (entry or {}).get('channel')
                     or not (entry or {}).get('snippet')
-                    or not entry_date(entry or {}))]
+                    or not (entry or {}).get('title')
+                    or not entry_date(entry or {})
+                    or _year_only(entry_date(entry or {})))]
     if not pending:
-        return entries
+        return (entries, 0) if return_healed else entries
+
+    healed_count = [0]
+
+    def _heal(rows):
+        """Write the rows completed here back into the history file.
+
+        The history is read from disk, so a row completed in memory would be
+        empty again on the next visit - and the list is built before the fill
+        finishes, so it would show it empty every single time.
+        """
+        try:
+            healed = _store.merge_history_info(rows)
+            healed_count[0] = healed
+            if healed:
+                config.log('history healed: {} rows completed'.format(healed),
+                           always=True)
+            return healed
+        except Exception as exc:
+            config.debug('history heal failed: {}'.format(str(exc)[:100]))
+            return 0
+
     cached = {}
     fetch = []
     for entry in pending:
@@ -322,9 +351,20 @@ def fill_missing_meta(entries, timeout=5.0):
             continue
         # A cached row without a date is not complete: the music chart parser
         # has no date to begin with, so it must be refilled instead of
-        # serving the same empty value for the whole store TTL.
-        needs_date = not entry_date(entry)
-        if info and not (needs_date and not info.get('published')):
+        # serving the same empty value for the whole store TTL. A bare year
+        # is the year of the film, not the date of the clip, and counts as
+        # no date at all.
+        _entry_date = str(entry_date(entry) or '')
+        _info_date = str(info.get('published') or '') if info else ''
+        _entry_year = _year_only(_entry_date)
+        _info_year = _year_only(_info_date)
+        needs_date = not _entry_date or _entry_year
+        # A row without a title needs the title of the clip, and only the
+        # answer itself carries it.
+        needs_title = not (entry.get('title') or '')
+        has_title = bool(info.get('title')) if info else False
+        if info and not (needs_date and (not _info_date or _info_year)) \
+                and not (needs_title and not has_title):
             merged = dict(entry)
             merged['channel'] = merged.get('channel') or info.get('channel') or ''
             merged['channel_id'] = merged.get('channel_id') or info.get('channel_id') or ''
@@ -336,13 +376,20 @@ def fill_missing_meta(entries, timeout=5.0):
                 except (TypeError, ValueError):
                     pass
             merged['snippet'] = merged.get('snippet') or info.get('description') or ''
+            merged['published'] = (merged.get('published')
+                                   or info.get('published') or '')
+            merged['title'] = merged.get('title') or info.get('title') or ''
             cached[vid] = merged
         else:
             fetch.append(entry)
     pending = fetch
     if not pending:
-        return [cached.get(video_id(entry.get('video_id')), entry)
+        # Everything came from the cache: the rows are still completed, and
+        # they still have to reach the file.
+        _heal(cached)
+        _out = [cached.get(video_id(entry.get('video_id')), entry)
                 for entry in entries]
+        return (_out, healed_count[0]) if return_healed else _out
     try:
         pool = ThreadPoolExecutor(max_workers=8)
     except Exception:
@@ -395,6 +442,9 @@ def fill_missing_meta(entries, timeout=5.0):
             except (TypeError, ValueError):
                 pass
         merged['snippet'] = merged.get('snippet') or info.get('description') or ''
+        merged['published'] = (merged.get('published')
+                               or info.get('published') or '')
+        merged['title'] = merged.get('title') or info.get('title') or ''
         filled[merged['video_id']] = merged
         try:
             stored = {
@@ -402,8 +452,13 @@ def fill_missing_meta(entries, timeout=5.0):
                 'channel_id': merged.get('channel_id') or '',
                 'views': merged.get('views') or '',
                 'duration': merged.get('duration') or 0,
-                'description': merged.get('snippet') or ''}
-            if merged.get('vdate'):
+                'description': merged.get('snippet') or '',
+                'title': info.get('title') or ''}
+            # The date of the clip, not the year of the film it belongs to.
+            _pub = str(info.get('published') or '').strip()
+            if _pub and not (_pub.isdigit() and len(_pub) == 4):
+                stored['published'] = _pub
+            elif merged.get('vdate'):
                 stored['published'] = merged['vdate']
             else:
                 # No date anywhere: park it like a failed lookup so the next
@@ -428,8 +483,13 @@ def fill_missing_meta(entries, timeout=5.0):
         config.debug('meta fill: {}/{} filled'.format(len(filled),
                                                       len(pending)))
     filled.update(cached)
-    return [filled.get(video_id(entry.get('video_id')), entry)
+    # What was filled here has to reach the file: the history is read from
+    # disk, so a row completed in memory would be empty again on the next
+    # visit.
+    _heal(filled)
+    _out = [filled.get(video_id(entry.get('video_id')), entry)
             for entry in entries]
+    return (_out, healed_count[0]) if return_healed else _out
 
 
 def persist_filled(source_name, original, filled):

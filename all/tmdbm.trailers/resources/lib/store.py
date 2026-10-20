@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import threading
 import time
 import unicodedata
 import uuid
@@ -19,6 +20,11 @@ _WATCH_LATER = 'watch_later.json'
 _LIBRARY = 'library.json'
 _STATE = 'state.json'
 _OAUTH = 'youtube_oauth.json'
+# The history is read and written from two places at once: a playback that
+# adds a clip and the background fill that completes the rows. Without this
+# the one that writes last wins and a clip can be lost or the rows of the
+# other one can be undone.
+_HISTORY_LOCK = threading.Lock()
 # Parsed copy of library.json, kept between reads and dropped when the file
 # changes. It is the one file here that grows with the account and is read once
 # per video while a listing is being completed.
@@ -139,18 +145,72 @@ def add_history(entry):
         return
     entry['video_id'] = video_id
     entry['watched'] = int(time.time())
-    history = [item for item in get_history() if item.get('video_id') != video_id]
-    history.insert(0, entry)
-    _write(_HISTORY, history[:_HISTORY_CAP])
+    with _HISTORY_LOCK:
+        history = [item for item in get_history()
+                   if item.get('video_id') != video_id]
+        history.insert(0, entry)
+        _write(_HISTORY, history[:_HISTORY_CAP])
 
 
 def remove_history(video_id):
-    _write(_HISTORY, [item for item in get_history()
-                      if item.get('video_id') != video_id])
+    with _HISTORY_LOCK:
+        _write(_HISTORY, [item for item in get_history()
+                          if item.get('video_id') != video_id])
 
 
 def clear_history():
-    _write(_HISTORY, [])
+    with _HISTORY_LOCK:
+        _write(_HISTORY, [])
+
+
+def merge_history_info(filled):
+    """Write the metadata filled in the background back into the history.
+    The history is read from a file, so a row that was completed in memory
+    would come back empty on the next visit - and the list is built before
+    the fill finishes, so it would show it empty every single time. A clip
+    started from another addon carries no channel, no views, no duration and
+    no description at all, and its date is the year of the film, which is not
+    a date: that one is replaced by the real one.
+    """
+    if not filled:
+        return 0
+    with _HISTORY_LOCK:
+        # Read the file again inside the lock: a clip that was played while
+        # the fill ran must not be dropped by this write.
+        history = get_history()
+        changed = 0
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            info = filled.get(item.get('video_id') or '')
+            if not isinstance(info, dict):
+                continue
+            touched = False
+            for key in ('title', 'channel', 'channel_id', 'views', 'snippet'):
+                if not item.get(key) and info.get(key):
+                    item[key] = info[key]
+                    touched = True
+            if not item.get('duration') and info.get('duration'):
+                try:
+                    item['duration'] = int(info.get('duration') or 0)
+                except (TypeError, ValueError):
+                    pass
+                touched = True
+            date = str(item.get('vdate') or '')
+            if date.isdigit() and len(date) == 4:
+                # the year of the film, not the date of the clip
+                date = ''
+            if not date:
+                _new = info.get('published') or info.get('vdate') or ''
+                _new = str(_new or '').strip()
+                if _new and not (_new.isdigit() and len(_new) == 4):
+                    item['vdate'] = _new
+                    touched = True
+            if touched:
+                changed += 1
+        if changed:
+            _write(_HISTORY, history)
+    return changed
 
 
 def get_subscriptions():

@@ -489,11 +489,16 @@ def _fill_dates_bg(entries, refresh=False):
     def _run():
         try:
             import lists
-            done = lists.fill_missing_meta(entries, timeout=60.0)
+            done, healed = lists.fill_missing_meta(entries, timeout=60.0,
+                                                   return_healed=True)
             dated = sum(1 for entry in done if lists.entry_date(entry))
             config.log('background meta fill: {}/{} with a date'.format(
                 dated, len(done)), always=True)
-            if refresh and not _modal_open():
+            # The repaint is only worth it when the rows really changed, and
+            # never while a video plays: a refresh that lands on the way back
+            # from a playback rebuilds the list under the user's fingers and
+            # the rows end up mixed.
+            if refresh and healed and not _modal_open() and not _video_playing():
                 xbmc.executebuiltin('Container.Refresh')
         except Exception as exc:
             config.log('background meta fill failed: {}'.format(exc))
@@ -502,6 +507,13 @@ def _fill_dates_bg(entries, refresh=False):
 
     _FILL_DATES['busy'] = True
     _threading.Thread(target=_run, daemon=True).start()
+
+
+def _video_playing():
+    try:
+        return bool(xbmc.Player().isPlayingVideo())
+    except Exception:
+        return False
 
 
 def _modal_open():
