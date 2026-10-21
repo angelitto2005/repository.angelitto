@@ -589,14 +589,28 @@ def get_plot_language():
     return 'en-US'
 
 def get_trailer_mode():
-    """Returns 'yt-dlp' or 'youtube_plugin' based on setting."""
+    """Returns 'yt-dlp', 'youtube_plugin' or 'imdb' based on setting."""
     try:
         val = ADDON.getSetting('trailer_player')
-        return 'yt-dlp' if val == '0' else 'youtube_plugin'
+        if val == '1': return 'youtube_plugin'
+        if val == '2': return 'imdb'
+        return 'yt-dlp'
     except:
         return 'yt-dlp'
 
-def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None):
+def get_trailer_url(video_id, tmdb_id=None, dbtype=None, title=None, year=None, season=None, plot=None, studio=None, tagline=None, genre=None, imdb_id=''):
+    """Trailer URL for the configured player.
+
+    The single implementation lives in playback/trailer_player.py so that
+    TMDb Info and the context menu build the exact same URL.
+    """
+    try:
+        from resources.lib.playback.trailer_player import get_trailer_url as _impl
+        return _impl(video_id, tmdb_id=tmdb_id, dbtype=dbtype, title=title,
+                     year=year, season=season, plot=plot, studio=studio,
+                     tagline=tagline, genre=genre, imdb_id=imdb_id)
+    except Exception:
+        pass
     mode = get_trailer_mode()
     extra = ''
     parts = []

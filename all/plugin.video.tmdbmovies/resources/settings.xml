@@ -53,7 +53,7 @@
         <setting id="enable_trailer_context" type="bool" label="Enable Context Menu [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" default="true"/>
         <setting id="enable_library_context" type="bool" label="Enable Context Menu [B][COLOR yellow]Add to Library[/COLOR][/B]" default="true"/>
 		<setting type="lsep" label="Trailer Player"/>
-		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin" default="0"/>
+		<setting id="trailer_player" type="enum" label="Play trailers with" values="[B][COLOR FF00CED1]TMDbM[/COLOR] [COLOR FFF70D1A]Trailers[/COLOR][/B] (Default)|[B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B]Plugin|[B][COLOR FFF5C518]IMDb[/COLOR] [COLOR FFCCCCFF]Trailers[/COLOR][/B]" default="0"/>
 		<setting id="open_tmdbm_trailers_settings" type="action" label="  Open [B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B] Settings[/COLOR]" subsetting="true" option="close" visible="eq(-1,0) + System.HasAddon(tmdbm.trailers)" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/playback/trailer_settings_opener.py, tmdbm.trailers)"/>
 		<setting id="open_youtube_plugin_settings" type="action" label="  Open [B][COLOR FFCCCCFF]You[COLOR FFF70D1A]Tube [/COLOR][/B] Plugin Settings[/COLOR]" subsetting="true" option="close" visible="eq(-2,1) + System.HasAddon(plugin.video.youtube)" action="RunScript(special://home/addons/plugin.video.tmdbmovies/resources/lib/playback/trailer_settings_opener.py, plugin.video.youtube)"/>
 		

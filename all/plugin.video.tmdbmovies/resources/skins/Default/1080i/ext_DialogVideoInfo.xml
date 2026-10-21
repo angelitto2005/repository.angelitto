@@ -1286,6 +1286,13 @@
 										<animation effect="fade" end="30" time="0" condition="true">Conditional</animation>
 										<aspectratio aligny="center">scale</aspectratio>
 									</control>
+									<control type="image">
+										<posx>252</posx>
+										<posy>18</posy>
+										<width>60</width>
+										<height>20</height>
+										<texture>$INFO[ListItem.Property(video_source_badge)]</texture>
+									</control>
 									<control type="textbox">
 										<posx>0</posx>
 										<width>323</width>
@@ -1327,6 +1334,13 @@
 										<texture background="true" fallback="DefaultVideo.png">$INFO[ListItem.Thumb]</texture>
 										<aspectratio aligny="center">scale</aspectratio>
 										<fadetime>0</fadetime>
+									</control>
+									<control type="image">
+										<posx>252</posx>
+										<posy>18</posy>
+										<width>60</width>
+										<height>20</height>
+										<texture>$INFO[ListItem.Property(video_source_badge)]</texture>
 									</control>
 									<control type="textbox">
 										<posx>0</posx>

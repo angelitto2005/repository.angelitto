@@ -63,6 +63,11 @@ IMG_FULL = "https://image.tmdb.org/t/p/original"
 XML_VIDEO_INFO = 'ext_DialogVideoInfo.xml'
 XML_ACTOR_INFO = 'ext_DialogInfo.xml'
 
+BADGE_DIR = os.path.join(ADDON_PATH, 'resources', 'media')
+BADGE_IMDB = os.path.join(BADGE_DIR, 'badge_imdb.png')
+BADGE_TMDB = os.path.join(BADGE_DIR, 'badge_tmdb.png')
+BADGE_YOUTUBE = os.path.join(BADGE_DIR, 'badge_youtube.png')
+
 ACTION_PREVIOUS_MENU = 10
 ACTION_NAV_BACK = 92
 ACTION_LEFT = 1
@@ -1332,7 +1337,8 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                     'type': 'Trailer' if is_trailer else 'Clip',
                     'official': is_trailer,
                     'thumb': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
-                    'published_at': snippet.get('publishedAt', '')
+                    'published_at': snippet.get('publishedAt', ''),
+                    'source': 'youtube'
                 })
             secondary_list.extend(yt_list)  # TOATE rezultatele YouTube in randul 2
         
@@ -1353,12 +1359,16 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                         'official': True,
                         'thumb': f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg",
                         'published_at': '',
-                        'lang': 'en'
+                        'lang': 'en',
+                        'source': 'youtube'
                     }
                     primary_list.append(video_obj)
             except Exception as e:
                 log(f"[ExtendedInfo] YouTube search error: {e}")
         
+        _imdb_item = imdb_trailer_item(self, primary_list, secondary_list)
+        if _imdb_item:
+            primary_list.insert(0, _imdb_item)
         self.fill_video_list(1150, primary_list)
         self.fill_video_list(350, secondary_list)
 
@@ -1557,17 +1567,24 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
                     label2 += f" • {date_str}"
                 
                 key = v.get('key')
-                if not key: continue
+                source = v.get('source', '')
+                if not key and source != 'imdb': continue
                 
                 # Thumbnail
                 icon = v.get('thumb')
-                if not icon:
+                if not icon and source != 'imdb':
                     icon = f"https://img.youtube.com/vi/{key}/mqdefault.jpg"
                 
                 li = xbmcgui.ListItem(label)
                 li.setLabel2(label2)
                 li.setArt({'thumb': icon, 'icon': icon})
-                li.setProperty('youtube_id', key)
+                if source == 'imdb':
+                    li.setProperty('imdb_trailer_url', v.get('imdb_url', ''))
+                    li.setProperty('imdb_fallback_id', v.get('fallback', ''))
+                    li.setProperty('video_source_badge', BADGE_IMDB)
+                else:
+                    li.setProperty('youtube_id', key)
+                    li.setProperty('video_source_badge', BADGE_YOUTUBE if source == 'youtube' else BADGE_TMDB)
                 
                 list_items.append(li)
             
@@ -1659,7 +1676,11 @@ class SeasonInfo(xbmcgui.WindowXMLDialog):
         elif controlId == 1150 or controlId == 350: # Videos (Official & Standard)
             item = self.getControl(controlId).getSelectedItem()
             yt_id = item.getProperty('youtube_id')
-            if yt_id:
+            imdb_url = item.getProperty('imdb_trailer_url')
+            if imdb_url:
+                self.next_info = ('imdb_play', (imdb_url, item.getProperty('imdb_fallback_id')))
+                self.close()
+            elif yt_id:
                 self.next_info = ('youtube_play', yt_id)
                 self.close()
         
@@ -2120,7 +2141,8 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                     'type': 'Trailer' if is_trailer else 'Clip',
                     'official': is_trailer,
                     'thumb': snippet.get('thumbnails', {}).get('high', {}).get('url', ''),
-                    'published_at': snippet.get('publishedAt', '')
+                    'published_at': snippet.get('publishedAt', ''),
+                    'source': 'youtube'
                 })
             secondary_list.extend(yt_list)
         
@@ -2141,11 +2163,15 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                         'official': True,
                         'thumb': f"https://img.youtube.com/vi/{yt_id}/mqdefault.jpg",
                         'published_at': '',
-                        'lang': 'en'
+                        'lang': 'en',
+                        'source': 'youtube'
                     })
             except Exception as e:
                 log(f"[ExtendedInfo] YouTube search error: {e}")
         
+        _imdb_item = imdb_trailer_item(self, primary_list, secondary_list)
+        if _imdb_item:
+            primary_list.insert(0, _imdb_item)
         self.fill_video_list(1150, primary_list)
         self.fill_video_list(350, secondary_list)
 
@@ -2532,17 +2558,24 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
                     label2 += f" • {date_str}"
                 
                 key = v.get('key')
-                if not key: continue
+                source = v.get('source', '')
+                if not key and source != 'imdb': continue
                 
                 # Thumbnail
                 icon = v.get('thumb')
-                if not icon:
+                if not icon and source != 'imdb':
                     icon = f"https://img.youtube.com/vi/{key}/mqdefault.jpg"
                 
                 li = xbmcgui.ListItem(label)
                 li.setLabel2(label2)
                 li.setArt({'thumb': icon, 'icon': icon})
-                li.setProperty('youtube_id', key)
+                if source == 'imdb':
+                    li.setProperty('imdb_trailer_url', v.get('imdb_url', ''))
+                    li.setProperty('imdb_fallback_id', v.get('fallback', ''))
+                    li.setProperty('video_source_badge', BADGE_IMDB)
+                else:
+                    li.setProperty('youtube_id', key)
+                    li.setProperty('video_source_badge', BADGE_YOUTUBE if source == 'youtube' else BADGE_TMDB)
                 
                 list_items.append(li)
             
@@ -2624,7 +2657,11 @@ class ExtendedInfo(xbmcgui.WindowXMLDialog):
             
         elif controlId == 1150 or controlId == 350: # Videos (Official & Standard)
             item = self.getControl(controlId).getSelectedItem()
-            if item and item.getProperty('youtube_id'):
+            if item and item.getProperty('imdb_trailer_url'):
+                self.next_info = ('imdb_play', (item.getProperty('imdb_trailer_url'),
+                                               item.getProperty('imdb_fallback_id')))
+                self.close()
+            elif item and item.getProperty('youtube_id'):
                 self.next_info = ('youtube_play', item.getProperty('youtube_id'))
                 self.close()
         
@@ -3038,6 +3075,18 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                                             tmdb_id=current.get('tmdb_id'),
                                             dbtype=current.get('media_type'))
                     continue
+                elif next_type == 'imdb_play':
+                    meta = getattr(wd, 'meta', {}) or {}
+                    t = meta.get('title') or meta.get('name')
+                    g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
+                    del wd
+                    _imdb_url, _fallback_id = next_data or ('', '')
+                    play_imdb_and_return(_imdb_url, title=t, genre=g,
+                                         plot=_trailer_info_plot(meta, g)[0],
+                                         studio=_trailer_info_plot(meta, g)[1] or None,
+                                         fallback_video_id=_fallback_id,
+                                         art=_trailer_art(meta))
+                    continue
                 else:
                     handle_next_info(wd.next_info)
             else:
@@ -3097,6 +3146,21 @@ def run_extended_info(tmdb_id, media_type='movie', clear_stack=True, season=None
                                             plot=_trailer_info_plot(meta, g)[0], studio=_trailer_info_plot(meta, g)[1] or None,
                                             tmdb_id=current.get('tv_id'),
                                             dbtype='tv' if current.get('type') == 'season' else None)
+                    continue
+                elif next_type == 'imdb_play':
+                    meta = getattr(wd, 'meta', {}) or {}
+                    _tg, _gn = _show_tagline_genres(current.get('tv_id'))
+                    if _gn and not meta.get('genres'):
+                        meta['genres'] = [{'name': x.strip()} for x in _gn.split(',')]
+                    t = meta.get('title') or meta.get('name') or current.get('tv_name')
+                    g = ' / '.join([x['name'] for x in meta.get('genres', [])]) if meta.get('genres') else None
+                    del wd
+                    _imdb_url, _fallback_id = next_data or ('', '')
+                    play_imdb_and_return(_imdb_url, title=t, genre=g,
+                                         plot=_trailer_info_plot(meta, g)[0],
+                                         studio=_trailer_info_plot(meta, g)[1] or None,
+                                         fallback_video_id=_fallback_id,
+                                         art=_trailer_art(meta))
                     continue
                 log(f"[RunLoop] Season Next Info: {wd.next_info}")
                 handle_next_info_season(wd.next_info, current)
@@ -3164,17 +3228,23 @@ def _trailer_info_plot(meta, genres_str):
     return head + overview, studio
 
 
+def _trailer_art(meta):
+    """Poster + fanart pentru panoul de info al playerului (OSD)."""
+    art = {}
+    poster = (meta or {}).get('poster_path') or (meta or {}).get('still_path') or ''
+    backdrop = (meta or {}).get('backdrop_path') or ''
+    if poster:
+        art['poster'] = art['thumb'] = IMG_BASE + poster
+    if backdrop:
+        art['fanart'] = BACKDROP_BASE + backdrop
+    return art
+
+
 def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=None, year=None, plot=None, studio=None):
-    from resources.lib.playback.trailer_player import get_trailer_mode, get_trailer_url
-    mode = get_trailer_mode()
-    if mode == 'youtube_plugin':
-        url = f"plugin://plugin.video.youtube/play/?video_id={yt_id}"
-    else:
-        url = get_trailer_url(yt_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                              title=title, year=year, plot=plot, studio=studio)
-        if genre:
-            from urllib.parse import urlencode
-            url = '{}&{}'.format(url, urlencode({'genre': genre}))
+    from resources.lib.playback.trailer_player import youtube_video_url
+    url = youtube_video_url(yt_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                            title=title, year=year, plot=plot, studio=studio,
+                            genre=genre)
     li = xbmcgui.ListItem(path=url)
     if title:
         tag = li.getVideoInfoTag()
@@ -3191,6 +3261,89 @@ def play_youtube_and_return(yt_id, title=None, genre=None, tmdb_id=None, dbtype=
         monitor.waitForAbort(0.5)
     while xbmc.Player().isPlaying() and not monitor.abortRequested():
         monitor.waitForAbort(1)
+
+
+def play_imdb_and_return(url, title=None, genre=None, plot=None, studio=None, fallback_video_id='', art=None):
+    """Trailerul de pe IMDb (MP4 direct); daca URL-ul a expirat, clipul YouTube."""
+    if url:
+        li = xbmcgui.ListItem(path=url)
+        try:
+            tag = li.getVideoInfoTag()
+            if title:
+                tag.setTitle(title)
+                tag.setOriginalTitle(title)
+            if plot:
+                tag.setPlot(str(plot))
+            if studio:
+                tag.setStudios([studio])
+            if genre:
+                tag.setGenres([g.strip() for g in str(genre).replace('/', ',').split(',') if g.strip()])
+        except Exception:
+            pass
+        if art:
+            try:
+                li.setArt(art)
+            except Exception:
+                pass
+        xbmc.Player().play(url, li)
+        monitor = xbmc.Monitor()
+        for _ in range(30):
+            if xbmc.Player().isPlaying(): break
+            if monitor.abortRequested(): return
+            monitor.waitForAbort(0.5)
+        while xbmc.Player().isPlaying() and not monitor.abortRequested():
+            monitor.waitForAbort(1)
+        return True
+    if fallback_video_id:
+        play_youtube_and_return(fallback_video_id, title=title, genre=genre,
+                                 plot=plot, studio=studio)
+        return True
+    return False
+
+
+def imdb_trailer_item(window, primary_list, secondary_list):
+    """Itemul 'Trailer (IMDb)' de la inceputul randului oficial.
+
+    Apare in toate modurile: in modul IMDb este sursa principala, in celelalte
+    e un rand extra (badge IMDb langa celelalte), iar restul videoclipurilor
+    merg pe jucatorul ales de user.
+    """
+    meta = getattr(window, 'meta', None) or {}
+    tmdb_id = getattr(window, 'tmdb_id', None) or getattr(window, 'tv_id', None) or ''
+    if not tmdb_id:
+        return None
+    media_type = 'tv' if (getattr(window, 'season_num', None) is not None
+                           or getattr(window, 'media_type', '') == 'tv') else 'movie'
+    try:
+        from resources.lib.playback.imdb_trailer import url_for
+        url, definition = url_for(tmdb_id, media_type)
+    except Exception as exc:
+        log(f"[ExtendedInfo] IMDb trailer error: {exc}")
+        return None
+    if not url:
+        return None
+    fallback = ''
+    for videos in (primary_list, secondary_list):
+        for v in videos:
+            if v.get('key'):
+                fallback = v['key']
+                break
+        if fallback:
+            break
+    poster = meta.get('poster_path') or meta.get('still_path') or ''
+    title = getattr(window, 'title_text', '') or meta.get('title') or meta.get('name') or ''
+    return {
+        'name': f'{title} - Trailer' if title else 'Trailer',
+        'key': 'imdb',
+        'type': 'Trailer',
+        'official': True,
+        'thumb': (IMG_BASE + poster) if poster else '',
+        'published_at': '',
+        'lang': 'en',
+        'source': 'imdb',
+        'imdb_url': url,
+        'fallback': fallback,
+    }
 
 def handle_next_info(next_info):
     info_type, data = next_info

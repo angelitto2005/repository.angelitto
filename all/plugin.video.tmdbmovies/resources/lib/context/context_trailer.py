@@ -14,6 +14,11 @@ from urllib.parse import quote_plus, urlencode
 ADDON = xbmcaddon.Addon('plugin.video.tmdbmovies')
 API_KEY = "8ad3c21a92a64da832c559d58cc63ab4"
 BASE_URL = "https://api.themoviedb.org/3"
+try:
+    from resources.lib.core.config import IMG_BASE, BACKDROP_BASE
+except Exception:
+    IMG_BASE = "https://image.tmdb.org/t/p/w500"
+    BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280"
 
 def log(msg):
     xbmc.log(f"[TMDb Play Trailer] {msg}", xbmc.LOGINFO)
@@ -129,27 +134,37 @@ def find_trailer_video(tmdb_id, media_type, season=None):
             return key
     return None
 
-def search_trailer_by_title(title, year=None, media_type='movie', season=None):
+def search_tmdb_id_by_title(title, year=None, media_type='movie'):
+    """ID-ul TMDb al unui titlu, din cautarea pe titlu (cu an, daca exista)."""
+    if not title:
+        return ''
     url = '{}/search/{}?api_key={}&query={}&year={}'.format(
         BASE_URL, media_type, API_KEY, quote_plus(title), year or ''
     )
     data = get_json(url)
-    results = data.get('results', [])
-    if results:
-        found_id = results[0].get('id')
+    for result in (data.get('results') or []):
+        found_id = result.get('id')
         if found_id:
             log('Found {} via title search: id={}'.format(media_type, found_id))
-            return find_trailer_video(str(found_id), media_type, season=season)
+            return str(found_id)
+    return ''
+
+def search_trailer_by_title(title, year=None, media_type='movie', season=None, found_id=''):
+    if not found_id:
+        found_id = search_tmdb_id_by_title(title, year, media_type)
+    if found_id:
+        return find_trailer_video(found_id, media_type, season=season)
     return None
 
 def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
     """Overview + tagline|gen pentru OSD-ul trailerului, in limba setata pentru
     plot (fallback EN). Fara asta, tmdbm.trailers isi ia singur plotul: pentru
     episoade harta lui de dbtype nu cunoaste 'episode' si interogheaza
-    /movie/{tmdb_id} cu ID-ul SERIALULUI -> overview-ul altui film!
+    /movie/{imdb_id} cu ID-ul SERIALULUI -> overview-ul altui film!
     Tagline-ul pleaca FARA [B] (randul TagLine din OSD afiseaza literal
     [/B]-ul final) si cu genurile incluse in string (parametrul genre=
-    alimenteaza doar linia de sub titlul clipului, nu randul din OSD)."""
+    alimenteaza doar linia de sub titlul clipului, nu randul din OSD).
+    Intoarce si art-ul (poster/fanart) pentru panoul de info al playerului."""
     try:
         from resources.lib.core.config import get_plot_language_code, LANG_TO_TMDB
         lang = LANG_TO_TMDB.get(get_plot_language_code(), 'en-US')
@@ -198,13 +213,23 @@ def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
                 tagline_text = (_en_show.get('tagline') or '').strip()
         genres_str = ', '.join(g.get('name') for g in (_gsrc.get('genres') or []) if g.get('name'))
 
+        # Art pentru OSD: posterul itemului (la sezon/episod lipseste, se
+        # ia posterul serialului), fanartul din backdrop.
+        _poster = item.get('poster_path') or item.get('still_path') or show.get('poster_path') or ''
+        _backdrop = item.get('backdrop_path') or show.get('backdrop_path') or ''
+        art = {}
+        if _poster:
+            art['poster'] = art['thumb'] = IMG_BASE + _poster
+        if _backdrop:
+            art['fanart'] = BACKDROP_BASE + _backdrop
+
         def _head():
             # Acelasi format ca la Extended Info (dovedit corect in OSD).
             if tagline_text and genres_str:
                 return f"[B][COLOR yellow]{tagline_text}[/COLOR][/B] | [B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
-            if tagline_text:
+            elif tagline_text:
                 return f"[B][COLOR yellow]{tagline_text}[/COLOR][/B]\n"
-            if genres_str:
+            elif genres_str:
                 return f"[B][COLOR FF00CED1]{genres_str}[/COLOR][/B]\n"
             return ''
 
@@ -213,19 +238,19 @@ def _get_details_for_osd(dbtype, tmdb_id, season=None, episode=None):
             # ingropam motto+gen in plot (ca la Extended Info) si nu trimitem
             # tagline separat (ar risca duplicare).
             plot_out = _head() + overview
-            log('OSD meta (seas/ep): plot={}c (cu antet motto|gen)'.format(len(plot_out or '')))
-            return plot_out or None, None
+            log('OSD meta (seas/ep): plot={}c (cu antet motto|gen) art={}'.format(len(plot_out or ''), bool(art)))
+            return plot_out or None, None, art
 
         # La fel ca la TMDb Info si Extended Info: motto-ul si genurile merg
         # IN plot, nu intr-un rand TagLine separat - multe skinuri nu
-        # arata randul TagLine, iar acolo informatia se pierdea. Tagline
+        # arata randul TagLine, iar acolo informatia s-ar pierdea. Tagline
         # separat ar dubla motto-ul in OSD.
         plot_out = _head() + overview
-        log('OSD meta: plot={}c (cu antet motto|gen)'.format(len(plot_out or '')))
-        return plot_out or None, None
+        log('OSD meta: plot={}c (cu antet motto|gen) art={}'.format(len(plot_out or ''), bool(art)))
+        return plot_out or None, None, art
     except Exception as e:
         log('OSD meta error: {}'.format(e))
-        return None, None
+        return None, None, {}
 
 
 def main():
@@ -280,44 +305,81 @@ def main():
 
     log('title={} year={} genre={} media_type={} season={}'.format(title, year, genre, media_type, season))
 
+    # Info label-urile din ListItem pot veni goale (de ex. dupa o redare
+    # sau cand containerul tocmai s-a renovat). Atunci luam ID-ul TMDb din
+    # cautarea pe titlu, ca trailerul, meta pentru OSD si posterul sa fie
+    # la fel de disponibile in orice situatie.
+    _title_search_done = False
+    if not tmdb_id and title and media_type:
+        log('tmdb_id missing from ListItem; searching by title')
+        tmdb_id = search_tmdb_id_by_title(title, year, media_type)
+        _title_search_done = True
+        log('tmdb_id from title search: {}'.format(tmdb_id))
+
     # Meta pentru OSD (motto+gen + plot in limba setata), ca la TMDb INFO.
     _osd_dbtype = dbtype if dbtype in ('movie', 'tvshow', 'tv', 'season', 'episode') else media_type
-    plot_param, tagline_param = None, None
+    plot_param, tagline_param, art_param = None, None, {}
     if tmdb_id and media_type:
-        plot_param, tagline_param = _get_details_for_osd(
+        plot_param, tagline_param, art_param = _get_details_for_osd(
             _osd_dbtype, tmdb_id, season=season, episode=episode_num)
 
     video_id = None
-    if tmdb_id and media_type:
-        video_id = find_trailer_video(tmdb_id, media_type, season=season)
+    url = ''
+    imdb_id = get_first_valid([
+        'ListItem.UniqueID(imdb)',
+        'ListItem.Property(imdb_id)',
+        'ListItem.Property(imdbId)'
+    ])
 
-    if not video_id and title and media_type:
-        log('Fallback: searching by title')
-        video_id = search_trailer_by_title(title, year, media_type, season=season)
+    # Modul IMDb: intai trailerul de pe IMDb (MP4 direct, pornire imediata).
+    # Cautarea pe YouTube ramane in a doua plan, ca fallback.
+    try:
+        from resources.lib.playback.trailer_player import get_trailer_mode, imdb_trailer_url
+    except Exception:
+        get_trailer_mode = None
+        imdb_trailer_url = None
+    if get_trailer_mode and get_trailer_mode() == 'imdb':
+        url = imdb_trailer_url(tmdb_id=tmdb_id, dbtype=dbtype, imdb_id=imdb_id)
+        log('IMDb trailer url: {}'.format('yes' if url else 'none'))
 
-    if not video_id and title:
-        log('Fallback: searching YouTube directly')
-        video_id = search_youtube_trailer(title, year)
+    if not url:
+        if tmdb_id and media_type:
+            video_id = find_trailer_video(tmdb_id, media_type, season=season)
 
-    log('video_id={}'.format(video_id))
+        if not video_id and title and media_type and not _title_search_done:
+            log('Fallback: searching by title')
+            video_id = search_trailer_by_title(title, year, media_type, season=season)
 
-    if video_id:
-        from resources.lib.playback.trailer_player import get_trailer_url, has_tmdbm_trailers, has_youtube_plugin
-        url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
-                              title=title, year=year, season=season,
-                              plot=plot_param, tagline=tagline_param)
-        if not url:
-            return
-        if genre:
+        if not video_id and title:
+            log('Fallback: searching YouTube directly')
+            video_id = search_youtube_trailer(title, year)
+
+        log('video_id={}'.format(video_id))
+
+        if video_id:
+            from resources.lib.playback.trailer_player import get_trailer_url
+            url = get_trailer_url(video_id, tmdb_id=tmdb_id, dbtype=dbtype,
+                                  title=title, year=year, season=season,
+                                  plot=plot_param, tagline=tagline_param,
+                                  imdb_id=imdb_id)
+
+    if url:
+        if genre and url.startswith('plugin://'):
             url = '{}&{}'.format(url, urlencode({'genre': genre}))
         li = xbmcgui.ListItem(path=url)
+        tag = li.getVideoInfoTag()
         if title:
-            tag = li.getVideoInfoTag()
             tag.setTitle(title)
             tag.setOriginalTitle(title)
+        if plot_param:
+            tag.setPlot(plot_param)
         if genre:
-            tag = li.getVideoInfoTag()
             tag.setGenres([g.strip() for g in genre.replace('/', ',').split(',') if g.strip()])
+        if art_param:
+            try:
+                li.setArt(art_param)
+            except Exception:
+                pass
         log('Playing: {}'.format(url))
         xbmc.Player().play(url, li)
     else:

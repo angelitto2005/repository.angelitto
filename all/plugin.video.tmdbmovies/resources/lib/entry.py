@@ -417,7 +417,7 @@ def _youtube_plot(channel='', views='', date='', dur='', desc=''):
 
 
 def _youtube_queue_entry(vid, title, views='', date='', dur=''):
-    from resources.lib.playback.trailer_player import get_trailer_url
+    from resources.lib.playback.trailer_player import youtube_video_url
     from resources.lib.context.extended_info_mod import get_youtube_video_meta
     try:
         m = get_youtube_video_meta(vid) or {}
@@ -432,7 +432,7 @@ def _youtube_queue_entry(vid, title, views='', date='', dur=''):
         dur_sec = 0
     plot = _youtube_plot(channel=ch, views=views, date=(mdate or date), dur=(_youtube_fmt_dur(dur_sec) or dur), desc=desc)
     try:
-        url = get_trailer_url(vid, title=title or vid, plot=plot or None, studio=ch or None)
+        url = youtube_video_url(vid, title=title or vid, plot=plot or None, studio=ch or None)
     except:
         return None
     if not url:
@@ -925,21 +925,22 @@ def run_plugin():
             xbmcgui.Window(10000).clearProperty('TMDbMovies.YoutubeAutoplay')
         except:
             pass
-        if video_id:
-            from resources.lib.playback.trailer_player import play_trailer
-            _tid = params.get('tmdb_id') or params.get('tmdb')
-            _dbtype = params.get('dbtype')
-            _ttl = params.get('title')
-            _yr = params.get('year')
-            if not _tid or not _dbtype or not _ttl:
-                _tid = _tid or xbmc.getInfoLabel('ListItem.UniqueID(tmdb)') or ''
-                _dbtype = _dbtype or xbmc.getInfoLabel('ListItem.DBTYPE').lower().strip() or ''
-                _ttl = _ttl or xbmc.getInfoLabel('ListItem.Title') or ''
-                _yr = _yr or xbmc.getInfoLabel('ListItem.Year') or ''
-            play_trailer(video_id, tmdb_id=_tid, dbtype=_dbtype,
+        from resources.lib.playback.trailer_player import play_trailer
+        _tid = params.get('tmdb_id') or params.get('tmdb')
+        _dbtype = params.get('dbtype')
+        _ttl = params.get('title')
+        _yr = params.get('year')
+        if not _tid or not _dbtype or not _ttl:
+            _tid = _tid or xbmc.getInfoLabel('ListItem.UniqueID(tmdb)') or ''
+            _dbtype = _dbtype or xbmc.getInfoLabel('ListItem.DBTYPE').lower().strip() or ''
+            _ttl = _ttl or xbmc.getInfoLabel('ListItem.Title') or ''
+            _yr = _yr or xbmc.getInfoLabel('ListItem.Year') or ''
+        if video_id or _tid:
+            play_trailer(video_id or '', tmdb_id=_tid, dbtype=_dbtype,
                          title=_ttl, year=_yr, plot=params.get('plot'),
                          studio=params.get('studio'), tagline=params.get('tagline'),
-                         genre=params.get('genre'))
+                         genre=params.get('genre'),
+                         imdb_id=params.get('imdb_id') or xbmc.getInfoLabel('ListItem.UniqueID(imdb)') or '')
         return
 
     if mode == 'youtube_search':
@@ -1111,12 +1112,12 @@ def run_plugin():
         return
 
     if mode == 'youtube_play':
-        from resources.lib.playback.trailer_player import get_trailer_url
+        from resources.lib.playback.trailer_player import youtube_video_url
         _yp_vid = params.get('video_id')
         _yp_plot = params.get('plot') or ''
         _yp_studio = params.get('studio') or ''
         if _yp_vid and params.get('yt_src') == 'search' and get_addon().getSetting('youtube_autoplay') == 'true':
-            _yp_first = get_trailer_url(_yp_vid, tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title') or _yp_vid, year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
+            _yp_first = youtube_video_url(_yp_vid, tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title') or _yp_vid, year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
             if not _yp_first:
                 xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
                 return
@@ -1183,7 +1184,7 @@ def run_plugin():
             import threading as _yt_threading
             _yt_threading.Thread(target=_youtube_autoplay_loop, args=(_yp_seen, _yp_order, _yp_titles), daemon=True).start()
             return
-        _yp_url = get_trailer_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
+        _yp_url = youtube_video_url(params.get('video_id'), tmdb_id=params.get('tmdb_id'), dbtype=params.get('type'), title=params.get('title'), year=params.get('year'), season=params.get('season'), plot=_yp_plot, studio=_yp_studio)
         if _yp_url:
             xbmcplugin.setResolvedUrl(handle, True, xbmcgui.ListItem(path=_yp_url))
         else:

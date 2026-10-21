@@ -41,6 +41,27 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
 
+def _imdb_trailer_mode():
+    """True when the trailer player setting points at IMDb."""
+    try:
+        from resources.lib.core.config import get_trailer_mode
+        return get_trailer_mode() == 'imdb'
+    except Exception:
+        return False
+
+
+def _tagline_no_close(text):
+    """TagLine fara [/B]-ul final.
+
+    Randul TagLine din OSD afiseaza literal ultimul [/B], deci un tagline
+    inchis normal ar lasa un '[/B]' vizibil in fata ochilor.
+    """
+    text = str(text or '')
+    while text.endswith('[/B]'):
+        text = text[:-4]
+    return text
+
+
 # === LOCK DE CONSTRUCTIE PE LISTA (anti-race container vs widget) ===============
 # Aceeasi lista (Up Next / In Progress) e ceruta simultan de mai multe procese:
 # containerul, widget-ul din skin (reincarcat dupa UpdateLibrary) si refresh-urile
@@ -6008,7 +6029,7 @@ def show_info_dialog(params):
             log(f"[TMDB-INFO] Google YouTube API fallback error: {e}", xbmc.LOGWARNING)
 
     # Construire URL Final (folosind setarea trailer_player)
-    if found_video:
+    if found_video or _imdb_trailer_mode():
         from resources.lib.core.config import get_trailer_url as _gtu
         _yr = (data.get('release_date') or data.get('first_air_date') or '')[:4]
         _tst = (data.get('production_companies') or []) or (data.get('networks') or [])
@@ -6034,11 +6055,13 @@ def show_info_dialog(params):
                 _tag_param = f"[COLOR yellow]{tagline_text}[/COLOR]"
             elif _gnames:
                 _tag_param = f"[COLOR FF00CED1]{_gnames}[/COLOR]"
-        trailer_url = _gtu(found_video.get('key'), tmdb_id=tmdb_id,
+        _video_key = found_video.get('key') if found_video else ''
+        trailer_url = _gtu(_video_key, tmdb_id=tmdb_id,
                            dbtype=content_type, title=title, year=_yr,
                            plot=_plot_clean or None, studio=_tst or None,
                            tagline=_tag_param,
-                           genre=_gnames)
+                           genre=_gnames,
+                           imdb_id=(data.get('external_ids') or {}).get('imdb_id', ''))
         log(f"[TMDB-INFO] trailer builder v4 plot={len(_plot_clean or '')}c tagline_param={bool(_tag_param)} genre_param={bool(_gnames)}")
     # --- SFARSIT MODIFICARE ---
 
@@ -6047,7 +6070,15 @@ def show_info_dialog(params):
         tag = li.getVideoInfoTag()
         tag.setMediaType('movie' if content_type == 'movie' else 'tvshow')
         tag.setTitle(title)
-        tag.setPlot(plot) # <--- AICI ERA BUG-UL (era data.get('overview'))
+        # Trailerul IMDb se reda cu ListItem-ul ACESTUI dialog (la celelalte
+        # jucatoare clipul vine cu metadata proprie), deci randul TagLine si
+        # Plot ar arata motto-ul cu genurile de doua ori. In modul IMDb
+        # ramane in plot doar synopsis-ul.
+        _direct_trailer = bool(trailer_url) and not str(trailer_url).startswith('plugin://')
+        if _direct_trailer and plot_header and plot.startswith(plot_header):
+            tag.setPlot(plot[len(plot_header):])
+        else:
+            tag.setPlot(plot) # <--- AICI ERA BUG-UL (era data.get('overview'))
 
         if data.get('vote_average'):
             tag.setRating(float(data['vote_average']))
@@ -6087,13 +6118,13 @@ def show_info_dialog(params):
             # niciun caz in care OSD-ul mosteneste un tagline fara tagline propriu).
             if show_motto:
                 if tagline and genres_str:
-                    tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}")
+                    tag.setTagLine(_tagline_no_close(f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}"))
                 elif tagline:
-                    tag.setTagLine(f"[B][COLOR yellow]{tagline}[/COLOR][/B]")
+                    tag.setTagLine(_tagline_no_close(f"[B][COLOR yellow]{tagline}[/COLOR][/B]"))
                 elif genres_list:
                     # Fallback fara bullet: "•" + [B] multiplu se randeaza gresit
                     # daca ar ajunge vreodata mostenit in OSD.
-                    tag.setTagLine(f"[COLOR cyan]{', '.join(genres_list)}[/COLOR]")
+                    tag.setTagLine(_tagline_no_close(f"[COLOR cyan]{', '.join(genres_list)}[/COLOR]"))
         else:
             # PACALIM KODI LA SERIALE! 
             # Pentru ca ignora Tagline-ul, il unim cu Genul (pe care stim ca il afiseaza sub titlu)
@@ -6107,7 +6138,7 @@ def show_info_dialog(params):
                 
             if final_tv_string:
                 # Trimitem totul ca un singur "Gen"
-                tag.setGenres([final_tv_string])
+                tag.setGenres([_tagline_no_close(final_tv_string)])
 
         try:
             _dtl = tag.getTagLine() if hasattr(tag, 'getTagLine') else ''
@@ -6466,6 +6497,16 @@ def show_specific_info_dialog(tmdb_id, specific_type, season=1, episode=1):
     elif _shg:
         _plot_hdr = f"[B][COLOR FF00CED1]{_shg}[/COLOR][/B]\n"
     _plot_full = _plot_hdr + (overview or '')
+    if _imdb_trailer_mode():
+        from resources.lib.core.config import get_trailer_url as _gtu
+        trailer_url = _gtu('', tmdb_id=tmdb_id,
+                          dbtype=_dbtype, title=_show_title, year='',
+                          season=season if specific_type == 'season' else None,
+                          plot=_plot_full or None, studio=_tst2 or None,
+                          genre=_shg,
+                          imdb_id=(show_data.get('external_ids') or {}).get('imdb_id', '')
+                          if show_data else '')
+
     for vid_type in priority_types:
         for v in videos:
             if v.get('site') == 'YouTube' and v.get('type') == vid_type:
