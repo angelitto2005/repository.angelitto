@@ -13,7 +13,7 @@ import xbmcgui
 import xbmcplugin
 
 from resources.lib.core import config as _config
-from resources.lib.core.config import ADDON
+from resources.lib.core.config import ADDON, PLUGIN_URL
 
 API_FOLDER = "https://cloud.mail.ru/api/v2/folder"
 API_DISPATCHER = "https://cloud.mail.ru/api/v2/dispatcher"
@@ -664,7 +664,7 @@ def _enrich_movies(files, deadline=None):
 # =============================================================================
 
 def _base_url():
-    return sys.argv[0]
+    return PLUGIN_URL
 
 
 def _media_icon(name):

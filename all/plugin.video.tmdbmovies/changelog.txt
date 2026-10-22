@@ -1,3 +1,7 @@
+1.1.322
+- Fixed UP NEXT mirroring sync (active provider and TMDb)
+- Fixed the appearance of the resume circle
+
 1.1.321
 - Added a third trailer player in Settings > "Play trailers with": IMDb Trailers.
 - When a title has no IMDb trailer, the addon falls back to TMDbM Trailers and then to the

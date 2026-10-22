@@ -9,7 +9,7 @@ import os
 import json
 import time
 from urllib.parse import parse_qsl, urlencode, quote, unquote
-from resources.lib.core.config import provider_title, PROVIDER_ICONS, ADDON_PATH as CONFIG_ADDON_PATH
+from resources.lib.core.config import provider_title, PROVIDER_ICONS, ADDON_PATH as CONFIG_ADDON_PATH, PLUGIN_URL
 
 # =============================================================================
 # CACHE GLOBAL PENTRU VITEZA
@@ -91,7 +91,7 @@ def build_fast_menu(items, content_type='', no_cache=False, view_type=None):
     if handle < 0:
         return
 
-    base_url = sys.argv[0]
+    base_url = PLUGIN_URL
     art_path = get_art_path()
     _t1 = time.time()
     listing = []
@@ -355,7 +355,7 @@ def get_search_menu_items():
         try:
             with open(history_file, 'r', encoding='utf-8') as f:
                 history = json.load(f)
-                base_url = sys.argv[0]
+                base_url = PLUGIN_URL
                 for h in history:
                     q = h.get('query')
                     t = h.get('type')
@@ -952,11 +952,11 @@ def run_plugin():
         _yts_newp = dict({'mode': 'youtube_search_title'}, **_yts_ctx)
         _yts_new_li = xbmcgui.ListItem(label='[B]Search Now[/B]')
         _yts_new_li.setArt({'icon': _yts_art + 'search_movie.png', 'thumb': _yts_art + 'search_movie.png'})
-        _yts_list.append((f"{sys.argv[0]}?{urlencode(_yts_newp)}", _yts_new_li, False))
+        _yts_list.append((f"{PLUGIN_URL}?{urlencode(_yts_newp)}", _yts_new_li, False))
         _yts_emptyp = dict({'mode': 'youtube_search_empty'}, **_yts_ctx)
         _yts_empty_li = xbmcgui.ListItem(label='[B]Empty Search[/B]')
         _yts_empty_li.setArt({'icon': _yts_art + 'search_movie.png', 'thumb': _yts_art + 'search_movie.png'})
-        _yts_list.append((f"{sys.argv[0]}?{urlencode(_yts_emptyp)}", _yts_empty_li, False))
+        _yts_list.append((f"{PLUGIN_URL}?{urlencode(_yts_emptyp)}", _yts_empty_li, False))
         _yts_hist = _yt_hist_load()[:20]
         for _hh in _yts_hist:
             _hq = _hh.get('query') or ''
@@ -965,13 +965,13 @@ def run_plugin():
             _hli = xbmcgui.ListItem(label=_hq)
             _hli.setArt({'icon': _yts_art + 'search_history.png', 'thumb': _yts_art + 'search_history.png'})
             _hli.addContextMenuItems([
-                ('Rename', f"RunPlugin({sys.argv[0]}?{urlencode({'mode': 'youtube_history_rename', 'query': _hq})})"),
-                ('Delete', f"RunPlugin({sys.argv[0]}?{urlencode({'mode': 'youtube_history_delete', 'query': _hq})})")])
-            _yts_list.append((f"{sys.argv[0]}?{urlencode(_yt_results_params(_hq, _hh))}", _hli, True))
+                ('Rename', f"RunPlugin({PLUGIN_URL}?{urlencode({'mode': 'youtube_history_rename', 'query': _hq})})"),
+                ('Delete', f"RunPlugin({PLUGIN_URL}?{urlencode({'mode': 'youtube_history_delete', 'query': _hq})})")])
+            _yts_list.append((f"{PLUGIN_URL}?{urlencode(_yt_results_params(_hq, _hh))}", _hli, True))
         if _yts_hist:
             _yts_clear_li = xbmcgui.ListItem(label='[B][COLOR FFFF4444]Delete all history[/COLOR][/B]')
             _yts_clear_li.setArt({'icon': 'DefaultAddonNone.png', 'thumb': 'DefaultAddonNone.png'})
-            _yts_list.append((f"{sys.argv[0]}?{urlencode({'mode': 'youtube_history_clear'})}", _yts_clear_li, False))
+            _yts_list.append((f"{PLUGIN_URL}?{urlencode({'mode': 'youtube_history_clear'})}", _yts_clear_li, False))
         xbmcplugin.addDirectoryItems(handle, _yts_list, len(_yts_list))
         xbmcplugin.endOfDirectory(handle)
         return
@@ -984,7 +984,7 @@ def run_plugin():
         if not _yt_q:
             return
         _yt_hist_add(_yt_q, params)
-        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_results_params(_yt_q, params))})')
+        xbmc.executebuiltin(f'Container.Update({PLUGIN_URL}?{urlencode(_yt_results_params(_yt_q, params))})')
         return
 
     if mode == 'youtube_search_empty':
@@ -992,7 +992,7 @@ def run_plugin():
         if not _yt_q:
             return
         _yt_hist_add(_yt_q, params)
-        xbmc.executebuiltin(f'Container.Update({sys.argv[0]}?{urlencode(_yt_results_params(_yt_q, params))})')
+        xbmc.executebuiltin(f'Container.Update({PLUGIN_URL}?{urlencode(_yt_results_params(_yt_q, params))})')
         return
 
     if mode == 'youtube_history_rename':
@@ -1100,7 +1100,7 @@ def run_plugin():
                 _yt_p['plot'] = _plot[:2000]
             if _ch:
                 _yt_p['studio'] = _ch
-            _yt_listing.append((f"{sys.argv[0]}?{urlencode(_yt_p)}", _yt_li, False))
+            _yt_listing.append((f"{PLUGIN_URL}?{urlencode(_yt_p)}", _yt_li, False))
         xbmcplugin.addDirectoryItems(handle, _yt_listing, len(_yt_listing))
         xbmcplugin.setContent(handle, 'videos')
         xbmcplugin.endOfDirectory(handle)
@@ -1720,7 +1720,7 @@ def run_plugin():
         from resources.lib.providers.mdblist import handle_mdblist_action, MDBLIST_ACTIONS
         if mode in MDBLIST_ACTIONS:
             from resources.lib.core.config import ADDON
-            handle_mdblist_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+            handle_mdblist_action({'action': mode, **params}, handle, PLUGIN_URL, ADDON)
         return
 
     if mode == 'simkl_auth':
@@ -1791,7 +1791,7 @@ def run_plugin():
         from resources.lib.providers.simkl import handle_simkl_action, SIMKL_ACTIONS
         if mode in SIMKL_ACTIONS or mode in ('simkl_dropped_restore', 'simkl_connect', 'simkl_disconnect'):
             from resources.lib.core.config import ADDON
-            handle_simkl_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+            handle_simkl_action({'action': mode, **params}, handle, PLUGIN_URL, ADDON)
         return
 
     if mode == 'punchplay_auth':
@@ -1862,13 +1862,13 @@ def run_plugin():
         from resources.lib.providers.punchplay import handle_punchplay_action, PUNCHPLAY_ACTIONS
         if mode in PUNCHPLAY_ACTIONS or mode in ('punchplay_dropped_restore', 'punchplay_connect', 'punchplay_disconnect'):
             from resources.lib.core.config import ADDON
-            handle_punchplay_action({'action': mode, **params}, handle, sys.argv[0], ADDON)
+            handle_punchplay_action({'action': mode, **params}, handle, PLUGIN_URL, ADDON)
         return
     
     from resources.lib.cloud.debrid import handle_debrid_action, DEBRID_ACTIONS
     if mode in DEBRID_ACTIONS:
         from resources.lib.core.config import ADDON
-        handle_debrid_action({'mode': mode, **params}, handle, sys.argv[0], ADDON)
+        handle_debrid_action({'mode': mode, **params}, handle, PLUGIN_URL, ADDON)
         return
     if isinstance(mode, str) and mode.startswith('debrid_'):
         try:
@@ -2036,7 +2036,7 @@ def run_plugin():
                     if _sd:
                         tv_title = _sd.get('name') or _sd.get('title') or ''
                 from urllib.parse import urlencode as _ue
-                refresh_path = f"{sys.argv[0]}?{_ue({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': tv_title or 'Show'})}"
+                refresh_path = f"{PLUGIN_URL}?{_ue({'mode': 'episodes', 'tmdb_id': tmdb_id, 'season': str(season), 'tv_show_title': tv_title or 'Show'})}"
                 xbmc.log(f"[TMDb Movies] [RESUME] remove_progress: URL episoade construit = {refresh_path}", xbmc.LOGINFO)
             except Exception as _e:
                 xbmc.log(f"[TMDb Movies] [RESUME] Eroare la construirea URL episoade: {_e}", xbmc.LOGERROR)
@@ -2387,6 +2387,30 @@ def _deferred_plugin_refresh(delay_ms=700):
             pass
     threading.Thread(target=_run, daemon=True).start()
 
+_post_update_upnext_notified = [False]
+
+
+def _notify_post_update_upnext():
+    """Anunta o singura data pe sesiune ca lista Up Next a fost reconstruita."""
+    if _post_update_upnext_notified[0]:
+        return
+    _post_update_upnext_notified[0] = True
+    try:
+        import os
+        import xbmcgui
+        try:
+            from resources.lib.providers.watched_provider import get_color as _pc
+            _color = _pc()
+        except Exception:
+            _color = 'FF6AFB92'
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+            '[B][COLOR %s]Up Next[/COLOR][/B] rebuilt - links fixed' % _color,
+            os.path.join(CONFIG_ADDON_PATH, 'icon.png'), 5000, False)
+    except Exception:
+        pass
+
+
 def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
     """Rebuild complet datelor dupa update de addon, UNCONDITIONAL si IMEDIAT,
     in thread-uri daemon — NU depinde de waitForAbort(60) din run(), care pe
@@ -2430,6 +2454,7 @@ def _run_forced_post_update_sync(t_detect=0.0, monitor=None):
                 except Exception:
                     pass
             _maybe_refresh_widgets_after_sync(force=True)
+            _notify_post_update_upnext()
         else:
             xbmc.log("[TMDb Movies] Post-update forced sync - SKIPPED (status=%s)." % (_status,), xbmc.LOGINFO)
             _maybe_refresh_widgets_after_sync(force=False)

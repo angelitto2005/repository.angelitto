@@ -276,8 +276,12 @@ def _rebuild_upnext_after_mark(content_type):
         return
     try:
         import threading as _th_u
+        import time as _t
         from resources.lib.core.list_render import _prebuild_both_variants
-        _th_u.Thread(target=_prebuild_both_variants, daemon=True).start()
+        # min_ts: asteapta ca daemonul providerului sa scrie randul nou, ca
+        # pre-randarea sa nu construiasca lista cu randul vechi
+        _min_ts = _t.time() - 0.05
+        _th_u.Thread(target=_prebuild_both_variants, args=(_min_ts,), daemon=True).start()
     except Exception:
         pass
     try:
@@ -580,6 +584,25 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False, varia
                 pass
             return True
 
+        # La stop, refreshul listei apartine safety pass-ului din player: el
+        # asteapta sa termine build-ul de aici si abia apoi re-randeaza.
+        # Altfel pornesc DOUA refresh-uri la 0.2-1s unul de altul: al nostru
+        # prinde cache-ul inca vechi (build-ul abia incepe) si lista ramane
+        # pe randul vechi pina la urmatorul build (log 22:52:27).
+        try:
+            import time as _tp
+            import xbmcgui as _xgp
+            _pend = float(_xgp.Window(10000).getProperty('tmdbmovies.stop_refresh_pending') or 0)
+        except Exception:
+            _pend = 0.0
+        if _pend and (_tp.time() - _pend) < 90.0:
+            try:
+                from resources.lib.core.utils import log
+                log("[UP NEXT] re-randare lasata safety pass-ului de la stop")
+            except Exception:
+                pass
+            return True
+
         # STALE-WHILE-REVALIDATE: lista a fost servita "veche" la revenire, ca
         # containerul sa nu ramana negru. Acum cache-ul contine datele noi.
         #
@@ -717,6 +740,14 @@ def _upnext_refresh_now():
             pass
         try:
             if xbmc.getCondVisibility('System.HasModalDialog'):
+                # Dialog modal deschis: randarea in spatele lui s-ar vedea ca
+                # un flash de lista. Dar renuntarea definitiva face ca lista sa
+                # para reimprospatata -> programam re-incercare + notificare.
+                try:
+                    _schedule_pending_refresh()
+                    _notify_upnext_refresh_pending()
+                except Exception:
+                    pass
                 return False
         except Exception:
             pass
@@ -735,6 +766,71 @@ def _upnext_refresh_now():
         return True
     except Exception:
         return False
+
+_PENDING_REFRESH = {'ts': 0.0}
+
+
+def _schedule_pending_refresh():
+    """Reincearca refreshul dupa ce dialogul modal se inchide.
+
+    Garda System.HasModalDialog din _upnext_refresh_now() renunta definitiv;
+    aici programam o re-incercare (max 30s, abort-aware). Deduplicare: doua
+    apeluri in aceeasi fereastra modala nu pornesc doua thread-uri.
+    """
+    import time as _t
+    import threading as _th
+    try:
+        if (_t.time() - float(_PENDING_REFRESH.get('ts') or 0)) < 5.0:
+            return False
+    except Exception:
+        pass
+    _PENDING_REFRESH['ts'] = _t.time()
+
+    def _wait():
+        import time as _t2
+        from resources.lib.core.config import kodi_abort_requested as _abort
+        end = _t2.time() + 30.0
+        while _t2.time() < end:
+            try:
+                if _abort():
+                    return
+            except Exception:
+                return
+            try:
+                import xbmc as _x
+                if not _x.getCondVisibility('System.HasModalDialog'):
+                    break
+            except Exception:
+                break
+            _t2.sleep(0.5)
+        try:
+            _upnext_refresh_now()
+        except Exception:
+            pass
+
+    _th.Thread(target=_wait, daemon=True).start()
+    return True
+
+
+def _notify_upnext_refresh_pending():
+    """Anunta userul ca lista se va reimprospata la inchiderea dialogului."""
+    try:
+        import xbmcgui
+        _w = xbmcgui.Window(10000)
+        if _w.getProperty('tmdbmovies.upnext_refresh_pending_notified') == 'true':
+            return
+        _w.setProperty('tmdbmovies.upnext_refresh_pending_notified', 'true')
+        try:
+            _color = get_color()
+        except Exception:
+            _color = 'FF6AFB92'
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+            '[B][COLOR %s]Up Next[/COLOR][/B] refreshes when you close this dialog' % _color,
+            os.path.join(ADDON_PATH, 'icon.png'), 4000, False)
+    except Exception:
+        pass
+
 
 def browse_command(url):
     try:
@@ -1125,7 +1221,18 @@ def _fanout_mark(watched, tmdb_id, content_type, season, episode, providers, not
         t.join(30)
     _refresh_tmdb_up_next(tmdb_id)
     _verify_tmdb_upnext_heal(tmdb_id)
+    # Ordinea e cea a caii single-provider (dispatch_mark_watched): invalidarea
+    # trebuie sa fie INTRE _upnext_ui_sync si _rebuild_upnext_after_mark, altfel
+    # poate sterge exact lista proaspat pre-randata.
+    try:
+        _upnext_ui_sync(preserve_binge=(not do_refresh))
+    except Exception:
+        pass
     _invalidate_fast_cache(keep_upnext=keep_upnext, snap=_upnext_snap)
+    try:
+        _rebuild_upnext_after_mark(content_type)
+    except Exception:
+        pass
     ordered_done = [p for p in _WATCHED_MARK_PROVIDERS if p in done]
     if notify:
         import xbmcgui

@@ -273,6 +273,12 @@ PROVIDER_ICONS = {
     'local': os.path.join(ADDON_PATH, 'resources', 'media', 'kodi.png'),
 }
 
+# URL-ul pluginului. NU folosim argv[0] pentru URL-uri de lista sau de meniu:
+# in pre-randarea din fundal (thread al serviciului) argv[0] este gol sau
+# apartine altui script -> se construiesc URL-uri relative ("?mode=...")
+# pe care Kodi nu le mai rezolva -> "Playback failed" la click.
+PLUGIN_URL = 'plugin://plugin.video.tmdbmovies/'
+
 PROVIDER_ALIASES = {
     'trakt': 'trakt',
     'mdblist': 'mdblist',

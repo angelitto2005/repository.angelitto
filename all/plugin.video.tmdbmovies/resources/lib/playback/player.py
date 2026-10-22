@@ -70,6 +70,102 @@ def _kodi_major():
         return 21
 
 
+def _native_prompt_answered():
+    """True daca promptul NATIV de resume a rulat (si a fost raspuns "from beginning").
+
+    Singurul context in care nativul ruleaza pentru itemii nostri e widgetul
+    de pe Home (win 10000): acolo clickul trece prin CDirectoryProvider::OnClick
+    -> ChoosePlayOrResume, deci Kodi arata deja dialogul. In listele addonului
+    (containere de plugin) nativul NU ruleaza niciodata, deci dialogul nostru
+    ramane singurul.
+    """
+    try:
+        import xbmcgui as _xg
+        return int(_xg.getCurrentWindowId()) == 10000
+    except Exception:
+        return False
+
+
+def _duration_seconds(tmdb_id, c_type):
+    """Durata in secunde (filme: runtime, seriale: episode_run_time)."""
+    duration_secs = 0
+    try:
+        if c_type == 'movie':
+            url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
+            data = get_json(url)
+            runtime = data.get('runtime') if data else 0
+            if runtime:
+                duration_secs = int(runtime) * 60
+        else:
+            url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
+            data = get_json(url)
+            if data:
+                runtimes = data.get('episode_run_time', [])
+                if runtimes and runtimes[0]:
+                    duration_secs = int(runtimes[0]) * 60
+                else:
+                    duration_secs = 2700
+    except Exception:
+        pass
+    if duration_secs <= 0:
+        duration_secs = 7200
+    return duration_secs
+
+
+def _resume_seconds(progress_value, tmdb_id, c_type):
+    """Pozitia de resume (secunde) din valoarea stocata local.
+
+    >= 1000000 -> timp exact (secunde); 0-90 -> procent din durata.
+    """
+    try:
+        if progress_value >= 1000000:
+            return int(progress_value - 1000000)
+        if 0 < progress_value < 90:
+            return int((progress_value / 100.0) * _duration_seconds(tmdb_id, c_type))
+    except Exception:
+        pass
+    return 0
+
+
+def _seek_to_resume(player, target_pos):
+    """Seek dupa ce redarea a pornit, cu re-verificare (pozitionarea se stabileste)."""
+    for _ in range(30):
+        if player.isPlaying():
+            break
+        xbmc.sleep(500)
+    else:
+        log("[RESUME] player-ul nu a pornit in 15s, abandon")
+        return
+    for _ in range(40):
+        if not player.isPlaying():
+            return
+        try:
+            if float(player.getTotalTime() or 0) > 0:
+                break
+        except Exception:
+            pass
+        xbmc.sleep(250)
+    for attempt in range(5):
+        if not player.isPlaying():
+            return
+        try:
+            current_pos = player.getTime()
+            log("[RESUME] attempt %d: current=%s, target=%s" % (attempt, current_pos, target_pos))
+            if abs(current_pos - target_pos) < 30:
+                log("[RESUME] deja la pozitia tinta, fara seek")
+                return
+            player.seekTime(target_pos)
+            log("[RESUME] seekTime executat")
+            xbmc.sleep(2000)
+            new_pos = player.getTime()
+            log("[RESUME] dupa seek: new_pos=%s" % new_pos)
+            if abs(new_pos - target_pos) < 60:
+                return
+        except Exception as e:
+            log("[RESUME] eroare do_resume: %s" % e)
+        xbmc.sleep(1000)
+
+
 def _kodi_resume_bookmark_exists(tmdb_id, c_type, season=None, episode=None):
     """Verifica daca baza video Kodi are bookmark de resume pentru acest episod/film.
     Kodi salveaza bookmark-urile keyed by plugin URL (original_listitem_url), deci un
@@ -2342,6 +2438,14 @@ def start_playback_monitor(player_instance, dialog=None):
         # POST-PLAYBACK: DIALOGURI + REFRESH (in thread separat)
         # ==============================================================
         def _post_playback_dialogs():
+            # De acum pina la safety pass, refresh-ul listei este al nostru:
+            # pre-randarea Up Next nu mai face ea Container.Refresh (ar randa
+            # cache-ul vechi chiar in timpul build-ului). Un singur refresh,
+            # dupa ce build-ul s-a terminat - vezi _safety_refresh.
+            try:
+                xbmcgui.Window(10000).setProperty('tmdbmovies.stop_refresh_pending', str(time.time()))
+            except Exception:
+                pass
             import json as _bjson  # 'json' e local in functia care ne gazduieste
             is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
             prompted_next = False
@@ -2388,10 +2492,11 @@ def start_playback_monitor(player_instance, dialog=None):
                             # intra oricum pe autoplay standard si ignora alegerea.
                             url_params['no_auto'] = '1'
                         import urllib.parse
-                        plugin_url = f"{sys.argv[0]}?{urllib.parse.urlencode(url_params)}"
+                        from resources.lib.core.utils import plugin_url as _plugin_url
+                        _run_url = _plugin_url(url_params)
                         if xbmc.Player().isPlaying():
                             xbmc.Player().stop(); xbmc.sleep(500)
-                        xbmc.executebuiltin(f"RunPlugin({plugin_url})")
+                        xbmc.executebuiltin(f"RunPlugin({_run_url})")
             
             # Rating (provider-aware)
             if getattr(player_instance, 'should_prompt_rating', False) and not prompted_next:
@@ -2424,58 +2529,24 @@ def start_playback_monitor(player_instance, dialog=None):
                 except:
                     break
                 xbmc.sleep(150)
-            _last_upnext_refresh = 0.0
-            try:
-                _last_upnext_refresh = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
-            except:
-                pass
-            # Nu reimprospatam peste un dialog modal (binge/autoplay) sau peste un
-            # container care se incarca deja: doua randari ale aceleiasi liste in
-            # paralel lasa containerul GOL (sau crash in GUI). Cazul il preia
-            # safety pass-ul de mai jos, cind userul a inchis dialogul.
-            _refresh_ok = True
-            _skipped_for_rerender = False
-            try:
-                if xbmc.getCondVisibility('System.HasModalDialog') or xbmc.getCondVisibility('Container.IsUpdating'):
-                    _refresh_ok = False
-            except:
-                _refresh_ok = True
-            # Daca o re-randare e deja in asteptare (pre-randarea dupa marcaj),
-            # refreshul de aici ar redesena aceeasi lista, fara bifa - pana
-            # cand pre-randarea termina. Era o rotita busy degeaba. Il sarim,
-            # iar re-randarea care vine face toata treaba (lista corecta + bifa).
-            _rerender_pending = False
-            try:
-                _rerender_pending = (xbmcgui.Window(10000).getProperty(
-                    'tmdbmovies.upnext_rerender_pending') == 'true')
-            except Exception:
-                _rerender_pending = False
-            if _rerender_pending and _refresh_ok:
-                _refresh_ok = False
-                _skipped_for_rerender = True
-                log("[PLAYER-MONITOR] Container refresh sarit (vine re-randare cu bifa)")
-            if _refresh_ok and time.time() - _last_upnext_refresh > 10:
-                xbmc.executebuiltin('Container.Refresh')
-                try:
-                    xbmcgui.Window(10000).setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
-                except Exception:
-                    pass
-                log("[PLAYER-MONITOR] Container refreshed")
-            elif not _refresh_ok and not _skipped_for_rerender:
-                log("[PLAYER-MONITOR] Container refresh amanat (dialog modal / container ocupat) - preia safety pass")
-            # PLASA DE SIGURANTA (5s): refresh-ul de mai sus poate cadea in
-            # milisecunda in care fereastra media se initializeaza (log real:
-            # Container.Refresh 24.262 vs Window Init MyVideoNav 24.261) - daca
-            # Kodi nu are inca containerul activ, lista ramine nereimprospatata
-            # (sau corupta) pina reintri in ea. La 5s toate scrierile s-au
-            # terminat (daemoni Up Next, widget UpdateLibrary), deci re-citirea
-            # prinde datele finale. Garzi: sintem in ACEEASI lista a addonului
-            # (Container.FolderPath neschimbat - nu lovim ce navigheaza userul
-            # intre timp), containerul nu se incarca deja (Container.IsUpdating)
-            # si niciun daemon n-a refresh-uit intre timp (stamp proaspat).
-            # Asteptarea e pe bucati de 250ms cu verificare de abort Kodi:
-            # altfel, la inchiderea Kodi, invokerul asteapta threadul 5s si il
-            # ucide ("script didn't stop in 5 seconds").
+            # NU reimprospatam containerul aici. La 0.7-1.2s dupa stop Kodi isi
+            # re-initializeaza fereastra media (MyVideoNav, 10025): logul real
+            # arata "Control 55 in window 10025 has been asked to focus" in
+            # aceeasi milisecunda cu Container.Refresh, iar dump-urile arata
+            # crash in CDirectoryCache::SetDirectory (copie de CFileItemList
+            # modificata concurent). Refreshul ramine doar in safety pass-ul de
+            # mai jos, dupa ce fereastra s-a asezat si scrierile s-au terminat.
+            log("[PLAYER-MONITOR] Container refresh amanat (fereastra media se initializeaza) - preia safety pass")
+            # PLASA DE SIGURANTA (5s): singurul refresh al listei dupa stop.
+            # La 5s toate scrierile s-au terminat (daemoni Up Next, widget
+            # UpdateLibrary), deci re-citirea prinde datele finale. Garzi:
+            # sintem in ACEEASI lista a addonului (Container.FolderPath
+            # neschimbat - nu lovim ce navigheaza userul intre timp),
+            # containerul nu se incarca deja (Container.IsUpdating), nu e o
+            # re-randare in asteptare si niciun daemon n-a refresh-uit intre
+            # timp (stamp proaspat). Asteptarea e pe bucati de 250ms cu
+            # verificare de abort Kodi: altfel, la inchiderea Kodi, invokerul
+            # asteapta threadul si il ucide ("script didn't stop in 5 seconds").
             _folder_at_stop = ''
             try:
                 _folder_at_stop = xbmc.getInfoLabel('Container.FolderPath') or ''
@@ -2490,38 +2561,159 @@ def start_playback_monitor(player_instance, dialog=None):
                             return
                         xbmc.sleep(250)
                         _waited += 0.25
+                    # Pre-randarea Up Next isi rescrie cache-ul in fundal (build
+                    # 1.5-2.5s). Un refresh in timpul build-ului randeaza
+                    # cache-ul VECHI si lista ramane pe randul vechi (log
+                    # 22:52:27: refresh la +8.2s, build terminat la +9.6s).
+                    # Asteptam sa termine, max 9s, cu abort Kodi.
+                    _pb_wait = 0.0
+                    while _pb_wait < 9.0:
+                        try:
+                            if xbmcgui.Window(10000).getProperty('tmdbmovies.prebuild_busy') != 'true':
+                                break
+                        except Exception:
+                            break
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(250)
+                        _pb_wait += 0.25
                     try:
-                        if 'tmdbmovies' not in (xbmc.getInfoLabel('Container.PluginName') or '').lower():
+                        _plugin_now = (xbmc.getInfoLabel('Container.PluginName') or '').lower()
+                        if 'tmdbmovies' not in _plugin_now:
+                            log("[PLAYER-MONITOR] Safety refresh sarit (container: %s)" % (_plugin_now or 'gol'))
+                            return
+                        # Userul a pornit deja alt episod: lista din spate nu se
+                        # reimprospateaza acum (nu are rost sa o randam peste
+                        # redare); o prinde urmatorul stop.
+                        if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                            log("[PLAYER-MONITOR] Safety refresh sarit (player activ)")
                             return
                     except Exception:
                         return
                     if _folder_at_stop:
                         try:
                             if (xbmc.getInfoLabel('Container.FolderPath') or '') != _folder_at_stop:
+                                log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
                                 return
                         except Exception:
                             return
+                    # Stamp PROPRIU, nu `tmdbmovies.last_upnext_refresh`: acela e
+                    # scris si de refresh-urile declansate la marcaj, care pleaca
+                    # imediat dupa stop si sint aruncate de Kodi ("updating in
+                    # progress") - stampul mintea ca lista e proaspata si acest
+                    # pass sarea exact cind avea ceva de reparat (log 22:37:50:
+                    # marcaj la 50.15, pass la 58.17 -> 8.0s < 10s -> skip mut).
                     try:
-                        _s = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_upnext_refresh') or 0)
+                        _s = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_stop_refresh') or 0)
                     except Exception:
                         _s = 0.0
-                    if time.time() - _s < 10.0:
+                    if time.time() - _s < 5.0:
+                        log("[PLAYER-MONITOR] Safety refresh sarit (refresh recent)")
                         return
-                    # NU se sare aici: safety pass-ul este MECHANISMUL DE
-                    # REPARARE. Refreshul imediat al playerului poate cadea in
-                    # fereastra in care fereastra media se re-initializeaza
-                    # (race cunoscut: "Container.Refresh 24.262" vs "Window Init
-                    # MyVideoNav 24.261") si lasa lista corupta - goala, sau cu
-                    # titluri dublate si thumbnails in fata numelui. Acest refresh
-                    # de la +5s re-randeaza corect. Fara el, utilizatorul trebuie
-                    # sa iasa si sa intre din nou in lista.
+                    # Acesta este SINGURUL refresh al listei dupa stop (cel
+                    # imediat a fost scos - cadea peste re-initializarea
+                    # ferestrei media si crapa in cache-ul de directoare).
+                    # Fara el, cercul de resume si bifa ar aparea abia la
+                    # urmatoarea intrare in lista.
+                    # Un dialog modal (rating/binge) nu mai anuleaza refreshul:
+                    # asteptam pina se inchide, altfel lista raminea neactualizata
+                    # pina la urmatoarea navigare. Limita 30s, cu abort Kodi.
+                    _dlg_wait = 0.0
+                    while _dlg_wait < 30.0:
+                        try:
+                            if not xbmc.getCondVisibility('System.HasModalDialog'):
+                                break
+                        except Exception:
+                            break
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(500)
+                        _dlg_wait += 0.5
                     try:
                         if xbmc.getCondVisibility('System.HasModalDialog'):
                             log("[PLAYER-MONITOR] Safety refresh amanat (dialog modal deschis)")
                             return
                     except Exception:
                         pass
-                    for _ in range(20):
+                    # Pre-randarea dupa marcaj poate re-randa ea lista: o
+                    # ASTEPTAM (max 6s), nu o sarim. Skipul de dinainte lasa
+                    # lista veche pe ecran cind pre-randarea se termina fara
+                    # re-randare (log: "pre-randare gata ... fara re-randare").
+                    _pend_wait = 0.0
+                    while _pend_wait < 6.0:
+                        try:
+                            if (xbmcgui.Window(10000).getProperty(
+                                    'tmdbmovies.upnext_rerender_pending') != 'true'):
+                                break
+                        except Exception:
+                            break
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(250)
+                        _pend_wait += 0.25
+                    for _ in range(80):
+                        try:
+                            if not xbmc.getCondVisibility('Container.IsUpdating'):
+                                break
+                        except Exception:
+                            return
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(100)
+                    else:
+                        log("[PLAYER-MONITOR] Safety refresh amanat (container tot se actualizeaza)")
+                        return
+                    # Asentare: build-ul tocmai s-a terminat, containerul se
+                    # rearanjeaza. 0.8s, cu abort Kodi.
+                    _settle = 0.0
+                    while _settle < 0.8:
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(200)
+                        _settle += 0.2
+                    # Cache-ul e final: lista nu mai e "veche", deci se poate
+                    # stinge carpe-ul de 30s din tmdb_api (altfel ar ignora
+                    # cache-ul proaspat peste 30s si ar reconstrui de la zero).
+                    try:
+                        xbmcgui.Window(10000).clearProperty('tmdbmovies.upnext_stale_since')
+                    except Exception:
+                        pass
+                    xbmc.executebuiltin('Container.Refresh')
+                    try:
+                        xbmcgui.Window(10000).setProperty('tmdbmovies.last_stop_refresh', str(time.time()))
+                    except Exception:
+                        pass
+                    log("[PLAYER-MONITOR] Container refreshed (dupa stop, fereastra asezata)")
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        xbmcgui.Window(10000).clearProperty('tmdbmovies.stop_refresh_pending')
+                    except Exception:
+                        pass
+            threading.Thread(target=_safety_refresh, daemon=True).start()
+            # Widget-urile din skin se re-improspateaza cu UpdateLibrary, dar nu in
+            # aceeasi secunda cu Container.Refresh (Kodi 21 crapa in cache-ul de
+            # directoare). Un singur apel, dupa ce update-ul listei s-a terminat.
+            def _widget_refresh_later():
+                try:
+                    _waited = 0.0
+                    while _waited < 3.0:
+                        if kodi_abort_requested():
+                            return
+                        xbmc.sleep(250)
+                        _waited += 0.25
+                    try:
+                        if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                            return
+                        if xbmc.getCondVisibility('System.HasModalDialog'):
+                            log("[PLAYER-MONITOR] Widget refresh amanat (dialog modal deschis)")
+                            return
+                    except Exception:
+                        return
+                    for _ in range(30):
+                        if kodi_abort_requested():
+                            return
                         try:
                             if not xbmc.getCondVisibility('Container.IsUpdating'):
                                 break
@@ -2530,20 +2722,22 @@ def start_playback_monitor(player_instance, dialog=None):
                         xbmc.sleep(100)
                     else:
                         return
-                    xbmc.executebuiltin('Container.Refresh')
-                    log("[PLAYER-MONITOR] Container refreshed (safety pass)")
-                except Exception:
-                    pass
-            threading.Thread(target=_safety_refresh, daemon=True).start()
-            # Refresh widget-uri de pe Home (UpdateLibrary): Container.Refresh nu
-            # atinge widget-urile din skin (Next Episodes / In Progress). UpdateLibrary
-            # emite VideoLibrary.OnUpdate -> toate widget-urile se re-randa in ~5s.
-            try:
-                from resources.lib.providers.watched_provider import widget_refresh
-                widget_refresh()
-                log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary)")
-            except Exception as e:
-                log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
+                    try:
+                        _stamp = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_widget_refresh') or 0)
+                    except Exception:
+                        _stamp = 0.0
+                    if time.time() - _stamp < 20.0:
+                        return
+                    try:
+                        xbmcgui.Window(10000).setProperty('tmdbmovies.last_widget_refresh', str(time.time()))
+                    except Exception:
+                        pass
+                    from resources.lib.providers.watched_provider import widget_refresh
+                    widget_refresh()
+                    log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary, dupa stop)")
+                except Exception as e:
+                    log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
+            threading.Thread(target=_widget_refresh_later, daemon=True).start()
         
         try:
             from resources.lib.cloud import debrid as _debrid_post
@@ -3299,16 +3493,19 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 except: pass
                 p_dialog = None
         elif native_resume_mode:
-            # Dialogul nativ a ales "Resume": PlayFile-ul Kodi asteapta setResolvedUrl si
-            # va face singur seek-ul din bookmark (StartOffset sentinel). NU apelam
-            # player.play() - ar reporni redarea cu un item fresh (starttime=0) si ar
-            # anula seek-ul nativ. Pornim monitorul imediat - el asteapta isPlaying.
+            # Dialogul nativ a ales "Resume": PlayFile-ul Kodi asteapta setResolvedUrl.
+            # Bookmark-urile plugin sunt sterse la stop, deci seek-ul nativ ar
+            # porni de la 0 - facem noi seek-ul din baza locala (autoritara).
+            # NU apelam player.play(): ar reseta sentinel-ul StartOffset.
             if p_dialog:
                 try: p_dialog.close()
                 except: pass
                 p_dialog = None
             xbmcplugin.setResolvedUrl(_current_handle(), True, li)
             start_playback_monitor(player, dialog=None)
+            if resume_time > 0:
+                log("[RESUME] resume nativ: facem noi seek-ul la %ds" % resume_time)
+                threading.Thread(target=_seek_to_resume, args=(player, float(resume_time)), daemon=True).start()
         else:
             # Playback normal: player.play() pe main thread pentru metadate corecte
             # Asta asigura ca VideoPlayer.IMDBNumber e populat corect pentru toate addonurile de srt
@@ -3332,38 +3529,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             
             if resume_time > 0:
                 log(f"[RESUME] play_with_rollover a primit resume_time={resume_time} - do_resume va rula")
-                def do_resume():
-                    for _ in range(30):
-                        if player.isPlaying(): break
-                        xbmc.sleep(500)
-                    else:
-                        log("[RESUME] do_resume: player-ul nu a pornit in 15s, abandon")
-                        return
-                    for _ in range(40):
-                        if not player.isPlaying(): return
-                        try:
-                            if float(player.getTotalTime() or 0) > 0: break
-                        except: pass
-                        xbmc.sleep(250)
-                    target_pos = float(resume_time)
-                    for attempt in range(5):
-                        if not player.isPlaying(): return
-                        try:
-                            current_pos = player.getTime()
-                            log(f"[RESUME] attempt {attempt}: current={current_pos}, target={target_pos}")
-                            if abs(current_pos - target_pos) < 30:
-                                log("[RESUME] deja la pozitia tinta, fara seek")
-                                return
-                            player.seekTime(target_pos)
-                            log("[RESUME] seekTime executat")
-                            xbmc.sleep(2000)
-                            new_pos = player.getTime()
-                            log(f"[RESUME] dupa seek: new_pos={new_pos}")
-                            if abs(new_pos - target_pos) < 60: return
-                        except Exception as e:
-                            log(f"[RESUME] eroare do_resume: {e}")
-                        xbmc.sleep(1000)
-                threading.Thread(target=do_resume, daemon=True).start()
+                threading.Thread(target=_seek_to_resume, args=(player, float(resume_time)), daemon=True).start()
         
     else:
         if p_dialog:
@@ -3798,12 +3964,13 @@ def list_sources(params):
     ids = {}
     
     # CALCULARE POZITIE RESUME
-    # Randurile de director nu au resume point pe tag si bookmarkurile plugin
-    # sunt sterse la stop, deci dialogul NATIV nu poate aparea pe ele.
-    # Singura exceptie e libraria Kodi (.strm): acolo nativul ramane posibil.
-    #   - argv[3]='resume:true' -> nativul a ales Resume (doar librarie).
-    #     Kodi face seek din bookmark, nu intervenim.
-    #   - orice altceva -> dialogul nostru din baza locala (autoritara).
+    # Sursa autoritara e baza locala (playback_progress). Bookmark-urile Kodi
+    # sunt sterse la stop, deci seek-ul nativ nu poate fi folosit.
+    #   - argv[3]='resume:true' -> dialogul NATIV a ales "Resume": Kodi ar
+    #     face seek-ul din bookmark, dar bookmark-ul e sters -> facem noi
+    #     seek-ul din baza locala.
+    #   - orice altceva -> dialogul nostru (baza locala e sursa autoritara);
+    #     valoarea din URL e doar fallback pentru baze golite.
     resume_time = 0
     native_resume_mode = False
     try: resume_from_url = int(params.get('resume_time', 0))
@@ -3815,11 +3982,13 @@ def list_sources(params):
         # TMDb Helper JSON player: skip resume calculation, just resolve
         pass
     elif resume_argv == 'resume:true':
-        # Dialogul nativ a aparut si userul a ales "Resume from X". Kodi face singur
-        # seek-ul din bookmark (StartOffset sentinel -> PlayFile -> options.starttime).
-        # Nu intrebam noi si NU facem player.play() (ar reseta sentinel-ul).
+        # Dialogul nativ a aparut si userul a ales "Resume from X". Nu mai
+        # intrebam, dar nici nu ne bazam pe bookmark (sters la stop): luam
+        # pozitia din baza locala si facem seek-ul dupa ce porneste redarea.
         native_resume_mode = True
-        log("[RESUME] resume:true -> dialog nativ a ales Resume, Kodi face seek din bookmark")
+        progress_value = trakt_sync.get_local_playback_progress(tmdb_id, c_type, season, episode)
+        resume_time = _resume_seconds(progress_value, tmdb_id, c_type)
+        log("[RESUME] resume:true -> dialog nativ a ales Resume; pozitie locala = %ds" % resume_time)
     else:
         # Dialogul nostru in toate cazurile: baza locala e sursa autoritara;
         # valoarea din URL e doar fallback pentru baze golite.
@@ -3827,28 +3996,20 @@ def list_sources(params):
         log(f"[RESUME] progress_value: {progress_value}, tmdb_id: {tmdb_id}, c_type: {c_type}")
         
         if progress_value > 0 and progress_value < 90:
-            duration_secs = 0
-            try:
-                if c_type == 'movie':
-                    url = f"{BASE_URL}/movie/{tmdb_id}?api_key={API_KEY}&language=en-US"
-                    data = get_json(url)
-                    runtime = data.get('runtime') if data else 0
-                    if runtime: duration_secs = int(runtime) * 60
-                else:
-                    url = f"{BASE_URL}/tv/{tmdb_id}?api_key={API_KEY}&language=en-US"
-                    data = get_json(url)
-                    if data:
-                        runtimes = data.get('episode_run_time', [])
-                        if runtimes and runtimes[0]: duration_secs = int(runtimes[0]) * 60
-                        else: duration_secs = 2700
-            except: pass
-            if duration_secs <= 0: duration_secs = 7200
+            duration_secs = _duration_seconds(tmdb_id, c_type)
             resume_time = int((progress_value / 100.0) * duration_secs)
         elif progress_value >= 1000000:
             resume_time = int(progress_value - 1000000)
         elif resume_from_url > 0:
             # Fallback: valoarea din URL (bazele locale golite, cache stale)
             resume_time = resume_from_url
+
+        # Daca promptul NATIV a rulat (si userul a ales "Play from beginning"),
+        # nu mai intrebam: in widgetul de pe Home Kodi arata deja dialogul.
+        # In listele noastre nativul nu ruleaza, deci dialogul nostru ramane.
+        if resume_argv == 'resume:false' and resume_time > 0 and _native_prompt_answered():
+            log("[RESUME] promptul nativ a raspuns deja (from beginning) - nu mai intrebam")
+            resume_time = 0
 
         # Meniu resume la click pe titlu (toate skin-urile, inclusiv AF3)
         if resume_time > 180:

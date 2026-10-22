@@ -5,13 +5,17 @@ Randarea cache-uita este cea care se declanseaza la intoarcerea din player. Cand
 rezolvam aici, evitam ~700ms de importuri (tmdb_api + trakt_sync + providers) pe
 calea critica. De aceea modulul sta la baza si nu aduce nimic greu cu el.
 """
+import re
+
 import xbmcgui
 import xbmcplugin
 
 from resources.lib.core import config as _cfg
 from resources.lib.core.utils import apply_air_times_to_cache_items, set_resume_point, log
 
-NEXT_EPISODES_LABEL_VERSION = "12"
+NEXT_EPISODES_LABEL_VERSION = "13"
+
+_REL_CMD_RE = re.compile(r'(RunPlugin\(|Container\.Update\(|ActivateWindow\([^,]+,\s*)\?')
 
 
 def _handle():
@@ -168,6 +172,148 @@ def _patch_watched_flags(items):
             continue
 
 
+def _patch_resume_flags(items):
+    """Reciteste pozitia de resume din baza locala si o aplica randarii.
+
+    Cache-ul pastreaza resume_time de la construire. O oprire sub 85% nu
+    invalideaza lista, deci cercul ar lipsi pana la urmatorul rebuild.
+    """
+    try:
+        import re
+        from resources.lib.providers.trakt_sync import get_local_resume_progress_bulk
+    except Exception:
+        return
+    movies = []
+    episodes = []
+    try:
+        for it in items:
+            info = it.get('info') or {}
+            mt = info.get('mediatype')
+            if mt not in ('movie', 'episode'):
+                continue
+            u = str(it.get('url') or '')
+            m = re.search(r'tmdb_id=(\d+)', u)
+            if not m:
+                continue
+            tid = m.group(1)
+            if mt == 'movie':
+                movies.append((it, tid))
+            else:
+                s_m = re.search(r'season=(\d+)', u)
+                e_m = re.search(r'episode=(\d+)', u)
+                if s_m and e_m:
+                    episodes.append((it, tid, int(s_m.group(1)), int(e_m.group(1))))
+    except Exception:
+        return
+    if not movies and not episodes:
+        return
+    data = get_local_resume_progress_bulk([t for _, t in movies],
+                                          [(t, s, e) for _, t, s, e in episodes])
+    if not isinstance(data, dict):
+        return
+    mv = data.get('movies') or {}
+    eps = data.get('episodes') or {}
+
+    def _total(it):
+        try:
+            total = float(it.get('total_time') or 0)
+        except Exception:
+            total = 0.0
+        if total <= 0:
+            try:
+                total = float((it.get('info') or {}).get('duration') or 0)
+            except Exception:
+                total = 0.0
+        return total
+
+    def _apply(it, progress):
+        try:
+            progress = float(progress or 0)
+        except Exception:
+            progress = 0.0
+        total = _total(it)
+        resume = 0
+        if progress >= 1000000:
+            resume = int(progress - 1000000)
+        elif 0 < progress < 90 and total > 0:
+            resume = int((progress / 100.0) * total)
+        if resume > 0 and total > 0:
+            it['resume_time'] = resume
+            it['total_time'] = int(total)
+        else:
+            it['resume_time'] = 0
+            if total > 0:
+                it['total_time'] = int(total)
+
+    for it, tid in movies:
+        _apply(it, mv.get(tid, 0))
+    for it, tid, s, e in episodes:
+        _apply(it, eps.get((tid, s, e), 0))
+
+
+def _abs_url(u):
+    """Repara URL-urile relative din cache (construite in thread de fundal)."""
+    try:
+        u = str(u or '')
+    except Exception:
+        return u
+    if not u:
+        return u
+    if u.startswith('?'):
+        from resources.lib.core.config import PLUGIN_URL
+        return PLUGIN_URL + u
+    return u
+
+
+def _abs_cm(cm):
+    """Repara URL-urile relative din meniurile contextuale ale unui rand."""
+    try:
+        if not cm:
+            return cm
+        from resources.lib.core.config import PLUGIN_URL
+        out = []
+        changed = False
+        for e in cm:
+            try:
+                lbl, cmd = e[0], str(e[1] or '')
+            except Exception:
+                out.append(e)
+                continue
+            new = _REL_CMD_RE.sub(lambda m: m.group(1) + PLUGIN_URL + '?', cmd)
+            if new == cmd:
+                out.append(e)
+                continue
+            changed = True
+            if isinstance(e, (list, tuple)) and len(e) > 2:
+                out.append((lbl, new) + tuple(e[2:]))
+            else:
+                out.append((lbl, new))
+        return out if changed else cm
+    except Exception:
+        return cm
+
+
+def _notify_links_repaired(n):
+    """Notifica o singura data pe sesiune ca linkurile relative au fost reparate."""
+    try:
+        import os
+        from resources.lib.core.config import ADDON_PATH
+        if xbmcgui.Window(10000).getProperty('tmdbmovies.links_repaired_notified') == 'true':
+            return
+        xbmcgui.Window(10000).setProperty('tmdbmovies.links_repaired_notified', 'true')
+        try:
+            from resources.lib.providers.watched_provider import get_color as _pc
+            _color = _pc()
+        except Exception:
+            _color = 'FF6AFB92'
+        xbmcgui.Dialog().notification(
+            '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]',
+            'Repaired broken links in [B][COLOR %s]Up Next[/COLOR][/B]' % _color,
+            os.path.join(ADDON_PATH, 'icon.png'), 4000, False)
+    except Exception:
+        pass
+
+
 def render_from_fast_cache(items, view_type=None):
     """Deseneaza lista instantaneu din datele cached folosind Batch Add.
 
@@ -181,10 +327,23 @@ def render_from_fast_cache(items, view_type=None):
         _patch_watched_flags(items)
     except Exception:
         pass
+    try:
+        _patch_resume_flags(items)
+    except Exception:
+        pass
     handle = _handle()
     items_to_add = []
+    _repaired = 0
 
     for item in items:
+        _u = _abs_url(item.get('url'))
+        if _u != item.get('url'):
+            item['url'] = _u
+            _repaired += 1
+        _cm = _abs_cm(item.get('cm'))
+        if _cm is not item.get('cm'):
+            item['cm'] = _cm
+            _repaired += 1
         # Reconstructie ListItem daca vine din JSON (warmup)
         if 'li' in item and isinstance(item['li'], xbmcgui.ListItem):
             li = item['li']
@@ -288,6 +447,10 @@ def render_from_fast_cache(items, view_type=None):
                     _safe_set_prop(li, _k, str(_v))
 
         items_to_add.append((item['url'], li, item['is_folder']))
+
+    if _repaired:
+        log(f"[LIST] Reparate {_repaired} linkuri relative din cache")
+        _notify_links_repaired(_repaired)
 
     xbmcplugin.addDirectoryItems(handle, items_to_add, len(items_to_add))
 
@@ -461,11 +624,14 @@ def snapshot_upnext_cache():
     return out
 
 
-def _prebuild_both_variants():
+def _prebuild_both_variants(min_ts=0.0):
     """Incalzeste ambele liste Up Next (TMDb + provider) in cache.
 
     Ruleaza dupa sync: listele trebuie sa fie gata la prima accesare dupa un
     restart, fara sa reconstruiasca tot de la zero.
+
+    min_ts: asteapta ca randul nou sa fie scris (min_ts = momentul marcajului),
+    ca pre-randarea sa nu construiasca lista cu randul vechi.
     """
     _variants = ['provider']
     try:
@@ -477,7 +643,7 @@ def _prebuild_both_variants():
     for _v in _variants:
         try:
             from resources.lib.providers.watched_provider import _prebuild_upnext_cache
-            _prebuild_upnext_cache('', 0.0, False, _v)
+            _prebuild_upnext_cache('', min_ts, False, _v)
         except Exception:
             continue
     try:

@@ -2567,6 +2567,61 @@ def get_local_playback_progress_map(keys):
         return None
 
 
+def get_local_resume_progress_bulk(movie_ids, episode_keys):
+    """Progres local (resume) pentru filme SI episoade, dintr-o SINGURA conexiune.
+
+    Returneaza {'movies': {tmdb_id: progress}, 'episodes': {(tmdb_id, season, episode): progress}}
+    sau None daca citirea a esuat (apelantul pastreaza valorile din cache).
+    """
+    try:
+        movies = set()
+        for m in (movie_ids or []):
+            try:
+                if m is not None and str(m):
+                    movies.add(str(m))
+            except Exception:
+                continue
+        eps = set()
+        for k in (episode_keys or []):
+            try:
+                eps.add((str(k[0]), int(k[1]), int(k[2])))
+            except Exception:
+                continue
+        out = {'movies': {}, 'episodes': {}}
+        if not movies and not eps:
+            return out
+        if not os.path.exists(DB_PATH):
+            return out
+        conn = get_connection()
+        c = conn.cursor()
+        try:
+            if movies:
+                ids = tuple(movies)
+                marks = ','.join(['?'] * len(ids))
+                c.execute("SELECT tmdb_id, progress FROM playback_progress "
+                          "WHERE media_type='movie' AND tmdb_id IN (%s)" % marks, ids)
+                for row in c.fetchall():
+                    out['movies'][str(row['tmdb_id'])] = float(row['progress'] or 0)
+            if eps:
+                ids = tuple({t for (t, _s, _e) in eps})
+                marks = ','.join(['?'] * len(ids))
+                c.execute("SELECT tmdb_id, season, episode, progress FROM playback_progress "
+                          "WHERE media_type='episode' AND tmdb_id IN (%s)" % marks, ids)
+                for row in c.fetchall():
+                    try:
+                        key = (str(row['tmdb_id']), int(row['season'] or 0), int(row['episode'] or 0))
+                    except Exception:
+                        continue
+                    if key in eps:
+                        out['episodes'][key] = float(row['progress'] or 0)
+        finally:
+            try: conn.close()
+            except Exception: pass
+        return out
+    except Exception:
+        return None
+
+
 def update_local_playback_progress(tmdb_id, content_type, season, episode, progress, title, year):
     """
     Salveaza sau sterge progresul local.

@@ -32,7 +32,7 @@ except ImportError:
             return ''
     def utc_to_local_time(iso_ts):
         return ''
-from resources.lib.core.utils import read_json, write_json, log, get_json, get_language, paginate_list, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, is_season_fully_watched, style_page_nav_item, next_page_plot, next_page_label
+from resources.lib.core.utils import read_json, write_json, log, get_json, get_language, paginate_list, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, format_calendar_date, process_media_item, is_season_fully_watched, style_page_nav_item, next_page_plot, next_page_label, PLUGIN_URL, plugin_url
 from resources.lib.core.cache import cache_object, MainCache
 
 from resources.lib.providers import trakt_sync
@@ -1597,9 +1597,9 @@ def get_watched_context_menu(tmdb_id, content_type, season=None, episode=None):
         is_ep_watched = _is_ep_watched(tmdb_id, season, episode)
 
     if is_ep_watched:
-        cm.append((_mml(True) or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(unwatched_params)})"))
+        cm.append((_mml(True) or f'[B][COLOR FFE41B17]Mark Unwatched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({plugin_url(unwatched_params)})"))
     else:
-        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(watched_params)})"))
+        cm.append((_mml(False) or f'[B][COLOR FF6AFB92]Mark Watched [COLOR {_prov_clr}]({_prov_lbl})[/COLOR][/B]', f"RunPlugin({plugin_url(watched_params)})"))
 
     return cm
 
@@ -2172,7 +2172,7 @@ def trakt_discovery_list(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_discovery_list', 'list_type': list_type, 'media_type': media_type, 'period': period, 'page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -2442,7 +2442,7 @@ def trakt_list_content(params):
         action = f'trakt_{media_type.rstrip("s")}_{list_type}'
         next_label = next_page_label(page + 1)
         next_params = {'mode': mode, 'action': action, 'new_page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -2670,7 +2670,7 @@ def trakt_list_items(params):
         if slug: next_params['slug'] = slug
         if media_filter: next_params['media_filter'] = media_filter
         
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         
@@ -2867,16 +2867,16 @@ def _process_trakt_item_with_tmdb(tmdb_id, media_type, trakt_data):
 
     cm = []
     if ADDON.getSetting('show_cm_trakt') != 'false':
-        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
+        cm.append(('[B][COLOR pink]My Trakt[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=trakt_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
     if ADDON.getSetting('show_cm_tmdb') != 'false':
-        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
+        cm.append(('[B][COLOR FF00CED1]My TMDB[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?mode=tmdb_context_menu&tmdb_id={tmdb_id}&type={tmdb_endpoint}&title={title})"))
     # ('[B][COLOR FFFDBD01]TMDB Info[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?mode=show_info&tmdb_id={tmdb_id}&type={tmdb_endpoint})"),
     if ADDON.getSetting('show_cm_my_plays') != 'false':
-        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{urlencode(plays_params)})"))
+        cm.append(('[B][COLOR FFFF69B4]My Plays[/COLOR][/B]', f"RunPlugin({plugin_url(plays_params)})"))
     # ----------------------------------------------------------
     
     fav_params = urlencode({'mode': 'add_favorite', 'type': 'movie' if media_type == 'movie' else 'tv', 'tmdb_id': tmdb_id, 'title': title})
-    cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({sys.argv[0]}?{fav_params})"))
+    cm.append(('[B][COLOR yellow]Add to My Favorites[/COLOR][/B]', f"RunPlugin({PLUGIN_URL}?{fav_params})"))
 
     if media_type == 'movie':
         url_params = select_ext_info_params('movie', tmdb_id) or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'movie', 'title': title, 'year': year}
@@ -2980,7 +2980,7 @@ def trakt_favorites_list(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_favorites_list', 'type': m_type, 'page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -3075,7 +3075,7 @@ def trakt_dropped_shows_list(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_dropped_shows', 'new_page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -3346,7 +3346,7 @@ def _view_trakt_my_calendar():
             if cm: li.addContextMenuItems(cm)
             url_params, _is_folder = calendar_row_click_params('movie', it['tmdb_id'], diff, show_title=it['title'], sources_title=it['title'])
             if url_params:
-                url = f"{sys.argv[0]}?{urlencode(url_params)}"
+                url = plugin_url(url_params)
                 items_to_add.append((url, li, _is_folder))
         else:
             ep_title = it['ep_title']
@@ -3383,11 +3383,11 @@ def _view_trakt_my_calendar():
             li.setArt(art)
             cm = calendar_context_menu(_get_full_context_menu(it['tmdb_id'], 'episode', it['title'], season=it['season'], episode=it['episode']),
                                        'episode', it['tmdb_id'], it['title'], it['season'], it['episode'],
-                                       base_url=sys.argv[0], browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
+                                       base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode, clear_sources=True)
             if cm: li.addContextMenuItems(cm)
             url_params, is_folder = calendar_row_click_params('episode', it['tmdb_id'], diff, it['season'], it['episode'], it['title'])
             if url_params:
-                url = f"{sys.argv[0]}?{urlencode(url_params)}"
+                url = plugin_url(url_params)
                 items_to_add.append((url, li, is_folder))
 
     items_to_add = sort_calendar_items(items_to_add, today_top, sort_asc)
@@ -3616,7 +3616,7 @@ def trakt_calendar(params):
 
             _sel_info = select_ext_info_params('tv', tv_id)
             url_params = _sel_info or {'mode': 'details', 'tmdb_id': tv_id, 'type': 'tv', 'title': show_title}
-            url = f"{sys.argv[0]}?{urlencode(url_params)}"
+            url = plugin_url(url_params)
             li = xbmcgui.ListItem(display_label)
             li.setArt({'icon': poster, 'thumb': poster, 'poster': poster})
             try:
@@ -3649,7 +3649,7 @@ def trakt_calendar(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'trakt_calendar', 'calendar_type': calendar_type, 'page': str(page + 1), 'days': str(days)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))

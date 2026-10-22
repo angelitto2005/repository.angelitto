@@ -21,7 +21,7 @@ from resources.lib.core.config import (
     get_plot_language_code, provider_color, provider_icon, provider_title,
     lazy_requests as requests
 )
-from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label, PLUGIN_URL
+from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label, PLUGIN_URL, plugin_url
 from resources.lib.core.cache import cache_object, MainCache, get_fast_cache, set_fast_cache, UP_NEXT_STALE_MAX_S
 from resources.lib.core.list_render import (render_from_fast_cache, _set_views_apply, _safe_set_prop,
                                             next_episodes_cache_key)
@@ -433,10 +433,6 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
                 duration = 7200 if info_data.get('mediatype') == 'movie' else 2700
                 try: tag.setDuration(duration)
                 except: pass
-            try:
-                tag.setResumePoint(0.0, 0.0)
-            except:
-                pass
             if 0 < percent < 100:
                 _safe_set_prop(li, 'WatchedProgress', str(int(percent)))
             
@@ -444,7 +440,7 @@ def set_metadata(li, info_data, unique_ids=None, watched_info=None):
         log(f"[METADATA] Error: {e}", xbmc.LOGERROR)
 
 def add_directory(name, params, folder=True, icon=None, thumb=None, fanart=None, clearlogo=None, cm=None, info=None, uids=None, watched_info=None):
-    url = f"{sys.argv[0]}?{urlencode(params)}"
+    url = plugin_url(params)
     li = xbmcgui.ListItem(name)
 
     # ============================================================
@@ -1227,7 +1223,7 @@ def build_movie_list(params):
         # Cream manual item-ul de Next Page
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_movie_list', 'action': action, 'new_page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
@@ -1350,7 +1346,7 @@ def build_tvshow_list(params):
         # Cream manual item-ul de Next Page
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_tvshow_list', 'action': action, 'new_page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
@@ -1573,13 +1569,13 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if season is not None: yt_params_dict['season'] = str(season)
     if episode is not None: yt_params_dict['episode'] = str(episode)
     if _cm_setting('show_cm_youtube') != 'false':
-        cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{urlencode(yt_params_dict)})"))
+        cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"Container.Update({plugin_url(yt_params_dict)})"))
 
     # Ultima optiune. Container.Update ca lista sa inlocuiasca pagina (Back revine aici).
     if content_type == 'movie' and _cm_setting('show_cm_detonate') != 'false':
         det_params_dict = {'mode': 'detonate_search', 'query': title, 'tmdb_id': tmdb_id,
                            'title': title, 'year': year}
-        cm.append(('[B][COLOR FFCCCCFF]Search Detonate[/COLOR][/B]', f"Container.Update({sys.argv[0]}?{urlencode(det_params_dict)})"))
+        cm.append(('[B][COLOR FFCCCCFF]Search Detonate[/COLOR][/B]', f"Container.Update({plugin_url(det_params_dict)})"))
 
     return cm
 
@@ -1725,7 +1721,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
     # --- LOGICA DE RETURNARE PENTRU CACHE ---
     if return_data:
         return {
-            'url': f"{sys.argv[0]}?{urlencode(url_params)}",
+            'url': plugin_url(url_params),
             'li': li,
             'is_folder': False,
             'info': info,
@@ -1737,7 +1733,7 @@ def _process_movie_item(item, is_in_favorites_view=False, return_data=False, ski
         }
 
     # Adauga clearlogo=movie_logo in apelul functiei
-    xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, False)
+    xbmcplugin.addDirectoryItem(HANDLE, plugin_url(url_params), li, False)
 
 
 def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_details=False):
@@ -1877,7 +1873,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
     # --- LOGICA DE RETURNARE PENTRU CACHE ---
     if return_data:
         return {
-            'url': f"{sys.argv[0]}?{urlencode(url_params)}",
+            'url': plugin_url(url_params),
             'li': li,
             'is_folder': not _sel_info,
             'info': info,
@@ -1887,7 +1883,7 @@ def _process_tv_item(item, is_in_favorites_view=False, return_data=False, skip_d
         }
     # ----------------------------------------
 
-    xbmcplugin.addDirectoryItem(HANDLE, f"{sys.argv[0]}?{urlencode(url_params)}", li, not _sel_info)
+    xbmcplugin.addDirectoryItem(HANDLE, plugin_url(url_params), li, not _sel_info)
 
 
 # Optimized get_watched_status_tvshow
@@ -3127,7 +3123,7 @@ def _render_tmdb_calendar_entries(entries, wnd):
         else:
             params, is_folder = calendar_row_click_params('episode', tmdb_id, diff, e['season'], e['episode'], show_title)
         if params:
-            items_to_add.append((f"{sys.argv[0]}?{urlencode(params)}", li, is_folder))
+            items_to_add.append((plugin_url(params), li, is_folder))
 
     items_to_add = sort_calendar_items(items_to_add, wnd['today_top'], wnd['sort_asc'])
 
@@ -3328,7 +3324,7 @@ def tmdb_watchlist(params):
         # Adaugam butonul Next Page manual pentru Batch/Cache
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'tmdb_watchlist', 'type': content_type, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -5849,7 +5845,7 @@ def list_episodes(tmdb_id, season_num, tv_show_title):
         if resume_percent > 0 and resume_percent < 90 and duration > 0:
             resume_seconds = int((resume_percent / 100.0) * duration)
         
-        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        url = plugin_url(url_params)
         
         li = xbmcgui.ListItem(display_label)
         
@@ -6665,7 +6661,7 @@ def build_search_result(search_type, query, page=1): # Adaugat parametrul page
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'perform_search', 'type': search_type, 'query': query, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -6721,7 +6717,7 @@ def list_recommendations(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_recommendations', 'tmdb_id': tmdb_id, 'menu_type': menu_type, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -6778,7 +6774,7 @@ def build_actors_list(params):
     cache_list = []
 
     if page == 1:
-        search_url = f"{sys.argv[0]}?{urlencode({'mode': 'perform_actor_search'})}"
+        search_url = plugin_url({'mode': 'perform_actor_search'})
         search_li = xbmcgui.ListItem('[B][COLOR FFFDBD01]Search Actors[/COLOR][/B]')
         search_icon = os.path.join(ADDON_PATH, 'resources', 'media', 'search.png')
         search_li.setArt({'icon': search_icon, 'thumb': search_icon})
@@ -6811,14 +6807,14 @@ def build_actors_list(params):
                 except:
                     pass
 
-        actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
+        actor_url = plugin_url({'mode': 'actor_dialog', 'actor_id': str(actor_id)})
         items_to_add.append((actor_url, li, False))
         cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
 
     if has_next:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'build_actors_list', 'action': action, 'page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -6900,7 +6896,7 @@ def build_actor_search_result(query, page=1):
                 except:
                     pass
 
-        actor_url = f"{sys.argv[0]}?{urlencode({'mode': 'actor_dialog', 'actor_id': str(actor_id)})}"
+        actor_url = plugin_url({'mode': 'actor_dialog', 'actor_id': str(actor_id)})
         items_to_add.append((actor_url, li, False))
         cache_list.append({'label': name, 'url': actor_url, 'is_folder': False, 'art': {'icon': thumb, 'thumb': thumb}, 'info': {}, 'cm': []})
 
@@ -6908,7 +6904,7 @@ def build_actor_search_result(query, page=1):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'perform_actor_search', 'query': query, 'page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -7619,7 +7615,7 @@ def in_progress_movies(params):
         if is_watched_this:
             display_title_ip = f'[B][COLOR FF6AFB92]{display_title_ip}[/COLOR][/B]'
 
-        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        url = plugin_url(url_params)
         li = xbmcgui.ListItem(display_title_ip)
         
         art_dict = {'icon': poster, 'thumb': poster, 'poster': poster, 'fanart': backdrop}
@@ -7895,7 +7891,7 @@ def in_progress_tvshows(params):
         cm  = _get_full_context_menu(tmdb_id, 'tv', name, year=year, imdb_id=imdb_id)
         _sel_info = None if _skip_ip() else select_ext_info_params('tv', tmdb_id)
         url_params = _sel_info or {'mode': 'details', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': name}
-        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        url = plugin_url(url_params)
 
         air_date_str = item.get('air_date', '')
         is_tba = not air_date_str
@@ -8230,7 +8226,7 @@ def in_progress_episodes(params):
             url_params = select_ext_info_params('episode', tmdb_id, season, episode, show_name, ep_name)
         url_params = url_params or {'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'season': str(season), 'episode': str(episode), 'title': ep_name, 'tv_show_title': show_name}
         
-        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        url = plugin_url(url_params)
         
         li = xbmcgui.ListItem(display_label)
         
@@ -8995,7 +8991,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
                                    base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode,
                                    clear_sources=True)
         
-        url = f"{sys.argv[0]}?{urlencode(url_params)}"
+        url = plugin_url(url_params)
         li = None if cache_only else xbmcgui.ListItem(label_live)
 
         try: skin_compat = ADDON.getSetting('skin_type')
@@ -9274,7 +9270,7 @@ def process_single_list_warmup(action, content_type, page=1):
         mode_str = 'build_movie_list' if content_type == 'movie' else 'build_tvshow_list'
         next_label = next_page_label(page + 1)
         next_params = {'mode': mode_str, 'action': action, 'new_page': str(page + 1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         
         cache_list.append({
             'label': next_label, 'url': next_url, 'is_folder': True,
@@ -9421,7 +9417,7 @@ def multiselect_genres(params):
 
     genre_ids = ','.join([str(genre_list[i]['id']) for i in selected])
     url_params = {'mode': 'list_by_genre', 'media_type': menu_type, 'genre_id': genre_ids}
-    url = f"{sys.argv[0]}?{urlencode(url_params)}"
+    url = plugin_url(url_params)
     xbmc.executebuiltin('Container.Update(%s)' % url)
 
 
@@ -9482,7 +9478,7 @@ def list_by_genre(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_genre', 'media_type': media_type, 'genre_id': genre_id, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -9539,7 +9535,7 @@ def list_by_year(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_year', 'media_type': media_type, 'year': year, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -9620,7 +9616,7 @@ def list_by_provider(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_provider', 'media_type': media_type, 'provider_id': provider_id, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -9669,7 +9665,7 @@ def list_highest_revenue(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_highest_revenue', 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -9721,7 +9717,7 @@ def list_most_voted(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_most_voted', 'media_type': media_type, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))
@@ -9820,7 +9816,7 @@ def list_by_network(params):
     if page < total_pages:
         next_label = next_page_label(page + 1)
         next_params = {'mode': 'list_by_network', 'media_type': media_type, 'network_id': network_id, 'page': str(page+1)}
-        next_url = f"{sys.argv[0]}?{urlencode(next_params)}"
+        next_url = plugin_url(next_params)
         next_li = xbmcgui.ListItem(next_label)
         style_page_nav_item(next_li, page + 1)
         items_to_add.append((next_url, next_li, True))

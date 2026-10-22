@@ -9,7 +9,7 @@ import xbmcplugin
 import xbmcvfs
 
 from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_title, _fmt_dmy
-from resources.lib.core.utils import style_page_nav_item, next_page_label
+from resources.lib.core.utils import style_page_nav_item, next_page_label, PLUGIN_URL
 
 DEBRID_ACTIONS = {
     'debrid_menu',
@@ -83,7 +83,7 @@ def _ensure_globals():
     if _ADDON is None:
         _ADDON = PROXIED_ADDON
     if _BASE_URL is None:
-        _BASE_URL = sys.argv[0]
+        _BASE_URL = PLUGIN_URL
     if _HANDLE is None:
         try:
             _HANDLE = int(sys.argv[1])

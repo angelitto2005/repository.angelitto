@@ -12,7 +12,7 @@ import glob
 from urllib.parse import quote, unquote, urlencode # NOU
 
 # Import WITHOUT HEADERS (which is now a function)
-from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP, get_downloads_root, get_download_split_roots
+from resources.lib.core.config import ADDON, ADDON_DATA_DIR, GENRE_MAP, get_downloads_root, get_download_split_roots, PLUGIN_URL as _PLUGIN_URL
 
 ADDON_PATH = ADDON.getAddonInfo('path')
 TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
@@ -1112,18 +1112,31 @@ def process_media_item(item, kind, return_data=True, skip_details=True):
     except Exception:
         return None
 
-# URL-ul pluginului. NU folosim sys.argv[0] pentru URL-uri de meniu: in
-# pre-randarea din fundal (thread al serviciului) sys.argv[0] este gol sau
-# apartine altui script -> se construiesc URL-uri relative ("?mode=episodes")
-# pe care Kodi nu le mai rezolva -> "Error getting directory" la click.
-PLUGIN_URL = 'plugin://plugin.video.tmdbmovies/'
+# URL-ul pluginului. Constanta canonica este in core/config.py (importata mai jos
+# si re-exportata aici, pentru compatibilitate cu importurile existente).
+PLUGIN_URL = _PLUGIN_URL
+
+
+def plugin_url(params=None):
+    """URL absolut al pluginului.
+
+    Accepta un dict (encodat aici) sau un string deja encodat.
+    NU folosim argv[0]: in service argv[0] este gol, deci in thread-urile
+    de fundal (pre-randarea Up Next) se construiesc URL-uri relative ("?mode=...")
+    pe care Kodi nu le rezolva -> "Playback failed" la click.
+    """
+    if not params:
+        return PLUGIN_URL
+    if isinstance(params, str):
+        return PLUGIN_URL + '?' + params
+    return PLUGIN_URL + '?' + urlencode(params)
 
 
 def calendar_context_menu(base_cm, content_type, tmdb_id, show_title, season=None, episode=None,
                           base_url=None, browse_cmd=None, urlencode_fn=None, clear_sources=True):
     """Meniul contextual comun al unui rand de calendar: Browse Show / Browse Season
     (+ Clear sources cache) pe randurile de EPISOD. Returneaza o lista noua cu
-    cm-ul de baza + intrarile comune. base_url = sys.argv[0] sau _BASE_URL al modulului."""
+    cm-ul de baza + intrarile comune. base_url = PLUGIN_URL sau _BASE_URL al modulului."""
     try:
         cm = list(base_cm or [])
         if content_type != 'episode':
@@ -1359,12 +1372,22 @@ def clear_all_caches_with_notification():
 
 
 def set_resume_point(li, resume_seconds, total_seconds):
-    """
-    Directory rows stay non-resumable for Kodi native prompt; progress goes to WatchedProgress.
+    """Punct de resume REAL pe tag + proprietatea WatchedProgress.
+
+    Tagul primeste resume point (timp, total): fara el `ListItem.IsResumable`
+    e fals (Estuary nu deseneaza cercul de resume) si `ListItem.PercentPlayed`
+    e 0 (AF3 nu arata procentul). Kodi foloseste aceeasi valoare si pentru
+    dialogul NATIV de resume, deci apelatorul decide daca il accepta.
     """
     try:
         info_tag = li.getVideoInfoTag()
-        info_tag.setResumePoint(0.0, 0.0)
+        try:
+            if resume_seconds > 0 and total_seconds > 0:
+                info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
+            else:
+                info_tag.setResumePoint(0.0, 0.0)
+        except Exception:
+            pass
         if resume_seconds > 0 and total_seconds > 0:
             percent = int((float(resume_seconds) / float(total_seconds)) * 100)
             if 0 < percent < 100:
@@ -1403,7 +1426,7 @@ def build_downloads_list(params):
                 _li.getVideoInfoTag().setTitle(_name)
             except:
                 pass
-            _url = f"{sys.argv[0]}?mode=downloads_menu&folder={quote(_root)}"
+            _url = f"{PLUGIN_URL}?mode=downloads_menu&folder={quote(_root)}"
             listing.append((_url, _li, True))
         xbmcplugin.addDirectoryItems(handle, listing, len(listing))
         xbmcplugin.setContent(handle, 'files')
@@ -1440,15 +1463,15 @@ def build_downloads_list(params):
         
         # Meniu contextual personalizat DOAR pentru foldere
         cm = []
-        del_url = f"RunPlugin({sys.argv[0]}?mode=delete_download&path={quote(full_path)})"
+        del_url = f"RunPlugin({PLUGIN_URL}?mode=delete_download&path={quote(full_path)})"
         cm.append(('Delete Folder', del_url))
         
-        ren_url = f"RunPlugin({sys.argv[0]}?mode=rename_download&path={quote(full_path)})"
+        ren_url = f"RunPlugin({PLUGIN_URL}?mode=rename_download&path={quote(full_path)})"
         cm.append(('Rename Folder', ren_url))
         
         li.addContextMenuItems(cm)
         
-        url = f"{sys.argv[0]}?mode=downloads_menu&folder={quote(full_path)}"
+        url = f"{PLUGIN_URL}?mode=downloads_menu&folder={quote(full_path)}"
         listing.append((url, li, True))
 
     # --- FILES (Let Kodi handle context menu) ---

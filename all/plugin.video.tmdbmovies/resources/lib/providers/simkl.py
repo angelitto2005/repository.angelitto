@@ -15,7 +15,7 @@ import xbmcvfs
 from datetime import datetime, timedelta, timezone
 
 from resources.lib.core.config import ADDON as PROXIED_ADDON, provider_color, provider_icon, provider_title, calendar_window_days, calendar_sort_flags
-from resources.lib.core.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, style_page_nav_item, next_page_label
+from resources.lib.core.utils import select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, process_media_item, style_page_nav_item, next_page_label, PLUGIN_URL
 
 SIMKL_ACTIONS = {
     'simkl_menu',
@@ -43,7 +43,7 @@ def _ensure_globals():
     if _ADDON is None:
         _ADDON = PROXIED_ADDON
     if _BASE_URL is None:
-        _BASE_URL = sys.argv[0]
+        _BASE_URL = PLUGIN_URL
     if _HANDLE is None:
         try: _HANDLE = int(sys.argv[1])
         except: _HANDLE = -1
