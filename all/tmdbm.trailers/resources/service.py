@@ -100,7 +100,82 @@ def _show_up_next(player, shown):
 
 
 def _refill_music_queue(player, position=None):
-    return
+    try:
+        _refill_tail(player, position)
+    except Exception as exc:
+        config.log('music tail refill check failed: {}'.format(exc))
+
+
+_REFILL = {'busy': False}
+_REFILL_WINDOW = _UP_NEXT_SECONDS + 5
+
+
+def _refill_tail(player, position=None):
+    from music import queue
+    state = queue.active()
+    tracks = state.get('tracks') or []
+    if state.get('mode') != 'active':
+        return
+    if (state.get('kind') or 'music') != 'music':
+        return
+    if len(tracks) < 2 or _repeat_mode():
+        return
+    if not _own_playback():
+        return
+    try:
+        if not player.isPlayingVideo():
+            return
+    except Exception:
+        return
+    try:
+        pos = int(queue.position() if position is None else position)
+    except (TypeError, ValueError):
+        return
+    if pos < 0 or pos != len(tracks) - 1:
+        return
+    remaining = _remaining_seconds(player)
+    if remaining is None or remaining <= 0 or remaining > _REFILL_WINDOW:
+        return
+    if _REFILL['busy']:
+        return
+    _REFILL['busy'] = True
+    anchor = (tracks[-1] or {}).get('video_id')
+    thread = threading.Thread(target=_refill_tail_bg,
+                              args=(state.get('started'), anchor, pos))
+    thread.daemon = True
+    thread.start()
+
+
+def _refill_tail_bg(started, anchor, pos):
+    try:
+        from music import queue
+        fresh = queue.refetch_remaining('music')
+        if not fresh:
+            return
+        state = queue.active()
+        tracks = state.get('tracks') or []
+        try:
+            current = int(state.get('pos') or 0)
+        except (TypeError, ValueError):
+            current = -1
+        if (state.get('mode') != 'active' or state.get('started') != started
+                or current != pos or not tracks
+                or tracks[-1].get('video_id') != anchor):
+            return
+        added = queue.append_remaining(fresh, started)
+        if not added:
+            return
+        if _native_active():
+            import lists
+            playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+            for track in added:
+                playlist.add(lists.queue_play_url(track),
+                             lists.playlist_item(track))
+        config.log('Music tail extended with {} tracks'.format(len(added)))
+    except Exception as exc:
+        config.log('music tail refill failed: {}'.format(exc))
+    finally:
+        _REFILL['busy'] = False
 
 
 def _sync_library_bg():
@@ -288,51 +363,68 @@ def _repeat_mode():
     return ''
 
 
+_ADVANCE_LOCK = threading.Lock()
+_ADVANCE = {'busy': False}
+_LAST_PLAYMEDIA = [0.0]
+
+
 def _play_next(observer, why):
     """Start the next track of the queue. Used by the callback and by the poll
     loop, so autoplay does not depend on the playback-ended event alone."""
     from music import queue
     if not queue.is_active():
         return False
-    state = queue.active() or {}
-    prev_tracks = list(state.get('tracks') or [])
+    with _ADVANCE_LOCK:
+        now = time.time()
+        if (_ADVANCE['busy'] or now - observer._advanced_at < 1
+                or now - _LAST_PLAYMEDIA[0] < 2):
+            config.log('Queue advance skipped ({}), already starting'.format(why))
+            return False
+        _ADVANCE['busy'] = True
+        observer._advanced_at = now
     try:
-        prev_pos = int(state.get('pos') or 0)
-    except (TypeError, ValueError):
-        prev_pos = 0
-    upcoming = queue.advance()
-    tag = ''
-    if not upcoming and prev_tracks:
-        mode = _repeat_mode()
-        if mode == 'one' and 0 <= prev_pos < len(prev_tracks):
-            queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
-                             pos=prev_pos, listing=state.get('listing'))
-            upcoming = prev_tracks[prev_pos]
-            tag = ' (repeat one)'
-        elif mode == 'all':
-            queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
-                             pos=0, listing=state.get('listing'))
-            upcoming = prev_tracks[0]
-            tag = ' (repeat all)'
-    if not upcoming:
-        config.log('Queue finished ({})'.format(why))
-        return False
-    observer._advanced_at = time.time()
-    try:
-        import lists
-        from urllib.parse import urlencode
-        query = lists.entry_params(upcoming)
-        query['mode'] = 'queue_play'
-        xbmc.executebuiltin('PlayMedia(plugin://tmdbm.trailers/?{})'.format(
-            urlencode(query)))
-        config.log('Queue advanced to {} ({}{})'.format(
-            upcoming.get('video_id'), why, tag))
-        _maybe_inject_related(upcoming)
-        return True
-    except Exception as exc:
-        config.log('queue advance failed: {}'.format(exc))
-        queue.clear()
-        return False
+        state = queue.active() or {}
+        prev_tracks = list(state.get('tracks') or [])
+        try:
+            prev_pos = int(state.get('pos') or 0)
+        except (TypeError, ValueError):
+            prev_pos = 0
+        upcoming = queue.advance()
+        tag = ''
+        if not upcoming and prev_tracks:
+            mode = _repeat_mode()
+            if mode == 'one' and 0 <= prev_pos < len(prev_tracks):
+                queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
+                                 pos=prev_pos, listing=state.get('listing'))
+                upcoming = prev_tracks[prev_pos]
+                tag = ' (repeat one)'
+            elif mode == 'all':
+                queue.set_active(prev_tracks, kind=state.get('kind') or 'music',
+                                 pos=0, listing=state.get('listing'))
+                upcoming = prev_tracks[0]
+                tag = ' (repeat all)'
+        if not upcoming:
+            config.log('Queue finished ({})'.format(why))
+            return False
+        try:
+            import lists
+            from urllib.parse import urlencode
+            query = lists.entry_params(upcoming)
+            query['mode'] = 'queue_play'
+            xbmc.executebuiltin('PlayMedia(plugin://tmdbm.trailers/?{})'.format(
+                urlencode(query)))
+            _LAST_PLAYMEDIA[0] = time.time()
+            config.log('Queue advanced to {} ({}{})'.format(
+                upcoming.get('video_id'), why, tag))
+            _maybe_inject_related(upcoming)
+            return True
+        except Exception as exc:
+            config.log('queue advance failed: {}'.format(exc))
+            queue.clear()
+            return False
+    finally:
+        with _ADVANCE_LOCK:
+            _ADVANCE['busy'] = False
 
 
 def _end_watch_advance(player, observer, remaining):

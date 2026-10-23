@@ -473,6 +473,28 @@ def advance():
     return tracks[index]
 
 
+def append_remaining(entries, started):
+    """Add refill tracks to an active queue without touching its listing."""
+    state = active()
+    tracks = state.get('tracks') or []
+    if not tracks or state.get('mode') != 'active':
+        return []
+    if state.get('started') != started:
+        return []
+    seen = {track.get('video_id') for track in tracks}
+    fresh = []
+    for entry in entries or []:
+        item = _compact(entry)
+        if item['video_id'] and item['video_id'] not in seen:
+            seen.add(item['video_id'])
+            fresh.append(item)
+    if not fresh:
+        return []
+    state['tracks'] = tracks + fresh
+    store.set_state(_QUEUE_KEY, state)
+    return fresh
+
+
 def next_after(index=None):
     tracks = active_tracks()
     if not tracks:
