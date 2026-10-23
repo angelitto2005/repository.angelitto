@@ -170,6 +170,26 @@ def _has_watched_count_col(c, table):
         return False
 
 
+# Peste acest prag un pas de sync e raportat cu durata lui. Pasii de retea nu scriu
+# nimic pana la final, deci un stall de cateva minute semana cu un sync blocat
+# (masurat: 296s intre "Up Next: N seriale actualizate" si pasul urmator, cu log gol).
+_SLOW_STEP_SECS = 15.0
+
+def _timed_step(label, fn, *args, **kwargs):
+    """Ruleaza un pas de sync si logheaza durata daca depaseste _SLOW_STEP_SECS."""
+    import time as _t
+    _t0 = _t.time()
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        try:
+            _dt = _t.time() - _t0
+            if _dt >= _SLOW_STEP_SECS:
+                log("[TRAKT SYNC] %s took %.1fs (slow step)" % (label, _dt), xbmc.LOGWARNING)
+        except Exception:
+            pass
+
+
 def _db_commit_retry(conn, tries=20):
     import time as _t
     for _a in range(tries):
@@ -537,12 +557,12 @@ def _trakt_leg(silent=False, force=False, progress_cb=None, suppress_notificatio
                         _prog(70, "Sync: [B][COLOR pink]Playback Progress[/COLOR][/B]")
                         _sync_playback(c); conn.commit()
                         _prog(75, "Sync: [B][COLOR pink]Up Next[/COLOR][/B]")
-                        _sync_up_next(c, trakt_token); conn.commit()
+                        _timed_step('Up Next', _sync_up_next, c, trakt_token); conn.commit()
 
                     # 7. HIDDEN SHOWS (Dropped) — intotdeauna cand Trakt e autorizat,
                     # indiferent de provider (date de curatare manuala, tabele separate
                     # de mdblist_dropped — fara interferenta).
-                    _sync_hidden_shows(c); conn.commit()
+                    _timed_step('Hidden shows', _sync_hidden_shows, c); conn.commit()
             elif ADDON.getSetting('trakt_permanent_fail') == 'true' and ADDON.getSetting('trakt_access_token'):
                 log("[TRAKT SYNC] Trakt section skipped: saved token unusable (permanent fail). Re-auth Trakt on THIS device.")
 
@@ -551,9 +571,9 @@ def _trakt_leg(silent=False, force=False, progress_cb=None, suppress_notificatio
             disc_empty = is_table_empty(c, 'discovery_cache') or is_table_empty(c, 'tmdb_discovery')
             if force or disc_empty or (time.time() - last_disc > 21600):
                 _prog(85, "Sync: [B][COLOR pink]Trending & Popular[/COLOR][/B]")
-                _sync_trakt_discovery(c)
+                _timed_step('Trakt discovery', _sync_trakt_discovery, c)
                 _prog(90, "Sync: [B][COLOR FF00CED1]TMDb Discovery[/COLOR][/B]")
-                _sync_tmdb_discovery(c)
+                _timed_step('TMDb discovery', _sync_tmdb_discovery, c)
                 new_sync['discovery_ts'] = time.time()
                 conn.commit()
 
@@ -584,26 +604,38 @@ def _trakt_leg(silent=False, force=False, progress_cb=None, suppress_notificatio
             except: pass
 
         except Exception as e:
-            if not suppress_notifications and not silent:
-                try:
-                    if p_dialog: p_dialog.close()
-                except Exception: pass
-                p_dialog = None
-                xbmcgui.Dialog().notification("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Sync Complete", os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
-                
-        except Exception as e:
+            # Un singur handler real. Inainte erau doua `except Exception` pentru
+            # acelasi `try`: al doilea era inaccesibil (dead code), iar primul
+            # raporta ORICE eroare ca "Sync Complete" fara sa logheze nimic, deci
+            # un sync picat semana cu unul reusit si nu lasa urma in log.
             log(f"[TRAKT SYNC] CRITICAL ERROR: {e}", xbmc.LOGERROR)
             if p_dialog:
                 try: p_dialog.close()
                 except: pass
+                p_dialog = None
             try:
                 conn.rollback()
             except: pass
             try:
                 conn.close()
             except: pass
+            if not suppress_notifications and not silent:
+                try:
+                    xbmcgui.Dialog().notification(
+                        "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                        "Sync error",
+                        os.path.join(ADDON.getAddonInfo('path'), 'icon.png'))
+                except: pass
     
     finally:
+        # DialogProgressBG NU se inchide singur: fara close() pe calea de SUCCES
+        # ramanea agatat in dreapta-sus la ultimul procent (ex. 95% "TMDb
+        # favorite (tv)", ultima secventa a fazei TMDb) pana la restart Kodi.
+        # Il inchidem aici, pe toate caile (succes / exceptie / early exit).
+        if p_dialog:
+            try: p_dialog.close()
+            except: pass
+            p_dialog = None
         # Lock-ul global e detinut de CALLER (wrapper public / dispatcher) —
         # piciorul NU-l atinge (altfel l-ar elibera prematur dispatcherului,
         # plus NameError: window nu exista in scope-ul piciorului).

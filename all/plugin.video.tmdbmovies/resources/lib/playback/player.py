@@ -70,22 +70,6 @@ def _kodi_major():
         return 21
 
 
-def _native_prompt_answered():
-    """True daca promptul NATIV de resume a rulat (si a fost raspuns "from beginning").
-
-    Singurul context in care nativul ruleaza pentru itemii nostri e widgetul
-    de pe Home (win 10000): acolo clickul trece prin CDirectoryProvider::OnClick
-    -> ChoosePlayOrResume, deci Kodi arata deja dialogul. In listele addonului
-    (containere de plugin) nativul NU ruleaza niciodata, deci dialogul nostru
-    ramane singurul.
-    """
-    try:
-        import xbmcgui as _xg
-        return int(_xg.getCurrentWindowId()) == 10000
-    except Exception:
-        return False
-
-
 def _duration_seconds(tmdb_id, c_type):
     """Durata in secunde (filme: runtime, seriale: episode_run_time)."""
     duration_secs = 0
@@ -2058,11 +2042,138 @@ class AutoPlayWindow(xbmcgui.WindowXMLDialog):
         super(AutoPlayWindow, self).close()
 
 
+def _monitor_session_key(player_instance):
+    try:
+        return '%s|%s|%s|%s' % (
+            player_instance.tmdb_id or '', player_instance.content_type or '',
+            player_instance.season if player_instance.season is not None else '',
+            player_instance.episode if player_instance.episode is not None else '')
+    except Exception:
+        return ''
+
+
+def _monitor_claim(player_instance):
+    """Rezerva monitorul pentru acest item, vizibil si din alte procese.
+
+    Plugin-ul ruleaza in cate un interpretor Python separat pentru fiecare
+    invocare, deci `_player_monitor` (global de proces) nu poate vedea un al
+    doilea monitor. Cand Kodi cheama de doua ori `mode=sources` pentru acelasi
+    item (widget + click, sau dublu click), ambele procese porneau monitorul si
+    la stop rulau DOUA cicluri complete: doua dialoguri de binge, doua marcaje,
+    doua pre-randari care se calcau pe acelasi cache si doua refresh-uri.
+
+    Returneaza (token, key) daca procesul curent poate porni monitorul, sau
+    (None, key) daca alt proces il are deja (beat proaspat).
+    """
+    key = _monitor_session_key(player_instance)
+    token = '%s-%s' % (os.getpid(), time.time_ns())
+    try:
+        w = xbmcgui.Window(10000)
+        raw = w.getProperty('tmdbmovies.playback_monitor') or ''
+        if raw:
+            try:
+                d = json.loads(raw)
+            except Exception:
+                d = {}
+            if (d.get('key') == key and d.get('token') != token
+                    and (time.time() - float(d.get('ts') or 0)) < 15.0):
+                log("[PLAYER-MONITOR] monitor deja activ pentru %s (pid %s) - al doilea nu porneste"
+                    % (key, d.get('pid')))
+                return None, key
+        _payload = json.dumps(
+            {'key': key, 'token': token, 'pid': os.getpid(), 'ts': time.time()})
+        w.setProperty('tmdbmovies.playback_monitor', _payload)
+        # Doua procese pornite in aceeasi milisecunda (dublu click pe widget) pot
+        # citi amindoua claim-ul gol. Dupa o pauza scurta, ultimul scriitor e
+        # singurul proprietar; ceilalti se retrag.
+        time.sleep(0.1)
+        try:
+            _cur = json.loads(w.getProperty('tmdbmovies.playback_monitor') or '{}')
+        except Exception:
+            _cur = {}
+        if _cur.get('token') != token:
+            log("[PLAYER-MONITOR] alt proces a revendicat monitorul pentru %s - nu pornesc" % key)
+            return None, key
+    except Exception:
+        pass
+    return token, key
+
+
+def _monitor_beat(token):
+    """Inima claim-ului: cat timp monitorul traieste, alt proces nu porneste altul."""
+    try:
+        w = xbmcgui.Window(10000)
+        d = json.loads(w.getProperty('tmdbmovies.playback_monitor') or '{}')
+        if d.get('token') != token:
+            return
+        d['ts'] = time.time()
+        w.setProperty('tmdbmovies.playback_monitor', json.dumps(d))
+    except Exception:
+        pass
+
+
+def _monitor_release(token):
+    try:
+        w = xbmcgui.Window(10000)
+        d = json.loads(w.getProperty('tmdbmovies.playback_monitor') or '{}')
+        if d.get('token') == token:
+            w.clearProperty('tmdbmovies.playback_monitor')
+    except Exception:
+        pass
+
+
+def _resume_prompt_choice(key, wait_seconds=0.0):
+    """Decizia de resume a ALTUI proces pentru acelasi item.
+
+    Returneaza (choice, ask):
+      ask=False -> choice e raspunsul deja dat (0=Resume, 1=De la inceput, -1=anulat)
+      ask=True  -> intrebam noi si scriem decizia cu _resume_prompt_store()
+    """
+    now = time.time()
+    w = xbmcgui.Window(10000)
+    try:
+        d = json.loads(w.getProperty('tmdbmovies.resume_prompt') or '{}')
+    except Exception:
+        d = {}
+    if (d.get('key') == key and d.get('pid') != os.getpid()
+            and now - float(d.get('ts') or 0) < 12.0):
+        end = time.time() + max(0.0, float(wait_seconds or 0))
+        while d.get('choice') is None and time.time() < end:
+            if kodi_abort_requested():
+                break
+            xbmc.sleep(200)
+            try:
+                d = json.loads(w.getProperty('tmdbmovies.resume_prompt') or '{}')
+            except Exception:
+                d = {}
+        if d.get('key') == key and d.get('choice') is not None:
+            log("[RESUME] folosesc alegerea altui proces (%s) - nu mai intreb" % d.get('choice'))
+            return int(d.get('choice')), False
+    try:
+        w.setProperty('tmdbmovies.resume_prompt', json.dumps(
+            {'key': key, 'pid': os.getpid(), 'ts': now, 'choice': None}))
+    except Exception:
+        pass
+    return None, True
+
+
+def _resume_prompt_store(key, choice):
+    try:
+        xbmcgui.Window(10000).setProperty('tmdbmovies.resume_prompt', json.dumps(
+            {'key': key, 'pid': os.getpid(), 'ts': time.time(), 'choice': int(choice)}))
+    except Exception:
+        pass
+
+
 def start_playback_monitor(player_instance, dialog=None):
     """Monitor thread care verifica periodic si salveaza la oprire."""
     global _player_monitor
     
     if _player_monitor and _player_monitor.is_alive():
+        return
+
+    _claim_token, _claim_key = _monitor_claim(player_instance)
+    if _claim_token is None:
         return
     
     def monitor_loop():
@@ -2081,6 +2192,8 @@ def start_playback_monitor(player_instance, dialog=None):
         # 30s: open-ul poate dura ~20s pe surse lente (Stat intern Kodi); abandonul la 15s
         # declansa rollover in mijlocul deschiderii -> sursa se juca oricum, dar "figuri".
         for attempt in range(120):  # 120 x 250ms = 30 secunde
+            if attempt % 8 == 0:
+                _monitor_beat(_claim_token)
             if player_instance.isPlaying():
                 break
             xbmc.executebuiltin('Dialog.Close(okdialog,true)')
@@ -2133,8 +2246,12 @@ def start_playback_monitor(player_instance, dialog=None):
         last_known_progress = 0
         last_known_position = 0
         last_known_total = 0
+        _last_beat = 0.0
         
         while player_instance.isPlaying():
+            if time.time() - _last_beat >= 2.0:
+                _monitor_beat(_claim_token)
+                _last_beat = time.time()
             try:
                 curr = player_instance.getTime()
                 total = player_instance.getTotalTime()
@@ -2243,10 +2360,6 @@ def start_playback_monitor(player_instance, dialog=None):
         if last_known_progress <= 0 or last_known_total <= 0:
             log(f"[PLAYER-MONITOR] No valid progress ({last_known_progress:.2f}%), skipping save")
             return
-        
-        mins = int(last_known_position) // 60
-        secs = int(last_known_position) % 60
-        log(f"[PLAYER-MONITOR] ✓ Final position: {mins}m {secs}s ({last_known_progress:.2f}%)")
         
         mins = int(last_known_position) // 60
         secs = int(last_known_position) % 60
@@ -2771,6 +2884,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 _spa1(False)
             except Exception:
                 pass
+            _monitor_release(_claim_token)
 
     _player_monitor = threading.Thread(target=_monitor_entry, daemon=True)
     _player_monitor.start()
@@ -4004,21 +4118,32 @@ def list_sources(params):
             # Fallback: valoarea din URL (bazele locale golite, cache stale)
             resume_time = resume_from_url
 
-        # Daca promptul NATIV a rulat (si userul a ales "Play from beginning"),
-        # nu mai intrebam: in widgetul de pe Home Kodi arata deja dialogul.
-        # In listele noastre nativul nu ruleaza, deci dialogul nostru ramane.
-        if resume_argv == 'resume:false' and resume_time > 0 and _native_prompt_answered():
-            log("[RESUME] promptul nativ a raspuns deja (from beginning) - nu mai intrebam")
-            resume_time = 0
+        try:
+            log("[RESUME] argv[3]=%r, fereastra=%s, home vizibil=%s" % (
+                resume_argv, xbmcgui.getCurrentWindowId(),
+                bool(xbmc.getCondVisibility('Window.IsVisible(home)'))))
+        except Exception:
+            pass
 
+        # Widgeturile nu mai poarta resume point pe tag (vezi utils.set_resume_point),
+        # deci Kodi nu mai arata dialogul lui (care oricum pierdea alegerea la
+        # pluginuri) si meniul nostru ramane singurul.
         # Meniu resume la click pe titlu (toate skin-urile, inclusiv AF3)
         if resume_time > 180:
             m, s = divmod(resume_time, 60)
             h, m = divmod(m, 60)
             time_str = f"{h}h {m}m" if h > 0 else f"{m}m {s}s"
-            
-            choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
-            log(f"[RESUME] contextmenu choice: {choice} (0=Resume, 1=Play from beginning, -1=cancel)")
+            _rkey = '%s|%s|%s|%s' % (tmdb_id, c_type, season, episode)
+            # Daca acelasi item a fost deschis de doua ori (dublu click / widget),
+            # al doilea proces asteapta raspunsul primului in loc sa puna un al
+            # doilea meniu peste el.
+            _choice, _ask = _resume_prompt_choice(_rkey, wait_seconds=6.0)
+            if _ask:
+                choice = xbmcgui.Dialog().contextmenu([f"Resume from {time_str}", "Play from beginning"])
+                _resume_prompt_store(_rkey, choice)
+                log(f"[RESUME] contextmenu choice: {choice} (0=Resume, 1=Play from beginning, -1=cancel)")
+            else:
+                choice = _choice
             if choice == 1: resume_time = 0
             elif choice == -1:
                 try: xbmcplugin.setResolvedUrl(_current_handle(), False, xbmcgui.ListItem())

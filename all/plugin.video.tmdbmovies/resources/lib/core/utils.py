@@ -1371,20 +1371,36 @@ def clear_all_caches_with_notification():
     return success
 
 
-def set_resume_point(li, resume_seconds, total_seconds):
-    """Punct de resume REAL pe tag + proprietatea WatchedProgress.
+def _widget_listing():
+    """True daca listingul nu se construieste pentru fereastra de liste video (10025).
 
-    Tagul primeste resume point (timp, total): fara el `ListItem.IsResumable`
-    e fals (Estuary nu deseneaza cercul de resume) si `ListItem.PercentPlayed`
-    e 0 (AF3 nu arata procentul). Kodi foloseste aceeasi valoare si pentru
-    dialogul NATIV de resume, deci apelatorul decide daca il accepta.
+    Orice alt context (Home, hub AF3, fereastra de setari in timpul unui refresh
+    de widgeturi) e tratat ca widget: fara resume point pe tag, ca Kodi sa nu
+    deschida dialogul lui de resume.
     """
+    try:
+        return int(xbmcgui.getCurrentWindowId()) != 10025
+    except Exception:
+        return False
+
+
+def set_resume_point(li, resume_seconds, total_seconds):
+    """Cercul de resume: tag pe liste, doar proprietate pe widgeturi.
+
+    Pe widgeturi tagul declanseaza dialogul NATIV al Kodi, care la pluginuri
+    pierde itemul (PlayMedia(path,resume) il recreeaza din path) si cheama
+    pluginul cu resume:false - deci alegerea "Resume" nu ajunge la noi.
+    Fara tag, dialogul nativ nu mai apare si ramane un singur meniu, al nostru;
+    AF3 deseneaza cercul din proprietatea WatchedProgress.
+    """
+    widget = _widget_listing()
     try:
         info_tag = li.getVideoInfoTag()
         try:
             if resume_seconds > 0 and total_seconds > 0:
-                info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
-            else:
+                if not widget:
+                    info_tag.setResumePoint(float(resume_seconds), float(total_seconds))
+            elif not widget:
                 info_tag.setResumePoint(0.0, 0.0)
         except Exception:
             pass

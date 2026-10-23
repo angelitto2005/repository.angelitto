@@ -1,3 +1,9 @@
+1.1.323
+- Fixed duplicate post-stop cycles when Kodi starts the same item twice
+- Widget playback now shows a single resume dialog in Arctic Fuse 3
+- Trakt login now goes through auth.trakt.tv 
+- Deleting a resume now refreshes the Home widgets as well, not only the visible list
+
 1.1.322
 - Fixed UP NEXT mirroring sync (active provider and TMDb)
 - Fixed the appearance of the resume circle

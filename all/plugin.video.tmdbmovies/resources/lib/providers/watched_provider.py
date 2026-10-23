@@ -6,7 +6,9 @@ Dispatching intre Trakt si MDBList in functie de setarea watched_status_provider
 
 import os
 import threading
+import time
 import xbmc
+import xbmcgui
 import xbmcvfs
 
 from resources.lib.core.config import ADDON, ADDON_PATH, MDBLIST_API_URL, kodi_abort_requested
@@ -441,8 +443,58 @@ def _on_home_widget():
 
 def widget_refresh():
     try:
+        xbmcgui.Window(10000).setProperty('tmdbmovies.last_widget_refresh', str(time.time()))
+    except:
+        pass
+    try:
         xbmc.executebuiltin('UpdateLibrary(video,special://skin/foo)')
     except:
+        pass
+
+
+def widget_refresh_after(delay=2.5):
+    """Refresh al widgeturilor de pe Home DUPA ce lista activa s-a re-randat.
+
+    Container.Refresh (ce face refresh_ui intr-o lista a addonului) atinge doar
+    containerul curent: widgeturile de pe Home pastreaza ListItem-ul vechi, cu
+    cerc de resume, pana le re-citeste skin-ul. Dupa "Delete Resume" deja din
+    lista, widgetul arata in continuare progresul sters.
+
+    Blocheaza apelantul (scriptul RunPlugin, nu GUI-ul): un thread daemon ar
+    muri odata cu interpretorul, iar UpdateLibrary nu s-ar mai executa. In
+    schimb, cat timp asteptam aici, traieste si thread-ul care face
+    Container.Refresh, deci lista se re-randeaza sigur.
+
+    Intarzierea + garzile evita exact race-ul documentat: UpdateLibrary in
+    aceeasi secunda cu Container.Refresh a produs crash in CDirectoryCache.
+    """
+    try:
+        mon = xbmc.Monitor()
+        _waited = 0.0
+        while _waited < delay:
+            if mon.abortRequested():
+                return
+            xbmc.sleep(200)
+            _waited += 0.2
+        if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+            return
+        for _ in range(80):
+            if mon.abortRequested():
+                return
+            if (not xbmc.getCondVisibility('System.HasModalDialog')
+                    and not xbmc.getCondVisibility('Container.IsUpdating')):
+                break
+            xbmc.sleep(100)
+        else:
+            return
+        try:
+            _stamp = float(xbmcgui.Window(10000).getProperty('tmdbmovies.last_widget_refresh') or 0)
+        except Exception:
+            _stamp = 0.0
+        if time.time() - _stamp < 5.0:
+            return
+        widget_refresh()
+    except Exception:
         pass
 
 def refresh_ui():
@@ -1597,6 +1649,8 @@ def dispatch_remove_progress(tmdb_id, content_type='movie', season=None, episode
     _kodi_delete_resume_bookmark(tmdb_id, content_type, season, episode)
     # 4. Refresh widget-uri de pe Home (UpdateLibrary) — Container.Refresh din
     #    remove_from_progress doar reimprospateaza containerul activ, nu widget-urile.
+    #    Pasul pentru widgeturi il face apelantul (entry.remove_progress), dupa ce
+    #    a pornit refresh-ul de container: vezi widget_refresh_after().
     _invalidate_fast_cache(keep_upnext=_is_movie_change(content_type))
     refresh_ui()
 

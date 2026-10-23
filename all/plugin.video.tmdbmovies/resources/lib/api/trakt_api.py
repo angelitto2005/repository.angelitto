@@ -15,13 +15,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 try:
     from resources.lib.core.config import (
-        TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
+        TRAKT_API_URL, TRAKT_AUTH_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
         HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy, utc_to_local_date, utc_to_local_time,
         provider_color, provider_icon, provider_title
     )
 except ImportError:
     from resources.lib.core.config import (
-        TRAKT_API_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
+        TRAKT_API_URL, TRAKT_AUTH_URL, TRAKT_CLIENT_ID, TRAKT_TOKEN_FILE, TRAKT_CACHE_FILE,
         HANDLE, ADDON, IMG_BASE, BACKDROP_BASE, BASE_URL, API_KEY, _fmt_dmy,
         provider_color, provider_title, provider_icon
     )
@@ -196,7 +196,7 @@ def refresh_trakt_token():
         try:
             log("[TRAKT] Sending refresh token request...")
             r = requests.post(
-                f"{TRAKT_API_URL}/oauth/token",
+                f"{TRAKT_AUTH_URL}/oauth/token",
                 json={
                     'refresh_token': refresh_token,
                     'client_id': TRAKT_CLIENT_ID,
@@ -303,7 +303,7 @@ def get_trakt_username(token=None):
 def trakt_auth():
     try:
         r = requests.post(
-            f"{TRAKT_API_URL}/oauth/device/code",
+            f"{TRAKT_AUTH_URL}/oauth/device/code",
             json={'client_id': TRAKT_CLIENT_ID},
             headers=get_trakt_headers(),
             timeout=10
@@ -311,7 +311,9 @@ def trakt_auth():
         data = r.json()
         user_code = data['user_code']
         device_code = data['device_code']
-        verification_url = data['verification_url']
+        # Trakt returneaza acum https://auth.trakt.tv/activate (fara cod in path) -
+        # folosim ce ne da API-ul, cu fallback pe hostul de auth.
+        verification_url = (data.get('verification_url') or '').strip() or (TRAKT_AUTH_URL + '/activate')
         interval = data['interval']
         expires_in = data['expires_in']
     except:
@@ -328,10 +330,13 @@ def trakt_auth():
     # ══════════════════════════════════════════════════════════
     from resources.lib.core.utils import make_qr
     from resources.lib.core.auth_dialog import QRProgressDialog, run_modal_main_thread
-    qr_path = make_qr(f"https://trakt.tv/activate/{user_code}", 'trakt_qr.png')
-    msg = (f"1. Open this link in browser:\n"
-           f"[B][COLOR pink]https://trakt.tv/activate/{user_code}[/COLOR][/B]\n"
-           f"2. Click Approve on the page (code is already in the link)")
+    # QR-ul duce la pagina de activate cu codul deja completat (acelasi pattern pe care
+    # il foloseste Trakt in redirectul propriu: /activate?user_code=...).
+    _sep = '&' if '?' in verification_url else '?'
+    qr_path = make_qr(f"{verification_url}{_sep}user_code={user_code}", 'trakt_qr.png')
+    msg = (f"1. Open this link in browser or scan the QR:\n"
+           f"[B][COLOR pink]{verification_url}[/COLOR][/B]\n"
+           f"2. Enter the code [B][COLOR pink]{user_code}[/COLOR][/B] and click Approve")
     pdialog = QRProgressDialog(
         'auth_qr.xml', ADDON_PATH, 'Default', '1080i',
         heading='[B][COLOR pink]Trakt Authentication[/COLOR][/B]',
@@ -359,7 +364,7 @@ def trakt_auth():
 
             try:
                 poll = requests.post(
-                    f"{TRAKT_API_URL}/oauth/device/token",
+                    f"{TRAKT_AUTH_URL}/oauth/device/token",
                     json={
                         'code': device_code,
                         'client_id': TRAKT_CLIENT_ID,
@@ -462,16 +467,32 @@ def trakt_revoke():
 
 
 # ===================== TRAKT API REQUEST =====================
+# Peste acest prag o cerere e logata ca lenta. Fara asta, o cerere care atarna
+# (Trakt/CDN lent) nu lasa NICIO urma in log, iar sync-ul pare blocat la ultimul
+# procent afisat (masurat: 296s de liniste, apoi sync-ul si-a vazut de treaba).
+_SLOW_REQUEST_SECS = 5.0
+
 def _do_request(method, url, headers, data=None, params=None):
     """Executa cererea folosind sesiunea globala Trakt."""
     # --- INCEPUT MODIFICARE: Folosim TRAKT_SESSION in loc de requests ---
-    if method == 'GET':
-        return TRAKT_SESSION.get(url, headers=headers, params=params, timeout=15)
-    elif method == 'POST':
-        return TRAKT_SESSION.post(url, headers=headers, json=data, timeout=15)
-    elif method == 'DELETE':
-        return TRAKT_SESSION.delete(url, headers=headers, json=data, timeout=15)
-    return None
+    import time as _t
+    _t0 = _t.time()
+    try:
+        if method == 'GET':
+            return TRAKT_SESSION.get(url, headers=headers, params=params, timeout=15)
+        elif method == 'POST':
+            return TRAKT_SESSION.post(url, headers=headers, json=data, timeout=15)
+        elif method == 'DELETE':
+            return TRAKT_SESSION.delete(url, headers=headers, json=data, timeout=15)
+        return None
+    finally:
+        try:
+            _dt = _t.time() - _t0
+            if _dt >= _SLOW_REQUEST_SECS:
+                _ep = url[len(TRAKT_API_URL):] if url.startswith(TRAKT_API_URL) else url
+                log("[TRAKT] Slow request %.1fs: %s %s" % (_dt, method, _ep), xbmc.LOGWARNING)
+        except Exception:
+            pass
     # --- SFARSIT MODIFICARE ---
 
 

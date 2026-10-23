@@ -2063,6 +2063,15 @@ def run_plugin():
                 xbmc.executebuiltin("Container.Refresh")
 
         threading.Thread(target=delayed_refresh, args=(refresh_path,), daemon=True).start()
+        # Widgeturile de pe Home nu reactioneaza la Container.Refresh. Asteptam
+        # sincron (scriptul ramane viu, deci traieste si thread-ul de mai sus)
+        # si abia apoi fortam UpdateLibrary: altfel widgetul pastreaza cercul
+        # de resume sters pana la urmatoarea navigare.
+        try:
+            from resources.lib.providers.watched_provider import widget_refresh_after
+            widget_refresh_after()
+        except Exception:
+            pass
         return
 
     if mode == 'tmdb_auth_action':

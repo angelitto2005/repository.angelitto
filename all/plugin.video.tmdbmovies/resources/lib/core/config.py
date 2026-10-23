@@ -232,6 +232,10 @@ API_KEY = "28af5f8c53c4bd145a3a39525ccbf764"
 TRAKT_CLIENT_ID = ADDON.getSetting('trakt_client_id') or "67149cca60e6dd23f9f56ba45e1187ce0f9cb9c73363364eb24560c7627c3daf"
 TRAKT_CLIENT_SECRET = ADDON.getSetting('trakt_client_secret') or '7a237effa309ecb580cc167985b5df05f04b1dc163edfd6d2000b8536fc44a92'
 TRAKT_API_URL = "https://api.trakt.tv"
+# Trakt muta TOATE fluxurile de login (device code, exchange, refresh) pe auth.trakt.tv;
+# din 1 februarie 2027 requesturile de login pe api.trakt.tv pot fi refuzate.
+# Endpointurile de date (sync, scrobble, liste) raman pe api.trakt.tv.
+TRAKT_AUTH_URL = "https://auth.trakt.tv"
 TRAKT_SYNC_INTERVAL = 300
 MDBLIST_API_URL = "https://api.mdblist.com"
 MDBLIST_CLIENT_ID = ADDON.getSetting('mdblist_client_id') or "qjBRQUdgmOXXnAXjcLzupQVirkO31LQ2d8qQl0J3"
