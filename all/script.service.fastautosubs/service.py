@@ -1190,8 +1190,15 @@ class AutoSubsPlayer(xbmc.Player):
         if "googlevideo" in _mp_lower:
             log("Detectat GoogleVideo CDN (YouTube) in cale. Skip.")
             return True
-        if "/yt_" in _mp_lower and ".mpd" in _mp_lower:
-            log("Detectat proxy MPD TMDbM Trailers in cale. Skip.")
+        # Manifestele temporare ale tmdbm.trailers: `yt_<id>.mpd` (DASH) si
+        # `yt_live_<id>.m3u8` (live HLS filtrat), direct sau prin proxy-ul local
+        # (`http://127.0.0.1:PORT/special://temp/...`). Guardul vechi cerea si
+        # `.mpd`, deci live-ul HLS nu era prins si Fast AutoSubs pornea cautarea de
+        # subtitrari pentru un trailer YouTube (log 17:36:20: Cale=
+        # 'http://127.0.0.1:3361/special://temp/yt_live_IW7WOYL9zm8.m3u8', durata
+        # 900s = exact limita, deci nici filtrul de durata nu l-a oprit).
+        if "temp/yt_" in _mp_lower or "yt_live_" in _mp_lower:
+            log("Detectat manifest TMDbM Trailers (yt_*.mpd / yt_live_*.m3u8). Skip.")
             return True
         if "rotv123" in str(movieFullPath).lower(): 
             return True
