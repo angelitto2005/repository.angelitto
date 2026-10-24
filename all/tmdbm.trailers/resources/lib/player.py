@@ -251,6 +251,24 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(payload)
                 return
 
+            if raw.endswith('.m3u8'):
+                if os.path.exists(local_path):
+                    try:
+                        with open(local_path, 'rb') as f:
+                            payload = f.read()
+                    except Exception:
+                        payload = None
+                    if payload is not None:
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/x-mpegURL')
+                        self.send_header('Content-Length', str(len(payload)))
+                        self.end_headers()
+                        self.wfile.write(payload)
+                        return
+                self.send_error(404)
+                return
+
+
             if os.path.exists(local_path):
                 self.send_response(200)
                 self.send_header('Content-Type', 'video/mp4')
@@ -258,7 +276,6 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 with open(local_path, 'rb') as f:
                     self.wfile.write(f.read())
                 return
-
         url = unquote(raw).replace('&amp;', '&')
         if not url.startswith(('http://', 'https://')):
             self.send_error(404)
@@ -869,6 +886,8 @@ def _extract_innertube_ios(video_id):
         'title': vd.get('title'),
         'duration': int(vd.get('lengthSeconds') or 0),
         'manifest_url': sd.get('hlsManifestUrl'),
+        'is_live': bool(vd.get('isLive') or
+                        (vd.get('isLiveContent') and not vd.get('isPostLiveDvr'))),
         'captions': _collect_captions(body),
     }
 
@@ -1031,6 +1050,8 @@ def _extract_innertube_tv_auth(video_id):
         'title': vd.get('title'),
         'duration': int(vd.get('lengthSeconds') or 0),
         'manifest_url': sd.get('hlsManifestUrl'),
+        'is_live': bool(vd.get('isLive') or
+                        (vd.get('isLiveContent') and not vd.get('isPostLiveDvr'))),
         'captions': _collect_captions(body),
         'authenticated': True,
     }
@@ -2625,11 +2646,29 @@ def play_youtube(video_id, title=None, genre=None, year=None,
             if k.lower() not in ('user-agent', 'accept'):
                 yt_headers[k] = v
 
+    # A stream is "live" only when YouTube says so (isLive / isLiveContent
+    # without isPostLiveDvr). Merely exposing an HLS manifest URL is NOT
+    # enough: every VOD also ships hlsManifestUrl, and treating those as live
+    # made normal tracks resume ~59 min in (setResumePoint fallback). Fall back
+    # to the manifest URL's manifest_duration token for older cached extracts
+    # that predate the is_live field.
+    _il = (data or {}).get('is_live', None)
+    if _il is None:
+        _mu = (data or {}).get('manifest_url') or ''
+        _is_live_stream = (isinstance(_mu, str) and 'manifest_duration/' in _mu)
+    else:
+        _is_live_stream = bool(_il)
+
     port = None
     if data and data.get('formats'):
+        # Proxy is needed for DASH (non-live) and to serve the filtered
+        # HLS manifest for live streams.
         port = _start_proxy()
     proxy_base = 'http://127.0.0.1:{}/'.format(port) if port else ''
-    mpd, headers = _build_mpd(data, proxy_base, video_id) if data else (None, {})
+    if _is_live_stream:
+        mpd, headers = None, {}
+    else:
+        mpd, headers = _build_mpd(data, proxy_base, video_id) if data else (None, {})
     _log('Startup: {:.2f}s from the play request to the stream, {} formats'.format(
         time.time() - _t_start, len((data or {}).get('formats', []))), always=True)
 
@@ -2684,12 +2723,108 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         return li
 
     if data and data.get('manifest_url'):
-        _log('HLS manifest')
-        li.setPath(data['manifest_url'])
+        _log('HLS manifest' + (' (live)' if _is_live_stream else ''))
+        play_path = data['manifest_url']
+        if _is_live_stream and port:
+            try:
+                import urllib.request as _ur
+                req = _ur.Request(data['manifest_url'], headers=yt_headers)
+                with _ur.urlopen(req, timeout=10) as _resp:
+                    _text = _resp.read().decode('utf-8', 'replace')
+                _out = []
+                _skip = False
+                for _line in _text.splitlines():
+                    if _skip:
+                        _skip = False
+                        if _line.strip() and not _line.strip().startswith('#'):
+                            continue
+                    _s = _line.strip()
+                    if _s.startswith('#EXT-X-MEDIA:') and 'GROUP-ID="233"' in _s:
+                        continue
+                    if _s.startswith('#EXT-X-STREAM-INF:') and 'AUDIO="233"' in _s:
+                        _skip = True
+                        continue
+                    _out.append(_line)
+                # Hint the player to start near the live edge (60s back) instead of
+                # the beginning of the DVR window; avoids the audio-less early
+                # segments observed on Euronews/Tu Decizi.
+                try:
+                    if _out and _out[0].strip().upper() == '#EXTM3U':
+                        _out.insert(1, '#EXT-X-START:TIME-OFFSET=-60.0')
+                    else:
+                        _out.insert(0, '#EXT-X-START:TIME-OFFSET=-60.0')
+                except Exception:
+                    pass
+                if any('EXT-X-STREAM-INF' in l for l in _out):
+                    _m3u8 = 'special://temp/yt_live_{}.m3u8'.format(video_id)
+                    _local = xbmcvfs.translatePath(_m3u8)
+                    with open(_local, 'w', encoding='utf-8') as _f:
+                        _f.write('\n'.join(_out) + '\n')
+                    play_path = 'http://127.0.0.1:{}/{}'.format(port, _m3u8)
+                    _log('Live HLS filtered to AAC-LC (group 234): {} -> {} variants'.format(
+                        sum(1 for l in _text.splitlines() if 'EXT-X-STREAM-INF' in l),
+                        sum(1 for l in _out if 'EXT-X-STREAM-INF' in l)))
+                else:
+                    _log('Live HLS filter produced empty playlist; using original', xbmc.LOGWARNING)
+            except Exception as _exc:
+                _log('Live HLS filter failed: {}'.format(str(_exc)[:90]), xbmc.LOGWARNING)
+        li.setPath(play_path)
         li.setProperty(IA_PROP, 'inputstream.adaptive')
-        http_headers = data.get('http_headers', {})
+        # Mirror plugin.video.youtube: tell ISA explicitly that this is HLS.
+        if KODI_VERSION < 21:
+            li.setProperty('inputstream.adaptive.manifest_type', 'hls')
+        # Headers for both manifest and segments (YouTube plugin sets both).
+        hdr_parts = []
+        for k, v in yt_headers.items():
+            hdr_parts.append('{}={}'.format(k, v))
+        if hdr_parts:
+            joined = '&'.join(hdr_parts)
+            li.setProperty('inputstream.adaptive.stream_headers', joined)
+            li.setProperty('inputstream.adaptive.manifest_headers', joined)
+        http_headers = data.get('http_headers') or {}
         if http_headers:
-            li.setProperty('inputstream.adaptive.stream_headers', json.dumps(http_headers))
+            # Prefer extractor-provided headers if any (merged on top).
+            extra = '&'.join('{}={}'.format(k, v) for k, v in http_headers.items())
+            if extra:
+                cur = li.getProperty('inputstream.adaptive.stream_headers')
+                li.setProperty('inputstream.adaptive.stream_headers',
+                               (cur + '&' + extra) if cur else extra)
+                cur = li.getProperty('inputstream.adaptive.manifest_headers')
+                li.setProperty('inputstream.adaptive.manifest_headers',
+                               (cur + '&' + extra) if cur else extra)
+        li.setProperty('inputstream.adaptive.stream_selection_type', 'adaptive')
+        if _is_live_stream:
+            if KODI_VERSION < 21:
+                li.setProperty('inputstream.adaptive.live_delay', '60')
+            try:
+                import json as _json
+                import re as _re
+                _m = _re.search(r'manifest_duration/(\d+)', data['manifest_url'] or '')
+                if _m:
+                    _dur = int(_m.group(1))
+                    _limit = min(_dur, 4 * 60 * 60)
+                    li.setProperty('inputstream.adaptive.manifest_config',
+                                   _json.dumps({'timeshift_bufferlimit': _limit,
+                                                'live_delay': 60,
+                                                'hls_fix_mediasequence': True}))
+                    # Start near the live edge (60s before the end of the DVR window)
+                    # instead of the beginning, where audio is often missing.
+                    try:
+                        _info = li.getVideoInfoTag()
+                        _info.setDuration(int(_dur))
+                        _info.setResumePoint(max(0, int(_dur) - 60), float(_dur))
+                    except Exception:
+                        pass
+                else:
+                    # No DVR window length in the URL: keep the live-delay /
+                    # timeshift behaviour but do not force a bogus resume point.
+                    li.setProperty('inputstream.adaptive.manifest_config',
+                                   _json.dumps({'live_delay': 60,
+                                                'hls_fix_mediasequence': True}))
+                # Allow ISA to timeshift so a lagging audio stream can catch up.
+                li.setProperty('inputstream.adaptive.play_timeshift_buffer', 'true')
+            except Exception:
+                pass
         return li
 
     direct_url = (data or {}).get('url')
