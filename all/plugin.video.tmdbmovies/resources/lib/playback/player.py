@@ -1992,10 +1992,30 @@ def _silent_scrape_next_episode(player):
         log(f"[AUTO-SCRAPE] Error Fatala: {e}", xbmc.LOGERROR)
 
 
+def _upnext_update_in_flight():
+    """True cit tim lista Up Next e pe cale sa fie randata sau rescrisa.
+
+    Doua semnale, pentru ca niciunul singur nu acopera tot: `Container.IsUpdating`
+    (Kodi are un `CGUIMediaWindow::GetDirectory` in curs pe container) si
+    `tmdbmovies.prebuild_busy` (pre-randarea noastra tine randarea in asteptare).
+    Orice eroare = False: nu blocam niciodata dialogul degeaba.
+    """
+    try:
+        if xbmc.getCondVisibility('Container.IsUpdating'):
+            return True
+    except Exception:
+        pass
+    try:
+        return (xbmcgui.Window(10000).getProperty('tmdbmovies.prebuild_busy') or '') == 'true'
+    except Exception:
+        return False
+
+
 class AutoPlayWindow(xbmcgui.WindowXMLDialog):
     def __init__(self, *args, **kwargs):
         self.n_info = kwargs.get('n_info', {})
         self.action_result = 0 # 0 = Not Now, 1 = Auto-Play, 2 = Choose Source
+        self._close_requested = False
         self.timer = 60 # De la cate secunde sa inceapa
         self.is_closed = False
 
@@ -2038,8 +2058,49 @@ class AutoPlayWindow(xbmcgui.WindowXMLDialog):
             self.close()
 
     def close(self):
+        """Inchide dialogul doar cind containerul nu mai are un update in curs.
+
+        Toate cele patru iesiri (cele trei butoane, Back si numaratoarea inversa)
+        trec pe aici. Dump-urile arata de fiecare data acelasi lucru: la ~20-100
+        ms dupa ce dialogul de binge dispare, Kodi crapa in threadul "Thread
+        waiting" al unui `CGUIMediaWindow::GetDirectory` (copie de std::string
+        dintr-o lista nula, in zona `CDirectoryCache::SetDirectory`). Update-ul
+        listei Up Next pornit la stop traieste 0.5-1.6s; daca dialogul se inchide
+        peste el, threadul acela copiaza lista intr-o fereastra care tocmai se
+        re-aranjeaza. Un dialog care mai sta 0.2-1s nu deranjeaza pe nimeni - un
+        update de container retezat de inchiderea lui a crapat Kodi de fiecare
+        data cind s-a suprapus.
+        """
+        if getattr(self, '_close_requested', False):
+            return
+        self._close_requested = True
         self.is_closed = True
-        super(AutoPlayWindow, self).close()
+        # Inchiderea nu se face pe loc daca un update de container e in curs, si
+        # nici pe threadul GUI (onClick/onAction ruleaza acolo: un sleep acolo ar
+        # tine GUI-ul blocat exact cit are nevoie sa termine update-ul). Amanam
+        # pe un thread, ca dialogul sa dispara dupa ce containerul s-a asezat.
+        if _upnext_update_in_flight():
+            threading.Thread(target=self._close_when_idle, daemon=True).start()
+        else:
+            self._close_now()
+
+    def _close_when_idle(self):
+        for _ in range(20):
+            if not _upnext_update_in_flight():
+                break
+            try:
+                if kodi_abort_requested():
+                    break
+            except Exception:
+                pass
+            xbmc.sleep(100)
+        self._close_now()
+
+    def _close_now(self):
+        try:
+            super(AutoPlayWindow, self).close()
+        except Exception:
+            pass
 
 
 def _monitor_session_key(player_instance):
@@ -2567,7 +2628,24 @@ def start_playback_monitor(player_instance, dialog=None):
             if is_ep and hasattr(player_instance, 'next_ep_info') and player_instance.next_ep_info:
                 if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 85):
                     n_info = player_instance.next_ep_info
-                    xbmc.executebuiltin('Dialog.Close(all,true)')
+                    # NU `Dialog.Close(all,true)`: inchidea si DialogBusy-ul pe
+                    # care Kodi il tine in timpul unui `GetDirectory`. In logul cu
+                    # debug (17:10:19.664/.666) buzy-ul apare si dispare in 2ms,
+                    # in aceeasi milisecunda cu deschiderea dialogului nostru, iar
+                    # la 20.330 Kodi pornea un AL DOILEA GetDirectory pe aceeasi
+                    # lista - peste update-ul inca in curs. Fixul e sa asteptam ca
+                    # GUI-ul sa fie liber (niciun modal, niciun container care se
+                    # actualizeaza) si abia apoi sa deschidem dialogul nostru.
+                    for _w in range(20):
+                        try:
+                            if not xbmc.getCondVisibility('System.HasModalDialog') \
+                                    and not xbmc.getCondVisibility('Container.IsUpdating'):
+                                break
+                        except Exception:
+                            break
+                        if kodi_abort_requested():
+                            break
+                        xbmc.sleep(100)
                     win = AutoPlayWindow('autoplay_dialog.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', n_info=n_info)
                     _show_modal_abortable(win)
                     ret = win.action_result
@@ -2749,16 +2827,51 @@ def start_playback_monitor(player_instance, dialog=None):
                     except Exception:
                         pass
                     # Pre-randarea dupa marcaj poate re-randa ea lista: o
-                    # ASTEPTAM (max 6s), nu o sarim. Skipul de dinainte lasa
-                    # lista veche pe ecran cind pre-randarea se termina fara
+                    # ASTEPTAM, nu o sarim. Skipul de dinainte lasa lista
+                    # veche pe ecran cind pre-randarea se termina fara
                     # re-randare (log: "pre-randare gata ... fara re-randare").
-                    _pend_wait = 0.0
-                    while _pend_wait < 6.0:
+                    #
+                    # Plafon 20s, nu 6s: `upnext_rerender_pending` se stinge doar
+                    # cind build-ul Up Next s-a TERMINAT, iar pe un box lent el
+                    # dureaza 10-15s (log 21:34:44 marcaj -> 21:34:58 build gata).
+                    # Cu plafonul de 6s, pass-ul se declansa la 21:34:56 - cu 2s
+                    # inainte de build - randa cache-ul VECHI si (mai jos) stingea
+                    # `upnext_stale_since`, asa ca build-ul nu mai re-randa nimic:
+                    # lista raminea pe episodul tocmai vazut pina la navigare.
+                    # Tinta = momentul marcajului. Un build terminat DUPA el e
+                    # proaspat; orice altceva e cache-ul vechi din fereastra
+                    # stale-while-revalidate (get_fast_cache il intoarce
+                    # intentionat pe cel vechi).
+                    try:
+                        from resources.lib.core.cache import upnext_stale_since as _read_stale, \
+                            upnext_cache_built_at as _built_at
+                    except Exception:
+                        _read_stale = None
+                        _built_at = None
+                    try:
+                        _stale_target = _read_stale() if _read_stale else 0.0
+                    except Exception:
+                        _stale_target = 0.0
+
+                    def _upnext_built_now():
                         try:
-                            if (xbmcgui.Window(10000).getProperty(
-                                    'tmdbmovies.upnext_rerender_pending') != 'true'):
-                                break
+                            _vw = (xbmcgui.Window(10000).getProperty(
+                                'tmdbmovies.upnext_view') or '').strip()
+                            return _built_at(_vw if _vw in ('tmdb', 'provider') else '') \
+                                if _built_at else 0.0
                         except Exception:
+                            return 0.0
+
+                    _pend_wait = 0.0
+                    while _pend_wait < 20.0:
+                        try:
+                            _pend_flag = (xbmcgui.Window(10000).getProperty(
+                                'tmdbmovies.upnext_rerender_pending') == 'true')
+                        except Exception:
+                            break
+                        if not _pend_flag:
+                            break
+                        if _stale_target > 0 and _upnext_built_now() >= _stale_target:
                             break
                         if kodi_abort_requested():
                             return
@@ -2776,21 +2889,71 @@ def start_playback_monitor(player_instance, dialog=None):
                     else:
                         log("[PLAYER-MONITOR] Safety refresh amanat (container tot se actualizeaza)")
                         return
+                    def _still_in_same_list():
+                        """Suntem inca in lista de la stop?
+
+                        Garda de la intrarea in pass se face o singura data,
+                        iar intre ea si refresh pot trece pina la ~59s de
+                        asteptari (dialog modal, build, Container.IsUpdating,
+                        asezare). Un Back in acel interval schimba containerul,
+                        iar Container.Refresh aruncat atunci navigheaza peste ce
+                        face userul - de acolo iesirea din addon. Re-verificam
+                        imediat inainte de builtin, citirea e ieftina.
+                        """
+                        try:
+                            _pl = (xbmc.getInfoLabel('Container.PluginName') or '').lower()
+                            if 'tmdbmovies' not in _pl:
+                                return False
+                            if _folder_at_stop:
+                                return ((xbmc.getInfoLabel('Container.FolderPath') or '')
+                                        == _folder_at_stop)
+                            return True
+                        except Exception:
+                            return False
+
+                    def _drop_stale_marker_if_fresh():
+                        """Un build a scris lista dupa marcaj -> markerul nu mai apara nimic.
+
+                        Il stingem si cind renuntam la refresh (userul a iesit din
+                        lista), altfel urmatoarea randare ar servi cache-ul vechi
+                        pina la carpe-ul de 30s din tmdb_api.
+                        """
+                        try:
+                            if _stale_target > 0 and _upnext_built_now() >= _stale_target:
+                                xbmcgui.Window(10000).clearProperty('tmdbmovies.upnext_stale_since')
+                        except Exception:
+                            pass
+
                     # Asentare: build-ul tocmai s-a terminat, containerul se
-                    # rearanjeaza. 0.8s, cu abort Kodi.
+                    # rearanjeaza. 0.8s, cu abort Kodi - si cu verificare de
+                    # lista la fiecare pas, ca un Back sa nu fie prins la
+                    # mijloc (refresh-ul ar sari peste navigarea userului).
                     _settle = 0.0
                     while _settle < 0.8:
                         if kodi_abort_requested():
                             return
+                        if not _still_in_same_list():
+                            _drop_stale_marker_if_fresh()
+                            log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
+                            return
                         xbmc.sleep(200)
                         _settle += 0.2
-                    # Cache-ul e final: lista nu mai e "veche", deci se poate
-                    # stinge carpe-ul de 30s din tmdb_api (altfel ar ignora
-                    # cache-ul proaspat peste 30s si ar reconstrui de la zero).
-                    try:
-                        xbmcgui.Window(10000).clearProperty('tmdbmovies.upnext_stale_since')
-                    except Exception:
-                        pass
+                    # Cache-ul e final DOAR daca un build a scris lista DUPA marcaj.
+                    # Altfel il lasam aprins: safety pass-ul poate iesi din
+                    # asteptare pe plafon, cu build-ul inca in curs, iar stingerea
+                    # l-ar face sa creada ca "nu s-a marcat nimic" si nu ar mai
+                    # re-randa (exact log-ul 21:34:58) - lista raminea pe episodul
+                    # vechi pina la navigare. Lasat aprins, build-ul re-randeaza el
+                    # dupa ce scrie cache-ul; carpe-ul de 30s din tmdb_api il
+                    # stinge oricum daca build-ul moare.
+                    _drop_stale_marker_if_fresh()
+                    # Ultima verificare, in acelasi frame cu builtin-ul: daca
+                    # userul a iesit din lista intre timp, refresh-ul ar
+                    # naviga peste el. Lista se re-randeaza oricum singura
+                    # cand intra inapoi (cache-ul e deja proaspat).
+                    if not _still_in_same_list():
+                        log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
+                        return
                     xbmc.executebuiltin('Container.Refresh')
                     try:
                         xbmcgui.Window(10000).setProperty('tmdbmovies.last_stop_refresh', str(time.time()))
@@ -2810,6 +2973,16 @@ def start_playback_monitor(player_instance, dialog=None):
             # directoare). Un singur apel, dupa ce update-ul listei s-a terminat.
             def _widget_refresh_later():
                 try:
+                    # Doar pe skinurile moderne (Settings > Skin Compatibility =
+                    # Arctic Fuse 3): acolo widgeturile se reincarca doar pe
+                    # evenimentul de library update. Pe Estuary nu au nevoie de
+                    # UpdateLibrary, deci nu pornim nici threadul degeaba.
+                    try:
+                        from resources.lib.providers.watched_provider import widget_refresh_enabled as _wr_on
+                        if not _wr_on():
+                            return
+                    except Exception:
+                        pass
                     _waited = 0.0
                     while _waited < 3.0:
                         if kodi_abort_requested():
@@ -2846,8 +3019,8 @@ def start_playback_monitor(player_instance, dialog=None):
                     except Exception:
                         pass
                     from resources.lib.providers.watched_provider import widget_refresh
-                    widget_refresh()
-                    log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary, dupa stop)")
+                    if widget_refresh():
+                        log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary, dupa stop)")
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
             threading.Thread(target=_widget_refresh_later, daemon=True).start()

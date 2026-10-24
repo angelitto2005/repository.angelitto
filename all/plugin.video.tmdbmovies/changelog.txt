@@ -1,3 +1,10 @@
+1.1.324
+- Fixed: Crash when closing the binge dialog during a list update.
+- Fixed: Delayed refreshes triggering crashes while Kodi closed the dialog.
+- Fixed: Up Next now advances automatically after playback stops.
+- Fixed: Home widget refresh now runs only with Arctic Fuse 3 (Modern).
+- Fixed: Pressing Back after playback no longer exits the addon unexpectedly.
+
 1.1.323
 - Fixed duplicate post-stop cycles when Kodi starts the same item twice
 - Widget playback now shows a single resume dialog in Arctic Fuse 3

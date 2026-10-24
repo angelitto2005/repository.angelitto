@@ -441,7 +441,27 @@ def _on_home_widget():
     except:
         return True
 
+def widget_refresh_enabled():
+    """True doar pe skinurile moderne (Settings > Skin Compatibility = Arctic Fuse 3).
+
+    Widgeturile de pe Home se reincarca prin `UpdateLibrary(video,special://skin/foo)`
+    - un path fals, care nu scaneaza nimic, dar declanseaza evenimentul de library
+    update pe care skinurile moderne il asculta. Pe Estuary (varianta implicita)
+    widgeturile sunt plugin paths obisnuite si se re-citesc singure la intrare,
+    iar apelul nu face decat o scanare inutila:
+      `Process directory 'special://skin/foo' does not exist - skipping scan.`
+    Deci il facem doar cine are nevoie de el, nu pe orice skin.
+    """
+    try:
+        return (ADDON.getSetting('skin_type') or '0') == '1'
+    except Exception:
+        return False
+
+
 def widget_refresh():
+    """Reincarca widgeturile din skin (doar pe skin modern - vezi mai sus)."""
+    if not widget_refresh_enabled():
+        return False
     try:
         xbmcgui.Window(10000).setProperty('tmdbmovies.last_widget_refresh', str(time.time()))
     except:
@@ -450,6 +470,7 @@ def widget_refresh():
         xbmc.executebuiltin('UpdateLibrary(video,special://skin/foo)')
     except:
         pass
+    return True
 
 
 def widget_refresh_after(delay=2.5):
@@ -468,6 +489,10 @@ def widget_refresh_after(delay=2.5):
     Intarzierea + garzile evita exact race-ul documentat: UpdateLibrary in
     aceeasi secunda cu Container.Refresh a produs crash in CDirectoryCache.
     """
+    # Pe Estuary nu exista widgeturi de reincarcat: fara gardul asta, scriptul
+    # RunPlugin ar astepta 2.5s+ degeaba la fiecare "Delete Resume".
+    if not widget_refresh_enabled():
+        return
     try:
         mon = xbmc.Monitor()
         _waited = 0.0
@@ -790,6 +815,19 @@ def _upnext_refresh_now():
                 return False
         except Exception:
             pass
+        # Un stop tocmai s-a intamplat: re-randarea listei apartine safety
+        # pass-ului din player, care asteapta sa se aseze fereastra media si
+        # build-ul. Aici NU re-randam, oricine ne-ar chema. Motivul e un dump
+        # real (16:53:47): dupa ce s-a inchis dialogul de binge, un refresh
+        # pornit din thread-ul de reincercare a aterizat la ~70ms, exact cit
+        # GUI-ul demonta dialogul, si Kodi a crapat in CDirectory::GetDirectory
+        # copiind o lista nula.
+        try:
+            _stop_pend = float(_w.getProperty('tmdbmovies.stop_refresh_pending') or 0)
+        except Exception:
+            _stop_pend = 0.0
+        if _stop_pend and time.time() - _stop_pend < 90.0:
+            return False
         try:
             if xbmc.getCondVisibility('System.HasModalDialog'):
                 # Dialog modal deschis: randarea in spatele lui s-ar vedea ca
@@ -813,6 +851,14 @@ def _upnext_refresh_now():
         _cp = xbmc.getInfoLabel('Container.FolderPath') or ''
         if _cp and 'plugin.video.tmdbmovies' not in _cp.lower():
             return False
+        # Containerul se incarca deja: refresh-ul ar cadea in mijlocul unei
+        # re-randari si ar randa iar o lista pe jumatate construita. Lista care
+        # se incarca isi citeste oricum cache-ul proaspat la final.
+        try:
+            if xbmc.getCondVisibility('Container.IsUpdating'):
+                return False
+        except Exception:
+            pass
         xbmc.executebuiltin('Container.Refresh')
         _w.setProperty('tmdbmovies.last_upnext_refresh', str(time.time()))
         return True
@@ -855,6 +901,17 @@ def _schedule_pending_refresh():
             except Exception:
                 break
             _t2.sleep(0.5)
+        # Dialogul tocmai s-a inchis: lasa GUI-ul sa-l demonteze inainte de a
+        # cere o re-randare. Un Container.Refresh in acele prime zeci de
+        # milisecunde a crapat Kodi in CDirectory::GetDirectory (dump
+        # 16:53:47, la 70ms dupa "Buton apasat").
+        _t2.sleep(1.0)
+        try:
+            import xbmc as _x2
+            if _x2.getCondVisibility('System.HasModalDialog'):
+                return
+        except Exception:
+            pass
         try:
             _upnext_refresh_now()
         except Exception:

@@ -249,6 +249,48 @@ def upnext_stale_active():
         return False
 
 
+def mark_upnext_cache_built(variant=''):
+    """Semnal cross-proces: lista Up Next a fost rescrisa ACUM in fast cache.
+
+    Scris de build-ul real (api/tmdb_api.get_next_episodes) la fiecare scriere.
+    Citit de safety pass-ul din player ca sa stie daca refreshul lui ar randa
+    date vechi: in fereastra stale-while-revalidate `get_fast_cache` intoarce
+    intentionat lista veche, deci "a terminat pre-randarea" nu inseamna "cache-ul
+    e proaspat" (pre-randarea poate si sa renunte).
+
+    Varianta conteaza: listele TMDb si provider se construiesc separat, iar un
+    build al celeilalte variante nu face lista vizibila proaspata.
+    """
+    try:
+        import xbmcgui
+        w = xbmcgui.Window(10000)
+        _now = str(time.time())
+        w.setProperty('tmdbmovies.upnext_cache_built_at', _now)
+        if variant in ('tmdb', 'provider'):
+            w.setProperty('tmdbmovies.upnext_built_at_' + variant, _now)
+        return True
+    except Exception:
+        return False
+
+
+def upnext_cache_built_at(variant=''):
+    """Timestamp-ul ultimului build Up Next scris in cache (0.0 = necunoscut).
+
+    Cu `variant` citeste stampul acelei variante, cu fallback pe cel generic
+    (build-uri facute inainte de existenta stampurilor).
+    """
+    try:
+        import xbmcgui
+        w = xbmcgui.Window(10000)
+        if variant in ('tmdb', 'provider'):
+            v = w.getProperty('tmdbmovies.upnext_built_at_' + variant)
+            if v:
+                return float(v)
+        return float(w.getProperty('tmdbmovies.upnext_cache_built_at') or 0)
+    except Exception:
+        return 0.0
+
+
 def _playback_active():
     """True cat timp ruleaza un episod.
 

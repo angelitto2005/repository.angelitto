@@ -2335,8 +2335,12 @@ def _maybe_refresh_widgets_after_sync(force=False):
             _forced_widget_refresh_done[0] = True
         if setting_on or force:
             from resources.lib.providers.watched_provider import widget_refresh
-            widget_refresh()
-            xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Performed", xbmc.LOGINFO)
+            if widget_refresh():
+                xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Performed", xbmc.LOGINFO)
+            else:
+                # widget_refresh() e gardat de Skin Compatibility: pe Estuary nu
+                # are ce sa reincarce, deci nu raportam "Performed".
+                xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh not needed (Estuary skin)", xbmc.LOGINFO)
         else:
             xbmc.log("[TMDb Movies] TraktMonitor Service Update - Widget Refresh Disabled. Skipping", xbmc.LOGINFO)
     except Exception as e:

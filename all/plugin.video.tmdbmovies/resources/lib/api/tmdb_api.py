@@ -22,7 +22,7 @@ from resources.lib.core.config import (
     lazy_requests as requests
 )
 from resources.lib.core.utils import get_json, get_language, log, paginate_list, read_json, write_json, get_genres_string, set_resume_point, select_ext_info_params, calendar_row_click_params, sort_calendar_items, calendar_context_menu, is_season_fully_watched, prefetch_air_times, get_episode_air_time, get_episode_air_times_map, get_episode_air_stamps, get_episode_air_stamp, air_effective_date, movie_release_air_time, AIR_TIME_TOKEN, apply_air_time, apply_air_times_to_cache_items, style_page_nav_item, next_page_plot, next_page_label, PLUGIN_URL, plugin_url
-from resources.lib.core.cache import cache_object, MainCache, get_fast_cache, set_fast_cache, UP_NEXT_STALE_MAX_S
+from resources.lib.core.cache import cache_object, MainCache, get_fast_cache, set_fast_cache, UP_NEXT_STALE_MAX_S, mark_upnext_cache_built
 from resources.lib.core.list_render import (render_from_fast_cache, _set_views_apply, _safe_set_prop,
                                             next_episodes_cache_key)
 from resources.lib.lists import menus
@@ -9081,6 +9081,13 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
     # pina la urmatorul clear — exact scenariul "Up Next gol dupa update".
     if cache_list:
         set_fast_cache(cache_key, cache_list)
+        # Stamp de "build terminat": safety pass-ul din player astepta pina acum
+        # doar terminarea threadului de pre-randare, care poate sa si renunte -
+        # deci putea stinge `upnext_stale_since` cu cache-ul inca vechi.
+        try:
+            mark_upnext_cache_built('tmdb' if use_tmdb else 'provider')
+        except Exception:
+            pass
         if cache_only:
             log(f"[UP NEXT] pre-randare in cache: {len(cache_list)} randuri (fara GUI)")
     # Lock-ul se elibereaza DUPA scrierea cache-ului: procesele care asteapta

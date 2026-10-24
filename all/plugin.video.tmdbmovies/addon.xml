@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <addon id="plugin.video.tmdbmovies"
-       version="1.1.323"
+       version="1.1.324"
        name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B]"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
