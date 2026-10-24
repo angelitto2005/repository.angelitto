@@ -479,7 +479,14 @@ def _fill_dates_bg(entries, refresh=False):
     The lists that are read from local files (History, Watch Later, a local
     playlist) paint straight away and pass refresh=True, because their rows
     only miss the channel, views, date and plot - so there is something to show
-    immediately, and the repaint puts the details in as they arrive.
+    immediately.
+
+    The automatic repaint was removed: a `Container.Refresh` from this thread
+    landed ~1s after a Stop, right on top of the media window re-initialising
+    and a Back navigation - and Kodi crashed (Android log 03:02:45.4 stop ->
+    03:02:46.4 refresh, the last line before the crash). The data is already in
+    the store, so the next render shows it; the price is a list without the
+    dates until then.
     """
     import threading as _threading
     entries = [dict(entry or {}) for entry in entries or []]
@@ -494,12 +501,11 @@ def _fill_dates_bg(entries, refresh=False):
             dated = sum(1 for entry in done if lists.entry_date(entry))
             config.log('background meta fill: {}/{} with a date'.format(
                 dated, len(done)), always=True)
-            # The repaint is only worth it when the rows really changed, and
-            # never while a video plays: a refresh that lands on the way back
-            # from a playback rebuilds the list under the user's fingers and
-            # the rows end up mixed.
-            if refresh and healed and not _modal_open() and not _video_playing():
-                xbmc.executebuiltin('Container.Refresh')
+            # No Container.Refresh from here (see docstring): a background
+            # refresh over a Stop / Back navigation crashed Kodi.
+            if refresh and healed:
+                config.log('background meta fill: dates will show on the next '
+                           'open of the list')
         except Exception as exc:
             config.log('background meta fill failed: {}'.format(exc))
         finally:
@@ -519,6 +525,30 @@ def _video_playing():
 def _modal_open():
     try:
         return bool(xbmc.getCondVisibility('System.HasModalDialog'))
+    except Exception:
+        return False
+
+
+def _bg_refresh_ok(folder_hint=''):
+    """May a background thread repaint the list right now?
+
+    A `Container.Refresh` from a worker is queued on the UI thread, so it can
+    land on whatever is in front: a Stop that just closed the media window, a
+    Back that is already navigating, or a modal dialog. That is the pattern
+    that crashed Kodi (Android log: Stop 03:02:45.4, background refresh
+    03:02:46.4, no shutdown lines after). Only repaint while the list the
+    worker filled is still on screen, nothing is playing and no dialog is up;
+    otherwise the data waits in the store for the next open of the list.
+    """
+    try:
+        if _modal_open() or _video_playing():
+            return False
+        if folder_hint:
+            folder = xbmc.getInfoLabel('Container.FolderPath') or ''
+            if folder_hint not in folder:
+                config.log('background refresh skipped (other list)')
+                return False
+        return True
     except Exception:
         return False
 
@@ -1021,12 +1051,11 @@ def _backfill_sub_thumbs(urls):
         config.log('sub thumb backfill failed: {}'.format(str(exc)[:90]))
         return
     if changed:
-        try:
-            import xbmc as _xbmc
-            if not _xbmc.Player().isPlayingVideo():
-                xbmc.executebuiltin('Container.Refresh')
-        except Exception:
-            pass
+        # No Container.Refresh from a thread (same reason as _fill_dates_bg): it
+        # can land on a window transition and crash Kodi. The avatar is stored,
+        # so the list shows it on its next open.
+        config.log('subscription avatars refreshed; the list shows them on '
+                   'its next open')
 
 
 @route('subscribe')
@@ -1755,7 +1784,7 @@ def _refresh_feed_in_background(need, per_channel):
             if xbmc.Monitor().abortRequested():
                 return
             collected, _exhausted = _collect_feed(need, per_channel)
-            if collected:
+            if collected and _bg_refresh_ok('subscription_feed'):
                 xbmc.executeBuiltin('Container.Refresh')
         except Exception as exc:
             config.log('feed background refresh failed: {}'.format(str(exc)[:120]))
@@ -2040,6 +2069,26 @@ def login(handle, params):
     _back_to_account(handle)
 
 
+def _safe_bg_refresh(folder_hint=''):
+    """Repaint from a worker thread only when it cannot land on a transition.
+
+    Same guard as `_bg_refresh_ok`, plus a small pause: the login flow ends
+    with `Container.Update(...my_youtube)`, and a refresh queued right behind
+    that navigation is what makes Kodi crash on a 32 bit box.
+    """
+    try:
+        xbmc.sleep(800)
+    except Exception:
+        pass
+    if not _bg_refresh_ok(folder_hint):
+        return False
+    try:
+        xbmc.executebuiltin('Container.Refresh')
+        return True
+    except Exception:
+        return False
+
+
 def _back_to_account(handle):
     finish(handle)
     xbmc.sleep(500)
@@ -2056,10 +2105,8 @@ def _sync_after_login():
         return
     _notify(config.T(32191).format(
         summary.get('channels', 0), summary.get('videos', 0)), 6000)
-    try:
-        xbmc.executebuiltin('Container.Refresh')
-    except Exception:
-        pass
+    # From a thread: repaint only if the user is still on the account list.
+    _safe_bg_refresh('my_youtube')
 
 
 @route('sync_now')

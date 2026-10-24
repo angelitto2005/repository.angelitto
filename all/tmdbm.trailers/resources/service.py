@@ -178,6 +178,58 @@ def _refill_tail_bg(started, anchor, pos):
         _REFILL['busy'] = False
 
 
+_SHARED_PROXY = {'done': False}
+
+
+def _start_shared_proxy():
+    """Publish the playback proxy from here, not from each plugin call.
+
+    A plugin invocation cannot end while a thread of its interpreter is alive
+    (Kodi waits on it in a 100 ms loop), and the proxy lives for the whole
+    clip. Started here it belongs to the service, which lasts the session, so
+    the plugin invocation finishes right after it resolved the stream.
+    """
+    if _SHARED_PROXY['done']:
+        return
+    _SHARED_PROXY['done'] = True
+    try:
+        import player as _player_module
+        port = _player_module.start_shared_proxy()
+        config.log('shared proxy on port {} (playback invocations can end '
+                   'while it serves)'.format(port), always=True)
+    except Exception as exc:
+        config.log('shared proxy failed to start: {}'.format(exc))
+
+
+def _bg_refresh_ok(folder_hint=''):
+    """May this worker repaint the list? Same guard as router._bg_refresh_ok.
+
+    The refresh is queued on the UI thread, so a blind one can land on a Stop
+    that just closed the media window or on a Back that is already navigating -
+    the crash seen on the Android box. Only repaint while the synced list is on
+    screen and nothing is playing; the rows are in the store either way.
+    """
+    try:
+        if xbmc.Player().isPlayingVideo():
+            return False
+    except Exception:
+        pass
+    try:
+        if xbmc.getCondVisibility('System.HasModalDialog'):
+            return False
+    except Exception:
+        pass
+    if folder_hint:
+        try:
+            folder = xbmc.getInfoLabel('Container.FolderPath') or ''
+            if folder_hint not in folder:
+                config.log('sync refresh skipped (other list)')
+                return False
+        except Exception:
+            return False
+    return True
+
+
 def _sync_library_bg():
     try:
         from account import youtube_sync
@@ -188,7 +240,8 @@ def _sync_library_bg():
     notify(config.T(32191).format(
         summary.get('channels', 0), summary.get('videos', 0)),
         time_ms=6000)
-    xbmc.executebuiltin('Container.Refresh')
+    if _bg_refresh_ok('my_youtube'):
+        xbmc.executebuiltin('Container.Refresh')
 
 
 def _sync_after_connect():
@@ -254,11 +307,8 @@ def _periodic_sync_bg(syncing):
     syncing['busy'] = False
     config.log('periodic sync done: {0} channels, {1} videos'.format(
         summary.get('channels', 0), summary.get('videos', 0)))
-    try:
-        if 'my_youtube' in (xbmc.getInfoLabel('Container.FolderPath') or ''):
-            xbmc.executebuiltin('Container.Refresh')
-    except Exception:
-        pass
+    if _bg_refresh_ok('my_youtube'):
+        xbmc.executebuiltin('Container.Refresh')
 
 
 def queue_active():
@@ -952,6 +1002,7 @@ def run():
         pass
     _publish_locale(_locale_key())
     _publish_settings()
+    _start_shared_proxy()
     updated = None
     try:
         import maintenance
@@ -1087,6 +1138,11 @@ def run():
         if monitor.waitForAbort(wait):
             break
     del observer
+    try:
+        import player as _player_module
+        _player_module.stop_shared_proxy()
+    except Exception as exc:
+        config.log('shared proxy stop failed: {}'.format(exc))
 
 
 if __name__ == '__main__':

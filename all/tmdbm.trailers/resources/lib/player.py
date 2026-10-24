@@ -230,6 +230,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         _proxy_last_req = time.time()
         raw = self.path.lstrip('/')
 
+        if raw == '__tmdbm_ping':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'ok')
+            return
+
         if raw.startswith('special://'):
             local_path = xbmcvfs.translatePath(raw)
             if raw.endswith('.mpd'):
@@ -471,7 +479,10 @@ import atexit as _atexit
 _atexit.register(_cleanup_player, 'atexit')
 
 
-def _start_proxy():
+_PROXY_PORT_FILE = os.path.join(ADDON_PROFILE, 'proxy_port.txt')
+
+
+def _start_proxy(watchdog=True):
     global _proxy_server, _proxy_port, _proxy_last_req
     if _proxy_server:
         return _proxy_port
@@ -481,10 +492,72 @@ def _start_proxy():
     _proxy_server = _ThreadedHTTPServer(('127.0.0.1', _proxy_port), _ProxyHandler)
     t = threading.Thread(target=_proxy_server.serve_forever, daemon=True)
     t.start()
-    w = threading.Thread(target=_proxy_idle_watchdog, daemon=True)
-    w.start()
+    if watchdog:
+        w = threading.Thread(target=_proxy_idle_watchdog, daemon=True)
+        w.start()
     _log('Proxy started on port {}'.format(_proxy_port))
     return _proxy_port
+
+
+def start_shared_proxy():
+    """Start the proxy once, from the service, and publish its port.
+
+    Kodi's python invoker does not finish a script while any thread of its
+    interpreter is alive: `CPythonInvoker::execute` spins in a 100 ms loop
+    logging "waiting on thread" until the last one is gone. The proxy has to
+    stay up for the whole clip, so starting it from the plugin kept that
+    invocation open for the playback and the 120 s idle tail after it - and
+    every navigation meanwhile opened a fresh interpreter (invoker 6, 7, 8,
+    9, 10 in one log), which on a 32 bit box is exactly the kind of pressure
+    that ends in a crash. The service lives for the whole session, so a thread
+    started there costs nothing.
+
+    No idle watchdog here: this proxy must outlive a clip and be reusable by
+    the next one. `stop_shared_proxy` closes it when the service ends.
+    """
+    port = _start_proxy(watchdog=False)
+    try:
+        with open(_PROXY_PORT_FILE, 'w') as handle:
+            handle.write(str(port))
+    except Exception as exc:
+        _log('shared proxy port not published: {}'.format(str(exc)[:80]),
+             xbmc.LOGWARNING)
+    return port
+
+
+def stop_shared_proxy():
+    global _proxy_server, _proxy_port
+    try:
+        os.remove(_PROXY_PORT_FILE)
+    except Exception:
+        pass
+    _stop_proxy()
+
+
+def shared_proxy_port():
+    """Port of the service proxy, or None when it cannot be used.
+
+    The port is read from the file the service published and confirmed with a
+    request first, so a stale file (Kodi restarted, service not up yet) never
+    points playback at a dead socket; the caller starts its own proxy then.
+    """
+    try:
+        with open(_PROXY_PORT_FILE) as handle:
+            port = int((handle.read() or '').strip())
+    except Exception:
+        return None
+    try:
+        import urllib.request as _ur
+        opener = _ur.build_opener(_ur.ProxyHandler({}))
+        with opener.open('http://127.0.0.1:{}/__tmdbm_ping'.format(port),
+                         timeout=1) as resp:
+            # The body, not just the status: a stale port may be taken by an
+            # unrelated local server, and playback must not be sent there.
+            if resp.status != 200 or resp.read(2) != b'ok':
+                return None
+    except Exception:
+        return None
+    return port
 
 
 def _stop_proxy():
@@ -2398,6 +2471,85 @@ def _set_progressive_subtitles(li, captions, port):
             _log('setSubtitles failed: {}'.format(str(exc)[:90]), xbmc.LOGWARNING)
 
 
+def _detect_live_stream(data):
+    """True only for a stream that is live *and* carries its HLS manifest.
+
+    `isLiveContent` stays true after a stream ends (premieres, concerts, news),
+    so the flag alone is not enough: on such a video the live branch would skip
+    DASH (`mpd = None`) and, with no `hlsManifestUrl`, leave no playable source
+    at all. No manifest also means there is no playlist to filter, so live mode
+    has nothing to do - the video is treated as VOD.
+
+    Fallback for cached extracts made before the field existed: the
+    `manifest_duration/` token only appears in live manifest URLs.
+    """
+    data = data or {}
+    manifest = data.get('manifest_url') or ''
+    flag = data.get('is_live', None)
+    if flag is None:
+        live = isinstance(manifest, str) and 'manifest_duration/' in manifest
+    else:
+        live = bool(flag)
+    return bool(live) and bool(manifest)
+
+
+def _stream_headers_string(*maps):
+    """`K=V&K2=V2` from several header maps, without duplicate keys.
+
+    ISA receives headers as one string; gluing two maps together put
+    `User-Agent` in twice (the extractor returns it again), and two values for
+    the same key are not guaranteed to be resolved the same way. Keys are
+    compared case-insensitively and later maps win.
+    """
+    merged = {}
+    for mapping in maps:
+        for key, value in (mapping or {}).items():
+            if not key or value is None:
+                continue
+            merged[str(key).strip().lower()] = (str(key), str(value))
+    return '&'.join('{}={}'.format(key, value)
+                    for key, value in merged.values())
+
+
+def _filter_live_playlist(text):
+    """Master playlist without audio group 233, keeping the AAC-LC 234 one.
+
+    Group 233 is the stream YouTube ships without working audio on some live
+    channels; dropping its `#EXT-X-MEDIA` line and every variant that asks for
+    it (`AUDIO="233"` plus the URI line that follows) leaves only 234.
+
+    Returns None when nothing playable is left, so the caller can fall back to
+    the untouched manifest instead of handing the player an empty playlist.
+    """
+    out = []
+    skip_uri = False
+    for line in (text or '').splitlines():
+        tag = line.strip()
+        if skip_uri:
+            # The dropped variant's URI is the next line that is not a tag.
+            if tag and not tag.startswith('#'):
+                skip_uri = False
+                continue
+            out.append(line)
+            continue
+        if tag.startswith('#EXT-X-MEDIA:') and 'GROUP-ID="233"' in tag:
+            continue
+        if tag.startswith('#EXT-X-STREAM-INF:') and 'AUDIO="233"' in tag:
+            skip_uri = True
+            continue
+        out.append(line)
+    if not any('#EXT-X-STREAM-INF' in line for line in out):
+        return None
+    # Hint for the live edge (60s back). Not every player reads it from a
+    # master playlist; the seek that matters is the resume point set on the
+    # list item in play_youtube.
+    if out and out[0].strip().upper() == '#EXTM3U':
+        out.insert(1, '#EXT-X-START:TIME-OFFSET=-60.0')
+    else:
+        out.insert(0, '#EXT-X-START:TIME-OFFSET=-60.0')
+    return '\n'.join(out) + '\n'
+
+
 def play_youtube(video_id, title=None, genre=None, year=None,
                  tmdb_id=None, dbtype=None, season=None, episode_num=None,
                  plot=None, studio=None, tagline=None, lang=None,
@@ -2652,18 +2804,18 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     # made normal tracks resume ~59 min in (setResumePoint fallback). Fall back
     # to the manifest URL's manifest_duration token for older cached extracts
     # that predate the is_live field.
-    _il = (data or {}).get('is_live', None)
-    if _il is None:
-        _mu = (data or {}).get('manifest_url') or ''
-        _is_live_stream = (isinstance(_mu, str) and 'manifest_duration/' in _mu)
-    else:
-        _is_live_stream = bool(_il)
+    _is_live_stream = _detect_live_stream(data)
 
     port = None
-    if data and data.get('formats'):
-        # Proxy is needed for DASH (non-live) and to serve the filtered
-        # HLS manifest for live streams.
-        port = _start_proxy()
+    if data and (data.get('formats') or _is_live_stream):
+        # Proxy is needed for DASH (non-live) and to serve the filtered HLS
+        # manifest for live streams. Un live fara `formats` are nevoie de proxy
+        # exact pentru manifest, deci nu-l conditionam doar de DASH.
+        # The service keeps one running for the session; only when it is not
+        # there (it starts a moment after Kodi, or it failed) does this
+        # invocation start its own, which then holds the invoker open for the
+        # playback - see start_shared_proxy().
+        port = shared_proxy_port() or _start_proxy()
     proxy_base = 'http://127.0.0.1:{}/'.format(port) if port else ''
     if _is_live_stream:
         mpd, headers = None, {}
@@ -2726,72 +2878,58 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         _log('HLS manifest' + (' (live)' if _is_live_stream else ''))
         play_path = data['manifest_url']
         if _is_live_stream and port:
+            # The master playlist is 1-2 KB, so a 4s ceiling is plenty; a slow
+            # answer must not hold the start back. Every failure below keeps the
+            # untouched manifest, which still plays (only without the audio
+            # group fix), instead of leaving the player with no source.
             try:
                 import urllib.request as _ur
                 req = _ur.Request(data['manifest_url'], headers=yt_headers)
-                with _ur.urlopen(req, timeout=10) as _resp:
+                with _ur.urlopen(req, timeout=4) as _resp:
                     _text = _resp.read().decode('utf-8', 'replace')
-                _out = []
-                _skip = False
-                for _line in _text.splitlines():
-                    if _skip:
-                        _skip = False
-                        if _line.strip() and not _line.strip().startswith('#'):
-                            continue
-                    _s = _line.strip()
-                    if _s.startswith('#EXT-X-MEDIA:') and 'GROUP-ID="233"' in _s:
-                        continue
-                    if _s.startswith('#EXT-X-STREAM-INF:') and 'AUDIO="233"' in _s:
-                        _skip = True
-                        continue
-                    _out.append(_line)
-                # Hint the player to start near the live edge (60s back) instead of
-                # the beginning of the DVR window; avoids the audio-less early
-                # segments observed on Euronews/Tu Decizi.
-                try:
-                    if _out and _out[0].strip().upper() == '#EXTM3U':
-                        _out.insert(1, '#EXT-X-START:TIME-OFFSET=-60.0')
-                    else:
-                        _out.insert(0, '#EXT-X-START:TIME-OFFSET=-60.0')
-                except Exception:
-                    pass
-                if any('EXT-X-STREAM-INF' in l for l in _out):
+                _filtered = _filter_live_playlist(_text)
+                if not _filtered:
+                    _log('Live HLS filter left no variants; using the original manifest',
+                         xbmc.LOGWARNING)
+                else:
                     _m3u8 = 'special://temp/yt_live_{}.m3u8'.format(video_id)
                     _local = xbmcvfs.translatePath(_m3u8)
                     with open(_local, 'w', encoding='utf-8') as _f:
-                        _f.write('\n'.join(_out) + '\n')
-                    play_path = 'http://127.0.0.1:{}/{}'.format(port, _m3u8)
-                    _log('Live HLS filtered to AAC-LC (group 234): {} -> {} variants'.format(
-                        sum(1 for l in _text.splitlines() if 'EXT-X-STREAM-INF' in l),
-                        sum(1 for l in _out if 'EXT-X-STREAM-INF' in l)))
-                else:
-                    _log('Live HLS filter produced empty playlist; using original', xbmc.LOGWARNING)
+                        _f.write(_filtered)
+                    _local_url = 'http://127.0.0.1:{}/{}'.format(port, _m3u8)
+                    # Read it back through the proxy before handing it to ISA:
+                    # if the local path were wrong the player would fail with no
+                    # way back, and the original manifest is one line away.
+                    try:
+                        # Direct connection: a system proxy in the environment
+                        # must not swallow a 127.0.0.1 request, or every live
+                        # stream would quietly fall back to the unfiltered list.
+                        _probe = _ur.build_opener(_ur.ProxyHandler({}))
+                        with _probe.open(_local_url, timeout=3) as _check:
+                            _check.read(512)
+                        play_path = _local_url
+                        _log('Live HLS filtered to AAC-LC (group 234): {} -> {} variants'.format(
+                            sum(1 for l in _text.splitlines() if 'EXT-X-STREAM-INF' in l),
+                            sum(1 for l in _filtered.splitlines() if 'EXT-X-STREAM-INF' in l)))
+                    except Exception as _pexc:
+                        _log('Live HLS filtered manifest not served ({}); using the '
+                             'original'.format(str(_pexc)[:70]), xbmc.LOGWARNING)
             except Exception as _exc:
-                _log('Live HLS filter failed: {}'.format(str(_exc)[:90]), xbmc.LOGWARNING)
+                _log('Live HLS filter failed ({}); using the original manifest'.format(
+                    str(_exc)[:90]), xbmc.LOGWARNING)
         li.setPath(play_path)
         li.setProperty(IA_PROP, 'inputstream.adaptive')
         # Mirror plugin.video.youtube: tell ISA explicitly that this is HLS.
         if KODI_VERSION < 21:
             li.setProperty('inputstream.adaptive.manifest_type', 'hls')
         # Headers for both manifest and segments (YouTube plugin sets both).
-        hdr_parts = []
-        for k, v in yt_headers.items():
-            hdr_parts.append('{}={}'.format(k, v))
-        if hdr_parts:
-            joined = '&'.join(hdr_parts)
+        # O singura harta: extractorul retrimite chei care exista deja in
+        # yt_headers, iar lipirea a doua stringuri le dublea.
+        joined = _stream_headers_string(yt_headers,
+                                        data.get('http_headers') or {})
+        if joined:
             li.setProperty('inputstream.adaptive.stream_headers', joined)
             li.setProperty('inputstream.adaptive.manifest_headers', joined)
-        http_headers = data.get('http_headers') or {}
-        if http_headers:
-            # Prefer extractor-provided headers if any (merged on top).
-            extra = '&'.join('{}={}'.format(k, v) for k, v in http_headers.items())
-            if extra:
-                cur = li.getProperty('inputstream.adaptive.stream_headers')
-                li.setProperty('inputstream.adaptive.stream_headers',
-                               (cur + '&' + extra) if cur else extra)
-                cur = li.getProperty('inputstream.adaptive.manifest_headers')
-                li.setProperty('inputstream.adaptive.manifest_headers',
-                               (cur + '&' + extra) if cur else extra)
         li.setProperty('inputstream.adaptive.stream_selection_type', 'adaptive')
         if _is_live_stream:
             if KODI_VERSION < 21:
@@ -2803,9 +2941,11 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                 if _m:
                     _dur = int(_m.group(1))
                     _limit = min(_dur, 4 * 60 * 60)
+                    # No `live_delay` here: ISA 21.5 rejects it as an unknown
+                    # manifest_config key ("Unsupported \"live_delay\" config")
+                    # and prints an error on every live start.
                     li.setProperty('inputstream.adaptive.manifest_config',
                                    _json.dumps({'timeshift_bufferlimit': _limit,
-                                                'live_delay': 60,
                                                 'hls_fix_mediasequence': True}))
                     # Start near the live edge (60s before the end of the DVR window)
                     # instead of the beginning, where audio is often missing.
@@ -2816,11 +2956,10 @@ def play_youtube(video_id, title=None, genre=None, year=None,
                     except Exception:
                         pass
                 else:
-                    # No DVR window length in the URL: keep the live-delay /
-                    # timeshift behaviour but do not force a bogus resume point.
+                    # No DVR window length in the URL: keep the timeshift
+                    # behaviour but do not force a bogus resume point.
                     li.setProperty('inputstream.adaptive.manifest_config',
-                                   _json.dumps({'live_delay': 60,
-                                                'hls_fix_mediasequence': True}))
+                                   _json.dumps({'hls_fix_mediasequence': True}))
                 # Allow ISA to timeshift so a lagging audio stream can catch up.
                 li.setProperty('inputstream.adaptive.play_timeshift_buffer', 'true')
             except Exception:
