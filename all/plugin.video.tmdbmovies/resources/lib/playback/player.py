@@ -2831,13 +2831,12 @@ def start_playback_monitor(player_instance, dialog=None):
                     # veche pe ecran cind pre-randarea se termina fara
                     # re-randare (log: "pre-randare gata ... fara re-randare").
                     #
-                    # Plafon 20s, nu 6s: `upnext_rerender_pending` se stinge doar
-                    # cind build-ul Up Next s-a TERMINAT, iar pe un box lent el
-                    # dureaza 10-15s (log 21:34:44 marcaj -> 21:34:58 build gata).
-                    # Cu plafonul de 6s, pass-ul se declansa la 21:34:56 - cu 2s
-                    # inainte de build - randa cache-ul VECHI si (mai jos) stingea
-                    # `upnext_stale_since`, asa ca build-ul nu mai re-randa nimic:
-                    # lista raminea pe episodul tocmai vazut pina la navigare.
+                    # Plafon 25s, nu 6s: un build Up Next dureaza 10-15s pe un
+                    # box lent (log 21:34:44 marcaj -> 21:34:58 build gata), iar
+                    # dupa el vine si a doua varianta. Cu plafonul de 6s, pass-ul
+                    # se declansa inainte de build, randa cache-ul VECHI si (mai
+                    # jos) stingea `upnext_stale_since`, asa ca build-ul nu mai
+                    # re-randa nimic: lista raminea pe episodul tocmai vazut.
                     # Tinta = momentul marcajului. Un build terminat DUPA el e
                     # proaspat; orice altceva e cache-ul vechi din fereastra
                     # stale-while-revalidate (get_fast_cache il intoarce
@@ -2853,30 +2852,70 @@ def start_playback_monitor(player_instance, dialog=None):
                     except Exception:
                         _stale_target = 0.0
 
-                    def _upnext_built_now():
+                    def _visible_variant():
+                        """Varianta Up Next de pe ecran ('tmdb'/'provider'/'').
+
+                        NU se deduce din calea de la stop: in redare
+                        Container.FolderPath e gol. Pass-ul ruleaza dupa ce
+                        fereastra media s-a inchis, deci calea e din nou
+                        valida - cu fallback pe ultima varianta randata.
+                        """
+                        try:
+                            _fp = (xbmc.getInfoLabel('Container.FolderPath') or '').lower()
+                        except Exception:
+                            _fp = ''
+                        if 'mode=tmdb_up_next' in _fp:
+                            return 'tmdb'
+                        if 'mode=next_episodes' in _fp:
+                            return 'provider'
                         try:
                             _vw = (xbmcgui.Window(10000).getProperty(
                                 'tmdbmovies.upnext_view') or '').strip()
-                            return _built_at(_vw if _vw in ('tmdb', 'provider') else '') \
-                                if _built_at else 0.0
+                            return _vw if _vw in ('tmdb', 'provider') else ''
+                        except Exception:
+                            return ''
+
+                    def _upnext_built_now():
+                        try:
+                            return _built_at(_visible_variant()) if _built_at else 0.0
                         except Exception:
                             return 0.0
 
+                    # Poarta pe VARIANTA VIZIBILA. `upnext_rerender_pending` nu
+                    # mai decide ieșirea din asteptare: e stins de PRIMUL thread
+                    # de pre-randare care termina, oricare varianta ar fi
+                    # construit-o. La 09:50 s-a stins la 42.476 (dupa build-ul
+                    # unei variante), lista de pe ecran nu avea build deloc,
+                    # iar bucla ieșea fara sa consulte stampul -> refresh pe
+                    # cache vechi, lista raminea pe episodul vazut.
+                    # Tinta = momentul marcajului; un build terminat DUPA el e
+                    # proaspat (vezi mark_upnext_cache_built).
                     _pend_wait = 0.0
-                    while _pend_wait < 20.0:
-                        try:
-                            _pend_flag = (xbmcgui.Window(10000).getProperty(
-                                'tmdbmovies.upnext_rerender_pending') == 'true')
-                        except Exception:
+                    while _pend_wait < 25.0:
+                        if _stale_target <= 0:
+                            # Nimic marcat: nu e nimic de corectat, iar
+                            # refresh-ul de mai jos ramine cel de resume/bifa.
                             break
-                        if not _pend_flag:
-                            break
-                        if _stale_target > 0 and _upnext_built_now() >= _stale_target:
+                        if _upnext_built_now() >= _stale_target:
                             break
                         if kodi_abort_requested():
                             return
                         xbmc.sleep(250)
                         _pend_wait += 0.25
+                    else:
+                        # Plafon atins. Daca build-ul variantei vizibile a
+                        # terminat chiar in ultima iteratie, refresh-ul e inca
+                        # valid (date proaspete) - nu-l pierdem.
+                        if _upnext_built_now() >= _stale_target:
+                            pass
+                        else:
+                            # NU randam cache-ul vechi (ar fi exact bug-ul de
+                            # la 09:50 si ar stinge si markerul stale). Ieșim
+                            # din pass; `stop_refresh_pending` se curata in
+                            # finally, deci build-ul care termina mai tirziu
+                            # re-randeaza el.
+                            log("[PLAYER-MONITOR] Safety refresh amanat (varianta vizibila inca nescrisa)")
+                            return
                     for _ in range(80):
                         try:
                             if not xbmc.getCondVisibility('Container.IsUpdating'):

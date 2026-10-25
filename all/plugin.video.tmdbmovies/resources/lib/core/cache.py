@@ -166,8 +166,14 @@ def cache_object(function, string, url, json_output=True, expiration=48):
     
 
 # --- FAST CACHE (RAM) ---
-def get_fast_cache(key):
-    """Returns data from RAM. Language + page_limit + select action + auto_play are part of the key to react instantly to setting changes."""
+def get_fast_cache(key, fresh_only=False):
+    """Returns data from RAM. Language + page_limit + select action + auto_play are part of the key to react instantly to setting changes.
+
+    fresh_only=True: NU intoarce copia din fereastra stale-while-revalidate.
+    Folosit de constructorul de liste (_list_build_wait), unde datele vechi nu
+    pot insemna "alt proces a terminat build-ul" - exact confuzia care lasa
+    una din variantele Up Next nereconstruita dupa un marcaj.
+    """
     try:
         import xbmcgui
         from resources.lib.core.config import get_page_limit_index
@@ -185,6 +191,8 @@ def get_fast_cache(key):
             cache_obj = json.loads(data)
             if cache_obj.get('ver') == ver:
                 return cache_obj.get('items')
+            if fresh_only:
+                return None
             # FALLBACK "stale": daca ultima invalidare a fost un MARCAJ (nu un
             # sync), lista veche e inca utilizabila. Altfel randarea ar trebui
             # sa reconstruiasca lista de la zero (secunde bune de BusyDialog
@@ -249,7 +257,7 @@ def upnext_stale_active():
         return False
 
 
-def mark_upnext_cache_built(variant=''):
+def mark_upnext_cache_built(variant='', built_from=0.0):
     """Semnal cross-proces: lista Up Next a fost rescrisa ACUM in fast cache.
 
     Scris de build-ul real (api/tmdb_api.get_next_episodes) la fiecare scriere.
@@ -260,11 +268,16 @@ def mark_upnext_cache_built(variant=''):
 
     Varianta conteaza: listele TMDb si provider se construiesc separat, iar un
     build al celeilalte variante nu face lista vizibila proaspata.
+
+    built_from: momentul in care build-ul a CITIT randurile din DB. Stampul
+    trebuie sa fie acela, nu momentul scrierii: un build pornit inainte de
+    marcaj poate termina dupa el si ar scrie lista veche cu stamp „proaspat"
+    (log real: build pornit 22:42:12.8, marcaj 22:42:21.4, scriere 22:42:28.6).
     """
     try:
         import xbmcgui
         w = xbmcgui.Window(10000)
-        _now = str(time.time())
+        _now = str(built_from or time.time())
         w.setProperty('tmdbmovies.upnext_cache_built_at', _now)
         if variant in ('tmdb', 'provider'):
             w.setProperty('tmdbmovies.upnext_built_at_' + variant, _now)
@@ -276,16 +289,17 @@ def mark_upnext_cache_built(variant=''):
 def upnext_cache_built_at(variant=''):
     """Timestamp-ul ultimului build Up Next scris in cache (0.0 = necunoscut).
 
-    Cu `variant` citeste stampul acelei variante, cu fallback pe cel generic
-    (build-uri facute inainte de existenta stampurilor).
+    Cu `variant` citeste STRICT stampul acelei variante. Fara fallback pe cel
+    generic: stampul generic e scris de ORICE build, deci un build al celeilalte
+    variante "valida" poarta si refresh-ul randa lista veche (la primul stop
+    dupa un restart al Kodi stampul variantei lipseste cu desavarsire).
+    0.0 = varianta respectiva nu a fost construita in aceasta sesiune.
     """
     try:
         import xbmcgui
         w = xbmcgui.Window(10000)
         if variant in ('tmdb', 'provider'):
-            v = w.getProperty('tmdbmovies.upnext_built_at_' + variant)
-            if v:
-                return float(v)
+            return float(w.getProperty('tmdbmovies.upnext_built_at_' + variant) or 0)
         return float(w.getProperty('tmdbmovies.upnext_cache_built_at') or 0)
     except Exception:
         return 0.0

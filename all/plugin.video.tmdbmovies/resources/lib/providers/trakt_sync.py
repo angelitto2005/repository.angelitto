@@ -1997,6 +1997,57 @@ def get_poster_from_db(tmdb_id, media_type):
 def set_poster_to_db(tmdb_id, media_type, poster_url):
     pass 
 
+def get_posters_bulk(tmdb_ids, media_type):
+    """Posterele mai multor titluri, dintr-o SINGURA conexiune.
+
+    `get_poster_from_db` deschide o conexiune per titlu si interogheaza pina la 4
+    tabele; Up Next o chema o data per serial din pool (164 pe box-ul de Android).
+    Aici facem 4 interogari pentru toata lista, cu EXACT aceeasi precedenta a
+    tabelelor ca in varianta per rind, si intoarcem doar titlurile gasite.
+    """
+    out = {}
+    try:
+        ids = [str(x) for x in (tmdb_ids or []) if x]
+        if not ids or not os.path.exists(DB_PATH):
+            return out
+        conn = get_connection()
+        c = conn.cursor()
+        try:
+            for tbl in ['discovery_cache', 'trakt_lists', 'trakt_watched_movies', 'tmdb_discovery']:
+                try:
+                    rest = [t for t in ids if t not in out]
+                    if not rest:
+                        break
+                    found = {}
+                    for _i in range(0, len(rest), 400):
+                        chunk = rest[_i:_i + 400]
+                        ph = ','.join(['?'] * len(chunk))
+                        if tbl == 'trakt_watched_movies':
+                            if media_type != 'movie':
+                                continue
+                            c.execute("SELECT tmdb_id, poster FROM %s WHERE tmdb_id IN (%s) "
+                                      "AND poster IS NOT NULL AND poster != ''" % (tbl, ph), chunk)
+                        elif tbl == 'tmdb_discovery':
+                            c.execute("SELECT tmdb_id, poster FROM %s WHERE tmdb_id IN (%s) "
+                                      "AND poster IS NOT NULL AND poster != ''" % (tbl, ph), chunk)
+                        else:
+                            c.execute("SELECT tmdb_id, poster FROM %s WHERE tmdb_id IN (%s) "
+                                      "AND media_type=? AND poster IS NOT NULL AND poster != ''"
+                                      % (tbl, ph), chunk + [media_type])
+                        for row in c.fetchall():
+                            if row[1]:
+                                found[str(row[0])] = row[1]
+                    for _k, _v in found.items():
+                        if _k not in out:
+                            out[_k] = _v
+                except Exception:
+                    continue
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    return out
+
 def update_item_images(c, tmdb_id, media_type, poster, backdrop):
     """Update imagini folosind cursorul existent (sau conexiune noua daca c e None)."""
     if not tmdb_id: return
@@ -2182,6 +2233,50 @@ def get_tmdb_item_details_from_db(tmdb_id, media_type):
         except:
             return None
     return None
+
+def get_tmdb_item_details_bulk(tmdb_ids, media_type):
+    """Detaliile mai multor titluri, dintr-o SINGURA conexiune SQLite.
+
+    `get_tmdb_item_details_from_db` deschide o conexiune noua (plus 4 PRAGMA)
+    pentru fiecare titlu, iar Up Next o apela o data pe rind: pe Android asta
+    insemna ~100 de conexiuni per build si citeva secunde bune doar in ele.
+    Aici facem un singur SELECT (in loturi, sub limita de variabile SQLite) si
+    intoarcem exact aceleasi dict-uri pe care le-ar fi intors citirea per rind
+    (aceleasi filtre: doar rinduri nevicate, cu decompresie zlib).
+
+    Returneaza {tmdb_id: data} pentru rindurile gasite si valide.
+    """
+    out = {}
+    try:
+        ids = [str(i) for i in (tmdb_ids or []) if i]
+        if not ids or not os.path.exists(DB_PATH):
+            return out
+        current_time = int(time.time())
+        conn = get_connection()
+        c = conn.cursor()
+        try:
+            for _i in range(0, len(ids), 400):
+                chunk = ids[_i:_i + 400]
+                q = ('SELECT tmdb_id, data, expires FROM meta_cache_items '
+                     'WHERE media_type=? AND tmdb_id IN (%s)'
+                     % ','.join(['?'] * len(chunk)))
+                c.execute(q, [media_type] + chunk)
+                for tmdb_id, data_blob, expires in c.fetchall():
+                    if current_time > expires:
+                        continue
+                    try:
+                        if isinstance(data_blob, bytes):
+                            out[str(tmdb_id)] = json.loads(zlib.decompress(data_blob))
+                        else:
+                            out[str(tmdb_id)] = json.loads(data_blob)
+                    except Exception:
+                        continue
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    return out
+
 
 def set_tmdb_item_details_to_db(cursor, tmdb_id, media_type, data):
     if not data: return
@@ -3966,6 +4061,24 @@ def sync_tmdb_up_next(c):
 
         watched_map = get_watched_episodes_set_batch(all_tids)
 
+        # BULK: detaliile serialelor din watchlist TMDb + pool-ul providerului,
+        # dintr-o SINGURA conexiune, inainte de cele 10 thread-uri. Altfel fiecare
+        # thread deschidea propria conexiune SQLite (plus 4 PRAGMA) per serial -
+        # pe Android asta e cea mai scumpa parte a sync-ului, nu reteaua.
+        try:
+            from resources.lib.core.cache import ram_pool_set as _rps, \
+                ram_cache_set_tvshow as _rcst
+            _det_bulk = get_tmdb_item_details_bulk(all_tids, 'tv') or {}
+            for _tid_b, _dv_b in _det_bulk.items():
+                if isinstance(_dv_b, dict) and _dv_b:
+                    _rps(_tid_b, _dv_b)
+                    _rcst(_tid_b, _dv_b)
+            if _det_bulk:
+                log(f"[TMDB SYNC] Up Next details bulk: {len(_det_bulk)}/{len(all_tids)} "
+                    f"din DB local (o conexiune)")
+        except Exception:
+            pass
+
         show_map = {}
         def _fetch_show(tid):
             try:
@@ -3998,6 +4111,13 @@ def sync_tmdb_up_next(c):
                             en_names[tid] = nm
                     except:
                         pass
+
+        # BULK: posterele serialelor din pool, o singura conexiune (inainte:
+        # get_poster_from_db per serial, cu o conexiune si pina la 4 tabele fiecare).
+        try:
+            render_poster_map = get_posters_bulk(pool_ids, 'show')
+        except Exception:
+            render_poster_map = {}
 
         pending = []
         for row in wl_rows:
@@ -4036,13 +4156,30 @@ def sync_tmdb_up_next(c):
             pending.append({
                 'tid': tid,
                 'show_title': en_names.get(tid) or show_details.get('name', 'Unknown Show'),
-                'poster': get_poster_from_db(tid, 'show') or show_details.get('poster_path', ''),
+                'poster': render_poster_map.get(tid) or show_details.get('poster_path', ''),
                 'overview': '',
                 'w': w,
                 'next_ep': next_ep,
                 'is_pool': True,
                 'show_details': show_details
             })
+
+        # BULK: sezoanele necesare pentru numele/overview-ul/data episoadelor,
+        # tot dintr-o conexiune. `_tmdb_ep_meta` le-ar cere pe rind, iar
+        # `get_smart_season_details` ar deschide o conexiune per serial.
+        try:
+            from resources.lib.core.cache import ram_cache_set_season as _rcs
+            _pairs_s = [(str(_e['tid']), int(_e['next_ep']['season'] or 0)) for _e in pending
+                        if _e.get('next_ep') and _e['next_ep'].get('season')]
+            _seasons_bulk = get_tmdb_season_details_bulk(_pairs_s) or {}
+            for (_stid, _snum), _sd in _seasons_bulk.items():
+                if isinstance(_sd, dict) and _sd:
+                    _rcs(_stid, _snum, _sd)
+            if _seasons_bulk:
+                log(f"[TMDB SYNC] Up Next sezoane bulk: {len(_seasons_bulk)}/{len(_pairs_s)} "
+                    f"din DB local (o conexiune)")
+        except Exception:
+            pass
 
         t_season_start = time.time()
         def _fetch_meta(entry):

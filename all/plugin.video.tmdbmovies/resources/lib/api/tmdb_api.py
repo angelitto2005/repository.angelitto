@@ -97,7 +97,13 @@ def _list_build_wait(cache_key):
                     return None
             except:
                 pass
-            data = get_fast_cache(cache_key)
+            # fresh_only=True: copia din fereastra stale-while-revalidate NU e
+            # dovada ca alt proces a terminat build-ul. Fara asta, cel care
+            # astepta prelua lista VECHE, raporta "build preluat de alt proces"
+            # si nu-si mai construia varianta - de aici stopul din 09:50, unde
+            # una din cele doua liste Up Next a ramas nereconstruita (log),
+            # iar safety pass-ul a re-randat-o veche.
+            data = get_fast_cache(cache_key, fresh_only=True)
             if data:
                 return data
             xbmc.sleep(150)
@@ -1406,7 +1412,10 @@ def _cm_setting(key):
     return v
 
 
-def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False, year='', season=None, episode=None, imdb_id='', ep_name='', premiered=''):
+def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view=False, year='', season=None, episode=None, imdb_id='', ep_name='', premiered='', ep_watched=None, progress=None):
+    # ep_watched / progress: valori deja cunoscute de apelant (citite BULK).
+    # Cind vin None, se citesc din DB ca inainte - semantica nu se schimba,
+    # doar ca o lista de 63 de rinduri nu mai deschide 126 de conexiuni.
     cm = []
     # --- SELECT ACTION: daca randul e redirectionat catre Extended Info (setarea
     # select_ext_info), actiunea veche a selectului (Play / Browse Seasons) se muta
@@ -1517,8 +1526,11 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
         cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({PLUGIN_URL}?{_uw_sp if _is_w else _w_sp})"))
     elif content_type == 'episode':
         if season is not None and episode is not None:
-            from resources.lib.providers.watched_provider import is_episode_watched as _is_epw
-            _is_w = _is_epw(tmdb_id, season, episode)
+            if ep_watched is None:
+                from resources.lib.providers.watched_provider import is_episode_watched as _is_epw
+                _is_w = _is_epw(tmdb_id, season, episode)
+            else:
+                _is_w = bool(ep_watched)
             _w_sp = urlencode({'mode': 'mark_watched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
             _uw_sp = urlencode({'mode': 'mark_unwatched', 'tmdb_id': tmdb_id, 'type': 'episode', 'season': str(season), 'episode': str(episode)})
             cm.append((_mml(_is_w) or (_uw_label if _is_w else _w_label), f"RunPlugin({PLUGIN_URL}?{_uw_sp if _is_w else _w_sp})"))
@@ -1544,8 +1556,9 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
             scrape_params = urlencode({'mode': 'sources', 'tmdb_id': tmdb_id, 'type': 'tv', 'title': title, 'season': str(season), 'episode': str(episode), 'custom_title': '', 'custom_interactive': 'true'})
         cm.append(('[B]Scrape with Custom Values[/B]', f"RunPlugin({PLUGIN_URL}?{scrape_params})"))
 
-    from resources.lib.providers import trakt_sync
-    progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
+    if progress is None:
+        from resources.lib.providers import trakt_sync
+        progress = trakt_sync.get_local_playback_progress(tmdb_id, content_type, season, episode)
     
     # Recunoastem procentele noi (<90) dar si formatul vechi de resume (>= 1000000)
     if progress > 0 and (progress < 90 or progress >= 1000000):
@@ -8345,6 +8358,11 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
     except Exception:
         pass
     show_color = 'FF00CED1' if use_tmdb else provider_color('local' if use_local else ('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt'))))
+    # Momentul CITIRII randurilor din DB. Stampul de "build terminat" scris la
+    # final trebuie sa fie acesta, nu momentul scrierii: un build pornit inainte
+    # de marcaj poate termina dupa el si ar scrie lista veche cu stamp proaspat
+    # (log real: build pornit 22:42:12.8, marcaj 22:42:21.4, scriere 22:42:28.6).
+    _t_rows = time.time()
     if use_tmdb:
         raw_items = trakt_sync.get_tmdb_next_episodes_from_db()
     elif use_local:
@@ -8587,7 +8605,8 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         cached_data = None if (cache_only or warm_only) else get_fast_cache(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data, view_type='episode_lists')
-        log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (instant)")
+        log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (instant, "
+            f"varianta {'tmdb' if use_tmdb else 'provider'})")
         return
 
     # Alt proces construieste deja ACEASTA lista (widget-ul din skin + containerul
@@ -8601,7 +8620,8 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
     cached_data = None if warm_only else _list_build_wait(cache_key)
     if cached_data:
         render_from_fast_cache(cached_data, view_type='episode_lists')
-        log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (build preluat de alt proces)")
+        log(f"[UP NEXT] din fast cache: {len(cached_data)} randuri (build preluat "
+            f"de alt proces, varianta {'tmdb' if use_tmdb else 'provider'})")
         return
 
     _t_start = time.time()
@@ -8681,6 +8701,26 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         except:
             pass
 
+    # Detaliile serialelor: BULK, o singura conexiune SQLite. Inainte fiecare
+    # rind deschidea propria conexiune (+ 4 PRAGMA) si isi decomprima propriul
+    # blob - la 48 de rinduri, citeva secunde doar in deschideri de conexiune.
+    # Pre-incalzim pool-ul RAM cu EXACT rindurile din DB; `get_tmdb_item_details`
+    # din bucla face apoi un dict-hit, cu aceeasi filtrare pe limba ca inainte.
+    try:
+        _det_bulk = trakt_sync.get_tmdb_item_details_bulk(
+            [str(x['tmdb_id']) for x in items], 'tv') or {}
+    except Exception:
+        _det_bulk = {}
+    if _det_bulk:
+        try:
+            from resources.lib.core.cache import ram_pool_set, ram_cache_set_tvshow
+            for _dk, _dv in _det_bulk.items():
+                if isinstance(_dv, dict) and _dv:
+                    ram_pool_set(_dk, _dv)
+                    ram_cache_set_tvshow(_dk, _dv)
+        except Exception:
+            pass
+
     # Sezoanele lipsa din RAM/db se citesc acum BULK, cu o singura interogare
     # pentru toata lista, in loc de cate una per rand (2,5s pe Android). Doar
     # randurile care raman fara nimic in cache coboara pe calea cu retea.
@@ -8709,8 +8749,48 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
     items_to_add = []
     cache_list = []
 
+    # Setari citite O SINGURA DATA per build. Inainte erau 4-6 citiri native pe
+    # rind (`skin_type` de doua ori, `episodes_art`, limba, skip_upnext,
+    # select_ext_info de doua ori) - ~300 de traversari JNI per build pe Android,
+    # pentru valori care nu se pot schimba in mijlocul construirii listei.
+    try:
+        art_pref = ADDON.getSetting('episodes_art')
+    except Exception:
+        art_pref = '0'
+    try:
+        skin_compat = ADDON.getSetting('skin_type')
+    except Exception:
+        skin_compat = '0'
+    try:
+        from resources.lib.core.config import get_plot_language_code as _gplc
+        _plot_lang = _gplc()
+    except Exception:
+        _plot_lang = 'en'
+    try:
+        from resources.lib.core.cache import ram_cache_get_season as _ram_season
+    except Exception:
+        _ram_season = None
+    try:
+        _skip_un_round = bool(_skip_un())
+    except Exception:
+        _skip_un_round = False
+    # Cheile deja vizionate: BULK, o singura conexiune. Meniul contextual al
+    # fiecarui rind intreba asta din DB (`is_episode_watched`) - pe Windows 18ms
+    # per rind, adica 88% din build (`faze=meniu=1135` din `randuri=1282`).
+    # None = citirea a esuat -> meniul cade pe citirea per rind, ca inainte.
+    try:
+        from resources.lib.providers.watched_provider import get_watched_episode_keys_bulk as _wk_bulk
+        _watched_keys = _wk_bulk([(str(_x['tmdb_id']), int(_x.get('season') or 0), int(_x.get('episode') or 0))
+                                  for _x in items])
+    except Exception:
+        _watched_keys = None
+    # Cronometre pe faze (dict-ul ajunge in logul `rebuild`): daca lista se simte
+    # iar lent, urmatorul log spune exact ce faza maninca timpul.
+    _ph = {}
+
     for it in items:
         tmdb_id = it['tmdb_id']
+        _t_ph = time.time()
         
         # Serial neinceput (UP NEXT watchlist neinceput, toti providerii): watched_count==0 -> rosu
         try:
@@ -8727,6 +8807,8 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         if show_watched_info['total'] > 0:
             unwatched_count = max(0, show_watched_info['total'] - show_watched_info['watched'])
         # --- SFARSIT NOU ---
+        _ph['watched'] = _ph.get('watched', 0.0) + (time.time() - _t_ph) * 1000.0
+        _t_ph = time.time()
         
         # 1. Extragem datele complete si garantat RO/EN (Aici se intampla magia Clearlogo!)
         show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
@@ -8750,6 +8832,8 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         studio = ''
         if show_details and show_details.get('networks'):
             studio = show_details['networks'][0].get('name', '')
+        _ph['detalii'] = _ph.get('detalii', 0.0) + (time.time() - _t_ph) * 1000.0
+        _t_ph = time.time()
 
         # 3. Metadate implicite episod (de la Trakt)
         ep_plot = it['overview']
@@ -8760,10 +8844,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         
         # 4. Gasim episodul in baza noastra TMDb pentru a lua Durata, Stelutele (Rating) si Voturile!
         #    Cache first (RAM → SQLite) + API fallback
-        from resources.lib.core.cache import ram_cache_get_season
-        from resources.lib.core.config import get_plot_language_code
-        _plot_lang = get_plot_language_code()
-        season_data = ram_cache_get_season(tmdb_id, it['season'])
+        season_data = _ram_season(tmdb_id, it['season']) if _ram_season else None
         if season_data:
             if season_data.get('_cached_lang') != _plot_lang:
                 season_data = None
@@ -8830,6 +8911,9 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
                     else:
                         ep_type = 'season_finale'
                     
+        _ph['sezon'] = _ph.get('sezon', 0.0) + (time.time() - _t_ph) * 1000.0
+        _t_ph = time.time()
+
         # --- LOGICA NOUA IMAGINI UP NEXT (Standard Modern) ---
         season_poster_path = ''
         if season_data: season_poster_path = season_data.get('poster_path', '')
@@ -8838,11 +8922,6 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         
         show_fanart_path = show_details.get('backdrop_path', '') if show_details else ''
         base_fanart = f"{BACKDROP_BASE}{show_fanart_path}" if show_fanart_path else base_poster
-
-        try:
-            art_pref = ADDON.getSetting('episodes_art')
-        except:
-            art_pref = '0'
 
         has_still = bool(ep_still)
         
@@ -8864,10 +8943,23 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             final_fanart = base_fanart
         # ----------------------------------
         
+        # Progresul si starea "vazut" sunt deja cunoscute (BULK): le dam meniului,
+        # ca sa nu mai deschida el 2 conexiuni SQLite per rind.
+        _prog_for_cm = None
+        _watched_for_cm = None
+        try:
+            _cm_key = (str(tmdb_id), int(it['season'] or 0), int(it['episode'] or 0))
+            if _prog_map is not None:
+                _prog_for_cm = _prog_map.get(_cm_key, 0)
+            if _watched_keys is not None:
+                _watched_for_cm = _cm_key in _watched_keys
+        except Exception:
+            _prog_for_cm = None
+            _watched_for_cm = None
+
         # --- START MODIFICARE: CALCUL RESUME PENTRU UP NEXT ---
-        from resources.lib.providers import trakt_sync
-        if _prog_map is not None:
-            progress_value = _prog_map.get((str(tmdb_id), int(it['season'] or 0), int(it['episode'] or 0)), 0)
+        if _prog_for_cm is not None:
+            progress_value = _prog_for_cm
         else:
             progress_value = trakt_sync.get_local_playback_progress(tmdb_id, 'tv', it['season'], it['episode'])
         resume_percent = 0
@@ -8900,9 +8992,6 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             'resume_percent': resume_percent # <--- ADAUGAT AICI PENTRU CERCULET
         }
         
-        try: skin_compat = ADDON.getSetting('skin_type')
-        except: skin_compat = '0'
-
         badge = ""
         if skin_compat == '0':
             if ep_type in['series_premiere', 'season_premiere']:
@@ -8944,7 +9033,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
                     elif days_until == 1:
                         zile_str = calendar_localized_label(1, air_date_obj.isoformat())
                     elif 1 < days_until <= 7:
-                        zile_str = f"In {days_until} zile" if get_plot_language_code() == 'ro' else f"In {days_until} days"
+                        zile_str = f"In {days_until} zile" if _plot_lang == 'ro' else f"In {days_until} days"
                     else:
                         zile_str = _fmt_dmy(it['air_date'])
                     # In fast cache salvam TOKENUL, nu ora: lista se poate salva
@@ -8970,8 +9059,10 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         # Randarea LIVE primeste ora reala; in cache rămâne tokenul (air_key).
         label_live = apply_air_time(label, _at)
         air_key = (str(tmdb_id), int(it['season']), int(it['episode'])) if AIR_TIME_TOKEN in label else None
+        _ph['eticheta'] = _ph.get('eticheta', 0.0) + (time.time() - _t_ph) * 1000.0
+        _t_ph = time.time()
 
-        if _skip_un():
+        if _skip_un_round:
             url_params = None
         else:
             url_params = select_ext_info_params('episode', tmdb_id, it['season'], it['episode'], it['show_title'], it['ep_title'])
@@ -8983,20 +9074,21 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             it['show_title'], 
             imdb_id=imdb_id,
             season=it['season'],   
-            episode=it['episode']  
+            episode=it['episode'],
+            ep_watched=_watched_for_cm,
+            progress=_prog_for_cm
         )
         
         # --- Browse Show / Browse Season / Clear sources cache (helper comun) ---
         cm = calendar_context_menu(cm, 'episode', tmdb_id, it['show_title'], season=it['season'], episode=it['episode'],
                                    base_url=PLUGIN_URL, browse_cmd=_browse_cmd, urlencode_fn=urlencode,
                                    clear_sources=True)
+        _ph['meniu'] = _ph.get('meniu', 0.0) + (time.time() - _t_ph) * 1000.0
+        _t_ph = time.time()
         
         url = plugin_url(url_params)
         li = None if cache_only else xbmcgui.ListItem(label_live)
 
-        try: skin_compat = ADDON.getSetting('skin_type')
-        except: skin_compat = '0'
-        
         # AF3 ascunde thumb-ul daca e identic cu posterul → la modurile Poster (2/3)
         # thumb/landscape devin still-ul episodului (thumb != poster)
         if art_pref in ('2', '3'):
@@ -9036,7 +9128,6 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             set_metadata(li, info, unique_ids={'tmdb': str(tmdb_id), 'imdb': imdb_id}, watched_info=show_watched_info)
 
             # --- ADAUGAT: Setam manual cercul de progres pentru Kodi ---
-            from resources.lib.core.utils import set_resume_point
             set_resume_point(li, resume_seconds, duration)
 
             if cm: li.addContextMenuItems(cm)
@@ -9054,6 +9145,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
                 'PercentPlayed': str(int((float(show_watched_info['watched'])/float(show_watched_info['total']))*100)) if (show_watched_info['total'] > 0 and 0 < show_watched_info['watched'] < show_watched_info['total']) else '',
             }
         })
+        _ph['rest'] = _ph.get('rest', 0.0) + (time.time() - _t_ph) * 1000.0
 
     # === AICI SE TERMINA BUCLA FOR ===
 
@@ -9064,9 +9156,16 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         _LAST_NEXT_BUILD_MS = (_t_build - _t_start) * 1000.0
     except Exception:
         pass
+    try:
+        _ph_txt = ', '.join(f"{_k}={int(_v)}" for _k, _v in
+                            sorted((_ph or {}).items(), key=lambda _kv: -_kv[1]))
+    except Exception:
+        _ph_txt = ''
     log(f"[UP NEXT] rebuild {int((_t_build - _t_start) * 1000)}ms "
-        f"(prefetch={int((_t_prefetch - _t_start) * 1000)}, warm={int((_t_warm - _t_prefetch) * 1000)}, "
-        f"randuri={int((_t_build - _t_warm) * 1000)}, items={len(items)}, randuri_finale={len(cache_list)})")
+        f"(varianta {'tmdb' if use_tmdb else 'provider'}, "
+        f"prefetch={int((_t_prefetch - _t_start) * 1000)}, warm={int((_t_warm - _t_prefetch) * 1000)}, "
+        f"randuri={int((_t_build - _t_warm) * 1000)}, items={len(items)}, randuri_finale={len(cache_list)}"
+        + (f", faze={_ph_txt}" if _ph_txt else '') + ")")
 
     if not cache_only:
         if items_to_add:
@@ -9085,7 +9184,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         # doar terminarea threadului de pre-randare, care poate sa si renunte -
         # deci putea stinge `upnext_stale_since` cu cache-ul inca vechi.
         try:
-            mark_upnext_cache_built('tmdb' if use_tmdb else 'provider')
+            mark_upnext_cache_built('tmdb' if use_tmdb else 'provider', _t_rows)
         except Exception:
             pass
         if cache_only:

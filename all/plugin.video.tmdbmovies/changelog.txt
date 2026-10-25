@@ -1,3 +1,9 @@
+1.1.325
+- Fixed Up Next context-menu errors caused by _prog_for_cm being referenced before assignment.
+- Optimized Up Next and TMDb/provider sync with bulk database queries and cached artwork/skin settings, reducing SQLite connections and per-show queries.
+- Improved refresh reliability after marking episodes watched: rebuilds both lists, prioritizes the active list, waits for fresh data and prevents stale episodes or outdated caches from being displayed.
+- Added per-stage timing to Up Next build logs for easier performance diagnostics.
+
 1.1.324
 - Fixed: Crash when closing the binge dialog during a list update.
 - Fixed: Delayed refreshes triggering crashes while Kodi closed the dialog.

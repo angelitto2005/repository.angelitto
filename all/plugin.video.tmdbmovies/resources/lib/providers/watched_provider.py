@@ -633,13 +633,36 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False, varia
         try:
             from resources.lib.core.utils import log
             _last_ms = float(tmdb_api.get_last_next_build_ms() or 0)
-            log(f"[UP NEXT] pre-randare pornita (ultimul build {_last_ms:.0f}ms)")
+            log(f"[UP NEXT] pre-randare pornita (varianta {variant}, ultimul build {_last_ms:.0f}ms)")
         except Exception:
             pass
         # Daca randarea reala ruleaza acum, _list_build_wait aici NU construieste
         # in paralel: asteapta cache-ul ei (sau preia daca ea moare).
         while True:
             _PREBUILD['pending'] = False
+            # Alt apelant (player-ul isi porneste propria pre-randare, calea de
+            # marcaj porneste amindoua variantele) a rescris DEJA aceasta
+            # varianta dupa ultimul marcaj. Al doilea build al aceleiasi liste
+            # e munca irosita: log real 15:24:19.325 si 15:24:21.014 = doua
+            # build-uri provider la acelasi stop (~1-2s pe Windows, 10-16s pe
+            # Android). Stampul e momentul CITIRII randurilor, deci "proaspat"
+            # chiar inseamna continut de dupa marcaj.
+            _tgt_pre = 0.0
+            _built_at = None
+            try:
+                from resources.lib.core.cache import upnext_stale_since as _rss_pre, \
+                    upnext_cache_built_at as _rba_pre
+                _tgt_pre = _rss_pre()
+                _built_at = _rba_pre
+            except Exception:
+                _tgt_pre, _built_at = 0.0, None
+            if _tgt_pre > 0 and _built_at is not None and _built_at(variant) >= _tgt_pre:
+                try:
+                    from resources.lib.core.utils import log
+                    log(f"[UP NEXT] pre-randare sarita (varianta {variant} deja rescrisa dupa marcaj)")
+                except Exception:
+                    pass
+                return True
             tmdb_api.get_next_episodes(params, cache_only=True)
             if not _PREBUILD['pending']:
                 break
@@ -656,7 +679,7 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False, varia
         if not (_ss > 0):
             try:
                 from resources.lib.core.utils import log
-                log("[UP NEXT] pre-randare gata, dar nu s-a marcat nimic - fara re-randare")
+                log(f"[UP NEXT] pre-randare gata, dar nu s-a marcat nimic - fara re-randare (varianta {variant})")
             except Exception:
                 pass
             return True
@@ -675,7 +698,7 @@ def _prebuild_upnext_cache(container_path='', min_ts=0.0, warm_only=False, varia
         if _pend and (_tp.time() - _pend) < 90.0:
             try:
                 from resources.lib.core.utils import log
-                log("[UP NEXT] re-randare lasata safety pass-ului de la stop")
+                log(f"[UP NEXT] re-randare lasata safety pass-ului de la stop (varianta {variant})")
             except Exception:
                 pass
             return True
@@ -1747,6 +1770,84 @@ _FULLY_WATCHED_TABLES = {
     'mdblist': 'mdblist_fully_watched_shows',
     'simkl': 'simkl_fully_watched_shows',
 }
+
+
+_WATCHED_EP_TABLES = {
+    'trakt': 'trakt_watched_episodes',
+    'punchplay': 'punchplay_watched_episodes',
+    'mdblist': 'mdblist_watched_episodes',
+    'simkl': 'simkl_watched_episodes',
+    'local': 'local_watched_episodes',
+}
+
+
+def get_watched_episode_keys_bulk(keys):
+    """Cheile (tmdb_id, season, episode) deja vizionate, dintr-o SINGURA conexiune.
+
+    `is_episode_watched` deschide o conexiune per apel, iar meniul contextual al
+    fiecarui rind Up Next il chema o data: pe un box lent asta era cea mai
+    scumpa parte din faza `meniu` (18ms/rind pe Windows, deci mult mai mult pe
+    Android). Aici citim tot setul necesar o data, cu aceeasi semantica:
+    episod in tabela de vizionate SAU serial complet vizionat.
+
+    Returneaza set de tupluri, sau None daca nu se poate citi (apelantul cade
+    pe `is_episode_watched` per rind, adica pe comportamentul de dinainte).
+    """
+    try:
+        prov = _get_provider_raw()
+    except Exception:
+        return None
+    table = _WATCHED_EP_TABLES.get(prov)
+    if not table:
+        return None
+    try:
+        import sqlite3
+        mod = get_source_module()
+        db_path = getattr(mod, 'DB_PATH', '')
+        if not db_path or not os.path.exists(db_path):
+            return None
+        if hasattr(mod, '_ensure_db'):
+            try:
+                mod._ensure_db()
+            except Exception:
+                pass
+        wanted = []
+        for _k in keys or []:
+            try:
+                wanted.append((str(_k[0]), int(_k[1] or 0), int(_k[2] or 0)))
+            except Exception:
+                continue
+        if not wanted:
+            return set()
+        ids = sorted({k[0] for k in wanted})
+        out = set()
+        full_shows = set()
+        conn = sqlite3.connect(db_path)
+        try:
+            c = conn.cursor()
+            for _i in range(0, len(ids), 400):
+                chunk = ids[_i:_i + 400]
+                try:
+                    c.execute('SELECT tmdb_id, season, episode FROM %s WHERE tmdb_id IN (%s)'
+                              % (table, ','.join(['?'] * len(chunk))), chunk)
+                    for _tid, _s, _e in c.fetchall():
+                        out.add((str(_tid), int(_s or 0), int(_e or 0)))
+                except Exception:
+                    continue
+            ftable = _FULLY_WATCHED_TABLES.get(prov)
+            if ftable:
+                try:
+                    c.execute('SELECT tmdb_id FROM ' + ftable)
+                    full_shows = {str(r[0]) for r in c.fetchall() if r and r[0] is not None}
+                except Exception:
+                    full_shows = set()
+        finally:
+            conn.close()
+        if full_shows:
+            out.update(k for k in wanted if k[0] in full_shows)
+        return out
+    except Exception:
+        return None
 
 
 def clear_fully_watched_cache():

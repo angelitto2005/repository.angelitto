@@ -640,18 +640,38 @@ def _prebuild_both_variants(min_ts=0.0):
             _variants.append('tmdb')
     except Exception:
         _variants.append('tmdb')
+    # Varianta VIZIBILA se construieste PRIMA. Fiecare build costa 10-13s pe
+    # un box Android; daca lista de pe ecran era a doua, safety pass-ul din
+    # player astepta degeaba ~10s si apoi randa cache-ul vechi (log 09:50).
+    _visible = ''
+    try:
+        import xbmcgui as _xgv
+        _visible = (_xgv.Window(10000).getProperty('tmdbmovies.upnext_view') or '').strip()
+    except Exception:
+        _visible = ''
+    if _visible not in ('tmdb', 'provider'):
+        try:
+            _visible = get_last_upnext_variant()
+        except Exception:
+            _visible = ''
+    if _visible in _variants:
+        _variants = [_visible] + [v for v in _variants if v != _visible]
+    _done = {}
     for _v in _variants:
         try:
             from resources.lib.providers.watched_provider import _prebuild_upnext_cache
-            _prebuild_upnext_cache('', min_ts, False, _v)
+            _done[_v] = bool(_prebuild_upnext_cache('', min_ts, False, _v))
         except Exception:
-            continue
+            _done[_v] = False
     try:
         from resources.lib.core.utils import log
-        if len(_variants) > 1:
-            log("[UP NEXT] ambele variante incalzite in cache")
-        else:
-            log(f"[UP NEXT] lista Up Next incalzita in cache (varianta {_variants[0]})")
+        # Log pe fiecare varianta, cu rezultatul real. Inainte se scria
+        # "ambele variante incalzite in cache" neconditionat, chiar si cind
+        # una (sau amindoua) iesise imediat pe usa din busy/lock - de aici
+        # logurile care contraziceau realitatea (log 09:50: 35.414 "ambele
+        # variante", desi build-ul real a terminat la 42.421).
+        log("[UP NEXT] pre-randare variante: " + ', '.join(
+            f"{_v}={'ok' if _ok else 'nu'}" for _v, _ok in _done.items()))
     except Exception:
         pass
 
