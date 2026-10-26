@@ -116,7 +116,9 @@ def _cleanup_old_mpd():
         if not temp_dir or not os.path.exists(temp_dir):
             continue
         for f in os.listdir(temp_dir):
-            if f.startswith('yt') and f.endswith('.mpd'):
+            is_mpd = f.startswith('yt') and f.endswith('.mpd')
+            is_live_m3u8 = f.startswith('yt_live_') and f.endswith('.m3u8')
+            if is_mpd or is_live_m3u8:
                 full = os.path.join(temp_dir, f)
                 try:
                     if os.path.getmtime(full) > cutoff:
