@@ -387,17 +387,10 @@
         <setting label="[B][COLOR pink]Connect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_auth)"/>
         <setting label="[B][COLOR red]Disconnect Trakt[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=trakt_revoke)"/>
         <setting label="Status:" type="text" default="Disconnected" id="trakt_status" enable="false"/>
-        <!-- Setarile de token Trakt trebuie DECLARATE aici. Proxy-ul din config.py
-             citeste setarile din settings.xml (de pe disc) si cade pe C++ doar daca
-             cheia lipseste din fisier. In fereastra de update a addonului, CAddonMgr
-             invalideaza temporar xbmcaddon.Addon -> apelul C++ arunca "Unknown addon
-             id" -> tokenul parea gol -> addonul credea ca Trakt e deconectat si
-             afisa un dialog inselator la pornire. Declarate, se citesc din fisier
-             si functioneaza si in acea fereastra. -->
-        <setting id="trakt_access_token" type="text" default="" enable="false"/>
-        <setting id="trakt_refresh_token" type="text" default="" enable="false"/>
-        <setting id="trakt_created_at" type="text" default="" enable="false"/>
-        <setting id="trakt_expires_in" type="text" default="" enable="false"/>
+        <setting id="trakt_access_token" type="text" default="" option="hidden" visible="false"/>
+        <setting id="trakt_refresh_token" type="text" default="" option="hidden" visible="false"/>
+        <setting id="trakt_created_at" type="text" default="" option="hidden" visible="false"/>
+        <setting id="trakt_expires_in" type="text" default="" option="hidden" visible="false"/>
 		
 		<setting type="lsep" label="TMDb Account"/>
         <setting label="[B][COLOR FF00CED1]Connect TMDb[/COLOR][/B]" type="action" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=tmdb_auth)"/>

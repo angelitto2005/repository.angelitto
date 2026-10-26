@@ -1,4 +1,4 @@
-1.1.327
+1.1.328
 - Fixed: PunchPlay Collection now fetches and sends the title, poster path, and year when adding items. Re-add items with missing posters to fix them.
 - Fixed: PunchPlay mark-unwatched now works (remove from History).
 
