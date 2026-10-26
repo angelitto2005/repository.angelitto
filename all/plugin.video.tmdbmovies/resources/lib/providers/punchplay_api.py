@@ -12,20 +12,37 @@ import requests
 
 _TMDB_TITLE_RE = re.compile(r'^tmdb:\d+$')
 
-def resolve_pp_title(tmdb_id, media_type, title=''):
+def resolve_pp_details(tmdb_id, media_type, title=''):
     t = str(title or '').strip()
-    if t and not _TMDB_TITLE_RE.match(t):
-        return t
+    real_title = bool(t) and not _TMDB_TITLE_RE.match(t)
+    d = {}
     try:
         from resources.lib.api.tmdb_api import get_tmdb_item_details
         mt = 'movie' if str(media_type).lower() == 'movie' else 'tv'
         d = get_tmdb_item_details(str(tmdb_id), mt, lightweight=True) or {}
-        t2 = str(d.get('title') or d.get('name') or '').strip()
-        if t2 and not _TMDB_TITLE_RE.match(t2):
-            return t2
-    except:
-        pass
-    return ''
+    except Exception:
+        d = {}
+    poster = str(d.get('poster_path') or '').strip()
+    if poster and not poster.startswith('/'):
+        poster = ''
+    year = 0
+    for _k in ('year', 'release_date', 'first_air_date'):
+        raw = str(d.get(_k) or '')[:4]
+        if re.match(r'^(19|20)\d\d$', raw):
+            year = int(raw)
+            break
+    if not real_title:
+        t = str(d.get('title') or d.get('name') or '').strip()
+        if t and _TMDB_TITLE_RE.match(t):
+            t = ''
+    return t, poster, year
+
+def resolve_pp_title(tmdb_id, media_type, title=''):
+    t = str(title or '').strip()
+    if t and not _TMDB_TITLE_RE.match(t):
+        return t
+    t, _poster, _y = resolve_pp_details(tmdb_id, media_type, title)
+    return t
 
 from resources.lib.core import config as _pp_config
 from resources.lib.core.config import PUNCHPLAY_API_URL, PUNCHPLAY_CLIENT_ID, PUNCHPLAY_COLOR, ADDON, ADDON_PATH, provider_title, provider_icon
@@ -660,13 +677,16 @@ class PunchplayAPI:
         return self._get('me/collection', params=params)
 
     def add_collection(self, kind, tmdb_id, title='', year=0, fmt='digital'):
-        title = resolve_pp_title(tmdb_id, kind, title)
+        title, poster, dyear = resolve_pp_details(tmdb_id, kind, title)
         if not title:
             xbmc.log('[PUNCHPLAY] add_collection skipped, no title resolvable', xbmc.LOGWARNING)
             return None
         body = {'kind': kind, 'sourceId': int(tmdb_id), 'title': title, 'format': fmt or 'digital'}
-        if year:
-            body['year'] = int(year)
+        y = int(year or 0) or dyear
+        if y:
+            body['year'] = int(y)
+        if poster:
+            body['posterPath'] = poster
         return self._post('collection', data=body)
 
     def remove_collection(self, item_id):
