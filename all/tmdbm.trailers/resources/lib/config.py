@@ -426,6 +426,62 @@ def _snapshot():
     return _SNAP_DATA[0]
 
 
+_SETTINGS_FILE = [None, {}]   # (mtime, values)
+
+
+def _settings_file_values():
+    """Values read straight from this add-on's settings.xml on disk.
+
+    The switches in Settings > Menu are changed by the settings dialog while
+    the add-on is already running, and they must take effect without a Kodi
+    restart. Two indirections get in the way: with reuselanguageinvoker the
+    ADDON object keeps what it read when its interpreter was created, and
+    Settings.GetSettingValue over JSON-RPC rejects add-on settings on Kodi 21
+    ("Invalid params"), so the fallback in get_setting() is exactly that stale
+    object. Kodi writes the file as soon as the dialog is closed, so reading it
+    is fresh and cheap - the parse is skipped while the mtime is unchanged.
+    """
+    path = os.path.join(ADDON_PROFILE, 'settings.xml')
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}
+    if _SETTINGS_FILE[0] == mtime:
+        return _SETTINGS_FILE[1]
+    try:
+        import xml.etree.ElementTree as _ET
+        root = _ET.parse(path).getroot()
+    except Exception as exc:
+        log('settings.xml read failed: {}'.format(exc), xbmc.LOGWARNING)
+        return _SETTINGS_FILE[1]
+    values = {}
+    for element in root.iter('setting'):
+        key = element.get('id')
+        if key:
+            values[key] = (element.text or '').strip()
+    _SETTINGS_FILE[0] = mtime
+    _SETTINGS_FILE[1] = values
+    return values
+
+
+def file_setting(name, default=''):
+    """A setting as Kodi last wrote it to settings.xml.
+
+    Same source as menu_enabled: the settings dialog writes the file when it
+    closes, so this sees a change immediately even though the add-on object and
+    the snapshot published by the service can still hold the values from before
+    the change. Used by the playback code for the subtitle switches, which are
+    flipped while the add-on is running.
+    """
+    try:
+        value = _settings_file_values().get(name)
+    except Exception:
+        value = None
+    if value is None or value == '':
+        return default
+    return value
+
+
 def get_setting(name, default='', _use_snapshot=True):
     """Read a setting fresh at call time.
 
@@ -471,6 +527,29 @@ def get_int(name, default=0):
 
 def get_bool(name, default=False):
     return str(get_setting(name, 'true' if default else 'false')).lower() == 'true'
+
+
+def menu_enabled(mode):
+    """Whether a root folder is still shown in the add-on menu.
+
+    One switch per root entry in Settings > Menu. Off hides the folder from the
+    root listing and, since a listing nobody can open must not cost a request,
+    also drops it from the start-up prefetch (router.warm_first_pages and the
+    feed warm-up in the service).
+
+    Read from the settings file, not through get_setting(): the switches are
+    flipped in the settings dialog while the add-on runs, and the in-memory
+    add-on object keeps answering with the values it had when its interpreter
+    was created (see _settings_file_values).
+    """
+    try:
+        value = _settings_file_values().get('menu_' + mode)
+    except Exception:
+        value = None
+    if not value:
+        # No file yet (fresh install) or key not written: the switch defaults on.
+        return True
+    return str(value).lower() == 'true'
 
 
 _LANG_CODES = ('en', 'ro', 'hu', 'de', 'es', 'fr', 'id', 'it', 'nl', 'pt-br', 'pt-pt')

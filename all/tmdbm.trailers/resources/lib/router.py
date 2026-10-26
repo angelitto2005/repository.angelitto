@@ -368,12 +368,22 @@ def warm_first_pages():
     trending_one = lists.rows_to_fetch(per_page)
     random_one = max(lists.rows_to_fetch(per_page), _RANDOM_MUSIC_FLOOR)
     blocked_one = lists.page_fetch_amount(1, blocked=True)
-    targets = (
-        ('trending', _trending_query(), yt.trending_videos, trending_one),
-        ('live', _live_query(), yt.live_videos, blocked_one),
-        ('trailers', _trailer_query(), yt.trailer_videos, blocked_one),
-        ('random music', _music_query(), yt.trending_videos, random_one),
-    )
+    # One entry per warmed listing: (log name, root mode, query, fetcher,
+    # amount). A folder switched off in Settings > Menu is dropped here too, so
+    # the start-up burst only spends requests on listings that can be opened.
+    targets = [target for target in (
+        ('trending', 'trending', _trending_query(),
+         yt.trending_videos, trending_one),
+        ('live', 'live', _live_query(), yt.live_videos, blocked_one),
+        ('trailers', 'trailers', _trailer_query(),
+         yt.trailer_videos, blocked_one),
+        ('random music', 'random_music', _music_query(),
+         yt.trending_videos, random_one),
+    ) if config.menu_enabled(target[1])]
+    if not targets:
+        config.log('prefetch: all warmed listings are off in Settings > Menu',
+                   always=True)
+        return
     # Side by side, not one after another: Live alone takes about ten seconds
     # on a cold cache, and doing them in turn left Trailers and Random Music
     # unwarmed for ten seconds after start. Four threads, four requests, one
@@ -381,7 +391,7 @@ def warm_first_pages():
     started = time.time()
 
     def _warm(target):
-        name, query, fetch, limit = target
+        name, _mode, query, fetch, limit = target
         mark = time.time()
         try:
             fetch(query, limit=limit)
@@ -2301,17 +2311,24 @@ def logout(handle, params):
 
 def _build_roots():
     del _ROOT_ITEMS[:]
+    # Search and Settings are always there: they are the way back into the
+    # add-on, so they get no switch in Settings > Menu. Every other root folder
+    # can be turned off there (config.menu_enabled), which also removes it from
+    # the start-up prefetch.
     add_root(config.T(32100), 'search', config.icon('search'))
-    add_root(config.T(32101), 'trending', config.icon('trending'))
-    add_root(config.T(32102), 'random_music', config.icon('random'))
-    add_root(config.T(32103), 'live', config.icon('live'))
-    add_root(config.T(32104), 'trailers', config.icon('trailers'))
-    add_root(config.T(32105), 'charts', config.icon('charts'))
-    add_root(config.T(32106), 'my_youtube', config.icon('myyoutube'))
-    add_root(config.T(32107), 'feed', config.icon('feed'))
-    add_root(config.T(32108), 'watch_later', config.icon('watchlater'))
-    add_root(config.T(32109), 'history', config.icon('history'))
-    add_root(config.T(32110), 'local_playlists', config.icon('playlists'))
+    for mode, label_id, image in (
+            ('trending', 32101, 'trending'),
+            ('random_music', 32102, 'random'),
+            ('live', 32103, 'live'),
+            ('trailers', 32104, 'trailers'),
+            ('charts', 32105, 'charts'),
+            ('my_youtube', 32106, 'myyoutube'),
+            ('feed', 32107, 'feed'),
+            ('watch_later', 32108, 'watchlater'),
+            ('history', 32109, 'history'),
+            ('local_playlists', 32110, 'playlists')):
+        if config.menu_enabled(mode):
+            add_root(config.T(label_id), mode, config.icon(image))
     add_root(config.T(32111), 'open_settings', config.icon('settings'),
              folder=False)
 

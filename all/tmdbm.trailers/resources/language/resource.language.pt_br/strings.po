@@ -808,3 +808,19 @@ msgstr "Mostrando {} de {}"
 msgctxt "#32522"
 msgid "This playlist cannot be read from YouTube"
 msgstr "Esta lista nao pode ser lida do YouTube"
+
+msgctxt "#32530"
+msgid "Menu"
+msgstr "Menu"
+
+msgctxt "#32531"
+msgid "Show in root menu"
+msgstr "Mostrar no menu principal"
+
+msgctxt "#32532"
+msgid "Startup prefetch"
+msgstr "Pré-carregar ao iniciar"
+
+msgctxt "#32533"
+msgid "Off removes this folder from the add-on root menu. It is then also skipped by the background prefetch when Kodi starts, so it costs no request."
+msgstr "Desativado remove esta pasta do menu principal do add-on. Ela também é ignorada pelo pré-carregamento ao iniciar o Kodi, então não gasta nenhuma requisição."

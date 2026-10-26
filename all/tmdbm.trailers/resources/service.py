@@ -958,6 +958,11 @@ def _prefetch_lists_bg(delay):
     try:
         import store
         from browse import constants
+        # Feed off in Settings > Menu: it is not reachable from the root any
+        # more, so do not spend a request per subscription on warming it.
+        if not config.menu_enabled('feed'):
+            config.log('prefetch: Feed is off in Settings > Menu, skipped')
+            return
         subscriptions = store.get_subscriptions()
         if not subscriptions:
             config.log('prefetch: no subscriptions, feed skipped')

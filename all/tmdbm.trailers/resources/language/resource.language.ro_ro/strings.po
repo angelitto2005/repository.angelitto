@@ -808,3 +808,19 @@ msgstr "Se afiseaza {} din {}"
 msgctxt "#32522"
 msgid "This playlist cannot be read from YouTube"
 msgstr "Aceasta lista nu poate fi citita de pe YouTube"
+
+msgctxt "#32530"
+msgid "Menu"
+msgstr "Meniu"
+
+msgctxt "#32531"
+msgid "Show in root menu"
+msgstr "Afiseaza in meniul principal"
+
+msgctxt "#32532"
+msgid "Startup prefetch"
+msgstr "Preincarcare la pornire"
+
+msgctxt "#32533"
+msgid "Off removes this folder from the add-on root menu. It is then also skipped by the background prefetch when Kodi starts, so it costs no request."
+msgstr "Oprit scoate acest folder din meniul principal al addon-ului. Este sarit si de prefetch-ul de la pornirea Kodi, deci nu consuma nicio cerere."

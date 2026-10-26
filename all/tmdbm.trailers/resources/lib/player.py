@@ -206,6 +206,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except Exception:
             return False
 
+    @classmethod
+    def _prune_subs_cache(cls):
+        try:
+            entries = [(os.path.getmtime(os.path.join(cls._subs_cache_dir, name)), name)
+                       for name in os.listdir(cls._subs_cache_dir)]
+        except (OSError, TypeError):
+            return
+        for _, name in sorted(entries)[:-cls._SUBS_CACHE_CAP]:
+            try:
+                os.remove(os.path.join(cls._subs_cache_dir, name))
+            except OSError:
+                pass
+
     def _store_cached_subs(self, path, payload):
         try:
             if not path or not payload:
@@ -214,16 +227,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             with open(tmp_path, 'wb') as handle:
                 handle.write(payload)
             os.replace(tmp_path, path)
-            try:
-                entries = [(os.path.getmtime(os.path.join(self._subs_cache_dir, name)), name)
-                           for name in os.listdir(self._subs_cache_dir)]
-            except OSError:
-                return
-            for _, name in sorted(entries)[:-self._SUBS_CACHE_CAP]:
-                try:
-                    os.remove(os.path.join(self._subs_cache_dir, name))
-                except OSError:
-                    pass
+            self._prune_subs_cache()
         except Exception:
             pass
 
@@ -1162,8 +1166,25 @@ _CONTENT_LANGUAGES = ('pt-PT', 'pt-BR', 'en', 'es', 'fr', 'de', 'it', 'nl',
                       'ro', 'tr', 'ja', 'ko')
 
 
+def _subtitle_setting(name, default=''):
+    """A subtitle setting straight from the settings file.
+
+    These are flipped in the settings dialog while the add-on is running. The
+    add-on object keeps what it read when its interpreter was created, and the
+    snapshot published by the service is only refreshed on a settings event, so
+    both can still answer with the value from before the change - which is why
+    enabling subtitles (or switching to the preferred language) used to need a
+    Kodi restart.
+    """
+    try:
+        import config as _cfg
+        return _cfg.file_setting(name, default)
+    except Exception:
+        return _get_setting(name, default)
+
+
 def _subtitle_mode():
-    raw = str(_get_setting('subtitles', '') or '').strip().lower()
+    raw = str(_subtitle_setting('subtitles', '') or '').strip().lower()
     if raw in ('original', '1'):
         return SUBTITLE_ORIGINAL
     if raw in ('preferred language', 'preferred', '2'):
@@ -1175,11 +1196,11 @@ def _subtitle_mode():
 
 
 def _preferred_subtitle_lang():
-    custom = str(_get_setting('subtitle_language', '') or '').strip().replace('_', '-')
+    custom = str(_subtitle_setting('subtitle_language', '') or '').strip().replace('_', '-')
     if not custom:
-        custom = str(_get_setting('content_language_custom', '') or '').strip().replace('_', '-')
+        custom = str(_subtitle_setting('content_language_custom', '') or '').strip().replace('_', '-')
     if not custom:
-        raw = str(_get_setting('content_language', '') or '').strip()
+        raw = str(_subtitle_setting('content_language', '') or '').strip()
         if raw in _CONTENT_LANGUAGES:
             custom = raw
         else:
@@ -1219,6 +1240,72 @@ def _subtitle_url(track, translate_to=''):
     return url
 
 
+_SUBS_PROBE_TIMEOUT = 2.5
+_SUBS_PROBE_SEEN = {}
+
+
+def _store_probed_subs(url, payload):
+    """Write a probed track into the proxy subtitle cache."""
+    try:
+        path = _ProxyHandler._subs_cache_path(url)
+        if not path:
+            return
+        tmp_path = path + '.tmp'
+        with open(tmp_path, 'wb') as handle:
+            handle.write(payload)
+        os.replace(tmp_path, path)
+        _ProxyHandler._prune_subs_cache()
+    except Exception as exc:
+        _log('subtitle probe cache failed: {}'.format(str(exc)[:120]))
+
+
+def _probe_subtitle_track(url):
+    """True when YouTube really serves this caption track.
+
+    A translated track (`tlang=`) is rate limited (HTTP 429) far more often
+    than the original one, and listing a track that cannot be downloaded is
+    worse than not listing it: it appears in Kodi's subtitle menu and then
+    draws nothing while the original track of the same video works. The body
+    is written into the proxy subtitle cache, so the fetch inputstream.adaptive
+    makes for it at playback is a cache hit and costs nothing extra.
+    """
+    if not url:
+        return False
+    if url in _SUBS_PROBE_SEEN:
+        return _SUBS_PROBE_SEEN[url]
+    # Already downloaded earlier (rewatch, or the proxy cached it): no request,
+    # the track is known to work and playback will hit the same cache entry.
+    try:
+        cached = _ProxyHandler._subs_cache_path(url)
+        if (cached and os.path.isfile(cached) and os.path.getsize(cached)
+                and time.time() - os.path.getmtime(cached)
+                <= _ProxyHandler._SUBS_CACHE_TTL):
+            _SUBS_PROBE_SEEN[url] = True
+            return True
+    except OSError:
+        pass
+    ok = False
+    try:
+        resp = _api_session().get(url, headers=_YT_HEADERS,
+                                  timeout=_SUBS_PROBE_TIMEOUT, stream=True)
+        try:
+            payload = resp.content if resp.status_code == 200 else b''
+        finally:
+            resp.close()
+        ok = bool(payload.strip())
+        if ok:
+            _store_probed_subs(url, payload)
+        else:
+            _log('subtitle probe: translated track unavailable (HTTP {}), '
+                 'not listed'.format(resp.status_code), xbmc.LOGWARNING,
+                 always=True)
+    except Exception as exc:
+        _log('subtitle probe failed: {}'.format(str(exc)[:120]),
+             xbmc.LOGWARNING)
+    _SUBS_PROBE_SEEN[url] = ok
+    return ok
+
+
 def _collect_captions(body):
     """Pick the subtitle tracks to expose, following the Subtitles setting.
 
@@ -1250,7 +1337,11 @@ def _collect_captions(body):
             lang = translate_to
         else:
             label = _subtitle_label(track)
-        if track.get('kind') == 'asr':
+        # An automatic track only needs the marker when it is not already the
+        # translated one and YouTube did not name it "(auto-generated)" itself
+        # - otherwise the label read "ro (auto) (auto)".
+        if (track.get('kind') == 'asr' and not translate_to
+                and 'auto' not in label.lower()):
             label = '{} (auto)'.format(label)
         picked.append({'url': url, 'lang': lang or 'und',
                        'label': label or lang,
@@ -1285,7 +1376,12 @@ def _collect_captions(body):
     elif asr:
         add(asr, default=True)
     elif translatable:
-        add(translatable, translate_to=preferred, default=True)
+        # Pre-flight: only offer the translated track when YouTube serves it.
+        # Otherwise the original track is the default, so subtitles still show.
+        if _probe_subtitle_track(_subtitle_url(translatable, preferred)):
+            add(translatable, translate_to=preferred, default=True)
+        else:
+            add(original, default=True)
     if not picked and original:
         add(original, default=True)
     if original is not None and len(picked) < 4:

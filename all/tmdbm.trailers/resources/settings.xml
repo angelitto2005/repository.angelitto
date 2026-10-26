@@ -251,11 +251,6 @@
           </constraints>
           <control type="list" format="string"/>
         </setting>
-        <setting id="prefetch_lists" type="boolean" label="32400" help="32401">
-          <level>0</level>
-          <default>false</default>
-          <control type="toggle"/>
-        </setting>
       </group>
     </category>
     <category id="account" label="32001">
@@ -271,6 +266,71 @@
           <data>RunPlugin(plugin://tmdbm.trailers/?mode=logout)</data>
           <constraints><allowempty>true</allowempty></constraints>
           <control type="button" format="action"><close>true</close></control>
+        </setting>
+      </group>
+    </category>
+    <!-- Root folders: one switch each. Off hides the folder from the root
+         listing and also drops it from the start-up prefetch, so a folder that
+         is never shown costs no request when Kodi starts. Search and Settings
+         stay put (no switch), they are the only way back into the add-on. -->
+    <category id="menu" label="32530">
+      <group id="menu_root" label="32531">
+        <setting id="menu_trending" type="boolean" label="32101" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_random_music" type="boolean" label="32102" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_live" type="boolean" label="32103" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_trailers" type="boolean" label="32104" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_charts" type="boolean" label="32105" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_my_youtube" type="boolean" label="32106" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_feed" type="boolean" label="32107" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_watch_later" type="boolean" label="32108" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_history" type="boolean" label="32109" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+        <setting id="menu_local_playlists" type="boolean" label="32110" help="32533">
+          <level>0</level>
+          <default>true</default>
+          <control type="toggle"/>
+        </setting>
+      </group>
+      <group id="menu_prefetch" label="32532">
+        <setting id="prefetch_lists" type="boolean" label="32400" help="32401">
+          <level>0</level>
+          <default>false</default>
+          <control type="toggle"/>
         </setting>
       </group>
     </category>

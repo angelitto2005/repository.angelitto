@@ -808,3 +808,19 @@ msgstr "{} van {} getoond"
 msgctxt "#32522"
 msgid "This playlist cannot be read from YouTube"
 msgstr "Deze afspeellijst kan niet van YouTube worden gelezen"
+
+msgctxt "#32530"
+msgid "Menu"
+msgstr "Menu"
+
+msgctxt "#32531"
+msgid "Show in root menu"
+msgstr "Tonen in hoofdmenu"
+
+msgctxt "#32532"
+msgid "Startup prefetch"
+msgstr "Vooraf laden bij start"
+
+msgctxt "#32533"
+msgid "Off removes this folder from the add-on root menu. It is then also skipped by the background prefetch when Kodi starts, so it costs no request."
+msgstr "Uit verwijdert deze map uit het hoofdmenu van de add-on. Hij wordt dan ook overgeslagen bij het vooraf laden na de start van Kodi, dus kost geen verzoek."
