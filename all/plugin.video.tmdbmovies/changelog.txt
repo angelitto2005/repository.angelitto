@@ -1,5 +1,6 @@
-1.1.326
-- Fixed PunchPlay Collection. Now fetches and sends the title, poster path, and year when adding items. Re-add items with missing posters to fix them.
+1.1.327
+- Fixed: PunchPlay Collection now fetches and sends the title, poster path, and year when adding items. Re-add items with missing posters to fix them.
+- Fixed: PunchPlay mark-unwatched now works (remove from History).
 
 1.1.325
 - Fixed Up Next context-menu errors caused by _prog_for_cm being referenced before assignment.

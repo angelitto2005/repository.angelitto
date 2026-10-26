@@ -445,6 +445,8 @@ class PunchplayAPI:
         return self._request('PATCH', path, json_data=data, params=params)
 
     def _delete(self, path, data=None, params=None, silent_404=False):
+        if data is None:
+            data = {}
         return self._request('DELETE', path, json_data=data, params=params, silent_404=silent_404)
 
     def device_code(self, scope=None):
