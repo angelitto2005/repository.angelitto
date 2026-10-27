@@ -663,6 +663,42 @@ def parse_rich_item_new_format(rich_item: dict) -> dict:
         return parse_lockup_view_model(lockup_view)
     return None
 
+def _byline_channel(meta_rows):
+    for row in (meta_rows or []):
+        for part in ((row or {}).get("metadataParts") or []):
+            if not isinstance(part, dict):
+                continue
+            browse_id = ""
+            name = ""
+            stack = [part]
+            while stack:
+                node = stack.pop()
+                if not isinstance(node, dict):
+                    continue
+                if not browse_id:
+                    candidate = str((node.get("browseEndpoint") or {}).get("browseId") or "").strip()
+                    if candidate.startswith("UC"):
+                        browse_id = candidate
+                if not name:
+                    text = node.get("text")
+                    if isinstance(text, dict):
+                        name = str(text.get("content") or "").strip()
+                        if not name:
+                            for run in (text.get("runs") or []):
+                                name = str((run or {}).get("text") or "").strip()
+                                if name:
+                                    break
+                if browse_id and name:
+                    return name or None, browse_id
+                for value in node.values():
+                    if isinstance(value, dict):
+                        stack.append(value)
+                    elif isinstance(value, list):
+                        stack.extend(item for item in value if isinstance(item, dict))
+            if browse_id:
+                return name or None, browse_id
+    return None, None
+
 def parse_lockup_view_model(lockup_view: dict) -> dict:
     """Parse a lockupViewModel dict directly (used by both channels and playlists)."""
     try:
@@ -766,10 +802,17 @@ def parse_lockup_view_model(lockup_view: dict) -> dict:
             "is_live": is_live,
         }
 
+        byline_name, byline_id = _byline_channel(meta_rows)
         if thumbnail_url:
             result["thumbnail"] = {"thumbnails": [{"url": thumbnail_url}]}
-        if channel_name:
-            result["shortBylineText"] = {"simpleText": channel_name}
+        if channel_name or byline_name:
+            short_byline = {"simpleText": channel_name or byline_name}
+            if byline_id:
+                short_byline["runs"] = [
+                    {"text": channel_name or byline_name,
+                     "navigationEndpoint": {"browseEndpoint": {"browseId": byline_id}}},
+                ]
+            result["shortBylineText"] = short_byline
         if views:
             result["viewCountText"] = {"simpleText": views}
         if upload_time:
@@ -834,8 +877,15 @@ def _enrich_playlist_lockup(lockup_view: dict, parsed: dict) -> dict:
         "contentMetadataViewModel", {}).get("metadataRows", [])
     if rows:
         channel = rows[0].get("metadataParts", [{}])[0].get("text", {}).get("content", "")
-        if channel:
-            parsed["shortBylineText"] = {"simpleText": channel}
+        byline_name, byline_id = _byline_channel(rows)
+        if channel or byline_name:
+            short_byline = {"simpleText": channel or byline_name}
+            if byline_id:
+                short_byline["runs"] = [
+                    {"text": channel or byline_name,
+                     "navigationEndpoint": {"browseEndpoint": {"browseId": byline_id}}},
+                ]
+            parsed["shortBylineText"] = short_byline
     parsed["is_live"] = False
     return parsed
 

@@ -3,7 +3,7 @@ import re
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import xbmc
 import xbmcgui
@@ -720,17 +720,40 @@ def random_music(handle, params):
 @route('go_channel')
 def go_channel(handle, params):
     import lists
-    from browse import meta
-    video_id = lists.video_id(params.get('video_id'))
-    info = meta.video_meta(video_id) if video_id else {}
-    channel_id = (info or {}).get('channel_id') or ''
-    if not channel_id:
-        _notify(config.T(32184))
-        return
-    xbmc.executebuiltin('Container.Update({}?{},replace)'.format(
-        BASE_URL, urlencode({'mode': 'channel',
-                             'url': 'https://www.youtube.com/channel/' + channel_id,
-                             'title': (info or {}).get('channel') or ''})))
+    channel_url = params.get('channel_url') or ''
+    title = params.get('title') or ''
+    if not channel_url:
+        from browse import meta
+        video_id = lists.video_id(params.get('video_id'))
+        info = meta.video_meta(video_id) if video_id else {}
+        channel_id = (info or {}).get('channel_id') or ''
+        if not channel_id:
+            _notify(config.T(32184))
+            return
+        channel_url = 'https://www.youtube.com/channel/' + channel_id
+        title = title or (info or {}).get('channel') or ''
+    lists.open_channel_window(channel_url, title)
+
+
+@route('channel_back')
+def channel_back(handle, params):
+    """Show the folder a channel was opened from.
+
+    Kodi lands here because the parent of /channel?mode=channel... is /channel
+    itself (URIUtils::GetParentPath drops the query of a plugin URL), so Back
+    out of a channel page that was activated from the playlist window would
+    otherwise rebuild the add-on root. The page is rebuilt in place instead of
+    navigating again: the folder is up instantly and the click that only wanted
+    its list back does not cost a second directory load.
+    """
+    import lists
+    origin = lists.take_channel_origin()
+    values = {k: v[0] for k, v in parse_qs(urlparse(origin).query).items()}
+    mode = values.pop('mode', None) or 'root'
+    if mode in ('root', 'channel_back') or mode not in _ROUTES:
+        mode, values = 'root', {}
+    config.log('channel back to {}'.format(mode))
+    dispatch(handle, mode, values)
 
 
 @route('sub_channel')

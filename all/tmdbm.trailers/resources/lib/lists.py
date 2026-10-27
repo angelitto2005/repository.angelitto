@@ -1,6 +1,8 @@
 from urllib.parse import urlencode
 import re
+import time
 
+import xbmc
 import xbmcgui
 
 import config
@@ -222,6 +224,83 @@ def _menu_channel_id(entry, vid):
         return ''
 
 
+_CHANNEL_ORIGIN_TTL = 1800
+
+
+def channel_target(channel_url, title=''):
+    """Page URL of a channel, on a path of its own.
+
+    Kodi builds the back history of a media window from the parents of the URL
+    it was activated with, and URIUtils::GetParentPath returns the same path
+    with the query dropped for a plugin URL that has options. Opening the page
+    as /channel?mode=channel... therefore leaves /channel as its parent, and
+    channel_back() turns that into the folder the channel was opened from.
+    """
+    return '{}channel?{}'.format(router.BASE_URL, urlencode(
+        {'mode': 'channel', 'url': channel_url, 'title': title or ''}))
+
+
+def _own_folder_path():
+    try:
+        path = xbmc.getInfoLabel('Container.FolderPath') or ''
+    except Exception:
+        return ''
+    return path if path.startswith(router.BASE_URL) else ''
+
+
+def _last_listing_url():
+    """URL of the last listing this add-on built.
+
+    The playlist window and the OSD are not our folders (their container path
+    is playlistvideo://), so the folder to come back to is the one the listing
+    recorded when it was built.
+    """
+    state = store.get_state('list_route') or {}
+    mode = state.get('mode') or ''
+    if not mode:
+        return ''
+    params = dict(state.get('params') or {})
+    try:
+        page = int(state.get('page') or 1)
+    except (TypeError, ValueError):
+        page = 1
+    query = {'mode': mode}
+    query.update(params)
+    if page > 1:
+        query['page'] = page
+    return router.BASE_URL + '?' + urlencode(query)
+
+
+def take_channel_origin():
+    """Folder to put back on screen when Back leaves a channel page."""
+    state = store.get_state('channel_origin') or {}
+    store.set_state('channel_origin', {})
+    url = str(state.get('url') or '')
+    try:
+        age = time.time() - float(state.get('ts') or 0)
+    except (TypeError, ValueError):
+        age = _CHANNEL_ORIGIN_TTL + 1
+    if url.startswith(router.BASE_URL) and age < _CHANNEL_ORIGIN_TTL:
+        return url
+    return router.BASE_URL
+
+
+def open_channel_window(channel_url, title=''):
+    target = channel_target(channel_url, title)
+    folder = _own_folder_path()
+    if folder and xbmc.getCondVisibility('Window.IsActive(videos)'):
+        # Already inside one of our folders, which Kodi has in the history of
+        # this window, so a plain container update keeps Back working.
+        xbmc.executebuiltin('Container.Update({})'.format(target))
+        return
+    # Anywhere else (playlist window, OSD, another add-on) the page has to be
+    # activated with a path, and that rebuilds the history. Remember the folder
+    # so that channel_back() can show it again.
+    store.set_state('channel_origin', {'url': folder or _last_listing_url(),
+                                       'ts': time.time()})
+    xbmc.executebuiltin('ActivateWindow(Videos,{})'.format(target))
+
+
 def _song_menus(entry, vid, in_watch_later=False):
     entry = entry or {}
     menus = []
@@ -231,10 +310,8 @@ def _song_menus(entry, vid, in_watch_later=False):
         channel_url = 'https://www.youtube.com/channel/' + channel_id
         menus.append((
             '[B][COLOR FF00CED1]{}[/COLOR][/B]'.format(config.T(32152)),
-            'ActivateWindow(Videos,{})'.format(
-                router.BASE_URL + '?' + urlencode(
-                    {'mode': 'channel', 'url': channel_url,
-                     'title': entry.get('channel') or ''}))))
+            run_plugin('go_channel', {'channel_url': channel_url,
+                                      'title': entry.get('channel') or ''})))
         known = _menu_is_subscribed(channel_url)
         menus.append((
             '[B][COLOR {}]{}[/COLOR][/B]'.format(

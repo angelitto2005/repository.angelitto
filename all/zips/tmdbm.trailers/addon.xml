@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <addon id="tmdbm.trailers"
-       version="1.0.39"
+       version="1.0.40"
        name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>

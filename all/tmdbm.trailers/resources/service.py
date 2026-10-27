@@ -32,10 +32,22 @@ def notify(message, image='', time_ms=_UP_NEXT_DURATION):
         config.log('notification failed: {}'.format(exc))
 
 
+_LAST_MEDIA = {'total': 0.0}
+
+
 def _remaining_seconds(player):
+    """Seconds left of the clip, or None when there is nothing to ask.
+
+    The player is never queried while nothing plays: Kodi answers with an
+    exception and logs it even when the caller catches it, which is what left
+    "EXCEPTION: Kodi is not playing any media file" in the log at every stop."""
     try:
+        if not player.isPlayingVideo():
+            return None
         total = float(player.getTotalTime())
         elapsed = float(player.getTime())
+        if total > 0:
+            _LAST_MEDIA['total'] = total
         if total > elapsed >= 0:
             return total - elapsed
     except Exception:
@@ -323,25 +335,13 @@ _last_recover = [0.0]
 
 
 def _error_stop(observer=None):
+    """An error dialog is the only reliable sign of a failed open here: the
+    player is already closed at this point, so asking it for the duration would
+    only raise (and Kodi logs that raise even when it is caught)."""
     try:
-        if xbmc.getCondVisibility('Window.IsActive(okdialog)'):
-            return True
+        return bool(xbmc.getCondVisibility('Window.IsActive(okdialog)'))
     except Exception:
-        pass
-    try:
-        if observer is not None and observer.was_playing:
-            try:
-                playing = observer.isPlayingVideo()
-            except Exception:
-                playing = False
-            if not playing:
-                return False
-            total = float(observer.getTotalTime() or 0.0)
-            if total <= 0:
-                return True
-    except Exception:
-        pass
-    return False
+        return False
 
 
 class _Observer(xbmc.Player):
@@ -349,9 +349,12 @@ class _Observer(xbmc.Player):
     def __init__(self):
         xbmc.Player.__init__(self)
         self._advanced_at = 0.0
+        self._ended_at = 0.0
+        self._native_end_at = 0.0
         self.was_playing = False
 
     def onPlayBackEnded(self):
+        self._ended_at = time.time()
         try:
             from music import queue as _q
             if (_q.active() or {}).get('mode') == 'pending':
@@ -361,6 +364,10 @@ class _Observer(xbmc.Player):
         if not queue_active():
             return
         if _native_active():
+            # Kodi's own playlist advances this one, and it restores the list
+            # window while the next item still resolves.
+            self._native_end_at = self._ended_at
+            _keep_player_in_front(_was_in_fullscreen())
             return
         if getattr(self, 'tmdb_owns', False):
             return
@@ -370,22 +377,22 @@ class _Observer(xbmc.Player):
 
     def onPlayBackStopped(self):
         # Kodi fires Stopped right after Ended when nothing is queued in the
-        # Kodi playlist. Clearing here would kill the queue one track early, so
-        # an advance that we just started owns the stop event.
+        # Kodi playlist, so a stop that belongs to a natural end is not a Stop.
+        ended = self._ended_at
+        self._ended_at = 0.0
+        if ended and time.time() - ended < 2:
+            config.log('Stop ignored, the queue continues')
+            return
         try:
             from music import queue
             if not queue.is_active():
                 return
             state = queue.active() or {}
-            try:
-                age = time.time() - float(state.get('started') or 0)
-            except (TypeError, ValueError):
-                age = 1e9
-            if state.get('mode') == 'pending' or age < 10:
+            if state.get('mode') == 'pending':
                 config.log('Stop ignored, queue switching')
                 return
-            if time.time() - self._advanced_at < 20:
-                config.log('Stop ignored, the queue continues')
+            if time.time() - self._advanced_at < 5:
+                config.log('Stop ignored, queue switching')
                 return
             if _error_stop(self) and time.time() - _last_recover[0] > 30:
                 _last_recover[0] = time.time()
@@ -416,6 +423,65 @@ def _repeat_mode():
 _ADVANCE_LOCK = threading.Lock()
 _ADVANCE = {'busy': False}
 _LAST_PLAYMEDIA = [0.0]
+
+
+def _fullscreen_now():
+    try:
+        return bool(xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'))
+    except Exception:
+        return False
+
+
+_FULLSCREEN_SEEN = [0.0]
+
+
+def _was_in_fullscreen():
+    """True when the player is, or was a moment ago, in front.
+
+    The end-of-file callback can arrive a fraction after Kodi restored the
+    list window, so a freshly observed fullscreen counts as well."""
+    if _fullscreen_now():
+        _FULLSCREEN_SEEN[0] = time.time()
+        return True
+    return (time.time() - _FULLSCREEN_SEEN[0]) < 2.0
+
+
+def _keep_player_in_front(was_fullscreen):
+    """Kodi restores the list window while the next track still resolves.
+    Put the player back once that track is really playing, never before."""
+    if not was_fullscreen:
+        return
+    try:
+        thread = threading.Thread(target=_restore_fullscreen)
+        thread.daemon = True
+        thread.start()
+    except Exception as exc:
+        config.log('fullscreen restore skipped: {}'.format(exc))
+
+
+def _restore_fullscreen(timeout=12.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if not xbmc.Player().isPlayingVideo():
+                xbmc.sleep(200)
+                continue
+            if not queue_active():
+                return
+            if 'tmdbm.trailers' not in (xbmc.getInfoLabel(
+                    'Player.Filenameandpath') or ''):
+                return
+            if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
+                return
+            if xbmc.getCondVisibility('System.HasModalDialog'):
+                return
+            xbmc.executebuiltin('ActivateWindow(fullscreenvideo)')
+            config.log('Player brought back in front after the track change',
+                       always=True)
+            return
+        except Exception as exc:
+            config.log('fullscreen restore failed: {}'.format(exc))
+            return
 
 
 def _play_next(observer, why):
@@ -461,11 +527,13 @@ def _play_next(observer, why):
             from urllib.parse import urlencode
             query = lists.entry_params(upcoming)
             query['mode'] = 'queue_play'
+            fullscreen = _was_in_fullscreen()
             xbmc.executebuiltin('PlayMedia(plugin://tmdbm.trailers/?{})'.format(
                 urlencode(query)))
             _LAST_PLAYMEDIA[0] = time.time()
             config.log('Queue advanced to {} ({}{})'.format(
                 upcoming.get('video_id'), why, tag))
+            _keep_player_in_front(fullscreen)
             _maybe_inject_related(upcoming)
             return True
         except Exception as exc:
@@ -498,17 +566,27 @@ def _end_watch_advance(player, observer, remaining):
 
 
 def _watchdog_advance(player, observer, was_playing):
-    """Fallback: the track reached its end but nothing started the next one."""
+    """Fallback: the track reached its end but nothing started the next one.
+
+    Only a natural end counts here - a manual Stop must never start the next
+    track - and not when Kodi's own playlist was the one playing, because it
+    advances by itself and a second play leaves the player behind the list.
+    """
     if _native_active():
+        return
+    ended = observer._ended_at
+    if not ended or time.time() - ended > 15:
+        return
+    if time.time() - observer._native_end_at < 15:
         return
     if not was_playing or not observer.was_playing:
         return
     try:
         if player.isPlayingVideo():
             return
-        total = float(player.getTotalTime() or 0.0)
     except Exception:
         return
+    total = _LAST_MEDIA.get('total') or 0.0
     if total <= 0:
         return
     if time.time() - observer._advanced_at < 2:
@@ -992,6 +1070,212 @@ def _maybe_prefetch_lists():
     thread.start()
 
 
+def _subs_rpc(method, params):
+    import json as _js
+    request = {'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params}
+    try:
+        reply = _js.loads(xbmc.executeJSONRPC(_js.dumps(request)) or '{}')
+    except Exception:
+        return None
+    return reply.get('result')
+
+
+_LANG_ALIASES = (
+    ('ro', 'ron', 'rum', 'romanian'), ('en', 'eng', 'english'),
+    ('fr', 'fre', 'fra', 'french'), ('de', 'ger', 'deu', 'german'),
+    ('es', 'spa', 'spanish'), ('it', 'ita', 'italian'),
+    ('pt', 'por', 'portuguese'), ('ru', 'rus', 'russian'),
+    ('nl', 'dut', 'nld', 'dutch'), ('pl', 'pol', 'polish'),
+    ('tr', 'tur', 'turkish'), ('ar', 'ara', 'arabic'),
+    ('hi', 'hin', 'hindi'), ('ja', 'jpn', 'japanese'),
+    ('ko', 'kor', 'korean'), ('zh', 'chi', 'zho', 'chinese'),
+    ('uk', 'ukr', 'ukrainian'), ('hu', 'hun', 'hungarian'),
+    ('cs', 'cze', 'ces', 'czech'), ('sv', 'swe', 'swedish'),
+    ('da', 'dan', 'danish'), ('fi', 'fin', 'finnish'),
+    ('no', 'nor', 'norwegian'), ('el', 'gre', 'ell', 'greek'),
+    ('he', 'heb', 'hebrew'), ('th', 'tha', 'thai'),
+    ('vi', 'vie', 'vietnamese'), ('id', 'ind', 'indonesian'),
+    ('bg', 'bul', 'bulgarian'), ('hr', 'hrv', 'croatian'),
+    ('sr', 'srp', 'serbian'), ('sk', 'slo', 'slk', 'slovak'),
+)
+
+
+def _lang_group(value):
+    key = str(value or '').strip().lower()
+    for group in _LANG_ALIASES:
+        if key in group:
+            return group
+    return ()
+
+
+def _lang_variants(value):
+    """Aliases of a language code, so 'ro', 'ron', 'rum' and 'Romanian' match.
+
+    xbmc.convertLanguage covers the general case, but it answers nothing for a
+    code it does not know, so the common pairs are also kept here: the streams
+    Kodi reports can carry either form depending on how the manifest names
+    them. A region tag ('pt-BR') falls back to its base language."""
+    raw = str(value or '').strip().lower()
+    if not raw:
+        return set()
+    variants = {raw}
+    variants.update(_lang_group(raw))
+    base = raw.split('-')[0]
+    if base and base != raw:
+        variants.add(base)
+        variants.update(_lang_group(base))
+    for api in (xbmc.ISO_639_1, xbmc.ISO_639_2):
+        try:
+            code = xbmc.convertLanguage(raw, api)
+            if code:
+                variants.add(code.strip().lower())
+        except Exception:
+            pass
+        try:
+            name = xbmc.convertLanguage(raw, xbmc.ENGLISH_NAME)
+            if name:
+                variants.add(name.strip().lower())
+        except Exception:
+            pass
+    return variants
+
+
+def _match_subtitle(subtitles, candidates):
+    for candidate in candidates:
+        wanted = _lang_variants(candidate)
+        if not wanted:
+            continue
+        for entry in subtitles:
+            if _lang_variants(entry.get('language')) & wanted:
+                return entry.get('index')
+    return None
+
+
+_SUBS_STATE = {'key': '', 'until': 0.0, 'start': 0.0, 'off_sent': False,
+               'miss_logged': False}
+_SUBS_WINDOW = 8.0
+_SUBS_HARD_CAP = 30.0
+
+
+def _apply_subtitle_plan():
+    """Kodi picks the visible subtitle from its own Subtitle language setting.
+    Here the add-on's own choice wins for its own clips: off, the spoken
+    language, or the preferred language with a fallback to the spoken one."""
+    import json as _js
+    player = xbmc.Player()
+    if not player.isPlayingVideo():
+        _SUBS_STATE['key'] = ''
+        return
+    path = xbmc.getInfoLabel('Player.FilenameAndPath') or ''
+    # A resolved plugin item is played as its stream URL, not as the plugin
+    # URL: DASH serves special://temp/yt_<id>.mpd through the local proxy and
+    # live serves special://temp/yt_live_<id>.m3u8. The plugin URL only shows
+    # up on some builds, so both forms are accepted and the plan's video id is
+    # checked against the path that is really playing.
+    is_temp = 'special://temp/yt_' in path
+    is_plugin = 'plugin://tmdbm.trailers' in path
+    if not (is_temp or is_plugin):
+        return
+    raw = xbmcgui.Window(10000).getProperty('tmdbm.trailers.subs_plan')
+    if not raw:
+        return
+    try:
+        plan = _js.loads(raw)
+    except Exception:
+        return
+    vid = str(plan.get('video_id') or '')
+    if vid:
+        if is_temp and (vid + '.') not in path:
+            return
+        if not is_temp and ('video_id=' + vid) not in path:
+            return
+    key = path
+    mode = int(plan.get('mode') or 0)
+    if key != _SUBS_STATE['key']:
+        _SUBS_STATE['key'] = key
+        _SUBS_STATE['start'] = time.time()
+        _SUBS_STATE['until'] = _SUBS_STATE['start'] + _SUBS_WINDOW
+        _SUBS_STATE['off_sent'] = False
+        _SUBS_STATE['miss_logged'] = False
+        _SUBS_STATE['active_logged'] = False
+        config.log('Subtitle plan: mode={} preferred={} video={} form={}'.format(
+            mode, plan.get('preferred') or '', vid,
+            'temp' if is_temp else 'plugin'))
+    if time.time() > _SUBS_STATE['until']:
+        return
+    if mode == 0:
+        if not _SUBS_STATE.get('off_sent'):
+            _subs_rpc('Player.SetSubtitle', {'playerid': 1, 'subtitle': 'off'})
+            _SUBS_STATE['off_sent'] = True
+            config.log('Subtitle override: mode=0 -> off')
+        else:
+            info = _subs_rpc('Player.GetProperties',
+                             {'playerid': 1,
+                              'properties': ['subtitleenabled']}) or {}
+            if info.get('subtitleenabled'):
+                _subs_rpc('Player.SetSubtitle',
+                          {'playerid': 1, 'subtitle': 'off'})
+        return
+    props = _subs_rpc('Player.GetProperties',
+                      {'playerid': 1,
+                       'properties': ['subtitles', 'currentsubtitle',
+                                      'subtitleenabled',
+                                      'currentaudiostream']}) or {}
+    subtitles = props.get('subtitles') or []
+    enabled = bool(props.get('subtitleenabled'))
+    current = (props.get('currentsubtitle') or {}).get('index')
+    if not subtitles:
+        # Streams are not reported yet (cold start): keep the window open a
+        # little longer instead of giving up before the first list arrives.
+        # The extension is capped, otherwise a clip that never has a subtitle
+        # track (live channels, clips without captions) would keep polling for
+        # as long as it plays.
+        now = time.time()
+        start = _SUBS_STATE.get('start') or now
+        _SUBS_STATE['until'] = min(max(_SUBS_STATE['until'], now + 1.0),
+                                   start + _SUBS_HARD_CAP)
+        return
+    audio = ((props.get('currentaudiostream') or {}).get('language') or '')
+    langs = [str(item) for item in (plan.get('langs') or []) if item]
+    if mode == 1:
+        candidates = [audio] + langs
+    else:
+        candidates = [plan.get('preferred') or '', audio] + langs
+    index = _match_subtitle(subtitles, candidates)
+    if index is None and len(subtitles) == 1:
+        index = subtitles[0].get('index')
+    if index is None:
+        if not _SUBS_STATE.get('miss_logged'):
+            _SUBS_STATE['miss_logged'] = True
+            config.log('Subtitle override: mode={} found no match (audio={} '
+                       'wanted={} streams={})'.format(
+                           mode, audio, candidates,
+                           [item.get('language') for item in subtitles]),
+                       always=True)
+        return
+    if enabled and current == index:
+        if not _SUBS_STATE.get('active_logged'):
+            _SUBS_STATE['active_logged'] = True
+            config.log('Subtitle override: mode={} stream {} already active'
+                       .format(mode, index))
+        return
+    _subs_rpc('Player.SetSubtitle',
+              {'playerid': 1, 'subtitle': index, 'enable': True})
+    config.log('Subtitle override: mode={} lang={} -> stream {} '
+               '(audio={} streams={})'.format(
+                   mode, candidates[0] if candidates else '', index, audio,
+                   [item.get('language') for item in subtitles]),
+               always=True)
+
+
+def _subs_watch_loop(monitor):
+    while not monitor.waitForAbort(_POLL_SECONDS):
+        try:
+            _apply_subtitle_plan()
+        except Exception as exc:
+            config.log('subtitle override failed: {}'.format(exc))
+
+
 def run():
     monitor = _LocaleMonitor()
     player = xbmc.Player()
@@ -1008,6 +1292,11 @@ def run():
     _publish_locale(_locale_key())
     _publish_settings()
     _start_shared_proxy()
+    try:
+        threading.Thread(target=_subs_watch_loop, args=(monitor,),
+                         daemon=True).start()
+    except Exception as exc:
+        config.log('subtitle watcher start failed: {}'.format(exc))
     updated = None
     try:
         import maintenance
@@ -1094,6 +1383,8 @@ def run():
                 observer.was_playing = bool(player.isPlayingVideo())
             except Exception:
                 observer.was_playing = False
+            if observer.was_playing:
+                _was_in_fullscreen()
             if remaining is not None and 0 < remaining <= _UP_NEXT_SECONDS * 2:
                 wait = _POLL_SECONDS_NEAR_END
         except Exception as exc:

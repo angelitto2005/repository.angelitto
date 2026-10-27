@@ -91,7 +91,11 @@ def main():
              tagline=tagline, lang=lang)
         return
 
-    mode = params.pop('mode', None) or 'root'
+    mode = params.pop('mode', None)
+    if not mode:
+        # Kodi reaches /channel without the query when Back walks out of a
+        # channel page: that is the folder the channel was opened from.
+        mode = 'channel_back' if route == '/channel' else 'root'
     _log('route {} handle {} query {!r}'.format(mode, handle, query[:120]),
          xbmc.LOGINFO)
     router.dispatch(handle, mode, params)

@@ -968,6 +968,7 @@ def _extract_innertube_ios(video_id):
         'is_live': bool(vd.get('isLive') or
                         (vd.get('isLiveContent') and not vd.get('isPostLiveDvr'))),
         'captions': _collect_captions(body),
+        'caption_tracks': _raw_caption_tracks(body),
     }
 
 
@@ -1132,6 +1133,7 @@ def _extract_innertube_tv_auth(video_id):
         'is_live': bool(vd.get('isLive') or
                         (vd.get('isLiveContent') and not vd.get('isPostLiveDvr'))),
         'captions': _collect_captions(body),
+        'caption_tracks': _raw_caption_tracks(body),
         'authenticated': True,
     }
 
@@ -1306,7 +1308,31 @@ def _probe_subtitle_track(url):
     return ok
 
 
-def _collect_captions(body):
+def _raw_caption_tracks(body):
+    """Normalize raw captionTracks; the extract cache keeps them so a
+    Subtitles mode change re-selects at playback without a new extract."""
+    try:
+        renderer = ((body.get('captions') or {})
+                    .get('playerCaptionsTracklistRenderer') or {})
+        tracks = renderer.get('captionTracks') or []
+    except AttributeError:
+        return []
+    raw = []
+    for track in tracks:
+        if not isinstance(track, dict) or not track.get('baseUrl'):
+            continue
+        raw.append({
+            'baseUrl': track.get('baseUrl'),
+            'languageCode': track.get('languageCode') or '',
+            'label': _subtitle_label(track),
+            'kind': track.get('kind') or '',
+            'audioTrackType': track.get('audioTrackType') or '',
+            'isTranslatable': bool(track.get('isTranslatable')),
+        })
+    return raw
+
+
+def _captions_for_mode(raw_tracks):
     """Pick the subtitle tracks to expose, following the Subtitles setting.
 
     Mirrors plugin.video.youtube: fmt=vtt is requested so Kodi receives plain
@@ -1316,12 +1342,8 @@ def _collect_captions(body):
     mode = _subtitle_mode()
     if mode == SUBTITLE_OFF:
         return []
-    try:
-        renderer = ((body.get('captions') or {})
-                    .get('playerCaptionsTracklistRenderer') or {})
-        tracks = renderer.get('captionTracks') or []
-    except AttributeError:
-        return []
+    tracks = [t for t in (raw_tracks or [])
+              if isinstance(t, dict) and t.get('baseUrl')]
     if not tracks:
         return []
     preferred = _preferred_subtitle_lang()
@@ -1336,7 +1358,7 @@ def _collect_captions(body):
             label = '{} (auto)'.format(translate_to)
             lang = translate_to
         else:
-            label = _subtitle_label(track)
+            label = track.get('label') or lang
         # An automatic track only needs the marker when it is not already the
         # translated one and YouTube did not name it "(auto-generated)" itself
         # - otherwise the label read "ro (auto) (auto)".
@@ -1392,6 +1414,47 @@ def _collect_captions(body):
             if len(picked) >= 4:
                 break
     return picked
+
+
+def _collect_captions(body):
+    return _captions_for_mode(_raw_caption_tracks(body))
+
+
+def _playback_captions(data):
+    """Re-select subtitles from the cached raw tracks; legacy extracts keep
+    their frozen list until the extract cache TTL expires."""
+    raw = (data or {}).get('caption_tracks')
+    if raw is None:
+        if _subtitle_mode() == SUBTITLE_OFF:
+            return []
+        return (data or {}).get('captions') or []
+    return _captions_for_mode(raw)
+
+
+SUBS_PLAN_PROP = 'tmdbm.trailers.subs_plan'
+
+
+def _publish_subtitle_plan(video_id, captions):
+    """Hand the desired subtitle choice to the service.
+
+    Kodi picks the visible subtitle from its own "Subtitle language" setting,
+    which is why an English track of an English clip stays disabled when that
+    setting is Romanian. The service overrides Kodi for this add-on only: it
+    matches the plan against the streams Kodi really reports and switches the
+    stream itself.
+    """
+    plan = {'video_id': video_id or '', 'mode': _subtitle_mode(),
+            'preferred': _preferred_subtitle_lang(), 'langs': [],
+            'labels': []}
+    for track in captions or []:
+        lang = str(track.get('lang') or '').lower()
+        if lang and lang not in plan['langs']:
+            plan['langs'].append(lang)
+        plan['labels'].append(track.get('label') or '')
+    try:
+        xbmcgui.Window(10000).setProperty(SUBS_PLAN_PROP, json.dumps(plan))
+    except Exception as exc:
+        _log('subtitle plan failed: {}'.format(str(exc)[:90]), xbmc.LOGWARNING)
 
 
 def _is_permanent_error(msg):
@@ -2209,7 +2272,7 @@ def _build_mpd(data, proxy_base='', video_id=''):
     if not written_sets:
         return None, {}
 
-    captions = (data or {}).get('captions') or []
+    captions = _playback_captions(data)
     for index, track in enumerate(captions):
         url = fix_url(proxy_base + track['url'])
         flag = 'yes' if track.get('default') else 'no'
@@ -2904,6 +2967,9 @@ def play_youtube(video_id, title=None, genre=None, year=None,
     # that predate the is_live field.
     _is_live_stream = _detect_live_stream(data)
 
+    _subs = [] if _is_live_stream else _playback_captions(data)
+    _publish_subtitle_plan(video_id, _subs)
+
     port = None
     if data and (data.get('formats') or _is_live_stream):
         # Proxy is needed for DASH (non-live) and to serve the filtered HLS
@@ -2931,7 +2997,7 @@ def play_youtube(video_id, title=None, genre=None, year=None,
         if hdr:
             li.setProperty('inputstream.adaptive.stream_headers', hdr)
         li.setProperty(IA_PROP, 'inputstream.adaptive')
-        _set_progressive_subtitles(li, (data or {}).get('captions') or [], port)
+        _set_progressive_subtitles(li, _playback_captions(data), port)
         return li
 
     if mpd:
