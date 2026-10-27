@@ -5537,7 +5537,7 @@ def _season_404_mark(tmdb_id, season_num):
         pass
 
 
-def get_smart_season_details(tmdb_id, season_num):
+def get_smart_season_details(tmdb_id, season_num, db_only=False):
     from resources.lib.providers import trakt_sync
     from resources.lib.core.cache import ram_cache_get_season, ram_cache_set_season
     from resources.lib.core.config import ADDON, SESSION, get_headers, BASE_URL, API_KEY, get_plot_language_code, get_plot_img_lang, LANG_TO_TMDB
@@ -5573,6 +5573,12 @@ def get_smart_season_details(tmdb_id, season_num):
             return data
             
     if _season_404_seen(tmdb_id, season_num):
+        return None
+
+    if db_only:
+        # Idem: fara retea in bucla de randare. Sezonul lipsa din RAM/SQLite
+        # lasa randul fara durata/rating/still pina la urmatoarea randare, dar
+        # NU mai tine lista in asteptare (warm-up-ul il aduce in cache intre timp).
         return None
 
     url_en = f"{BASE_URL}/tv/{tmdb_id}/season/{season_num}?api_key={API_KEY}&language=en-US"
@@ -7232,8 +7238,9 @@ def _extract_mpaa(data, content_type):
         pass
 
 
-def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localization=False, force=False):
-    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista). skip_localization=True sare al 2-lea GET RO. force=True sare citirea din cache-uri (doar API + write-through)."""
+def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localization=False, force=False,
+                          db_only=False):
+    """Fetch detalii TMDB. lightweight=True omite credits/videos (lista). skip_localization=True sare al 2-lea GET RO. force=True sare citirea din cache-uri (doar API + write-through). db_only=True se opreste dupa cache-uri (RAM + SQLite), fara nicio cerere TMDb."""
     endpoint = 'movie' if content_type == 'movie' else 'tv'
     str_id = str(tmdb_id)
 
@@ -7267,7 +7274,17 @@ def get_tmdb_item_details(tmdb_id, content_type, lightweight=False, skip_localiz
                     ram_pool_set(str_id, data)
                     ram_cache_set_tvshow(str_id, data)
                     return _ensure_clearlogo(data)
-    
+
+    if db_only:
+        # Bucla de randare a listei NU are voie sa iasa in retea. Pe o cutie
+        # lenta, un singur serial necache-uit transforma build-ul de ~1.5s in
+        # 10-14s (cazul din logul de pe Android: `randuri=14012`), iar un build
+        # intins peste fereastra de refresh a generat cursele de la stop.
+        # Randul se construieste din ce avem; cache-urile se umplu deja in
+        # fundal (warm-up-ul cu 10 threaduri + pasul de la 85%), iar ele
+        # supravietuiesc marcarii, deci urmatoarea randare le are.
+        return None
+
     append = "external_ids,images,content_ratings,release_dates" if lightweight else "credits,videos,external_ids,images,content_ratings,release_dates"
     url_en = f"{BASE_URL}/{endpoint}/{tmdb_id}?api_key={API_KEY}&language=en-US&append_to_response={append}&include_image_language=en,null,xx"
     
@@ -7943,7 +7960,7 @@ def in_progress_tvshows(params):
                     _ip_when = calendar_localized_label(1, _ip_d.isoformat())
                 else:
                     _ip_when = _fmt_dmy(_ip_ad)
-                # Data se afiseaza mereu; ora doar cind o stim. In cache rămâne
+                # Data se afiseaza mereu; ora doar cind o stim. In cache ramane
                 # tokenul, deci ora se completeaza la randare (live + fast cache)
                 # fara sa fie nevoie de re-prefetch sau de re-salvare a listei.
                 if _ip_diff == 0 and _ip_name:
@@ -8350,13 +8367,26 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
     use_mdblist = not use_tmdb and _get_prov() == 'mdblist'
     use_simkl = not use_tmdb and _get_prov() == 'simkl'
     use_punchplay = not use_tmdb and _get_prov() == 'punchplay'
-    try:
-        # threadul de avansare (la stop) nu poate citi Container.FolderPath (in timpul
-        # redarii e gol), deci-i lasam amintirea ultimei liste randate
-        from resources.lib.core.list_render import remember_upnext_view
-        remember_upnext_view('tmdb' if use_tmdb else 'provider')
-    except Exception:
-        pass
+    # Amintirea "ce lista Up Next e pe ecran" se scrie DOAR la o randare reala.
+    #
+    # threadul de avansare (la stop) nu poate citi Container.FolderPath (in
+    # timpul redarii e gol), deci are nevoie de amintirea ultimei liste randate.
+    #
+    # Dar build-urile de FUNDAL (cache_only / warm_only: pre-randarea de la stop,
+    # incalzirea de la 85%, ciclurile de dupa sync) nu randeaza nimic pe ecran si
+    # totusi rescriau amintirea cu varianta pe care o construiau ELE - iar
+    # ultimul build din ciclu e mereu "cealalta" varianta. Efectul, masurat pe
+    # log (19:34, mansh/MDBList): userul era in ?mode=mdblist_upnext (varianta
+    # provider), iar amintirea zicea "tmdb" pentru ca warm-up-ul de la 85%
+    # construise tmdb. Safety pass-ul din player a validat atunci stampul listei
+    # tmdb, a re-randat prea devreme si a servit cache-ul VECHI al listei
+    # vizibile, iar re-randarea care ar fi reparat-o a fost suprimate.
+    if not cache_only and not warm_only:
+        try:
+            from resources.lib.core.list_render import remember_upnext_view
+            remember_upnext_view('tmdb' if use_tmdb else 'provider')
+        except Exception:
+            pass
     show_color = 'FF00CED1' if use_tmdb else provider_color('local' if use_local else ('mdblist' if use_mdblist else ('simkl' if use_simkl else ('punchplay' if use_punchplay else 'trakt'))))
     # Momentul CITIRII randurilor din DB. Stampul de "build terminat" scris la
     # final trebuie sa fie acesta, nu momentul scrierii: un build pornit inainte
@@ -8645,10 +8675,17 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             get_smart_season_details(str(it['tmdb_id']), it['season'])
         except:
             pass
+    # Bugetul de asteptare al warm-up-ului. 10s la `warm_only` (pasul de la 85%,
+    # in timpul redarii: nimeni nu asteapta lista acum, umplem cache-urile cit
+    # incap pentru randarea de dupa stop). 3s cind lista se construieste ACUM,
+    # pentru user sau pentru pre-randarea de la marcaj: dincolo de buget nu mai
+    # asteptam - cele 10 threaduri rup oricum in fundal si umplu cache-urile
+    # (supravietuiesc marcarii), iar bucla de mai jos nu mai iese in retea.
+    _warm_budget = 10.0 if warm_only else 3.0
     _warm_ex = ThreadPoolExecutor(max_workers=10)
     try:
         _warm_futs = [_warm_ex.submit(_warm_up_next_worker, it) for it in items]
-        for _f in as_completed(_warm_futs, timeout=10):
+        for _f in as_completed(_warm_futs, timeout=_warm_budget):
             pass
     except:
         pass
@@ -8811,7 +8848,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         _t_ph = time.time()
         
         # 1. Extragem datele complete si garantat RO/EN (Aici se intampla magia Clearlogo!)
-        show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True)
+        show_details = get_tmdb_item_details(tmdb_id, 'tv', lightweight=True, db_only=True)
         if not show_watched_info.get('total') and show_details and show_details.get('number_of_episodes'):
             try:
                 _healed_total = int(show_details['number_of_episodes'])
@@ -8854,7 +8891,16 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
                 if season_data.get('_cached_lang') != _plot_lang:
                     season_data = None
         if not season_data:
-            season_data = get_smart_season_details(tmdb_id, it['season'])
+            season_data = get_smart_season_details(tmdb_id, it['season'], db_only=True)
+        if not season_data and not it.get('overview'):
+            # Sezonul lipseste din cache, iar randul nu are overview de la provider:
+            # citim plotul de rezerva din baza locala AICI, pentru ca fallback-ul de
+            # mai jos sta sub `if season_data:` si nu s-ar mai executa (randul ar
+            # ramine fara descriere pina la urmatoarea randare). Doar SQLite, fara retea.
+            try:
+                ep_plot = trakt_sync.get_tmdb_next_overview(tmdb_id, it['season'], it['episode']) or ep_plot
+            except:
+                pass
         ep_type = ''
         if season_data:
             total_eps_in_season = len(season_data.get('episodes',[]))
@@ -9056,7 +9102,7 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
             label += f" [COLOR orange] ({unwatched_count})[/COLOR]"
         # --------------------------------------------------
 
-        # Randarea LIVE primeste ora reala; in cache rămâne tokenul (air_key).
+        # Randarea LIVE primeste ora reala; in cache ramane tokenul (air_key).
         label_live = apply_air_time(label, _at)
         air_key = (str(tmdb_id), int(it['season']), int(it['episode'])) if AIR_TIME_TOKEN in label else None
         _ph['eticheta'] = _ph.get('eticheta', 0.0) + (time.time() - _t_ph) * 1000.0
@@ -9185,6 +9231,22 @@ def get_next_episodes(params=None, cache_only=False, warm_only=False):
         # deci putea stinge `upnext_stale_since` cu cache-ul inca vechi.
         try:
             mark_upnext_cache_built('tmdb' if use_tmdb else 'provider', _t_rows)
+        except Exception:
+            pass
+        # CANARY (doar log, zero schimbare de comportament): randul Up Next al
+        # providerului e scris de un daemon care porneste la marcaj. Daca el a
+        # rescris randul DUPA ce build-ul asta a citit din DB, cache-ul de fata
+        # e vechi, desi stampul de build e nou (la 19:34, mansh/MDBList, ambele
+        # asteptari min_ts au atins plafonul de 3.0s - semn ca randul nu fusese
+        # inca commit-uit). Daca linia apare pe device, urmatorul pas e o singura
+        # re-citire, nu suprimarea stampului (vezi AGENTS.md 209).
+        try:
+            from resources.lib.providers.watched_provider import _upnext_row_updated_stamp as _row_stamp
+            _rs = _row_stamp()
+            if _rs and _rs > _t_rows:
+                log(f"[UP NEXT] ATENTIE: randurile citite la {_t_rows:.2f} sint mai vechi "
+                    f"decit ultima rescriere a unui rand Up Next ({_rs:.2f}) - cache "
+                    f"posibil vechi (varianta {'tmdb' if use_tmdb else 'provider'})")
         except Exception:
             pass
         if cache_only:

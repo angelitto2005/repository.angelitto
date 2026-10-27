@@ -305,6 +305,33 @@ def upnext_cache_built_at(variant=''):
         return 0.0
 
 
+def upnext_built_for(variant):
+    """Stampul de build relevant pentru lista Up Next de pe ecran.
+
+    Varianta cunoscuta: STRICT stampul ei. Un build al celeilalte liste nu face
+    lista vizibila proaspata, iar acceptarea lui duce la re-randare pe cache
+    vechi (log 19:34, mansh: pass-ul a validat stampul listei tmdb in timp ce pe
+    ecran era lista provider).
+
+    Varianta necunoscuta: stampul generic, deliberat. Daca nu se poate rezolva
+    din calea de la stop, nici din cea live (list_render.upnext_variant_from_path)
+    si nici din amintirea ultimei randari reale, atunci containerul nu e un
+    folder Up Next (orice randare reala a unei liste Up Next scrie amintirea),
+    deci nu exista cache Up Next de aparat.
+
+    De ce NU cerem ambele stampuri cand varianta e necunoscuta: cine are lista
+    TMDb dezactivata din setari (tmdb_upnext_enabled=false) nu o construieste
+    niciodata, deci stampul ei ramine 0 pentru totdeauna - conditia nu s-ar
+    implini, safety pass-ul ar expira si lista nu s-ar mai reimprospata deloc.
+    """
+    try:
+        if variant in ('tmdb', 'provider'):
+            return upnext_cache_built_at(variant)
+        return upnext_cache_built_at('')
+    except Exception:
+        return 0.0
+
+
 def _playback_active():
     """True cat timp ruleaza un episod.
 
@@ -352,7 +379,7 @@ def clear_list_fast_cache(force=False, stale_ok=False):
     clear_all_fast_cache() bumpa si versiunea de metadate -> dupa FIECARE episod
     vazut, listele se re-construiau cu toate cererile TMDb de la zero (secunde
     bune de spinner la revenirea in Up Next). Aici listele se re-build din DB,
-    iar metadatele rămân instant din cache.
+    iar metadatele raman instant din cache.
 
     FEREASTA STALE-WHILE-REVALIDATE: dupa un marcaj, lista se pastreaza intentionat
     ca "veche" (max UP_NEXT_STALE_MAX_S), ca sa nu ramana containerul negru cu

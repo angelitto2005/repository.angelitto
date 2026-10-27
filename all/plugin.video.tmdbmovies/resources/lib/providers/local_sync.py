@@ -362,7 +362,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         except:
             pass
 
-    # Doar listele (metadatele serialelor rămân valide dupa un mark watched).
+    # Doar listele (metadatele serialelor raman valide dupa un mark watched).
     try:
         from resources.lib.core.cache import clear_list_fast_cache
         clear_list_fast_cache()

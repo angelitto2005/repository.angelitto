@@ -209,7 +209,7 @@ def _pp_enqueue(label, fn, coalesce_key=None):
                 _PP_WORKER_QUEUE[:] = [j for j in _PP_WORKER_QUEUE if j[0] != coalesce_key]
             _PP_WORKER_QUEUE.append((coalesce_key or label, fn))
             # Daca workerul tocmai a expirat cu coada goala, il repornim ca
-            # jobul asta sa nu rămîna in coada.
+            # jobul asta sa nu ramina in coada.
             needs_worker = not _PP_WORKER_STARTED
     except Exception:
         try:

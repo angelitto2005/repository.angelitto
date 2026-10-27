@@ -302,7 +302,7 @@ _AIR_TIME_BUDGET = 2.0                 # buget maxim (secunde) pentru reteaua di
 # Tokenul care tine locul orei de difuzare in label-urile salvate in fast cache.
 # Lista se salveaza MEREU in fast cache (deschiderile urmatoare ramin instant), iar
 # ora reala e pusa la randare (live si din cache) din cache-ul sqlite. Asa o lista
-# nu mai rămâne "degradata" fara ore dupa ce cache-ul de ore se umple (Sweetpea),
+# nu mai ramane "degradata" fara ore dupa ce cache-ul de ore se umple (Sweetpea),
 # fara sa fie nevoie de re-prefetch la fiecare deschidere.
 AIR_TIME_TOKEN = '[[AT]]'
 
@@ -1066,11 +1066,11 @@ def sort_calendar_items(items_to_add, today_top=True, sort_asc=True):
         return list(items_to_add or [])
 
 def format_calendar_date(raw_date, today=None):
-    """Helper comun de dată pentru calendare (Trakt / MDBList / etc.):
-    returnează (label_localizat, culoare, diff_zile).
+    """Helper comun de data pentru calendare (Trakt / MDBList / etc.):
+    returneaza (label_localizat, culoare, diff_zile).
     - diff <= -1 (trecut): verde FF00FA9A, 0 (azi): alb, viitor: galben;
-    - label prin config.calendar_localized_label (RO/EN + format dată);
-    - raw_date gol -> ('', 'white', 999); data invalidă -> data brută, alb, 999."""
+    - label prin config.calendar_localized_label (RO/EN + format data);
+    - raw_date gol -> ('', 'white', 999); data invalida -> data bruta, alb, 999."""
     try:
         import datetime as _dt
         from resources.lib.core.config import calendar_localized_label as _cal_label

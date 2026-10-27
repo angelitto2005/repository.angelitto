@@ -514,6 +514,38 @@ def next_episodes_cache_key(params=None, use_tmdb=None, use_mdblist=None,
         prov, str(show_future), unstarted, NEXT_EPISODES_LABEL_VERSION, air_time_on)
 
 
+_UPNEXT_TMDB_TOKEN = 'tmdb_up_next'
+# Lista providerului are TREI moduri de folder (nu doar 'next_episodes'):
+# mdblist_upnext / simkl_upnext / punchplay_upnext vin ca 'action=' din meniurile
+# providerilor, iar 'next_episodes' ca 'mode=' din meniul principal.
+_UPNEXT_PROVIDER_TOKENS = ('next_episodes', 'mdblist_upnext', 'simkl_upnext', 'punchplay_upnext')
+
+
+def upnext_variant_from_path(path):
+    """Varianta Up Next ('tmdb'/'provider'/'') dedusa din calea containerului.
+
+    Sursa UNICA a tokenilor de folder, ca player-ul si pre-randarea sa foloseasca
+    aceeasi definitie. Recunoasterea doar a 'mode=tmdb_up_next'/'mode=next_episodes'
+    (cum era in safety pass-ul din player) insemna ca intr-un folder de provider
+    de tip *_upnext varianta cadea pe amintirea din window property - iar aceea
+    putea fi rescrisa de un build de fundal. Rezultatul, pe log (19:34, mansh,
+    provider MDBList): refresh prea devreme, pe cache-ul VECHI al listei vizibile.
+    """
+    try:
+        _p = (path or '')
+        if not _p:
+            return ''
+        _pl = _p.lower()
+    except Exception:
+        return ''
+    if _UPNEXT_TMDB_TOKEN in _pl:
+        return 'tmdb'
+    for _tok in _UPNEXT_PROVIDER_TOKENS:
+        if _tok in _pl:
+            return 'provider'
+    return ''
+
+
 def remember_upnext_view(variant):
     """Memoram ce lista Up Next era vizibila ('provider' sau 'tmdb').
 

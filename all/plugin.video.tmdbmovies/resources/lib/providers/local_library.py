@@ -4,12 +4,12 @@ Kodi (Local) library bridge — ponta intre local_sync.db si biblioteca Kodi (My
 
 - set_playcount(tmdb_id, ...): write-through instant la mark/unwatch din addon
   (aceeasi tehnica direct-SQL ca _sync_watched_direct_sql din library.py — zero
-  anunțuri JSON-RPC, zero flicker).
+  anunturi JSON-RPC, zero flicker).
 - import_kodi_watchstate(): reverse-import la Library Sync (playcount Kodi ->
   local_watched_*), polita: itemii din biblioteca cistiga, itemii ne-biblioteca
   pastrati (marcajele pe itemi non-biblioteca nu se pierd).
 
-Itemii fara uniqueid type='tmdb' in biblioteca nu pot fi mapati -> sunt ignorați
+Itemii fara uniqueid type='tmdb' in biblioteca nu pot fi mapati -> sunt ignorati
 (silencios): functiile sunt no-op pentru ei.
 """
 
@@ -18,7 +18,7 @@ import xbmc
 import xbmcvfs
 
 # Timeout mic: Kodi poate tine lock pe MyVideos la write nativ; la conflict
-# aceasta functie esueaza silențios (batch-ul din Library Sync reconciliaza).
+# aceasta functie esueaza silentios (batch-ul din Library Sync reconciliaza).
 _MV_TIMEOUT = 3
 
 
@@ -64,7 +64,7 @@ def set_playcount(tmdb_id, content_type='movie', season=None, episode=None, coun
       numara valorile non-NULL — un 0 explicit ar ramane "vizionat" pentru
       widget-ul nativ In Progress (7/47 in loc de 1/47). lastPlayed=NULL din
       acelasi motiv (widget-ul numara si episoadele cu lastPlayed setat).
-    - no-op silențios pentru itemii care nu sunt in biblioteca.
+    - no-op silentios pentru itemii care nu sunt in biblioteca.
     """
     try:
         conn = _myvideos_connection()

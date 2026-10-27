@@ -1215,7 +1215,7 @@ def sync_tmdb_phase(c, force=False, silent=True, progress_cb=None):
     piciorului Trakt si sync-urilor MDBList (in loc de cod duplicat).
 
     Intoarce True doar daca TOATE sectiunile au fost descarcate complet
-    (anti-141). Pe eșec de retea, randurile vechi raman in DB (buffer-and-swap:
+    (anti-141). Pe esec de retea, randurile vechi raman in DB (buffer-and-swap:
     DELETE doar inainte de INSERT-ul cu datele noi complete, niciodata inainte
     de fetch) — callerul NU trebuie sa scrie tmdb_sync_ts pe False.
     """
@@ -3567,7 +3567,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
         except: pass
     # --- END KODI LIBRARY HACK ---
     
-    # Doar listele: metadatele serialelor rămân valide dupa un mark watched.
+    # Doar listele: metadatele serialelor raman valide dupa un mark watched.
     from resources.lib.core.cache import clear_list_fast_cache
     clear_list_fast_cache()
     
@@ -3660,7 +3660,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
     except: pass
     # --- END KODI LIBRARY HACK ---
 
-    # Doar listele: metadatele serialelor rămân valide dupa un mark unwatched.
+    # Doar listele: metadatele serialelor raman valide dupa un mark unwatched.
     from resources.lib.core.cache import clear_list_fast_cache
     clear_list_fast_cache()
 
@@ -3838,7 +3838,7 @@ def refresh_next_episode(tmdb_id, ignore_hidden=False):
 
         # Randul "TMDb UP NEXT" (pool) trebuie sa urmeze randul providerului.
         # Marcarile din lista de sezoane apeleaza DOAR refresh-ul providerului
-        # (vezi trakt_api: acțiunile de meniu pornesc doar refresh_next_episode),
+        # (vezi trakt_api: actiunile de meniu pornesc doar refresh_next_episode),
         # deci fara asta cele doua liste raman cu episoade diferite.
         try:
             import threading as _th_tmdb

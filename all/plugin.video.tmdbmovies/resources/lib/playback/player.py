@@ -2474,11 +2474,26 @@ def start_playback_monitor(player_instance, dialog=None):
             xbmcgui.Window(10000).setProperty('tmdbmovies.binge_open', str(time.time()))
         except:
             pass
+        # Ce a schimbat stopul asta, pentru safety pass-ul de mai jos:
+        #   'none'    = nimic (lista arata identic -> refresh-ul ar fi gratuit)
+        #   'resume'  = punct de resume scris sau sters local
+        #   'watched' = marcaj (are oricum fereastra stale proprie)
+        # Pe 'resume' refreshul TREBUIE sa ramina: cercul de resume se citeste
+        # din baza la randare (_patch_resume_flags), deci fara re-randare ar
+        # lipsi pina la urmatoarea intrare in lista.
+        try:
+            xbmcgui.Window(10000).setProperty('tmdbmovies.stop_change', 'none')
+        except Exception:
+            pass
         try:
             from resources.lib.providers import trakt_sync
 
             if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
+                try:
+                    xbmcgui.Window(10000).setProperty('tmdbmovies.stop_change', 'watched')
+                except Exception:
+                    pass
                 dispatch_mark_watched(
                     player_instance.tmdb_id, player_instance.content_type,
                     player_instance.season, player_instance.episode,
@@ -2491,12 +2506,6 @@ def start_playback_monitor(player_instance, dialog=None):
                 # randeaza in ~250ms in loc sa reconstruiasca tot (~1500ms).
                 # Daemon + coalescing intern: nu blocheaza monitorul si nu se
                 # declanseaza de mai multe ori la acelasi stop.
-                def _prebuild_upnext_after_stop(_min_ts):
-                    try:
-                        from resources.lib.providers.watched_provider import _prebuild_upnext_cache
-                        _prebuild_upnext_cache('', _min_ts)
-                    except Exception:
-                        pass
                 # -0.05s: daca daemonul a scris deja randul chiar inainte de
                 # acest time.time(), stampul lui e "mai vechi" cu microsecunde
                 # si am astepta 3s degeaba.
@@ -2518,7 +2527,12 @@ def start_playback_monitor(player_instance, dialog=None):
                 def _prebuild_upnext_after_stop(_min_ts):
                     try:
                         from resources.lib.providers.watched_provider import _prebuild_upnext_cache
-                        _prebuild_upnext_cache('', _min_ts)
+                        # allow_pending=False: marcajul a pornit deja ciclul care
+                        # construieste AMBELE variante (cu min_ts = momentul
+                        # marcajului). Daca ne bagam si noi peste el, nu facem
+                        # decit o tura in plus pe aceeasi varianta (log 23:34:
+                        # tmdb construit de doua ori la acelasi stop).
+                        _prebuild_upnext_cache('', _min_ts, allow_pending=False)
                     except Exception:
                         pass
                     finally:
@@ -2550,6 +2564,10 @@ def start_playback_monitor(player_instance, dialog=None):
                 # Adaugam 1.000.000 la secunde pentru a le diferentia de procente
                 exact_seconds_value = last_known_position + 1000000
 
+                try:
+                    xbmcgui.Window(10000).setProperty('tmdbmovies.stop_change', 'resume')
+                except Exception:
+                    pass
                 trakt_sync.update_local_playback_progress(
                     player_instance.tmdb_id, player_instance.content_type, 
                     player_instance.season, player_instance.episode, 
@@ -2593,6 +2611,14 @@ def start_playback_monitor(player_instance, dialog=None):
                         _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 0), kwargs={'watched': False}, daemon=True)
                         _stop_net_thread.start()
                         stop_net_threads.append(_stop_net_thread)
+                        if row:
+                            # Stergem un resume existent -> cercul dispare, deci
+                            # lista trebuie re-randata (chiar daca nu s-a marcat
+                            # nimic ca vazut).
+                            try:
+                                xbmcgui.Window(10000).setProperty('tmdbmovies.stop_change', 'resume')
+                            except Exception:
+                                pass
                         conn.execute("DELETE FROM playback_progress WHERE tmdb_id=? AND season=? AND episode=?", 
                                      (str(player_instance.tmdb_id), player_instance.season or 0, player_instance.episode or 0))
                         if player_instance.content_type == 'movie':
@@ -2843,50 +2869,117 @@ def start_playback_monitor(player_instance, dialog=None):
                     # intentionat pe cel vechi).
                     try:
                         from resources.lib.core.cache import upnext_stale_since as _read_stale, \
-                            upnext_cache_built_at as _built_at
+                            upnext_built_for as _built_for
                     except Exception:
                         _read_stale = None
-                        _built_at = None
+                        _built_for = None
                     try:
                         _stale_target = _read_stale() if _read_stale else 0.0
                     except Exception:
                         _stale_target = 0.0
 
-                    def _visible_variant():
-                        """Varianta Up Next de pe ecran ('tmdb'/'provider'/'').
+                    # Toleranta de comparatie (0.5s). Stampurile lantului de
+                    # marcaj se scriu la zeci de ms unul de altul, dar in ordine
+                    # inversa fata de cum ar arata "fresc":
+                    #   - `upnext_stale_since` (fereastra stale) se scrie in
+                    #     _invalidate_fast_cache INAINTE de rescrierea rindului;
+                    #   - build-ul isi scrie stampul (`_t_rows` = momentul CITIRII
+                    #     randurilor) la intrarea in get_next_episodes, DUPA ea.
+                    # Comparatia stricta `stamp >= tinta` cadea la diferente de
+                    # 2-100ms: in logul 23:54-23:55, la doua stopuri build-ul
+                    # variantelor era deja proaspat in cache, dar pass-ul a
+                    # asteptat 25s degeaba si a iesit cu "varianta vizibila inca
+                    # nescrisa" -> ZERO re-randare, adica exact bugul raportat,
+                    # pe alta usa. Toleranta acopera jitterul de thread, dar e
+                    # mult sub diferenta fata de un build VECHI: cel oportunist
+                    # din player porneste cu 2.7-4.2s inainte de marcaj, iar
+                    # build-ul de dinaintea stopului e cu secunde sau minute mai
+                    # vechi (masurat pe logurile 23:11, 23:33, 23:53).
+                    _stale_ok = max(0.0, _stale_target - 0.5) if _stale_target > 0 else 0.0
 
-                        NU se deduce din calea de la stop: in redare
-                        Container.FolderPath e gol. Pass-ul ruleaza dupa ce
-                        fereastra media s-a inchis, deci calea e din nou
-                        valida - cu fallback pe ultima varianta randata.
+                    def _visible_variant():
+                        """Varianta Up Next de pe ecran: (varianta, sursa).
+
+                        Ordinea surselor: calea CAPTURATA la stop (cea mai buna
+                        dovada - a fost citita dupa ce fereastra media s-a
+                        inchis, deci e exact lista in care userul se intoarce),
+                        calea LIVE (poate lipsi cit Kodi re-initializeaza
+                        containerul), amintirea ultimei randari reale.
+
+                        Tokenii de folder vin din list_render
+                        (upnext_variant_from_path): acolo sint toate modurile,
+                        inclusiv mdblist_upnext / simkl_upnext / punchplay_upnext,
+                        pe care vechea verificare (doar 'mode=tmdb_up_next' si
+                        'mode=next_episodes') nu le stia. De aici a pornit
+                        bugul de la 19:34: varianta cadea pe amintire (otravita de
+                        un build de fundal) si pass-ul randa cache-ul vechi.
                         """
                         try:
-                            _fp = (xbmc.getInfoLabel('Container.FolderPath') or '').lower()
+                            from resources.lib.core.list_render import upnext_variant_from_path as _from_path
                         except Exception:
-                            _fp = ''
-                        if 'mode=tmdb_up_next' in _fp:
-                            return 'tmdb'
-                        if 'mode=next_episodes' in _fp:
-                            return 'provider'
+                            _from_path = None
+                        if _from_path:
+                            try:
+                                _v = _from_path(_folder_at_stop)
+                                if _v:
+                                    return _v, 'calea de la stop'
+                            except Exception:
+                                pass
+                            try:
+                                _v = _from_path(xbmc.getInfoLabel('Container.FolderPath') or '')
+                                if _v:
+                                    return _v, 'calea live'
+                            except Exception:
+                                pass
                         try:
                             _vw = (xbmcgui.Window(10000).getProperty(
                                 'tmdbmovies.upnext_view') or '').strip()
-                            return _vw if _vw in ('tmdb', 'provider') else ''
+                            if _vw in ('tmdb', 'provider'):
+                                return _vw, 'amintirea ultimei randari'
                         except Exception:
-                            return ''
+                            pass
+                        return '', 'nerezolvata'
+
+                    # Capturata O SINGURA DATA: nu se re-rezolva la fiecare poll de
+                    # 250ms. Amintirea poate fi rescrisa in timpul pass-ului (ex.
+                    # userul navigheaza intre cele doua liste Up Next), iar atunci
+                    # poarta ar valida build-ul unei liste si ar re-randa pe
+                    # cealalta - exact confuzia de varianta care a produs 19:34.
+                    _vv, _vv_src = _visible_variant()
+                    log(f"[PLAYER-MONITOR] Safety pass: varianta vizibila "
+                        f"'{_vv or '?'}' ({_vv_src}), tinta={_stale_target:.2f}")
+
+                    # Nimic schimbat la stop (nici marcaj, nici punct de resume):
+                    # lista arata identic, deci Container.Refresh ar fi gratuit.
+                    # Iar un refresh gratuit in fereastra in care Kodi isi
+                    # re-initializeaza containerul e exact ingredientul
+                    # crash-urilor din CDirectoryCache. Pe 'resume' NU sarim -
+                    # cercul de resume se deseneaza la randare, din baza locala.
+                    # `_stale_target` e citit dupa ce marcajul si-a deschis
+                    # fereastra (pass-ul porneste la +5s), deci nu ratam un marcaj.
+                    if _stale_target <= 0:
+                        try:
+                            _chg = (xbmcgui.Window(10000).getProperty(
+                                'tmdbmovies.stop_change') or '').lower()
+                        except Exception:
+                            _chg = ''
+                        if _chg == 'none':
+                            log("[PLAYER-MONITOR] Safety refresh sarit "
+                                "(nimic modificat la stop)")
+                            return
 
                     def _upnext_built_now():
                         try:
-                            return _built_at(_visible_variant()) if _built_at else 0.0
+                            return _built_for(_vv) if _built_for else 0.0
                         except Exception:
                             return 0.0
 
                     # Poarta pe VARIANTA VIZIBILA. `upnext_rerender_pending` nu
-                    # mai decide ieșirea din asteptare: e stins de PRIMUL thread
+                    # mai decide iesirea din asteptare: e stins de PRIMUL thread
                     # de pre-randare care termina, oricare varianta ar fi
                     # construit-o. La 09:50 s-a stins la 42.476 (dupa build-ul
                     # unei variante), lista de pe ecran nu avea build deloc,
-                    # iar bucla ieșea fara sa consulte stampul -> refresh pe
+                    # iar bucla iesea fara sa consulte stampul -> refresh pe
                     # cache vechi, lista raminea pe episodul vazut.
                     # Tinta = momentul marcajului; un build terminat DUPA el e
                     # proaspat (vezi mark_upnext_cache_built).
@@ -2896,7 +2989,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             # Nimic marcat: nu e nimic de corectat, iar
                             # refresh-ul de mai jos ramine cel de resume/bifa.
                             break
-                        if _upnext_built_now() >= _stale_target:
+                        if _upnext_built_now() >= _stale_ok:
                             break
                         if kodi_abort_requested():
                             return
@@ -2906,15 +2999,22 @@ def start_playback_monitor(player_instance, dialog=None):
                         # Plafon atins. Daca build-ul variantei vizibile a
                         # terminat chiar in ultima iteratie, refresh-ul e inca
                         # valid (date proaspete) - nu-l pierdem.
-                        if _upnext_built_now() >= _stale_target:
+                        if _upnext_built_now() >= _stale_ok:
                             pass
                         else:
                             # NU randam cache-ul vechi (ar fi exact bug-ul de
-                            # la 09:50 si ar stinge si markerul stale). Ieșim
+                            # la 09:50 si ar stinge si markerul stale). Iesim
                             # din pass; `stop_refresh_pending` se curata in
                             # finally, deci build-ul care termina mai tirziu
                             # re-randeaza el.
-                            log("[PLAYER-MONITOR] Safety refresh amanat (varianta vizibila inca nescrisa)")
+                            try:
+                                log(f"[PLAYER-MONITOR] Safety refresh amanat (varianta vizibila "
+                                    f"inca nescrisa: '{_vv or '?'}' stamp="
+                                    f"{_upnext_built_now():.2f}, prag={_stale_ok:.2f}, "
+                                    f"tinta={_stale_target:.2f})")
+                            except Exception:
+                                log("[PLAYER-MONITOR] Safety refresh amanat "
+                                    "(varianta vizibila inca nescrisa)")
                             return
                     for _ in range(80):
                         try:
@@ -2958,7 +3058,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         pina la carpe-ul de 30s din tmdb_api.
                         """
                         try:
-                            if _stale_target > 0 and _upnext_built_now() >= _stale_target:
+                            if _stale_target > 0 and _upnext_built_now() >= _stale_ok:
                                 xbmcgui.Window(10000).clearProperty('tmdbmovies.upnext_stale_since')
                         except Exception:
                             pass

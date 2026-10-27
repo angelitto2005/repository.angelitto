@@ -642,7 +642,7 @@ def mark_as_watched_internal(tmdb_id, content_type, season=None, episode=None, n
             threading.Thread(target=refresh_next_episode_punchplay, args=(tmdb_id,), daemon=True).start()
         except:
             pass
-    # Doar listele (metadatele serialelor rămân valide dupa un mark watched).
+    # Doar listele (metadatele serialelor raman valide dupa un mark watched).
     from resources.lib.core.cache import clear_list_fast_cache
     try:
         clear_list_fast_cache()
@@ -729,7 +729,7 @@ def mark_as_unwatched_internal(tmdb_id, content_type, season=None, episode=None,
             threading.Thread(target=refresh_next_episode_punchplay, args=(tmdb_id,), daemon=True).start()
         except:
             pass
-    # Doar listele (metadatele serialelor rămân valide dupa un mark unwatched).
+    # Doar listele (metadatele serialelor raman valide dupa un mark unwatched).
     from resources.lib.core.cache import clear_list_fast_cache
     try:
         clear_list_fast_cache()

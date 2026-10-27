@@ -1,3 +1,18 @@
+1.1.329
+- Fixed Up Next not refreshing after playback in MDBList, Simkl, and PunchPlay folders.
+- Fixed provider Up Next lists validating against the wrong TMDb build.
+- Provider Up Next rows are now updated synchronously when an episode is marked.
+- Background and 85% warm-up builds no longer overwrite the visible list variant.
+- Up Next watchdog now detects MDBList, Simkl, and PunchPlay folders.
+- Added diagnostics for visible variants, row-wait timeouts, and stale row reads.
+- Removed redundant Up Next rebuilds triggered when marking an episode.
+- Post-playback refresh now runs only when a mark or resume point changes.
+- Partial stops still refresh Up Next to display the resume indicator.
+- Fixed refresh timing issues with a 0.5s build-stamp tolerance.
+- Up Next rendering now uses in-memory and SQLite caches instead of TMDb requests.
+- Background warm-up fills missing metadata without slowing down list builds.
+- Warm-up waits 3s for user-facing builds and 10s for the 85% playback warm-up.
+
 1.1.328
 - Fixed: PunchPlay Collection now fetches and sends the title, poster path, and year when adding items. Re-add items with missing posters to fix them.
 - Fixed: PunchPlay mark-unwatched now works (remove from History).
