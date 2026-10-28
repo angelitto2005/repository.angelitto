@@ -1,3 +1,7 @@
+1.1.330
+- Fixed a bug with P2P providers switch.
+- Added five built-in P2P providers under P2P Public Trackers: Claw, TILL, Vela, VipTorrent and Torz.
+
 1.1.329
 - Fixed Up Next not refreshing after playback in MDBList, Simkl, and PunchPlay folders.
 - Fixed provider Up Next lists validating against the wrong TMDb build.

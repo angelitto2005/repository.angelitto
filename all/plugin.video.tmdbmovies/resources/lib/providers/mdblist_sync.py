@@ -963,9 +963,14 @@ def _mdblist_leg(silent=False, force=False, progress_cb=None, suppress_notificat
         # raman mereu active (non-interferente). ---
         try:
             from resources.lib.providers.watched_provider import is_mdblist as _is_mdblist_provider
+            from resources.lib.providers.watched_provider import _get_provider_raw as _get_prov_raw
             if not _is_mdblist_provider():
                 need_watched = need_ratings = need_playback = need_upnext = False
-            xbmc.log(f'[MDBList SYNC] Flags: watched={need_watched} ratings={need_ratings} collection={need_collection} dropped={need_dropped} playback={need_playback} upnext={need_upnext} (provider={"mdblist" if _is_mdblist_provider() else "trakt"})', xbmc.LOGINFO)
+            try:
+                _prov_name = _get_prov_raw()
+            except Exception:
+                _prov_name = 'mdblist' if _is_mdblist_provider() else 'other'
+            xbmc.log(f'[MDBList SYNC] Flags: watched={need_watched} ratings={need_ratings} collection={need_collection} dropped={need_dropped} playback={need_playback} upnext={need_upnext} (provider={_prov_name})', xbmc.LOGINFO)
         except Exception as e:
             xbmc.log(f'[MDBList] Provider gate error: {e}', xbmc.LOGERROR)
 

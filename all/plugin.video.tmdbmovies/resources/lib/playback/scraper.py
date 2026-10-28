@@ -4822,20 +4822,38 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     return stream_obj
 
 
-def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon_name):
-    """Scraper universal pentru Torrentio/Comet/Mediafusion etc. cu Instante Multiple"""
+# Providerii P2P built-in au manifest fix in cod (fara instante si fara campuri in
+# setari): apar la P2P Public Trackers, dupa The Pirate Bay. Cheia este id-ul
+# providerului, deci se pot adauga/scimba fara sa atingi vreo setare.
+P2P_BUILTIN_MANIFESTS = {
+    'p2p_claw': 'https://torrentclaw.com/api/stremio/manifest.json',
+    'p2p_till': 'https://till.z30p.workers.dev/manifest.json',
+    'p2p_vela': 'https://vela-flow.vercel.app/manifest.json',
+    'p2p_viptorrent': 'https://addon.viptorrent.workers.dev/manifest.json',
+    'p2p_torz': 'https://stremthrufortheweebs.midnightignite.me/stremio/torz/eyJpbmRleGVycyI6bnVsbCwic3RvcmVzIjpbeyJjIjoicDJwIiwidCI6IiJ9XX0=/manifest.json',
+}
+
+
+def scrape_stremio_addon(imdb_id, content_type, season, episode, addon_id, addon_name, manifest_url=None):
+    """Scraper universal pentru Torrentio/Comet/Mediafusion etc. cu Instante Multiple.
+
+    manifest_url: URL fix, pentru providerii P2P built-in. Cand e dat, se sare
+    peste citirea instantei si a manifestului din setari.
+    """
     if ADDON.getSetting(f'use_{addon_id}') == 'false':
         return None
 
-    # 1. Aflam indexul instantei selectate (0, 1, 2...)
-    try:
-        instance_idx = int(ADDON.getSetting(f'{addon_id}_instance') or '0')
-    except:
-        instance_idx = 0
+    instance_idx = 0
+    if not manifest_url:
+        # 1. Aflam indexul instantei selectate (0, 1, 2...)
+        try:
+            instance_idx = int(ADDON.getSetting(f'{addon_id}_instance') or '0')
+        except:
+            instance_idx = 0
 
-    # 2. Citim URL-ul manifestului corespunzator acelei instante
-    # Formatul este: idaddon_manifest.0, idaddon_manifest.1 etc.
-    manifest_url = ADDON.getSetting(f'{addon_id}_manifest.{instance_idx}').strip()
+        # 2. Citim URL-ul manifestului corespunzator acelei instante
+        # Formatul este: idaddon_manifest.0, idaddon_manifest.1 etc.
+        manifest_url = ADDON.getSetting(f'{addon_id}_manifest.{instance_idx}').strip()
 
     if not manifest_url:
         log(f"[{addon_name.upper()}] URL manifest.json lipseste pentru instanta {instance_idx}!")
@@ -7798,6 +7816,11 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'p2p_seedpool': ('SeedPool', lambda: scrape_seedpool(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_knaben': ('Knaben', lambda: scrape_knaben(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
         'p2p_thepiratebay': ('The Pirate Bay', lambda: scrape_thepiratebay(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'p2p_claw': ('Claw P2P', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_claw', 'Claw P2P', manifest_url=P2P_BUILTIN_MANIFESTS['p2p_claw'])),
+        'p2p_till': ('TILL P2P', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_till', 'TILL P2P', manifest_url=P2P_BUILTIN_MANIFESTS['p2p_till'])),
+        'p2p_vela': ('Vela P2P', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_vela', 'Vela P2P', manifest_url=P2P_BUILTIN_MANIFESTS['p2p_vela'])),
+        'p2p_viptorrent': ('VipTorrent P2P', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_viptorrent', 'VipTorrent P2P', manifest_url=P2P_BUILTIN_MANIFESTS['p2p_viptorrent'])),
+        'p2p_torz': ('Torz P2P', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_torz', 'Torz P2P', manifest_url=P2P_BUILTIN_MANIFESTS['p2p_torz'])),
         'p2p_custom1': ('P2P Custom 1', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom1', ADDON.getSetting('p2p_custom1_name') or 'P2P Custom 1')),
         'p2p_custom2': ('P2P Custom 2', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom2', ADDON.getSetting('p2p_custom2_name') or 'P2P Custom 2')),
         'p2p_custom3': ('P2P Custom 3', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'p2p_custom3', ADDON.getSetting('p2p_custom3_name') or 'P2P Custom 3')),
@@ -7810,7 +7833,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
     debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
-    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+    p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:
         for pid in target_providers:

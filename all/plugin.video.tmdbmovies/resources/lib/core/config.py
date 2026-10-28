@@ -4,15 +4,21 @@ import xbmc
 import json
 import os
 import sys
+import threading
 
 # =============================================================================
 # BASIC CONFIGURATION (ULTRA-LIGHT)
 # =============================================================================
 
-_SETTINGS_CACHE_KEY = 'tmdbm_settings'
 _SETTINGS_DICT = None  # Python-level cache (RLI-safe, per-process)
-_SETTINGS_MTIME = 0    # mtime-ul fisierului la ultimul parse
+_SETTINGS_STAMP = None  # st_mtime_ns-ul fisierului la ultimul parse
+_SETTINGS_CACHE_KEY = 'tmdbm_settings'  # Window Property care supravietuieste intre procese
 _WINDOW = None  # lazy init
+# Serializeaza ciclul citire-modificare-scriere din setSetting: doi scriitori
+# concurenti (thread de service + thread de script) isi pot suprascrie reciproc
+# copia pre-C++ si atunci un update se pierde. RLock, ca un apel ajuns inapoi
+# in acelasi thread (callback de setari) sa nu se blocheze singur.
+_SETTINGS_WRITE_LOCK = threading.RLock()
 
 
 class _LazyRequests:
@@ -47,17 +53,107 @@ def _get_window():
         _WINDOW = xbmcgui.Window(10000)
     return _WINDOW
 
+_SETTINGS_PATH = None
+
 def _get_settings_xml_path():
+    global _SETTINGS_PATH
+    if _SETTINGS_PATH:
+        return _SETTINGS_PATH
     _a = xbmcaddon.Addon()
     _profile = xbmcvfs.translatePath(_a.getAddonInfo('profile'))
-    return os.path.join(_profile, 'settings.xml')
+    _SETTINGS_PATH = os.path.join(_profile, 'settings.xml')
+    return _SETTINGS_PATH
+
+_STAMP_FAIL = {'logged': False}
+
+def _settings_stamp():
+    try:
+        _stamp = os.stat(_get_settings_xml_path()).st_mtime_ns
+        _STAMP_FAIL['logged'] = False
+        return _stamp
+    except Exception as _e:
+        if not _STAMP_FAIL['logged']:
+            _STAMP_FAIL['logged'] = True
+            try:
+                xbmc.log(f"[XML] settings stamp unavailable ({_e}) - cache not validated", xbmc.LOGWARNING)
+            except Exception:
+                pass
+        return None
+
+def _live_addon(default=None):
+    """Wrapper pe o instanta CAddon NOUA (AddonMgr construieste una la fiecare apel).
+
+    Memoria de setari a unei instante se incarca o singura data, la prima atingere,
+    si nu se mai reimprospateaza — de aceea wrapper-ul long-lived al modulului este
+    doar un snapshot. O instanta noua isi citeste valorile de pe disc la primul
+    UpdateSetting, deci scrie cheia ceruta cu restul setarilor curente.
+    """
+    try:
+        return xbmcaddon.Addon()
+    except Exception:
+        return default
+
+def _read_settings_xml():
+    import xml.etree.ElementTree as ET
+    _path = _get_settings_xml_path()
+    with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
+        _raw = _f.read()
+    if not _raw or not _raw.strip():
+        return None, _path
+    return ET.fromstring(_raw), _path
+
+def _settings_values(_root):
+    _d = {}
+    if _root is None:
+        return _d
+    for _el in _root.iter('setting'):
+        _id = _el.get('id')
+        if _id:
+            _d[_id] = _el.text or ''
+    return _d
+
+def _write_settings_xml(_root, _path, setting_id=None, value=None):
+    import xml.etree.ElementTree as ET
+    if setting_id is not None:
+        _found = False
+        for _el in _root.iter('setting'):
+            if _el.get('id') == setting_id:
+                _el.text = str(value)
+                # Kodi scrie default="true" doar cat timp valoarea e default. La load,
+                # CSettingsManager::LoadSetting face FromString(text) si apoi Reset()
+                # daca atributul e inca prezent -> valoarea scrisa aici s-ar pierde.
+                _el.attrib.pop('default', None)
+                _found = True
+                break
+        if not _found:
+            ET.SubElement(_root, 'setting', {'id': setting_id}).text = str(value)
+    _out = ET.tostring(_root, encoding='utf-8')
+    if not _out.startswith(b'<?xml'):
+        _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
+    # Scriere atomica: un crash/virus scan la mijloc nu mai lasa settings.xml
+    # trunchiat (ar insemna pierderea tuturor setarilor). Daca replace e refuzat
+    # (fisier blocat), scriem direct, ca valoarea sa ajunga totusi pe disc.
+    _tmp = _path + '.tmp'
+    try:
+        with open(_tmp, 'wb') as _f:
+            _f.write(_out)
+        os.replace(_tmp, _path)
+        return
+    except Exception:
+        try:
+            if os.path.exists(_tmp):
+                os.remove(_tmp)
+        except Exception:
+            pass
+    with open(_path, 'wb') as _f:
+        _f.write(_out)
 
 def _load_settings_dict():
-    global _SETTINGS_DICT, _SETTINGS_MTIME
+    global _SETTINGS_DICT, _SETTINGS_STAMP
     try:
         import xml.etree.ElementTree as ET
         _path = _get_settings_xml_path()
-        _mtime = os.path.getmtime(_path)
+        _stamp = os.stat(_path).st_mtime_ns
         with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
             _raw = _f.read()
         if not _raw or not _raw.strip():
@@ -69,10 +165,9 @@ def _load_settings_dict():
             if _id:
                 _d[_id] = (_el.text or '')
         _SETTINGS_DICT = _d
-        _SETTINGS_MTIME = _mtime
+        _SETTINGS_STAMP = _stamp
         _get_window().setProperty(_SETTINGS_CACHE_KEY, json.dumps(_d))
-        _get_window().setProperty(_SETTINGS_CACHE_KEY + '_mtime', str(_mtime))
-        # xbmc.log(f"[XML] Loaded {len(_d)} settings (mtime={_mtime})", xbmc.LOGINFO)  # DEBUG TIMING
+        _get_window().setProperty(_SETTINGS_CACHE_KEY + '_stamp', str(_stamp))
         return _d
     except Exception as _e:
         xbmc.log(f"[XML] _load_settings_dict EXCEPTION: {_e}", xbmc.LOGINFO)
@@ -80,24 +175,28 @@ def _load_settings_dict():
 
 def clear_settings_cache():
     """Invalidates Python + Window Property caches. Urmatorul getSetting() re-parseaza."""
-    global _SETTINGS_DICT
+    global _SETTINGS_DICT, _SETTINGS_STAMP
     _SETTINGS_DICT = None
+    _SETTINGS_STAMP = None
     try:
         _get_window().clearProperty(_SETTINGS_CACHE_KEY)
+        _get_window().clearProperty(_SETTINGS_CACHE_KEY + '_stamp')
     except:
         pass
 
 def _get_settings_dict():
-    """Python-level cache → mtime check → Window Property → XML parse."""
-    global _SETTINGS_DICT, _SETTINGS_MTIME
+    """Python-level cache → stamp check → Window Property → XML parse."""
+    global _SETTINGS_DICT, _SETTINGS_STAMP
     if _SETTINGS_DICT is not None:
-        try:
-            _mtime = os.path.getmtime(_get_settings_xml_path())
-            if _mtime != _SETTINGS_MTIME:
-                _SETTINGS_DICT = None
+        _stamp = _settings_stamp()
+        if _stamp is not None and _stamp != _SETTINGS_STAMP:
+            _SETTINGS_DICT = None
+            _SETTINGS_STAMP = None
+            try:
                 _get_window().clearProperty(_SETTINGS_CACHE_KEY)
-        except:
-            pass
+                _get_window().clearProperty(_SETTINGS_CACHE_KEY + '_stamp')
+            except:
+                pass
     if _SETTINGS_DICT is not None:
         return _SETTINGS_DICT
     try:
@@ -105,20 +204,17 @@ def _get_settings_dict():
         if _raw:
             _d = json.loads(_raw)
             if _d:
-                # Validam mtime-ul fisierului inainte sa acceptam Window Property:
+                # Validam stamp-ul fisierului inainte sa acceptam Window Property:
                 # proprietatea persista intre procese (RLI), dar fisierul settings.xml
                 # se poate schimba (ex. provider schimbat din GUI) — fara aceasta
                 # verificare, procesele noi foloseau valori stale pana la un clear.
-                try:
-                    _mtime = os.path.getmtime(_get_settings_xml_path())
-                    _prop_mtime = _get_window().getProperty(_SETTINGS_CACHE_KEY + '_mtime')
-                    if _prop_mtime and float(_prop_mtime) == float(_mtime):
-                        _SETTINGS_MTIME = _mtime
-                        _SETTINGS_DICT = _d
-                        return _SETTINGS_DICT
-                except:
-                    pass
-                # stale sau fara mtime stocat → parse complet fresh
+                _stamp = _settings_stamp()
+                _prop_stamp = _get_window().getProperty(_SETTINGS_CACHE_KEY + '_stamp')
+                if _stamp is not None and _prop_stamp and str(_prop_stamp) == str(_stamp):
+                    _SETTINGS_STAMP = _stamp
+                    _SETTINGS_DICT = _d
+                    return _SETTINGS_DICT
+                # stale sau fara stamp stocat → parse complet fresh
     except:
         pass
     return _load_settings_dict()
@@ -134,35 +230,69 @@ class _AddonProxy:
         if _val is not None:
             return _val
         # xbmc.log(f"[XML] getSetting({setting_id}) not in XML, FALLBACK to C++", xbmc.LOGINFO)  # DEBUG TIMING
-        _fallback = self._addon.getSetting(setting_id)
+        _fallback = _live_addon(self._addon).getSetting(setting_id)
         # xbmc.log(f"[XML] getSetting({setting_id}) FALLBACK: {_fallback}", xbmc.LOGINFO)  # DEBUG TIMING
         return _fallback
     def setSetting(self, setting_id, value):
-        """Write to C++ AND settings.xml — C++ updates in-memory cache (prevents overwrite on settings close)."""
-        self._addon.setSetting(setting_id, value)
+        """Scrie in C++ si in settings.xml, fara sa poata atinge alte chei.
+
+        CAddon::SaveSettings rescrie settings.xml INTEGRAL din memoria instantei C++
+        de addon. Fiecare xbmcaddon.Addon() primeste o instanta noua, iar memoria ei de
+        setari se incarca o singura data si nu se mai reimprospateaza — instanta tinuta
+        de procesul Python (importata o data, sub RLI) e deci un snapshot, iar un
+        singur setSetting (ex. tokenul PunchPlay la stop) readuce toate celelalte chei
+        la valorile din acel snapshot. De aceea fisierul se citeste INAINTE de apelul
+        C++, iar dupa el se rescrie din acea copie, cu singura cheie ceruta modificata.
+        Cheile revertite de C++ se imping inapoi in memorie, ca dialogul de setari sa
+        arate valorile de pe disc.
+        """
+        with _SETTINGS_WRITE_LOCK:
+            self._set_setting_guarded(setting_id, value)
+
+    def _set_setting_guarded(self, setting_id, value):
+        _root = None
+        _path = None
+        _before = None
+        _stamp_before = _settings_stamp()
         try:
-            import xml.etree.ElementTree as ET
-            _path = _get_settings_xml_path()
-            with open(_path, 'r', encoding='utf-8', errors='replace') as _f:
-                _raw = _f.read()
-            if not _raw or not _raw.strip():
-                return
-            _root = ET.fromstring(_raw)
-            _found = False
-            for _el in _root.iter('setting'):
-                if _el.get('id') == setting_id:
-                    _el.text = str(value)
-                    _found = True
-                    break
-            if not _found:
-                ET.SubElement(_root, 'setting', {'id': setting_id}).text = str(value)
-            _out = ET.tostring(_root, encoding='utf-8')
-            if not _out.startswith(b'<?xml'):
-                _out = b'<?xml version="1.0" encoding="utf-8"?>\n' + _out
-            with open(_path, 'wb') as _f:
-                _f.write(_out)
-        except:
-            pass
+            _root, _path = _read_settings_xml()
+            _before = _settings_values(_root)
+        except Exception as _e:
+            _root = None
+            xbmc.log(f"[XML] setSetting({setting_id}): settings.xml nu a putut fi citit "
+                     f"inainte de scriere ({_e}) - garda e dezactivata pentru acest apel",
+                     xbmc.LOGWARNING)
+        _target = _live_addon(self._addon)
+        try:
+            _target.setSetting(setting_id, value)
+        except Exception as _e:
+            xbmc.log(f"[XML] setSetting({setting_id}) C++ error: {_e}", xbmc.LOGWARNING)
+        _reverted = []
+        try:
+            if _before and _settings_stamp() != _stamp_before:
+                _after_root, _ = _read_settings_xml()
+                _after = _settings_values(_after_root)
+                _reverted = [(_k, _v) for _k, _v in _before.items()
+                             if _k != setting_id and _after.get(_k, '') != _v]
+        except Exception:
+            _reverted = []
+        if _reverted:
+            xbmc.log(f"[XML] setSetting({setting_id}): C++ a rescris settings.xml din memorie si a "
+                     f"revertit {len(_reverted)} chei ({', '.join(_k for _k, _ in _reverted[:6])}) - restaurate",
+                     xbmc.LOGWARNING)
+            for _k, _v in _reverted:
+                try:
+                    _target.setSetting(_k, _v)
+                except Exception:
+                    pass
+        try:
+            if _root is None:
+                _root, _path = _read_settings_xml()
+            if _root is not None and _path:
+                _write_settings_xml(_root, _path, setting_id, value)
+        except Exception as _e:
+            xbmc.log(f"[XML] setSetting({setting_id}): scrierea finala in settings.xml a "
+                     f"esuat ({_e}) - fisierul a ramas cum l-a lasat C++", xbmc.LOGERROR)
         clear_settings_cache()
     def __getattr__(self, name):
         return getattr(self._addon, name)
