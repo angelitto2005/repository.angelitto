@@ -53,6 +53,7 @@ class FakeNntp(socketserver.ThreadingTCPServer):
         self.articles = articles
         self.errors = errors or {}
         self.batches = []
+        self.batch_ids = []
         self.requests = []
         self.lock = threading.Lock()
         self.delay = 0.0
@@ -100,8 +101,10 @@ class Handler(socketserver.BaseRequestHandler):
                     continue
                 bodies = [line for line in lines if line.upper().startswith('BODY ')]
                 if bodies:
+                    mids = [line[5:].strip().strip('<>') for line in bodies]
                     with self.server.lock:
                         self.server.batches.append(len(bodies))
+                        self.server.batch_ids.append(mids)
                     if self.server.delay:
                         time.sleep(self.server.delay)
                 for line in lines:
@@ -244,6 +247,10 @@ def test_sequential():
               in result.stdout, result.stdout)
         check('two BODYs per batch', max(server.batches) == 2, server.batches[:20])
         check('tail asked early', ids_for(COUNT)[-1] in server.requests)
+        tail_id = ids_for(COUNT)[-1]
+        tail_batches = [ids for ids in server.batch_ids if tail_id in ids]
+        check('tail fetched alone',
+              bool(tail_batches) and all(len(ids) == 1 for ids in tail_batches), tail_batches)
         check('no missing', 'missing=0' in result.stdout, result.stdout)
     finally:
         server.shutdown()

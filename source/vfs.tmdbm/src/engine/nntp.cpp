@@ -179,31 +179,30 @@ std::vector<uint8_t> NntpConnection::ReadPayload()
     return {};
   }
 
+  size_t from = 0;
   for (;;)
   {
-    const size_t end = buffer_.find("\r\n.\r\n");
+    const size_t end = buffer_.find("\r\n.\r\n", from);
     if (end != std::string::npos)
     {
-      std::vector<uint8_t> data(buffer_.begin(),
-                                buffer_.begin() + static_cast<std::ptrdiff_t>(end));
-      buffer_.erase(0, end + 5);
-      if (data.size() >= 2 && data[0] == '.' && data[1] == '.')
-        data.erase(data.begin());
-      for (size_t index = 0; index + 4 <= data.size();)
+      std::vector<uint8_t> data;
+      data.reserve(end);
+      bool line_start = true;
+      for (size_t index = 0; index < end; ++index)
       {
-        if (data[index] == '\r' && data[index + 1] == '\n' && data[index + 2] == '.' &&
-            data[index + 3] == '.')
+        const char value = buffer_[index];
+        if (line_start && value == '.' && index + 1 < end && buffer_[index + 1] == '.')
         {
-          data.erase(data.begin() + static_cast<std::ptrdiff_t>(index + 2));
-          index += 3;
+          line_start = false;
+          continue;
         }
-        else
-        {
-          ++index;
-        }
+        data.push_back(static_cast<uint8_t>(value));
+        line_start = value == '\n';
       }
+      buffer_.erase(0, end + 5);
       return data;
     }
+    from = buffer_.size() >= 4 ? buffer_.size() - 4 : 0;
     Fill();
   }
 }

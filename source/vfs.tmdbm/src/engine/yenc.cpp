@@ -168,26 +168,16 @@ YencResult YencDecode(const std::vector<uint8_t>& article)
   }
 
   const size_t body_end = end_at == std::string::npos ? article.size() : end_at;
-  std::vector<uint8_t> body;
-  body.reserve(body_end > position ? body_end - position : 0);
+  result.data.reserve(body_end > position ? (body_end - position) * 3 / 4 : 0);
   for (size_t index = position; index < body_end; ++index)
   {
     const uint8_t value = article[index];
-    if (value != '\r' && value != '\n')
-      body.push_back(value);
-  }
-
-  result.data.reserve(body.size());
-  for (size_t index = 0; index < body.size(); ++index)
-  {
-    uint8_t value = body[index];
+    if (value == '\r' || value == '\n')
+      continue;
     if (value == '=')
     {
-      if (index + 1 < body.size())
-      {
-        value = static_cast<uint8_t>(body[++index] - 106);
-        result.data.push_back(value);
-      }
+      if (index + 1 < body_end)
+        result.data.push_back(static_cast<uint8_t>(article[++index] - 106));
       continue;
     }
     result.data.push_back(static_cast<uint8_t>(value - 42));

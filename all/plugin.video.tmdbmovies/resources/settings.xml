@@ -257,7 +257,7 @@
         <setting id="usenet_nzb.provider1.host" type="text" label="      [COLOR FFCCCCFF]└─ [B]server address[/B]   (e.g. news.example.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.provider1.port" type="enum" label="      [COLOR FFCCCCFF]└─ [B]port[/B][/COLOR]" values="563 (secure)|443 (secure, if 563 is blocked)|119 (unsecure)" default="0" visible="eq(-2,true)"/>
         <setting id="usenet_nzb.provider1.ssl" type="bool" label="      [COLOR FFCCCCFF]└─ [B]secure connection[/B]  (SSL/TLS)[/COLOR]" default="true" visible="eq(-3,true)"/>
-        <setting id="usenet_nzb.provider1.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B]   (8-12 is enough, more only helps 4K)[/COLOR]" default="8" range="1,1,60" option="int" visible="eq(-4,true)"/>
+        <setting id="usenet_nzb.provider1.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B]   (20 handles 4K; only if the plan allows)[/COLOR]" default="20" range="1,1,60" option="int" visible="eq(-4,true)"/>
         <setting id="usenet_nzb.provider1.user" type="text" label="      [COLOR FFCCCCFF]└─ [B]username[/B][/COLOR]" default="" visible="eq(-5,true)"/>
         <setting id="usenet_nzb.provider1.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
 
@@ -265,7 +265,7 @@
         <setting id="usenet_nzb.provider2.host" type="text" label="      [COLOR FFCCCCFF]└─ [B]server address[/B]   (e.g. news.example.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.provider2.port" type="enum" label="      [COLOR FFCCCCFF]└─ [B]port[/B][/COLOR]" values="563 (secure)|443 (secure, if 563 is blocked)|119 (unsecure)" default="0" visible="eq(-2,true)"/>
         <setting id="usenet_nzb.provider2.ssl" type="bool" label="      [COLOR FFCCCCFF]└─ [B]secure connection[/B]  (SSL/TLS)[/COLOR]" default="true" visible="eq(-3,true)"/>
-        <setting id="usenet_nzb.provider2.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B][/COLOR]" default="8" range="1,1,60" option="int" visible="eq(-4,true)"/>
+        <setting id="usenet_nzb.provider2.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B]   (only if the plan allows)[/COLOR]" default="20" range="1,1,60" option="int" visible="eq(-4,true)"/>
         <setting id="usenet_nzb.provider2.user" type="text" label="      [COLOR FFCCCCFF]└─ [B]username[/B][/COLOR]" default="" visible="eq(-5,true)"/>
         <setting id="usenet_nzb.provider2.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
         <setting id="usenet_nzb.provider2.backup" type="bool" label="      [COLOR FFCCCCFF]└─ [B]backup[/B]   (used only if Provider 1 fails)[/COLOR]" default="true" visible="eq(-7,true)"/>

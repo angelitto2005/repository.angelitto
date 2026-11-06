@@ -1,3 +1,13 @@
+1.1.333
+- Usenet streaming now opens 20 connections by default, and low-core Android boxes can use every configured connection.
+- Seeking in big 4K releases is faster: the MKV index article stays in memory and is read before anything else.
+- Large articles get a read-ahead cache that matches the articles in flight, so 4K remuxes buffer less.
+- Articles already in the cache are not downloaded again after a seek.
+- The first byte and every seek are timed in the log, and a closed stream reports speed, waits, cache hits and decode time.
+- Fixed the connection error logged when stopping a Usenet stream.
+- Faster article parsing on large Usenet articles, especially on Android boxes.
+- The Usenet settings explain how many connections are recommended.
+
 1.1.332
 - The VFS install row now says when the engine is already installed, warns when the platform is not supported, and confirms a successful install for Windows or Android.
 - Updating the plugin from the repository now also updates an older VFS engine that was installed by hand.

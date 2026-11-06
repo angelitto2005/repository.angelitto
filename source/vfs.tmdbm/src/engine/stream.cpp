@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <list>
 #include <mutex>
@@ -239,6 +240,7 @@ public:
   {
     for (size_t index = 0; index < plan_->parts.size(); ++index)
       part_sizes_[index].store(plan_->parts[index].part_size);
+    cache_limit_ = plan_->cache;
   }
 
   ~Impl() { Close(); }
@@ -250,6 +252,7 @@ public:
     if (started_)
       return true;
     started_ = true;
+    started_at_ = Now();
 
     for (int index = 0; index < static_cast<int>(plan_->servers.size()); ++index)
       pools_.push_back(std::make_unique<Pool>(plan_->servers[index], index));
@@ -269,11 +272,6 @@ public:
       pList += pool->config.label + " " + std::to_string(pool->Limit()) +
                (pool->config.backup ? " backup" : "");
     }
-    Log(LogLevel::Info,
-        "stream: %d worker(s) x %d on %d provider(s) [%s], prefetch %.0f MB, cache %.0f MB, "
-        "timeout %ds",
-        workers_, pipeline_, static_cast<int>(pools_.size()), pList.c_str(),
-        plan_->prefetch / 1048576.0, plan_->cache / 1048576.0, plan_->timeout);
 
     const auto self = shared_from_this();
     try
@@ -297,6 +295,27 @@ public:
       SetFatal(error);
       return false;
     }
+
+    const int64_t part_size = part_sizes_[0].load();
+    const int64_t per_article = std::max<int64_t>(1, part_size);
+    const int64_t in_flight = static_cast<int64_t>(workers_) * pipeline_;
+    const int64_t window_bytes =
+        std::min<int64_t>(kHardPrefetchBytes, per_article * (in_flight + kWorkerMargin));
+    cache_limit_ = std::max<int64_t>(plan_->cache, window_bytes + per_article);
+    const int64_t cache_articles = std::max<int64_t>(2, cache_limit_ / per_article - 1);
+    if (static_cast<int64_t>(workers_) * pipeline_ > cache_articles)
+      pipeline_ = std::max(1, static_cast<int>(cache_articles / workers_));
+
+    char cache_note[96] = {};
+    if (cache_limit_ > plan_->cache)
+      std::snprintf(cache_note, sizeof(cache_note), " -> %.0f MB (%.2f MB articles)",
+                    cache_limit_ / 1048576.0, part_size / 1048576.0);
+    Log(LogLevel::Info,
+        "stream: %d worker(s) x %d on %d provider(s) [%s], prefetch %.0f MB, cache %.0f MB%s, "
+        "timeout %ds",
+        workers_, pipeline_, static_cast<int>(pools_.size()), pList.c_str(),
+        plan_->prefetch / 1048576.0, plan_->cache / 1048576.0, cache_note, plan_->timeout);
+
     ScheduleAhead(0, 0, Lookahead(0, plan_->length));
     WarmTail();
     return true;
@@ -323,6 +342,8 @@ public:
     const auto found = slots_.find(key);
     if (found != slots_.end() && found->second.state == Slot::State::Ready)
       return;
+    if (!stored_keys_.insert(key).second)
+      ++refetches_;
     Slot& slot = slots_[key];
     slot.state = Slot::State::Ready;
     slot.data = chunk;
@@ -355,6 +376,8 @@ public:
       Log(LogLevel::Info, "read jump to %.2f GB (%.0f MB from the previous read)",
           offset / 1073741824.0, (offset - previous) / 1048576.0);
       CancelFar(offset);
+      seek_started_ = Now();
+      seek_pending_.store(true);
     }
     read_offset_.store(offset);
 
@@ -399,6 +422,15 @@ public:
           return done > 0 ? static_cast<int64_t>(done) : -1;
         continue;
       }
+      if (!first_read_logged_.exchange(true))
+      {
+        const int64_t centiseconds = static_cast<int64_t>((Now() - started_at_) * 100.0);
+        first_read_cs_.store(centiseconds);
+        Log(LogLevel::Info, "first byte after %.1f s", centiseconds / 100.0);
+      }
+      if (seek_pending_.exchange(false))
+        Log(LogLevel::Info, "seek to %.2f GB: first byte in %.1f s", offset / 1073741824.0,
+            Now() - seek_started_);
       const int64_t inside = volume_position - index * part_size;
       if (inside >= static_cast<int64_t>(chunk.data->size()))
       {
@@ -417,6 +449,8 @@ public:
       position += take;
       read_offset_.store(position);
     }
+    if (done > 0)
+      read_bytes_.fetch_add(static_cast<int64_t>(done));
     return static_cast<int64_t>(done);
   }
 
@@ -499,6 +533,8 @@ private:
         ++entry;
         continue;
       }
+      if (entry->key == tail_key_ && !jobs.empty())
+        break;
       Job job;
       job.key = entry->key;
       job.part = PartOf(entry->key);
@@ -513,6 +549,8 @@ private:
       }
       entry = queue_.erase(entry);
       jobs.push_back(job);
+      if (job.key == tail_key_)
+        break;
     }
     return jobs;
   }
@@ -618,6 +656,8 @@ private:
     catch (const NntpTooManyError& exception)
     {
       pool->Discard(connection);
+      if (closing_.load())
+        return;
       pool->Narrow();
       LogWarning("fetch", exception.what());
       const int avoid = pools_.size() > 1 ? pool->index_ : -1;
@@ -628,6 +668,8 @@ private:
     catch (const NntpAuthError& exception)
     {
       pool->Discard(connection);
+      if (closing_.load())
+        return;
       pool->MarkDead();
       LogWarning("fetch", exception.what());
       for (const Job& job : jobs)
@@ -637,6 +679,8 @@ private:
     catch (const std::exception& exception)
     {
       pool->Discard(connection);
+      if (closing_.load())
+        return;
       LogWarning("fetch", exception.what());
       for (const Job& job : jobs)
         HandleFailure(job, -1, false, exception.what());
@@ -652,6 +696,8 @@ private:
         HandleFailure(job, -1, false, "short reply");
       return;
     }
+    double decode_seconds = 0;
+    int64_t decoded_articles = 0;
     for (size_t index = 0; index < jobs.size(); ++index)
     {
       const Job& job = jobs[index];
@@ -666,7 +712,9 @@ private:
         HandleFailure(job, -1, false, "empty article");
         continue;
       }
+      const double decode_started = Now();
       YencResult decoded = YencDecode(reply.body);
+      decode_seconds += Now() - decode_started;
       if (!decoded.ok || !decoded.crc_ok)
       {
         const int avoid = pools_.size() > 1 ? pool->index_ : -1;
@@ -678,7 +726,14 @@ private:
         HandleFailure(job, avoid, false, reason);
         continue;
       }
+      ++decoded_articles;
       StoreDecoded(job, std::move(decoded.data));
+    }
+    if (decoded_articles > 0)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      decode_seconds_ += decode_seconds;
+      decoded_articles_ += decoded_articles;
     }
   }
 
@@ -712,6 +767,8 @@ private:
   {
     auto chunk = std::make_shared<std::vector<uint8_t>>(std::move(data));
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!stored_keys_.insert(job.key).second)
+      ++refetches_;
     const auto found = slots_.find(job.key);
     if (found == slots_.end())
       return;
@@ -867,9 +924,14 @@ private:
     return start < 0 ? 0 : start;
   }
 
+  int64_t CacheLimit() const
+  {
+    return cache_limit_ > 0 ? cache_limit_ : plan_->cache;
+  }
+
   void EvictLocked()
   {
-    while (cache_bytes_ > plan_->cache && !lru_.empty())
+    while (cache_bytes_ > CacheLimit() && !lru_.empty())
     {
       const int64_t read = read_offset_.load();
       bool removed = false;
@@ -891,6 +953,7 @@ private:
         cache_bytes_ -= found->second.bytes;
         slots_.erase(found);
         lru_.erase(entry);
+        ++evictions_;
         removed = true;
         break;
       }
@@ -924,6 +987,7 @@ private:
         cache_bytes_ -= found->second.bytes;
         slots_.erase(found);
         lru_.erase(victim);
+        ++evictions_;
       }
     }
   }
@@ -1009,6 +1073,7 @@ private:
     else
       wanted = needed + kWorkerMargin;
     wanted = std::min<int64_t>(wanted, std::max<int64_t>(2, kHardPrefetchBytes / part_size));
+    wanted = std::min<int64_t>(wanted, std::max<int64_t>(2, CacheLimit() / part_size - 1));
     return static_cast<int>(std::max<int64_t>(
         2, std::min<int64_t>(wanted, static_cast<int64_t>(part.articles.size()))));
   }
@@ -1017,6 +1082,7 @@ private:
   {
     const uint64_t key = MakeKey(part_index, article);
     const double started = Now();
+    bool waited_once = false;
     std::unique_lock<std::mutex> lock(mutex_);
     for (;;)
     {
@@ -1033,6 +1099,8 @@ private:
       if (slot.state == Slot::State::Ready)
       {
         TouchLocked(key, slot);
+        if (!waited_once)
+          ++cache_hits_;
         return {slot.data, slot.zero_filled};
       }
       if (slot.state == Slot::State::Queued)
@@ -1046,10 +1114,19 @@ private:
                  const auto current = slots_.find(key);
                  return current != slots_.end() && current->second.state == Slot::State::Ready;
                });
-      pinned_.erase(key);
+      waited_once = true;
+      if (key != tail_key_)
+        pinned_.erase(key);
       if (closing_.load() || fatal_.load())
         return {};
       const double waited = Now() - started;
+      if (waited > 0.1)
+      {
+        ++cache_waits_;
+        wait_seconds_ += waited;
+        if (waited > wait_seconds_max_)
+          wait_seconds_max_ = waited;
+      }
       if (waited > 2.5 && slow_reads_.fetch_add(1) < 8)
         Log(LogLevel::Warning,
             "read waited %.1fs for article %d of part %d (%lld MB decoded so far)", waited,
@@ -1159,22 +1236,59 @@ private:
     StreamStats stats = Stats();
     if (stats.articles <= 0)
       return;
+    const double wall = started_at_ > 0 ? Now() - started_at_ : 0.0;
     const double megabytes = stats.bytes / 1048576.0;
     const double average = stats.article_seconds * 1000.0 / stats.articles;
+    const double fetched = wall > 0.1 ? megabytes / wall : 0.0;
+    int64_t read_bytes = 0;
+    int64_t hits = 0;
+    int64_t waits = 0;
+    int64_t evictions = 0;
+    int64_t refetches = 0;
+    double wait_seconds = 0;
+    double wait_max = 0;
+    double decode_seconds = 0;
+    int64_t decoded_articles = 0;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      read_bytes = read_bytes_.load();
+      hits = cache_hits_;
+      waits = cache_waits_;
+      wait_seconds = wait_seconds_;
+      wait_max = wait_seconds_max_;
+      evictions = evictions_;
+      refetches = refetches_;
+      decode_seconds = decode_seconds_;
+      decoded_articles = decoded_articles_;
+    }
+    const double served = wall > 0.1 ? read_bytes / 1048576.0 / wall : 0.0;
+    const double decode_average =
+        decoded_articles > 0 ? decode_seconds * 1000.0 / decoded_articles : 0.0;
     std::string providers;
     for (const auto& item : stats.providers)
     {
-      if (!providers.empty())
-        providers += ", ";
       const double speed =
           item.second.seconds > 0 ? item.second.bytes / item.second.seconds / 1048576.0 : 0.0;
-      providers += item.first + " " + std::to_string(item.second.articles) + " (" +
-                   std::to_string(static_cast<int>(speed)) + " MB/s)";
+      char entry[160] = {};
+      std::snprintf(entry, sizeof(entry), "%s %lld (%.1f MB/s)", item.first.c_str(),
+                    static_cast<long long>(item.second.articles), speed);
+      if (!providers.empty())
+        providers += ", ";
+      providers += entry;
     }
     Log(LogLevel::Info,
-        "stream closed: %lld articles, %lld missing, %.1f MB decoded, %.0f ms/article%s%s",
+        "stream closed: %lld articles, %lld missing, %.1f MB decoded, %.1f MB/s fetched, "
+        "%.0f ms/article%s%s",
         static_cast<long long>(stats.articles), static_cast<long long>(stats.missing), megabytes,
-        average, providers.empty() ? "" : "; ", providers.c_str());
+        fetched, average, providers.empty() ? "" : "; ", providers.c_str());
+    Log(LogLevel::Info,
+        "stream stats: %.1f MB served in %.1f s (%.1f MB/s), first byte %.1f s, %lld waits "
+        "%.1f s (max %.1f s), %lld evictions, %lld refetches, %lld cache hits, decode %.1f "
+        "ms/article, cache %.0f MB",
+        read_bytes / 1048576.0, wall, served, first_read_cs_.load() / 100.0,
+        static_cast<long long>(waits), wait_seconds, wait_max,
+        static_cast<long long>(evictions), static_cast<long long>(refetches),
+        static_cast<long long>(hits), decode_average, CacheLimit() / 1048576.0);
   }
 
   void DoClose()
@@ -1255,6 +1369,22 @@ private:
   int64_t bytes_decoded_ = 0;
   double article_seconds_ = 0;
   std::map<std::string, ProviderStat> provider_stats_;
+  int64_t cache_limit_ = 0;
+  double started_at_ = 0;
+  double seek_started_ = 0;
+  std::atomic<bool> first_read_logged_{false};
+  std::atomic<bool> seek_pending_{false};
+  std::atomic<int64_t> first_read_cs_{0};
+  std::atomic<int64_t> read_bytes_{0};
+  int64_t cache_hits_ = 0;
+  int64_t cache_waits_ = 0;
+  double wait_seconds_ = 0;
+  double wait_seconds_max_ = 0;
+  int64_t evictions_ = 0;
+  int64_t refetches_ = 0;
+  double decode_seconds_ = 0;
+  int64_t decoded_articles_ = 0;
+  std::unordered_set<uint64_t> stored_keys_;
 };
 
 Stream::Stream(std::shared_ptr<const Plan> plan)

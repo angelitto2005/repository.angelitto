@@ -40,7 +40,7 @@ SEEK_LOG_BYTES = 16 * 1024 * 1024   # a read this far from the last one is a see
 INDEX_TAIL_BYTES = 8 * 1024 * 1024  # Kodi reads the MKV index here; that is not a seek
 WARM_ARTICLES = 4               # first articles kept beside the plan: the pool is still dialing when playback starts
 LOW_CORE_CORES = 4                  # small Android boxes: more workers than this stop helping
-LOW_CORE_WORKERS = 16               # ... but every configured connection may still feed a pipelined worker
+LOW_CORE_WORKERS = 24               # ... but every configured connection may still feed a pipelined worker
 LOW_CORE_PREFETCH_BYTES = 24 * 1024 * 1024
 LOW_CORE_CACHE_BYTES = 36 * 1024 * 1024
 
