@@ -1,0 +1,128 @@
+/*
+ *  Copyright (C) 2014-2018 Team Kodi
+ *  This file is part of Kodi - https://kodi.tv
+ *
+ *  SPDX-License-Identifier: GPL-2.0-or-later
+ *  See LICENSES/README.md for more information.
+ */
+
+#include "CompileInfo.h"
+#include "addons/AddonRepoInfo.h"
+#include "utils/StringUtils.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <string>
+
+int CCompileInfo::GetMajor()
+{
+  return @APP_VERSION_MAJOR@;
+}
+
+int CCompileInfo::GetMinor()
+{
+  return @APP_VERSION_MINOR@;
+}
+
+const char* CCompileInfo::GetPackage()
+{
+  return "@APP_PACKAGE@";
+}
+
+const char* CCompileInfo::GetClass()
+{
+  static std::string s_classname;
+
+  if (s_classname.empty())
+  {
+    s_classname = CCompileInfo::GetPackage();
+    std::replace(s_classname.begin(), s_classname.end(), '.', '/');
+  }
+  return s_classname.c_str();
+}
+
+const char* CCompileInfo::GetAppName()
+{
+  return "@APP_NAME@";
+}
+
+const char* CCompileInfo::GetSuffix()
+{
+  return "@APP_VERSION_TAG@";
+}
+
+const char* CCompileInfo::GetSCMID()
+{
+  return "@APP_SCMID@";
+}
+
+std::string CCompileInfo::GetSharedLibrarySuffix()
+{
+  return "@APP_SHARED_LIBRARY_SUFFIX@";
+}
+
+const char* CCompileInfo::GetCopyrightYears()
+{
+  return "@APP_COPYRIGHT_YEARS@";
+}
+
+std::string CCompileInfo::GetBuildDate()
+{
+  const std::string bdate = "@APP_BUILD_DATE@";
+  if (!bdate.empty())
+  {
+    std::string datestamp = bdate.substr(0, 4) + "-" + bdate.substr(4, 2) + "-" + bdate.substr(6, 2);
+    return datestamp;
+  }
+  return "1970-01-01";
+}
+
+const char*  CCompileInfo::GetVersionCode()
+{
+  return "@APP_VERSION_CODE@";
+}
+
+std::vector<ADDON::RepoInfo> CCompileInfo::LoadOfficialRepoInfos()
+{
+  const std::vector<std::string> officialAddonRepos =
+      StringUtils::Split("@APP_ADDON_REPOS@", ',');
+
+  std::vector<ADDON::RepoInfo> officialRepoInfos;
+  ADDON::RepoInfo newRepoInfo;
+
+  for (const auto& addonRepo : officialAddonRepos)
+  {
+    const std::vector<std::string> tmpRepoInfo = StringUtils::Split(addonRepo, '|');
+    newRepoInfo.m_repoId = tmpRepoInfo.front();
+    newRepoInfo.m_origin = tmpRepoInfo.back();
+    officialRepoInfos.emplace_back(newRepoInfo);
+  }
+
+  return officialRepoInfos;
+}
+
+std::vector<std::string> CCompileInfo::GetAvailableWindowSystems()
+{
+  return StringUtils::Split("@CORE_PLATFORM_NAME_LC@", ' ');
+}
+
+std::vector<std::string> CCompileInfo::GetAvailableAudioBackends()
+{
+  return StringUtils::Split("@AUDIO_BACKENDS@", ' ');
+}
+
+std::vector<std::string> CCompileInfo::GetAvailableGlInterfaces()
+{
+  return StringUtils::Split("@GL_INTERFACES@", ' ');
+}
+
+// Return version of python built against as format MAJOR.MINOR
+std::string CCompileInfo::GetPythonVersion()
+{
+  return "@PYTHON_VERSION@";
+}
+
+std::vector<std::string> CCompileInfo::GetWebserverExtraWhitelist()
+{
+  return StringUtils::Split("@KODI_WEBSERVER_EXTRA_WHITELIST@", ',');
+}
