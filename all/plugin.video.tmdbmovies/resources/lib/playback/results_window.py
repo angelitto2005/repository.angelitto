@@ -550,23 +550,23 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 _nzb_provider = (_nzb_meta.get('provider_name')
                                  or info.get('provider_name') or '')
                 parts.append(f"[B][COLOR FFFFEA00]{_nzb_provider or 'Usenet'}[/COLOR][/B]")
-                _nzb_state = (_nzb_meta.get('release_state')
-                              or info.get('release_state') or '')
-                if _nzb_state == 'played':
-                    parts.append("[COLOR FF00FA9A][B]PLAYED[/B][/COLOR]")
-                elif _nzb_state == 'failed':
-                    parts.append("[COLOR FFF535AA][B]UNAVAILABLE[/B][/COLOR]")
                 _nzb_indexer = _nzb_meta.get('indexer') or info.get('indexer') or ''
                 if _nzb_indexer:
                     parts.append(f"[COLOR FFCCCCFF][B]{_nzb_indexer}[/B][/COLOR]")
                 _nzb_age = _nzb_meta.get('age_text') or info.get('age_text') or ''
-                if _nzb_age:
+                _age_on = ADDON.getSetting('usenet_nzb.age_badge')
+                if _age_on == '':
+                    _age_on = 'true'
+                if _nzb_age and _age_on == 'true':
                     parts.append(f"[COLOR FF87CEEB][B]AGE {_nzb_age}[/B][/COLOR]")
                 try:
                     _nzb_grabs = int(_nzb_meta.get('grabs') or info.get('grabs') or 0)
                 except Exception:
                     _nzb_grabs = 0
-                if _nzb_grabs > 0:
+                _grabs_on = ADDON.getSetting('usenet_nzb.grabs_badge')
+                if _grabs_on == '':
+                    _grabs_on = 'true'
+                if _nzb_grabs > 0 and _grabs_on == 'true':
                     parts.append(f"[COLOR FF00CED1][B]{_nzb_grabs} GRABS[/B][/COLOR]")
             
             # Detectare RO DUBBED (mutat devreme ca sa fie disponibil pentru FileList/SpeedApp/SeedPool)

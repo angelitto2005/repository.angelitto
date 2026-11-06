@@ -7718,12 +7718,11 @@ def _usenet_stream_key(item):
     return ''
 
 
-def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None, alt_title=None):
     '''Our own Newznab indexers, played by our own NNTP provider (no debrid).'''
     try:
         from resources.lib.usenet import config as usenet_config
         from resources.lib.usenet import indexer as usenet_indexer
-        from resources.lib.usenet import memory as usenet_memory
     except Exception as exc:
         log(f"[USENET] engine not available: {exc}")
         return None
@@ -7746,7 +7745,8 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
            usenet_config.fetch_mode()))
     try:
         rows, _notes = usenet_indexer.find(
-            kind, imdb_id, season, episode, title_query or '', logger=log,
+            kind, imdb_id, season, episode, title_query or '', year=year_query,
+            alt_title=alt_title or '', logger=log,
             mode=usenet_config.fetch_mode(), min_usable=usenet_config.stop_after(),
             min_size=usenet_config.min_size_bytes(),
             episodes_only=episodes_only, per_indexer_limit=usenet_config.max_results())
@@ -7789,14 +7789,12 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
             'server': row.get('indexer') or 'Indexer',
             'info': {'indexer': row.get('indexer') or 'Indexer', 'age_days': age_days,
                      'age_text': age_text,
-                     'release_state': usenet_memory.state(
-                         usenet_config.nzb_key(row.get('nzb_url') or '')),
                      'provider_name': usenet_config.active_provider_name(),
-                     'releaseGroup': _group_name, 'grabs': grabs if show_grabs else 0},
+                     'releaseGroup': _group_name, 'grabs': grabs},
             'usenet': {'nzb_url': row.get('nzb_url', ''),
                        'indexer': row.get('indexer') or 'Indexer',
-                       'age_days': age_days, 'age_text': age_text, 'size': size,
-                       'grabs': grabs if show_grabs else 0},
+                       'age_days': age_days, 'age_text': age_text,
+                       'size': size, 'grabs': grabs},
             'direct': False,
         })
     log("[USENET] %d release(s) ready" % len(streams))
@@ -7851,6 +7849,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     # 1. EXTRAGERE TITLU SI AN DIN TMDB (Necesar si foarte robust)
     extra_title = ""
     extra_year = ""
+    extra_alt_title = ""
     
     # Daca avem override (Custom Values), le folosim direct
     if override_title:
@@ -7858,7 +7857,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak']
+        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'usenet_nzb']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -7873,6 +7872,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     res = data.get('movie_results', []) or data.get('tv_results', [])
                     if res:
                         extra_title = res[0].get('title') or res[0].get('name')
+                        extra_alt_title = (res[0].get('original_title')
+                                           or res[0].get('original_name') or "")
                         dt = res[0].get('release_date') or res[0].get('first_air_date')
                         extra_year = dt[:4] if dt else ""
                 
@@ -7883,6 +7884,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     data = get_json(url)
                     if data:
                         extra_title = data.get('title') or data.get('name')
+                        extra_alt_title = (data.get('original_title')
+                                           or data.get('original_name') or "")
                         dt = data.get('release_date') or data.get('first_air_date')
                         extra_year = dt[:4] if dt else ""
                         
@@ -7930,7 +7933,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom4': ('Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom4', ADDON.getSetting('custom4_name') or 'Custom 4')),
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
-        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
+        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
         'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

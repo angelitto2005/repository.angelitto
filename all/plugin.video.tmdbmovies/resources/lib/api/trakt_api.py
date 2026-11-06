@@ -2924,9 +2924,10 @@ def send_trakt_scrobble(action, tmdb_id, content_type, season, episode, progress
     if not get_trakt_token():
         return
 
-    # Endpoint-urile sunt /scrobble/start, /scrobble/pause, /scrobble/stop
-    # Daca action e 'scrobble', folosim 'start' pentru a mentine activitatea (watching now)
-    endpoint = 'start' if action == 'scrobble' else action
+    # Trakt are doar /scrobble/start, /scrobble/pause si /scrobble/stop.
+    # 'scrobble' (progres periodic) si 'resume' (dupa pauza) merg pe 'start',
+    # ca in script.trakt; /scrobble/resume nu exista si intoarce 404.
+    endpoint = 'start' if action in ('scrobble', 'resume') else action
     
     url = f"/scrobble/{endpoint}"
     

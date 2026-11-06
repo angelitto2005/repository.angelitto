@@ -321,8 +321,51 @@ def _why(why, reason):
     why[reason] = why.get(reason, 0) + 1
 
 
+_TITLE_STOP = {
+    'the', 'a', 'an', 'and', 'of', 'for', 'with', 'from', 'part', 'complete',
+    'extended', 'remastered', 'proper', 'repack', 'internal', 'limited',
+    'bluray', 'blu', 'ray', 'webrip', 'webdl', 'web', 'hdtv', 'remux',
+    'hevc', 'h264', 'h265', 'x264', 'x265', 'avc', 'dts', 'ddp', 'dd', 'atmos',
+    'truehd', 'hdr', 'sdr', 'dv', 'uhd', '2160p', '1080p', '720p', '480p',
+    'german', 'dl', 'ita', 'eng', 'french', 'multi', 'sub', 'subs', 'ro',
+}
+
+
+def _title_tokens(text):
+    text = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', str(text or ''))
+    words = re.findall(r'[0-9a-z]+', text.lower())
+    return [word for word in words if len(word) >= 4 and word not in _TITLE_STOP
+            and not re.fullmatch(r'(?:19|20)\d{2}', word)]
+
+
+def _title_matches(candidate, query, year, is_movie, alt_query=''):
+    """Reject an indexer answer that is plainly another film.
+
+    Only distinctive words from the requested title are required to appear, so
+    release tags and different editions still pass; a non-Latin title has no
+    usable tokens and is never filtered.
+    """
+    tokens = _title_tokens(query) + _title_tokens(alt_query)
+    if not tokens:
+        return True
+    folded = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '').lower())
+    if not any(token in folded for token in tokens):
+        return False
+    if is_movie and year:
+        try:
+            wanted = int(year)
+        except (TypeError, ValueError):
+            wanted = 0
+        if wanted:
+            found = re.findall(r'(?<!\d)((?:19|20)\d{2})(?!\d)', str(candidate or ''))
+            if found and wanted not in [int(item) for item in found]:
+                return False
+    return True
+
+
 def _filter_rows(rows, season, episode, min_size, episodes_only, per_indexer_limit,
-                 seen_links, seen_titles, per_indexer, why):
+                 seen_links, seen_titles, per_indexer, why,
+                 query_title='', query_year=None, query_alt=''):
     """The releases that would reach the source list, in the order they arrived."""
     kept = []
     for row in rows:
@@ -337,6 +380,9 @@ def _filter_rows(rows, season, episode, min_size, episodes_only, per_indexer_lim
             _why(why, 'broken row')
             continue
         if _SAMPLE.search(title):
+            continue
+        if not _title_matches(title, query_title, query_year, season is None, query_alt):
+            _why(why, 'wrong title')
             continue
         try:
             size = int(row.get('size') or 0)
@@ -415,8 +461,8 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger):
         return key, [], False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
 
 
-def find(kind, imdb, season=None, episode=None, title='', logger=None, use_cache=True,
-         mode=None, min_usable=None, min_size=0,
+def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='',
+         logger=None, use_cache=True, mode=None, min_usable=None, min_size=0,
          episodes_only=False, per_indexer_limit=0):
     """Search the configured indexers. Returns (rows, notes).
 
@@ -449,7 +495,8 @@ def find(kind, imdb, season=None, episode=None, title='', logger=None, use_cache
         raw_count += len(found)
         kept = _filter_rows(found, season, episode, min_size, episodes_only,
                             per_indexer_limit, seen_links, seen_titles,
-                            per_indexer, why)
+                            per_indexer, why, query_title=title, query_year=year,
+                            query_alt=alt_title)
         rows.extend(kept)
         return len(kept)
 

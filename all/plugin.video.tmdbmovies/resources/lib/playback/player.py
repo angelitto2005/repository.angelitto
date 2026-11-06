@@ -1504,7 +1504,11 @@ def build_display_items(streams, poster_url):
             if _usenet_meta.get("indexer"):
                 _usenet_head += "  [COLOR FFCCCCFF]%s[/COLOR]" % _usenet_meta["indexer"]
             if _usenet_meta.get("age_text"):
-                _usenet_head += "  [COLOR FF87CEEB]AGE %s[/COLOR]" % _usenet_meta["age_text"]
+                _age_on = ADDON.getSetting('usenet_nzb.age_badge')
+                if _age_on == '':
+                    _age_on = 'true'
+                if _age_on == 'true':
+                    _usenet_head += "  [COLOR FF87CEEB]AGE %s[/COLOR]" % _usenet_meta["age_text"]
             label2 = _usenet_head + "  " + (label2 or "")
 
         if len(label2) > 110:
@@ -1521,11 +1525,105 @@ def build_display_items(streams, poster_url):
     return display_items
 
 
+# Scor de lansare dupa modelul TRaSH: sursa conteaza cel mai mult, apoi
+# rezolutia, HDR/audio si editiile; junk-ul (CAM/TS) coboara sub orice.
+_RELEASE_TIERS = (
+    (re.compile(r'\b(?:remux|bdremux)\b'), 1000),
+    (re.compile(r'\b(?:blu[-. ]?ray|bdrip)\b'), 900),
+    (re.compile(r'\b(?:web[-. ]?dl|webdl)\b'), 850),
+    (re.compile(r'\b(?:web[-. ]?rip|web)\b'), 810),
+    (re.compile(r'\b(?:hd|pd)tv\b'), 700),
+    (re.compile(r'\bdvd(?:rip|r)?\b'), 500),
+)
+_RELEASE_JUNK = re.compile(r'\b(?:cam|hdcam|hdts|hdtc|ts|telesync|telecine|dvdscr|scr)\b')
+_RELEASE_DV = re.compile(r'\b(?:dv|dovi)\b|\bdolby[ ._-]?vision\b')
+_RELEASE_HDR_PLUS = re.compile(r'\bhdr10\+\b')
+_RELEASE_HDR = re.compile(r'\bhdr(?:10)?\b')
+_RELEASE_AUDIO = (
+    (re.compile(r'\b(?:atmos|truehd|dts[-. ]?x)\b'), 25),
+    (re.compile(r'\bdts[-. ]?hd\b'), 20),
+    (re.compile(r'\b(?:ddp|dd\+|eac3)\b'), 10),
+    (re.compile(r'\b(?:ac3|dd)\b'), 5),
+)
+_RELEASE_EDITION = (
+    (re.compile(r'\bimax\b'), 15),
+    (re.compile(r'\b(?:extended|director\'?s|remastered|uncut|ultimate|theatrical)\b'), 5),
+    (re.compile(r'\bproper\b|\brepack\b'), 3),
+)
+_RELEASE_RES_BONUS = {4: 250, 3: 100, 2: 50, 1: 10}
+
+# Release groups dupa TRaSH: primele doua liste urca, ultima coboara.
+_GROUP_TOP = frozenset((
+    '3l', 'atelier', 'bizkit', 'bluranium', 'bmf', 'cinephiles', 'framestor',
+    'piramidehead', 'pmp', 'wildcat', 'zq', 'ctrlhd', 'mainframe', 'w4nk3r',
+    'bbq', 'c0ke', 'chotab', 'crisc', 'd-z0n3', 'dariush', 'decibel', 'ebp',
+    'edph', 'lolhd', 'ncmt', 'pter', 'tayto', 'tdd', 'tnp', 'viethd',
+    'zorosenpai', 'abbie', 'ajp69', 'blutonium', 'byndr', 'cmrg', 'crfw',
+    'crud', 'hone', 'kitsune', 'madsky', 'nosivid', 'ntb', 'ntg', 'paxa',
+    'pexa', 'rawr', 'sic', 'tepes', 'thefarm', 'xepa', 'flux', 'gnome', 'sigma',
+))
+_GROUP_GOOD = frozenset((
+    'playbd', 'sicfoi', 'surfinbird', '12gaugeshotgun', 'epslon', 'hifi',
+    'kralimarko', 'triton', 'ift', 'sumvision', 'toa', 'db', 'miu', 'monkee',
+    'mzabi', 'playweb', 'sbr', 'smurf', 'xebec', '4kbec', 'cebex', 'bloom',
+    'dooky', 'gnomission', 'ninjacentral', 'npms', 'roccat', 'slignome',
+    'swaglandr', 'hidt', 'hqmux', 'randombytes', 'bhdstudio', 'hallowed',
+    'sphd', 'webdv', 'deflate', 'inflate',
+))
+_GROUP_LOW = frozenset((
+    'evo', 'psa', 'galaxyrg', 'yify', 'yts', 'rarbg', 'megusta', 'feranki1980',
+    'teewee', 'sasukeduck', 'depraved', '126811', '24xhd', '4k4u', 'axxo',
+    'chx', 'ctfoh', 'tigole', 'videohole',
+))
+
+
+def _release_group_bonus(group):
+    folded = str(group or '').strip().lower()
+    if not folded:
+        return 0
+    if folded in _GROUP_TOP:
+        return 80
+    if folded in _GROUP_GOOD:
+        return 45
+    if folded in _GROUP_LOW:
+        return -70
+    return 0
+
+
+def _release_score(text, q_score, group=''):
+    """Un singur scor pentru ordinea surselor, indiferent de provider."""
+    score = 620
+    for pattern, value in _RELEASE_TIERS:
+        if pattern.search(text):
+            score = value
+            break
+    if _RELEASE_JUNK.search(text):
+        score -= 1000
+    score += _RELEASE_RES_BONUS.get(q_score, 0)
+    score += _release_group_bonus(group)
+    if _RELEASE_DV.search(text):
+        score += 60
+    if _RELEASE_HDR_PLUS.search(text):
+        score += 50
+    elif _RELEASE_HDR.search(text):
+        score += 40
+    for pattern, value in _RELEASE_AUDIO:
+        if pattern.search(text):
+            score += value
+            break
+    for pattern, value in _RELEASE_EDITION:
+        if pattern.search(text):
+            score += value
+    return score
+
+
 def sort_streams_by_quality(streams):
-    """Sorteaza aplicand noile optiuni din setari, calitate, marime si seederi."""
+    """TRaSH doar pe optiunile AIO Original; restul ramane calitate > marime > seeders."""
     import re
     try: sort_opt = int(ADDON.getSetting('source_sorting') or '0')
     except: sort_opt = 0
+    tiers = _SORT_TIERS.get(sort_opt)
+    trash = bool(tiers) and tiers[0] == 'aio_orig'
 
     def get_sort_key(s):
         quality_field = s.get('quality', '').lower()
@@ -1567,6 +1665,16 @@ def sort_streams_by_quality(streams):
                 q_score = 2
             elif '480p' in text_combined or '360p' in text_combined:
                 q_score = 1
+
+        group = ''
+        release = q_score
+        if trash:
+            _info = s.get('info')
+            if isinstance(_info, dict):
+                group = _info.get('releaseGroup') or ''
+            if not group:
+                group = _extract_release_group(s.get('name') or '')
+            release = _release_score(text_combined, q_score, group)
         
         # Marime MB
         size_mb = 0.0
@@ -1605,11 +1713,19 @@ def sort_streams_by_quality(streams):
             m = re.search(r'(?:👤|👥|S:)\s*(\d+)', name_lower + ' ' + title_lower)
             if m: seeders = int(m.group(1))
 
+        # NZB: mai nou = mai bine; varsta necunoscuta coboara
+        freshness = 0
+        if trash and isinstance(s.get('usenet'), dict):
+            try:
+                age_days = int(info_dict.get('age_days', -1)) if isinstance(info_dict, dict) else -1
+            except (TypeError, ValueError):
+                age_days = -1
+            freshness = -age_days if age_days >= 0 else -99999
+
         # Group Score pt Setari (4 categorii: HTTP / AIO / Stremio / P2P)
         cat = classify_stream_source(s)
         is_cached = isinstance(info_dict, dict) and info_dict.get('is_cached', False)
 
-        tiers = _SORT_TIERS.get(sort_opt)
         if tiers:
             n = len(tiers)
             for ti, tier in enumerate(tiers):
@@ -1617,10 +1733,16 @@ def sort_streams_by_quality(streams):
                     g_score = n - 1 - ti
                     # Tier-urile "Original" pastreaza ordinea originala din lista
                     if tier == 'aio_orig':
-                        return (g_score, 0, 0.0, 0)
+                        return (g_score, 0, 0, 0.0, 0) if trash else (g_score, 0, 0.0, 0)
+                    if trash:
+                        return (g_score, release, freshness, size_mb, seeders)
                     return (g_score, q_score, size_mb, seeders)
+            if trash:
+                return (0, release, freshness, size_mb, seeders)
             return (0, q_score, size_mb, seeders)
 
+        if trash:
+            return (0, release, freshness, size_mb, seeders)
         return (0, q_score, size_mb, seeders)
 
     streams.sort(key=get_sort_key, reverse=True)
@@ -1752,8 +1874,10 @@ class TMDbPlayer(xbmc.Player):
         xbmc.executebuiltin('Dialog.Close(all,true)')
         self.trigger_rollover()
 
-    def trigger_rollover(self):
-        if self.playback_started or self.rollover_triggered: 
+    def trigger_rollover(self, allow_started=False):
+        if self.rollover_triggered or self.user_stopped:
+            return
+        if self.playback_started and not allow_started:
             return
         
         if not self.streams or self.rollover_args is None:
@@ -2266,6 +2390,44 @@ def _resume_prompt_store(key, choice):
         pass
 
 
+def _nzb_damage_since(log_path, mark):
+    """Intoarce linia fatala a VFS-ului daca a aparut DUPA offsetul `mark`.
+
+    Un NZB cu articole lipsa produce in kodi.log:
+        vfs.tmdbm: read failed at X MB: missing articles are Y% of the release
+    Eroarea e scrisa imediat inainte de EOF, deci e in ultimele ~256 KB.
+    Verificam doar segmentul scris dupa pornirea sursei curente: linia ramasa
+    de la o sursa anterioara (rollover) e inainte de `mark` si nu conteaza.
+    """
+    try:
+        f = xbmcvfs.File(log_path)
+    except Exception:
+        return ''
+    try:
+        end = f.size()
+        if end <= mark:
+            return ''
+        start = max(mark, end - 262144)
+        f.seek(start, 0)
+        data = f.readBytes(end - start) or b''
+        if isinstance(data, str):
+            data = data.encode('utf-8', 'ignore')
+    except Exception:
+        return ''
+    finally:
+        try:
+            f.close()
+        except Exception:
+            pass
+    lines = data.splitlines()
+    if start == mark and mark > 0 and lines:
+        lines = lines[1:]  # prima linie poate incepe inainte de mark
+    for line in lines:
+        if b'read failed at' in line and b'missing articles are' in line:
+            return line.decode('utf-8', 'ignore').strip()
+    return ''
+
+
 def start_playback_monitor(player_instance, dialog=None):
     """Monitor thread care verifica periodic si salveaza la oprire."""
     global _player_monitor
@@ -2322,6 +2484,23 @@ def start_playback_monitor(player_instance, dialog=None):
             try: dialog.close()
             except: pass
         player_instance.playback_start_time = time.time()
+
+        # Offset in kodi.log la pornirea acestei surse; la oprire citim doar
+        # ce s-a scris de aici incolo (vezi _nzb_damage_since).
+        _log_path = ''
+        _log_mark = 0
+        _lf = None
+        try:
+            _log_path = xbmcvfs.translatePath('special://logpath/kodi.log')
+            _lf = xbmcvfs.File(_log_path)
+            _log_mark = _lf.size()
+        except Exception:
+            _log_path = ''
+        finally:
+            try:
+                _lf.close()
+            except Exception:
+                pass
         
         # ============================================================
         # SKIP INTRO : fereastra mica in dreapta sus la generic
@@ -2458,6 +2637,31 @@ def start_playback_monitor(player_instance, dialog=None):
             wipe_plugin_bookmarks()
         except Exception as e:
             log(f"[PLAYER-MONITOR] Error wiping plugin bookmarks: {e}")
+        
+        # NZB cu articole lipsa: VFS umple gaura si Kodi primeste EOF dupa citeva
+        # secunde, deci nu trece prin onPlayBackError/trigger_rollover normal.
+        # Rollover DOAR pe semnatura reala din kodi.log ("read failed at" +
+        # "missing articles are"), scrisa dupa pornirea sursei curente. Oprirea
+        # manuala nu scrie nimic, deci nu mai porneste urmatoarea sursa.
+        _failed_stream = None
+        try:
+            _failed_stream = player_instance.streams[player_instance.start_index]
+        except Exception:
+            pass
+        _is_usenet_source = bool(_failed_stream) and (
+            _failed_stream.get('provider_id') == 'usenet_nzb'
+            or bool(_failed_stream.get('usenet')))
+        _near_end = last_known_total > 0 and last_known_progress >= 95
+        _damage_line = ''
+        if (_is_usenet_source and _log_path
+                and not getattr(player_instance, 'rollover_triggered', False)
+                and not getattr(player_instance, 'user_stopped', False)):
+            _damage_line = _nzb_damage_since(_log_path, _log_mark)
+        if _damage_line and not _near_end:
+            log("[PLAYER-MONITOR] Usenet source damaged (%s) - trying next" % _damage_line)
+            _monitor_release(_claim_token)
+            player_instance.trigger_rollover(allow_started=True)
+            return
         
         # VALIDARE DATE PENTRU SALVARE
         if last_known_progress <= 0 or last_known_total <= 0:

@@ -18,7 +18,7 @@ import time
 import zlib
 from urllib.parse import quote
 
-from . import config, engine, indexer, memory
+from . import config, engine, indexer
 
 ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
@@ -224,7 +224,6 @@ def prepare_stream(nzb_url):
     try:
         session = engine.Session(key, b'', providers, config.player_options())
     except engine.SessionError as exc:
-        memory.mark(key, 'failed')
         return '', str(exc), False
     except Exception as exc:
         return '', 'the release could not be opened (%s)' % str(exc)[:90], False
@@ -245,7 +244,6 @@ def prepare_stream(nzb_url):
         try:
             info = session.prepare()
         except engine.SessionError as exc:
-            memory.mark(key, 'failed')
             if getattr(exc, 'bad_nzb', False):
                 try:
                     os.remove(path)

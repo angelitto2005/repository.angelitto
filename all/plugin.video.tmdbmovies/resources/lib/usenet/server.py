@@ -27,7 +27,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
 
-from . import config, engine, indexer, memory
+from . import config, engine, indexer
 
 PORT_PROPERTY = 'tmdbmovies.usenet.port'
 PORT_RANGE = tuple(range(47321, 47332))
@@ -209,14 +209,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _prepare(self, key):
         session, info, error = open_session(key)
         if error:
-            memory.mark(key, 'failed')
             return self._json({'ok': False, 'reason': error})
         return self._json(info)
 
     def _stream(self, key, head):
         session, info, error = open_session(key)
         if error:
-            memory.mark(key, 'failed')
             return self._text(503, error)
         length = session.length
         content_type = CONTENT_TYPES.get(session.container, 'video/x-matroska')
@@ -263,7 +261,6 @@ class _Handler(BaseHTTPRequestHandler):
 
         started = time.time()
         problem = ''
-        damaged = False
         try:
             session.read(start, count, sink)
         except (BrokenPipeError, ConnectionResetError):
@@ -274,21 +271,15 @@ class _Handler(BaseHTTPRequestHandler):
             problem = 'the release session was closed'
         except engine.SessionError as exc:
             problem = 'release stopped: %s' % str(exc)[:120]
-            damaged = True
             _log('stream stopped: %s' % str(exc)[:160], 'warning')
         except Exception as exc:
             problem = 'read failed: %s' % str(exc)[:110]
-            damaged = True
             _log('stream error: %s%s' % (str(exc)[:140], _frame(exc)), 'error')
         else:
             try:
                 output.flush()
             except Exception:
                 pass
-        if damaged:
-            memory.mark(session.key, 'failed')
-        elif not problem:
-            memory.mark(session.key, 'played')
         stats = session.stats()
         elapsed = max(0.001, time.time() - started)
         rate = sent[0] / 1024.0 / elapsed

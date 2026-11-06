@@ -1,3 +1,14 @@
+1.1.334
+- Usenet results now drop releases of another film or another year, including when only Usenet is enabled.
+- With Source Priority set to an AIO Original option, sources are sorted with a TRaSH-style score: source, resolution, HDR/DV, audio and edition.
+- Release groups count too: known good groups move up, known low-quality groups and CAM/TS releases move down.
+- In those modes, the newer NZB comes first; size and seeders break the remaining ties.
+- Mixed (Quality > Size) and the other priorities keep their previous ordering.
+- The age and grab badges follow their switches immediately, including on lists served from cache.
+- Removed the PLAYED/UNAVAILABLE labels from Usenet sources.
+- A damaged Usenet release now switches automatically to the next source, while stopping the film yourself never does.
+- Resuming playback is sent to Trakt as a start, instead of a resume call that returned 404.
+
 1.1.333
 - Usenet streaming now opens 20 connections by default, and low-core Android boxes can use every configured connection.
 - Seeking in big 4K releases is faster: the MKV index article stays in memory and is read before anything else.
