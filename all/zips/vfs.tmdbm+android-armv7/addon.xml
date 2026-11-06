@@ -9,7 +9,7 @@
     <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9"/>
     <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1"/>
   </requires>
-  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS"/>
+  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS" library_android="libvfs.tmdbm.so"/>
   <extension point="xbmc.addon.metadata">
     <platform>android-armv7</platform>
     <summary lang="en_GB">Native stream reader for TMDb Movies</summary>

@@ -227,7 +227,7 @@ class Generator:
 
             def _keep(attr_match):
                 name = attr_match.group(1)
-                return attr_match.group(0) if name.endswith("_" + os_name) else ""
+                return attr_match.group(0) if name == os_name else ""
 
             return re.sub(r'\s*library_([A-Za-z0-9]+)="[^"]*"', _keep, tag)
 
