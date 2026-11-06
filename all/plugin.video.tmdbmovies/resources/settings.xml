@@ -272,7 +272,7 @@
 
         <setting label="[B][COLOR FFFFEA00]Playback[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.vfs" type="bool" label="[COLOR FFCCCCFF][B]Native VFS engine[/B]   (faster, needs the vfs.tmdbm add-on)[/COLOR]" default="true"/>
-        <setting id="usenet_nzb.install_vfs" type="action" label="      [COLOR FFCCCCFF]└─ [/COLOR][B][COLOR FFF70D1A]Install the VFS engine[/COLOR][/B]   [COLOR FFCCCCFF](from the Angelitto repository)[/COLOR]" visible="eq(-1,true) + !System.HasAddon(vfs.tmdbm)" action="InstallAddon(vfs.tmdbm)"/>
+        <setting id="usenet_nzb.install_vfs" type="action" label="      [COLOR FFCCCCFF]└─ [/COLOR][B][COLOR FFF70D1A]Install the VFS engine[/COLOR][/B]   [COLOR FFCCCCFF](from the Angelitto repository)[/COLOR]" visible="eq(-1,true) + !System.HasAddon(vfs.tmdbm)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=install_vfs)"/>
         <setting id="usenet_nzb.health" type="enum" label="[COLOR FFCCCCFF][B]Check availability[/B]   (not active yet)[/COLOR]" values="Do not check|When I play a source|While listing results" default="1"/>
         <setting id="usenet_nzb.health_max" type="slider" label="      [COLOR FFCCCCFF]└─ [B]How many to check[/B]   (each one = 1 NZB download)[/COLOR]" default="8" range="1,1,20" option="int" visible="eq(-1,2)"/>
         <setting id="usenet_nzb.timeout" type="slider" label="[COLOR FFCCCCFF][B]Network timeout[/B]  (seconds)[/COLOR]" default="20" range="10,5,60" option="int"/>

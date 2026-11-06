@@ -215,7 +215,28 @@ class Generator:
                 path.text = "{}+{}/{}-{}.zip".format(addon_id, platform, addon_id, version)
         return manifest
 
-    def _create_platform_zip(self, folder, addon_id, version, platform, manifest):
+    def _platform_manifest_text(self, folder, platform):
+        """Source addon.xml for one platform, with its original formatting."""
+        path = os.path.join(self.release_path, folder, "addon.xml")
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        os_name = platform.split("-", 1)[0]
+
+        def _strip_libraries(match):
+            tag = match.group(0)
+
+            def _keep(attr_match):
+                name = attr_match.group(1)
+                return attr_match.group(0) if name.endswith("_" + os_name) else ""
+
+            return re.sub(r'\s*library_([A-Za-z0-9]+)="[^"]*"', _keep, tag)
+
+        text = re.sub(r'<extension\b[^>]*\bpoint="kodi\.vfs"[^>]*>', _strip_libraries, text)
+        text = re.sub(r'<platform>[^<]*</platform>',
+                      '<platform>%s</platform>' % platform, text, count=1)
+        return text.encode("utf-8")
+
+    def _create_platform_zip(self, folder, addon_id, version, platform):
         package_id = "{}+{}".format(addon_id, platform)
         zip_folder = os.path.join(self.zips_path, package_id)
         if not os.path.exists(zip_folder):
@@ -240,7 +261,7 @@ class Generator:
 
         addon_folder = os.path.join(self.release_path, folder)
         platform_folder = os.path.join(addon_folder, "platforms", platform)
-        xml_bytes = ElementTree.tostring(manifest, encoding="utf-8", xml_declaration=True)
+        xml_bytes = self._platform_manifest_text(folder, platform)
 
         with zipfile.ZipFile(final_zip, "w", compression=zipfile.ZIP_DEFLATED) as zip:
             for root, dirs, files in os.walk(addon_folder):
@@ -319,23 +340,25 @@ class Generator:
             else:
                 addons_root.append(manifest)
 
-            package_manifest = self._platform_manifest(addon_root, platform)
-            self._create_platform_zip(folder, addon_id, version, platform, package_manifest)
+            self._create_platform_zip(folder, addon_id, version, platform)
             self._copy_meta_files(
                 addon_id,
                 os.path.join(self.zips_path, "{}+{}".format(addon_id, platform)),
                 source_folder=folder,
-                manifest=package_manifest,
+                manifest_bytes=self._platform_manifest_text(folder, platform),
             )
             changed = True
 
         return changed
 
-    def _copy_meta_files(self, addon_id, addon_folder, source_folder=None, manifest=None):
+    def _copy_meta_files(self, addon_id, addon_folder, source_folder=None, manifest=None,
+                         manifest_bytes=None):
         source_id = source_folder or addon_id
         try:
             if manifest is not None:
                 root = manifest
+            elif manifest_bytes is not None:
+                root = ElementTree.fromstring(manifest_bytes.decode("utf-8"))
             else:
                 xml_path = os.path.join(self.release_path, source_id, "addon.xml")
                 with open(xml_path, "r", encoding="utf-8") as f:
@@ -346,7 +369,7 @@ class Generator:
             return
 
         copyfiles = []
-        if manifest is None:
+        if manifest is None and manifest_bytes is None:
             copyfiles.append("addon.xml")
         for ext in root.findall("extension"):
             if ext.get("point") in ["xbmc.addon.metadata", "kodi.addon.metadata"]:
@@ -358,11 +381,14 @@ class Generator:
 
         src_folder = os.path.join(self.release_path, source_id)
 
-        if manifest is not None:
+        if manifest is not None or manifest_bytes is not None:
             if not os.path.exists(addon_folder):
                 os.makedirs(addon_folder)
+            if manifest_bytes is None:
+                manifest_bytes = ElementTree.tostring(manifest, encoding="utf-8",
+                                                      xml_declaration=True)
             with open(os.path.join(addon_folder, "addon.xml"), "wb") as f:
-                f.write(ElementTree.tostring(manifest, encoding="utf-8", xml_declaration=True))
+                f.write(manifest_bytes)
 
         for file in copyfiles:
             addon_path = os.path.join(src_folder, file)

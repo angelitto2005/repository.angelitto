@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="vfs.tmdbm" version="0.1.2" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+<addon id="vfs.tmdbm"
+       version="0.1.4"
+       name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]"
+       provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2"/>
     <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5"/>

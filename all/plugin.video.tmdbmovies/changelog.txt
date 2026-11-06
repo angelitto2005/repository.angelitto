@@ -1,3 +1,9 @@
+1.1.332
+- The VFS install row now says when the engine is already installed, warns when the platform is not supported, and confirms a successful install for Windows or Android.
+- Updating the plugin from the repository now also updates an older VFS engine that was installed by hand.
+- Fixed the last genre in TMDb Info showing a literal [B] and losing its bold formatting.
+- The motto and genres line in TMDb Info and in the trailer OSD is bold and colored again, with no stray formatting tags.
+
 1.1.331
 - New: Usenet (NZB) streaming with your own Newznab indexers and NNTP providers, no debrid needed.
 - Six indexer slots and two providers (SSL, optional backup), with Sequential/Parallel search, per-indexer switches and indexer/provider tests.

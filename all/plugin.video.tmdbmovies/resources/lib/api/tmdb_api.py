@@ -50,18 +50,6 @@ def _imdb_trailer_mode():
         return False
 
 
-def _tagline_no_close(text):
-    """TagLine fara [/B]-ul final.
-
-    Randul TagLine din OSD afiseaza literal ultimul [/B], deci un tagline
-    inchis normal ar lasa un '[/B]' vizibil in fata ochilor.
-    """
-    text = str(text or '')
-    while text.endswith('[/B]'):
-        text = text[:-4]
-    return text
-
-
 # === LOCK DE CONSTRUCTIE PE LISTA (anti-race container vs widget) ===============
 # Aceeasi lista (Up Next / In Progress) e ceruta simultan de mai multe procese:
 # containerul, widget-ul din skin (reincarcat dupa UpdateLibrary) si refresh-urile
@@ -6085,15 +6073,10 @@ def show_info_dialog(params):
         tag = li.getVideoInfoTag()
         tag.setMediaType('movie' if content_type == 'movie' else 'tvshow')
         tag.setTitle(title)
-        # Trailerul IMDb se reda cu ListItem-ul ACESTUI dialog (la celelalte
-        # jucatoare clipul vine cu metadata proprie), deci randul TagLine si
-        # Plot ar arata motto-ul cu genurile de doua ori. In modul IMDb
-        # ramane in plot doar synopsis-ul.
-        _direct_trailer = bool(trailer_url) and not str(trailer_url).startswith('plugin://')
-        if _direct_trailer and plot_header and plot.startswith(plot_header):
-            tag.setPlot(plot[len(plot_header):])
-        else:
-            tag.setPlot(plot) # <--- AICI ERA BUG-UL (era data.get('overview'))
+        # Motto+genuri stau in antetul din plot, echilibrat: acelasi string
+        # ajunge bold atit in subtitlul din TMDb Info, cit si in OSD-ul
+        # trailerului (care copiaza info tag-ul acestui dialog).
+        tag.setPlot(plot) # <--- AICI ERA BUG-UL (era data.get('overview'))
 
         if data.get('vote_average'):
             tag.setRating(float(data['vote_average']))
@@ -6122,24 +6105,12 @@ def show_info_dialog(params):
 
         # --- 2. TRUCURI PENTRU SKIN-UL KODI ---
         if content_type == 'movie':
-            # La filme, Kodi stie sa puna Genul in dreapta si Tagline-ul sub titlu
             if colored_genres_list:
                 tag.setGenres(colored_genres_list)
-                
-            # TagLine pentru afisare sub titlu in dialog (doar vizual in dialog).
-            # Trailerul primeste propriul tagline prin URL, deci nu mai are ce
-            # mosteni din dialog in OSD. Gatesc si cu show_motto ca setarea
-            # "motto+gen" sa controleze si aceasta linie (si ca sa nu existe
-            # niciun caz in care OSD-ul mosteneste un tagline fara tagline propriu).
-            if show_motto:
-                if tagline and genres_str:
-                    tag.setTagLine(_tagline_no_close(f"[B][COLOR yellow]{tagline}[/COLOR][/B]   |   {genres_str}"))
-                elif tagline:
-                    tag.setTagLine(_tagline_no_close(f"[B][COLOR yellow]{tagline}[/COLOR][/B]"))
-                elif genres_list:
-                    # Fallback fara bullet: "•" + [B] multiplu se randeaza gresit
-                    # daca ar ajunge vreodata mostenit in OSD.
-                    tag.setTagLine(_tagline_no_close(f"[COLOR cyan]{', '.join(genres_list)}[/COLOR]"))
+            # Fara TagLine la filme: Estuary il arata in subtitlu cu [I] (fara
+            # bold), iar OSD-ul il inveleste in [B]...[/B]; un singur string cu
+            # [B] nu poate fi curat in ambele. Antetul din plot le arata bold
+            # pe amindoua.
         else:
             # PACALIM KODI LA SERIALE! 
             # Pentru ca ignora Tagline-ul, il unim cu Genul (pe care stim ca il afiseaza sub titlu)
@@ -6153,7 +6124,7 @@ def show_info_dialog(params):
                 
             if final_tv_string:
                 # Trimitem totul ca un singur "Gen"
-                tag.setGenres([_tagline_no_close(final_tv_string)])
+                tag.setGenres([final_tv_string])
 
         try:
             _dtl = tag.getTagLine() if hasattr(tag, 'getTagLine') else ''

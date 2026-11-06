@@ -1,12 +1,15 @@
-<?xml version='1.0' encoding='utf-8'?>
-<addon id="vfs.tmdbm" version="0.1.3" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="vfs.tmdbm"
+       version="0.1.4"
+       name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]"
+       provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
-    <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
-    <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
-    <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9" />
-    <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1" />
+    <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2"/>
+    <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5"/>
+    <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9"/>
+    <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1"/>
   </requires>
-  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS" library_android="libvfs.tmdbm.so" />
+  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS"/>
   <extension point="xbmc.addon.metadata">
     <platform>android-armv7</platform>
     <summary lang="en_GB">Native stream reader for TMDb Movies</summary>

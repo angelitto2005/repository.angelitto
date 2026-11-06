@@ -733,6 +733,82 @@ def _usenet_test_indexers():
                  xbmc.LOGINFO)
     xbmcgui.Dialog().textviewer('Usenet indexers', '\n\n'.join(lines))
 
+def _vfs_platform(is_windows, is_android, is_linux, pointer_bits, machine):
+    """Map the running Kodi binary to the VFS packages published in the repo."""
+    machine = (machine or '').lower()
+    if is_windows:
+        if pointer_bits == 64 and machine in ('amd64', 'x86_64', 'x64'):
+            return 'Windows x64', True
+        return 'Windows (%s)' % (machine or '%d-bit' % pointer_bits), False
+    if is_android:
+        # A 32-bit Kodi on an arm64 kernel still reports aarch64 from uname.
+        if pointer_bits == 32 and machine not in ('x86', 'i686', 'i386'):
+            return 'Android armv7', True
+        return 'Android (%s)' % (machine or '%d-bit' % pointer_bits), False
+    if is_linux:
+        return 'Linux', False
+    return 'this platform', False
+
+
+def _install_vfs_action():
+    """Settings > Usenet > Playback: install the VFS engine for this platform."""
+    import platform as _platform
+    import struct
+    try:
+        machine = _platform.machine()
+    except Exception:
+        machine = ''
+    name, supported = _vfs_platform(
+        xbmc.getCondVisibility('System.Platform.Windows'),
+        xbmc.getCondVisibility('System.Platform.Android'),
+        xbmc.getCondVisibility('System.Platform.Linux'),
+        struct.calcsize('P') * 8,
+        machine,
+    )
+    title = '[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]'
+    icon = os.path.join(CONFIG_ADDON_PATH, 'icon.png')
+
+    if not supported:
+        xbmc.log('[TMDb Movies] [VFS] install skipped, unsupported platform: %s' % name, xbmc.LOGINFO)
+        xbmcgui.Dialog().notification(
+            title,
+            'The [B][COLOR FFF70D1A]VFS engine[/COLOR][/B] is not available for '
+            '[B][COLOR FFFFD700]%s[/COLOR][/B].' % name,
+            icon, 6000, False)
+        return
+
+    if xbmc.getCondVisibility('System.HasAddon(vfs.tmdbm)'):
+        try:
+            version = xbmcaddon.Addon('vfs.tmdbm').getAddonInfo('version')
+        except Exception:
+            version = ''
+        message = 'The [B][COLOR FFF70D1A]VFS engine[/COLOR][/B] is already installed'
+        if version:
+            message += ' (version [B][COLOR FF00FA9A]%s[/COLOR][/B])' % version
+        xbmcgui.Dialog().notification(title, message + '.', icon, 5000, False)
+        return
+
+    xbmc.executebuiltin('InstallAddon(vfs.tmdbm)', True)
+
+    if xbmc.getCondVisibility('System.HasAddon(vfs.tmdbm)'):
+        try:
+            version = xbmcaddon.Addon('vfs.tmdbm').getAddonInfo('version')
+        except Exception:
+            version = ''
+        message = '[B][COLOR FFF70D1A]VFS[/COLOR][/B]'
+        if version:
+            message += ' [B][COLOR FF00FA9A]%s[/COLOR][/B]' % version
+        message += ' was installed for [B][COLOR FFFFD700]%s[/COLOR][/B].' % name
+        xbmc.log('[TMDb Movies] [VFS] installed %s for %s' % (version or '?', name), xbmc.LOGINFO)
+        xbmcgui.Dialog().notification(title, message, icon, 5000, False)
+    else:
+        xbmc.log('[TMDb Movies] [VFS] install not completed for %s' % name, xbmc.LOGINFO)
+        xbmcgui.Dialog().notification(
+            title,
+            'The [B][COLOR FFF70D1A]VFS engine[/COLOR][/B] was '
+            '[B][COLOR FFF535AA]not installed[/COLOR][/B].',
+            icon, 5000, False)
+
 def run_plugin():
     global _handle
     import time
@@ -789,6 +865,10 @@ def run_plugin():
 
     if mode == 'usenet_test_indexers':
         _usenet_test_indexers()
+        return
+
+    if mode == 'install_vfs':
+        _install_vfs_action()
         return
 
     if mode == 'color_picker':
