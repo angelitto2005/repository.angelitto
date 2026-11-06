@@ -9,9 +9,10 @@ import shutil
 import hashlib
 import zipfile
 import re
+import copy
 from xml.etree import ElementTree
 
-SCRIPT_VERSION = 7
+SCRIPT_VERSION = 8
 # Am adaugat "all" in lista pentru a scana si acel folder
 KODI_VERSIONS = ["krypton", "leia", "matrix", "nexusrepo", "omega", "repo", "all"]
 IGNORE = [
@@ -170,18 +171,183 @@ class Generator:
                 )
             )
 
-    def _copy_meta_files(self, addon_id, addon_folder):
-        # --- FIX: Folosim citirea robusta si aici ---
+    def _platforms(self, folder):
+        root = os.path.join(self.release_path, folder, "platforms")
+        if not os.path.isdir(root):
+            return []
+        return sorted(
+            d for d in os.listdir(root)
+            if os.path.isdir(os.path.join(root, d))
+        )
+
+    @staticmethod
+    def _is_metadata_extension(ext):
+        return ext.get("point") in ("xbmc.addon.metadata", "kodi.addon.metadata")
+
+    @staticmethod
+    def _entry_platform(entry):
+        for ext in entry.findall("extension"):
+            if Generator._is_metadata_extension(ext):
+                node = ext.find("platform")
+                if node is not None and node.text:
+                    return node.text.strip()
+        return ""
+
+    def _platform_manifest(self, addon_root, platform):
+        manifest = copy.deepcopy(addon_root)
+        os_name = platform.split("-", 1)[0]
+        for ext in manifest.findall("extension"):
+            for attr in list(ext.attrib):
+                if attr.startswith("library_") and not attr.endswith("_" + os_name):
+                    del ext.attrib[attr]
+            if self._is_metadata_extension(ext):
+                node = ext.find("platform")
+                if node is None:
+                    node = ElementTree.SubElement(ext, "platform")
+                node.text = platform
+        return manifest
+
+    def _entry_manifest(self, addon_root, addon_id, version, platform):
+        manifest = self._platform_manifest(addon_root, platform)
+        for ext in manifest.findall("extension"):
+            if self._is_metadata_extension(ext):
+                path = ElementTree.SubElement(ext, "path")
+                path.text = "{}+{}/{}-{}.zip".format(addon_id, platform, addon_id, version)
+        return manifest
+
+    def _create_platform_zip(self, folder, addon_id, version, platform, manifest):
+        package_id = "{}+{}".format(addon_id, platform)
+        zip_folder = os.path.join(self.zips_path, package_id)
+        if not os.path.exists(zip_folder):
+            os.makedirs(zip_folder)
+
+        zip_name = "{}-{}.zip".format(addon_id, version)
+        final_zip = os.path.join(zip_folder, zip_name)
+
+        for f in os.listdir(zip_folder):
+            if f.endswith(".zip") and f != zip_name:
+                try:
+                    os.remove(os.path.join(zip_folder, f))
+                    print("Sters versiune veche: {} ({})".format(color_text(f, 'red'), package_id))
+                except:
+                    pass
+
+        if os.path.exists(final_zip):
+            try:
+                os.remove(final_zip)
+            except:
+                pass
+
+        addon_folder = os.path.join(self.release_path, folder)
+        platform_folder = os.path.join(addon_folder, "platforms", platform)
+        xml_bytes = ElementTree.tostring(manifest, encoding="utf-8", xml_declaration=True)
+
+        with zipfile.ZipFile(final_zip, "w", compression=zipfile.ZIP_DEFLATED) as zip:
+            for root, dirs, files in os.walk(addon_folder):
+                if "platforms" in dirs:
+                    dirs.remove("platforms")
+                for i in IGNORE:
+                    if i in dirs:
+                        dirs.remove(i)
+                    files[:] = [f for f in files if not f.startswith(i)]
+
+                rel_root = os.path.relpath(root, addon_folder)
+                for f in files:
+                    fullpath = os.path.join(root, f)
+                    if rel_root == ".":
+                        archive_name = "{}/{}".format(addon_id, f)
+                    else:
+                        archive_name = "{}/{}/{}".format(
+                            addon_id, rel_root.replace(os.sep, "/"), f
+                        )
+                    if rel_root == "." and f == "addon.xml":
+                        zip.writestr(archive_name, xml_bytes)
+                    else:
+                        zip.write(fullpath, archive_name, zipfile.ZIP_DEFLATED)
+
+            for root, dirs, files in os.walk(platform_folder):
+                rel_root = os.path.relpath(root, platform_folder)
+                for f in files:
+                    fullpath = os.path.join(root, f)
+                    if rel_root == ".":
+                        archive_name = "{}/{}".format(addon_id, f)
+                    else:
+                        archive_name = "{}/{}/{}".format(
+                            addon_id, rel_root.replace(os.sep, "/"), f
+                        )
+                    zip.write(fullpath, archive_name, zipfile.ZIP_DEFLATED)
+
+        size = convert_bytes(os.path.getsize(final_zip))
+        print(
+            "Zip created for {} ({}) - {}".format(
+                color_text(package_id, 'cyan'),
+                color_text(version, 'green'),
+                color_text(size, 'yellow'),
+            )
+        )
+
+    def _update_platform_packages(self, addons_root, folder, addon_root, addon_id, version, platforms):
+        changed = False
+        wanted = set(platforms)
+
+        for entry in list(addons_root.findall("addon")):
+            if entry.get("id") == addon_id and self._entry_platform(entry) not in wanted:
+                addons_root.remove(entry)
+                changed = True
+                print(
+                    "Sters intrare veche pentru {} (platforma: {})".format(
+                        color_text(addon_id, 'cyan'),
+                        self._entry_platform(entry) or "nespecificata",
+                    )
+                )
+
+        for platform in platforms:
+            existing = None
+            for entry in addons_root.findall("addon"):
+                if entry.get("id") == addon_id and self._entry_platform(entry) == platform:
+                    existing = entry
+                    break
+
+            if existing is not None and existing.get("version") == version:
+                continue
+
+            manifest = self._entry_manifest(addon_root, addon_id, version, platform)
+            if existing is not None:
+                index = list(addons_root).index(existing)
+                addons_root.remove(existing)
+                addons_root.insert(index, manifest)
+            else:
+                addons_root.append(manifest)
+
+            package_manifest = self._platform_manifest(addon_root, platform)
+            self._create_platform_zip(folder, addon_id, version, platform, package_manifest)
+            self._copy_meta_files(
+                addon_id,
+                os.path.join(self.zips_path, "{}+{}".format(addon_id, platform)),
+                source_folder=folder,
+                manifest=package_manifest,
+            )
+            changed = True
+
+        return changed
+
+    def _copy_meta_files(self, addon_id, addon_folder, source_folder=None, manifest=None):
+        source_id = source_folder or addon_id
         try:
-            xml_path = os.path.join(self.release_path, addon_id, "addon.xml")
-            with open(xml_path, "r", encoding="utf-8") as f:
-                xml_content = f.read().strip()
-            root = ElementTree.fromstring(xml_content)
+            if manifest is not None:
+                root = manifest
+            else:
+                xml_path = os.path.join(self.release_path, source_id, "addon.xml")
+                with open(xml_path, "r", encoding="utf-8") as f:
+                    xml_content = f.read().strip()
+                root = ElementTree.fromstring(xml_content)
         except Exception as e:
             print("Eroare la citirea addon.xml pentru meta files: {}".format(e))
             return
 
-        copyfiles = ["addon.xml"]
+        copyfiles = []
+        if manifest is None:
+            copyfiles.append("addon.xml")
         for ext in root.findall("extension"):
             if ext.get("point") in ["xbmc.addon.metadata", "kodi.addon.metadata"]:
                 assets = ext.find("assets")
@@ -190,7 +356,14 @@ class Generator:
                 for art in [a for a in assets if a.text]:
                     copyfiles.append(os.path.normpath(art.text))
 
-        src_folder = os.path.join(self.release_path, addon_id)
+        src_folder = os.path.join(self.release_path, source_id)
+
+        if manifest is not None:
+            if not os.path.exists(addon_folder):
+                os.makedirs(addon_folder)
+            with open(os.path.join(addon_folder, "addon.xml"), "wb") as f:
+                f.write(ElementTree.tostring(manifest, encoding="utf-8", xml_declaration=True))
+
         for file in copyfiles:
             addon_path = os.path.join(src_folder, file)
             if not os.path.exists(addon_path):
@@ -306,6 +479,14 @@ class Generator:
                 addon_entry = addons_root.find(addon_xpath.format(id))
                 
                 force_update = (id == MAIN_REPO_ID)
+
+                platforms = self._platforms(addon)
+                if platforms:
+                    if self._update_platform_packages(
+                        addons_root, addon, addon_root, id, version, platforms
+                    ):
+                        changed = True
+                    continue
 
                 if addon_entry is not None and addon_entry.get('version') != version:
                     index = addons_root.findall('addon').index(addon_entry)

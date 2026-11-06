@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="vfs.tmdbm"
-       version="0.1.2"
+       version="0.1.3"
        name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
