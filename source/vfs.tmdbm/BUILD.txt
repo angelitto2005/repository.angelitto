@@ -9,7 +9,7 @@ from the same add-on folder, depending on the platform it runs on.
 Contents
 - src/                     add-on entry point and Usenet engine (C++17)
 - vendor/mbedtls/          mbedTLS 3.6.2, used under GPL-2.0-or-later
-- vendor/xbmc/             Kodi 21.3-Omega devkit headers (GPL-2.0-or-later)
+- vendor/xbmc/             Kodi 21.3-Omega source snapshot (GPL-2.0-or-later)
 - tools/                   test harnesses and diagnostics
 - licenses/                full license texts
 - CMakeLists.txt           build definition for both platforms

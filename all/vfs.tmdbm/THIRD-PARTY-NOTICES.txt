@@ -8,11 +8,13 @@ Third-party notices for vfs.tmdbm
    GNU GPL version 2 or later. The complete license text for both choices is
    in licenses/mbedtls.txt.
 
-2. Kodi binary add-on development kit headers (Kodi 21.3-Omega)
+2. Kodi 21.3-Omega source snapshot (Team Kodi / XBMC Foundation)
    Copyright (C) 2005-2024 Team Kodi / XBMC Foundation.
-   Licensed under the GNU General Public License version 2 or later. Only the
-   interface headers are compiled into this add-on; no Kodi source code is
-   modified or redistributed.
+   Licensed under the GNU General Public License version 2 or later. A partial,
+   unmodified copy of the Kodi 21.3-Omega source tree is included under
+   vendor/xbmc so the add-on can be built against the Kodi interfaces; only the
+   interface headers are compiled into this add-on and no Kodi source code is
+   modified.
 
 3. GCC runtime libraries (libstdc++, libgcc)
    Copyright (C) Free Software Foundation, Inc.
