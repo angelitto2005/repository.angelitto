@@ -1313,6 +1313,12 @@ def clear_cache():
 
     # --- Keep your original logic for JSON files and window properties ---
     json_files = ['sources_cache.json', 'tmdb_lists_cache.json', 'trakt_lists_cache.json', 'trakt_history.json', 'last_sync.json']
+    try:
+        from resources.lib.usenet import indexer as _usenet_indexer
+        if _usenet_indexer.clear_cache():
+            deleted = True
+    except Exception:
+        pass
 
     for jf in json_files:
         path = os.path.join(ADDON_DATA_DIR, jf)

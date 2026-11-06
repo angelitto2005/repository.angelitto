@@ -20,6 +20,13 @@ from resources.lib import subtitle as subtitles
 from resources.lib.providers import trakt_sync
 from resources.lib.core.cache import MainCache
 
+# daemon guard: nothing we start may hold Kodi open at exit (AGENTS.md pattern)
+try:
+    from resources.lib.core.daemon_guard import install as _install_daemon_guard
+    _install_daemon_guard()
+except Exception:
+    pass
+
 
 _VOE_DOMAINS = None
 _VOE_CANON = {'voe.sx'}
@@ -120,34 +127,45 @@ def _seek_to_resume(player, target_pos):
     else:
         log("[RESUME] player-ul nu a pornit in 15s, abandon")
         return
-    for _ in range(40):
+    for _ in range(120):
         if not player.isPlaying():
             return
         try:
-            if float(player.getTotalTime() or 0) > 0:
+            if float(player.getTime() or 0) > 0:
                 break
         except Exception:
             pass
-        xbmc.sleep(250)
-    for attempt in range(5):
+        xbmc.sleep(500)
+    else:
+        log("[RESUME] redarea nu a pornit in 60s, abandon")
+        return
+    try:
+        current_pos = player.getTime()
+        log("[RESUME] current=%s, target=%s" % (current_pos, target_pos))
+        if abs(current_pos - target_pos) < 30:
+            log("[RESUME] deja la pozitia tinta, fara seek")
+            return
+        player.seekTime(target_pos)
+        log("[RESUME] seekTime executat")
+    except Exception as e:
+        log("[RESUME] eroare do_resume: %s" % e)
+        return
+    for _ in range(20):
+        xbmc.sleep(500)
         if not player.isPlaying():
             return
         try:
-            current_pos = player.getTime()
-            log("[RESUME] attempt %d: current=%s, target=%s" % (attempt, current_pos, target_pos))
-            if abs(current_pos - target_pos) < 30:
-                log("[RESUME] deja la pozitia tinta, fara seek")
-                return
-            player.seekTime(target_pos)
-            log("[RESUME] seekTime executat")
-            xbmc.sleep(2000)
             new_pos = player.getTime()
-            log("[RESUME] dupa seek: new_pos=%s" % new_pos)
-            if abs(new_pos - target_pos) < 60:
-                return
-        except Exception as e:
-            log("[RESUME] eroare do_resume: %s" % e)
-        xbmc.sleep(1000)
+        except Exception:
+            continue
+        if abs(new_pos - target_pos) < 60:
+            log("[RESUME] seek confirmat: new_pos=%s" % new_pos)
+            return
+    try:
+        new_pos = player.getTime()
+    except Exception:
+        new_pos = 0
+    log("[RESUME] seek inca in curs dupa 10s: new_pos=%s, target=%s" % (new_pos, target_pos))
 
 
 def _kodi_resume_bookmark_exists(tmdb_id, c_type, season=None, episode=None):
@@ -476,7 +494,7 @@ def _tier_matches(tier, cat, is_cached):
         return cat in ('aio', 'stremio') and not is_cached
     return False
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # AFISAREA NUMELUI PROVIDERULUI (RESPECTA NUMELE PERSONALIZATE)
@@ -626,7 +644,7 @@ def check_url_validity(url, headers=None, max_timeout=None):
             clean_url = url.split('|')[0]
             
             if not clean_url.startswith(('http://', 'https://')):
-                if clean_url.startswith('file://'):
+                if clean_url.startswith(('file://', 'tmdbm://')):
                     result['valid'] = True
                     result['done'] = True
                     return
@@ -1372,6 +1390,7 @@ def build_display_items(streams, poster_url):
     
     for idx, s in enumerate(streams, 1):
         info = extract_stream_info(s)
+        is_usenet = (s.get('provider_id') == 'usenet_nzb') or bool(s.get('usenet'))
         
         quality = info['quality']
         provider = info['provider']
@@ -1426,6 +1445,11 @@ def build_display_items(streams, poster_url):
         
         # Index (alb)
         parts.append(f"[COLOR FFFFFFFF]{idx:02d}.[/COLOR]")
+
+        # Usenet (NZB): marked in the left column so it is never confused with
+        # the Usenet provider that comes from a Stremio add-on.
+        if is_usenet:
+            parts.append("[B][COLOR FF00CED1]NZB+[/COLOR][/B]")
         
         # Quality (colorat)
         parts.append(f"[COLOR {c_qual}]{quality}[/COLOR]")
@@ -1472,6 +1496,17 @@ def build_display_items(streams, poster_url):
         label2 = re.sub(r'\s*\|\s*[A-Za-z0-9]+Hub\s*$', '', label2)
         label2 = re.sub(r'\s*🔗\s*\w+\s*\(\w+\)\s*$', '', label2)
         
+        if is_usenet:
+            _usenet_meta = s.get("usenet") or {}
+            _usenet_name = ((s.get("info") or {}).get("provider_name")
+                            or _usenet_meta.get("provider_name") or "Usenet")
+            _usenet_head = "[B][COLOR FFFFEA00]%s[/COLOR][/B]" % _usenet_name
+            if _usenet_meta.get("indexer"):
+                _usenet_head += "  [COLOR FFCCCCFF]%s[/COLOR]" % _usenet_meta["indexer"]
+            if _usenet_meta.get("age_text"):
+                _usenet_head += "  [COLOR FF87CEEB]AGE %s[/COLOR]" % _usenet_meta["age_text"]
+            label2 = _usenet_head + "  " + (label2 or "")
+
         if len(label2) > 110:
             label2 = label2[:107] + "..."
         
@@ -1778,23 +1813,21 @@ class TMDbPlayer(xbmc.Player):
                                results=_saved_window_items, meta=_saved_meta_dict)
             _show_modal_abortable(win)
             selected_data = win.selected
+            selected_index = getattr(win, 'selected_index', -1)
             del win
             
             if selected_data and self.rollover_args:
-                import json
-                sel_dict = json.loads(selected_data)
-                selected_url = sel_dict.get('url')
-                for i, s in enumerate(_saved_filtered_streams):
-                    if s['url'] == selected_url:
-                        self.rollover_triggered = False
-                        info_tag, unique_ids, art, properties, resume_time = self.rollover_args
-                        t = threading.Thread(target=play_with_rollover, args=(
-                            _saved_filtered_streams, i, self.tmdb_id, self.content_type,
-                            self.season, self.episode, info_tag, unique_ids, art, properties, resume_time
-                        ), kwargs={'from_resolve': True})
-                        t.daemon = True
-                        t.start()
-                        return
+                i = _resolve_selected_index(selected_index, selected_data, _saved_filtered_streams)
+                if i >= 0:
+                    self.rollover_triggered = False
+                    info_tag, unique_ids, art, properties, resume_time = self.rollover_args
+                    t = threading.Thread(target=play_with_rollover, args=(
+                        _saved_filtered_streams, i, self.tmdb_id, self.content_type,
+                        self.season, self.episode, info_tag, unique_ids, art, properties, resume_time
+                    ), kwargs={'from_resolve': True})
+                    t.daemon = True
+                    t.start()
+                    return
         except Exception as e:
             log(f"[PLAYER-CLASS] Error reopening sources window: {e}")
 
@@ -1959,7 +1992,7 @@ def _silent_scrape_next_episode(player):
         active_providers = []
         http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
         p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
         p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
         for pid in ALL_KNOWN_PROVIDERS:
             is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
@@ -2316,7 +2349,8 @@ def start_playback_monitor(player_instance, dialog=None):
         last_known_total = 0
         _last_beat = 0.0
         
-        while player_instance.isPlaying():
+        _monitor = xbmc.Monitor()
+        while player_instance.isPlaying() and not _monitor.abortRequested():
             if time.time() - _last_beat >= 2.0:
                 _monitor_beat(_claim_token)
                 _last_beat = time.time()
@@ -2388,7 +2422,8 @@ def start_playback_monitor(player_instance, dialog=None):
             except Exception as e:
                 log(f"[PLAYER-MONITOR] Loop error: {e}")
             
-            xbmc.sleep(250)
+            # wakes up immediately when Kodi asks the script to stop
+            _monitor.waitForAbort(0.25)
         
         # ============================================================
         # PLAYERUL S-A OPRIT
@@ -2645,6 +2680,31 @@ def start_playback_monitor(player_instance, dialog=None):
         # POST-PLAYBACK: DIALOGURI + REFRESH (in thread separat)
         # ==============================================================
         def _post_playback_dialogs():
+            # Kodi is closing: do not sit in sleeps while it waits for this script
+            if kodi_abort_requested():
+                return
+
+            class _NoStart(object):
+                """Stands in for a thread that must not run any more."""
+                def start(self):
+                    return None
+                def join(self, timeout=None):
+                    return None
+                def is_alive(self):
+                    return False
+
+            def _spawn_thread(*args, **kwargs):
+                """A thread that does not even start when Kodi is closing."""
+                if kodi_abort_requested():
+                    return _NoStart()
+                kwargs["daemon"] = True
+                return threading.Thread(*args, **kwargs)
+            def _nap(milliseconds):
+                """Sleep that gives up at once when Kodi is closing."""
+                if kodi_abort_requested():
+                    return False
+                xbmc.sleep(milliseconds)
+                return not kodi_abort_requested()
             # De acum pina la safety pass, refresh-ul listei este al nostru:
             # pre-randarea Up Next nu mai face ea Container.Refresh (ar randa
             # cache-ul vechi chiar in timpul build-ului). Un singur refresh,
@@ -2678,7 +2738,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             break
                         if kodi_abort_requested():
                             break
-                        xbmc.sleep(100)
+                        _nap(100)
                     win = AutoPlayWindow('autoplay_dialog.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', n_info=n_info)
                     _show_modal_abortable(win)
                     ret = win.action_result
@@ -2719,7 +2779,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         from resources.lib.core.utils import plugin_url as _plugin_url
                         _run_url = _plugin_url(url_params)
                         if xbmc.Player().isPlaying():
-                            xbmc.Player().stop(); xbmc.sleep(500)
+                            xbmc.Player().stop(); _nap(500)
                         xbmc.executebuiltin(f"RunPlugin({_run_url})")
             
             # Rating (provider-aware)
@@ -2743,7 +2803,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     _lib_title = player_instance.title
                     if player_instance.season is not None and player_instance.episode is not None:
                         _lib_title = f"{_lib_title} - S{int(player_instance.season):02d}E{int(player_instance.episode):02d}"
-                    threading.Thread(target=_update_lib_watch, args=(player_instance.content_type, 'mark_as_watched', _lib_title, player_instance.tmdb_id, player_instance.season, player_instance.episode), daemon=True).start()
+                    _spawn_thread(target=_update_lib_watch, args=(player_instance.content_type, 'mark_as_watched', _lib_title, player_instance.tmdb_id, player_instance.season, player_instance.episode), daemon=True).start()
                 except:
                     pass
             for _fs_wait in range(34):
@@ -2752,7 +2812,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         break
                 except:
                     break
-                xbmc.sleep(150)
+                _nap(150)
             # NU reimprospatam containerul aici. La 0.7-1.2s dupa stop Kodi isi
             # re-initializeaza fereastra media (MyVideoNav, 10025): logul real
             # arata "Control 55 in window 10025 has been asked to focus" in
@@ -2783,7 +2843,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     while _waited < 5.0:
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(250)
+                        _nap(250)
                         _waited += 0.25
                     # Pre-randarea Up Next isi rescrie cache-ul in fundal (build
                     # 1.5-2.5s). Un refresh in timpul build-ului randeaza
@@ -2799,7 +2859,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             break
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(250)
+                        _nap(250)
                         _pb_wait += 0.25
                     try:
                         _plugin_now = (xbmc.getInfoLabel('Container.PluginName') or '').lower()
@@ -2851,7 +2911,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             break
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(500)
+                        _nap(500)
                         _dlg_wait += 0.5
                     try:
                         if xbmc.getCondVisibility('System.HasModalDialog'):
@@ -3000,7 +3060,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             break
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(250)
+                        _nap(250)
                         _pend_wait += 0.25
                     else:
                         # Plafon atins. Daca build-ul variantei vizibile a
@@ -3031,7 +3091,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             return
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(100)
+                        _nap(100)
                     else:
                         log("[PLAYER-MONITOR] Safety refresh amanat (container tot se actualizeaza)")
                         return
@@ -3082,7 +3142,7 @@ def start_playback_monitor(player_instance, dialog=None):
                             _drop_stale_marker_if_fresh()
                             log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
                             return
-                        xbmc.sleep(200)
+                        _nap(200)
                         _settle += 0.2
                     # Cache-ul e final DOAR daca un build a scris lista DUPA marcaj.
                     # Altfel il lasam aprins: safety pass-ul poate iesi din
@@ -3113,7 +3173,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         xbmcgui.Window(10000).clearProperty('tmdbmovies.stop_refresh_pending')
                     except Exception:
                         pass
-            threading.Thread(target=_safety_refresh, daemon=True).start()
+            _spawn_thread(target=_safety_refresh, daemon=True).start()
             # Widget-urile din skin se re-improspateaza cu UpdateLibrary, dar nu in
             # aceeasi secunda cu Container.Refresh (Kodi 21 crapa in cache-ul de
             # directoare). Un singur apel, dupa ce update-ul listei s-a terminat.
@@ -3133,7 +3193,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     while _waited < 3.0:
                         if kodi_abort_requested():
                             return
-                        xbmc.sleep(250)
+                        _nap(250)
                         _waited += 0.25
                     try:
                         if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
@@ -3151,7 +3211,7 @@ def start_playback_monitor(player_instance, dialog=None):
                                 break
                         except Exception:
                             return
-                        xbmc.sleep(100)
+                        _nap(100)
                     else:
                         return
                     try:
@@ -3169,7 +3229,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         log("[PLAYER-MONITOR] Widget refresh triggered (UpdateLibrary, dupa stop)")
                 except Exception as e:
                     log(f"[PLAYER-MONITOR] Widget refresh error: {e}")
-            threading.Thread(target=_widget_refresh_later, daemon=True).start()
+            _spawn_thread(target=_widget_refresh_later, daemon=True).start()
         
         try:
             from resources.lib.cloud import debrid as _debrid_post
@@ -3205,7 +3265,8 @@ def start_playback_monitor(player_instance, dialog=None):
                 pass
             _monitor_release(_claim_token)
 
-    _player_monitor = threading.Thread(target=_monitor_entry, daemon=True)
+    _player_monitor = threading.Thread(target=_monitor_entry, daemon=True,
+                                      name='PLAYER-MONITOR')
     _player_monitor.start()
 
 
@@ -3256,7 +3317,7 @@ def format_for_results_window(streams, poster_url, meta=None):
             _title_year = str(meta.get('year', ''))
             _override_name = f"{_title_name} ({_title_year})" if _title_name and _title_year else _title_name
     
-    for s in streams:
+    for src_index, s in enumerate(streams):
         info_extr = extract_stream_info(s)
         
         raw_name = s.get('title', '')
@@ -3306,6 +3367,7 @@ def format_for_results_window(streams, poster_url, meta=None):
             'name': raw_name,
             'url': s.get('url', ''),
             'info': stream_info,
+            'src_index': src_index,
             'raw_stream_data': s 
         })
     return window_results
@@ -3564,8 +3626,36 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 log(f"[PLAYER] AIO/Debrid source {i+1}: direct play")
                 break
             
+            # Usenet (NZB): the native VFS add-on reads it, the local server stays as fallback
+            if stream.get('usenet') and not url:
+                _usenet_nzb = (stream.get('usenet') or {}).get('nzb_url', '')
+                _usenet_url, _usenet_why = '', ''
+                try:
+                    from resources.lib.usenet import vfs as _usenet_vfs
+                    if _usenet_vfs.enabled() and _usenet_vfs.available():
+                        _usenet_url, _usenet_why, _usenet_retry = _usenet_vfs.prepare_stream(_usenet_nzb)
+                        if not _usenet_url:
+                            log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
+                            if not _usenet_retry:
+                                continue
+                    else:
+                        _usenet_why = 'the VFS add-on is off'
+                except Exception as _usenet_error:
+                    _usenet_why = str(_usenet_error)[:90]
+                if not _usenet_url:
+                    try:
+                        from resources.lib.usenet import server as _usenet_server
+                        _usenet_url, _usenet_why = _usenet_server.prepare_stream(_usenet_nzb)
+                    except Exception as _usenet_error:
+                        _usenet_url, _usenet_why = '', str(_usenet_error)[:90]
+                if not _usenet_url:
+                    log(f"[PLAYER] Usenet release skipped: {_usenet_why}", xbmc.LOGWARNING)
+                    continue
+                url = _usenet_url
+                log(f"[PLAYER] Usenet ready: {url}")
+
             if not url: continue
-            if not url.startswith(('http://', 'https://', 'file://')): continue
+            if not url.startswith(('http://', 'https://', 'file://', 'tmdbm://')): continue
             
             base_url_check = url.split('|')[0].lower()
             if any(bad in base_url_check for bad in bad_domains):
@@ -3981,20 +4071,18 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                                        results=_saved_window_items, meta=_saved_meta_dict)
                     _show_modal_abortable(win)
                     selected_data = win.selected
+                    selected_index = getattr(win, 'selected_index', -1)
                     del win
                     if selected_data:
-                        import json
-                        sel_dict = json.loads(selected_data)
-                        selected_url = sel_dict.get('url')
-                        for i, s in enumerate(_saved_filtered_streams):
-                            if s['url'] == selected_url:
-                                t = threading.Thread(target=play_with_rollover, args=(
-                                    _saved_filtered_streams, i, tmdb_id, c_type, season, episode,
-                                    info_tag, unique_ids, art, properties, resume_time
-                                ), kwargs={'from_resolve': True})
-                                t.daemon = True
-                                t.start()
-                                return
+                        i = _resolve_selected_index(selected_index, selected_data, _saved_filtered_streams)
+                        if i >= 0:
+                            t = threading.Thread(target=play_with_rollover, args=(
+                                _saved_filtered_streams, i, tmdb_id, c_type, season, episode,
+                                info_tag, unique_ids, art, properties, resume_time
+                            ), kwargs={'from_resolve': True})
+                            t.daemon = True
+                            t.start()
+                            return
                 except Exception as e:
                     log(f"[PLAYER] Error reopening sources window: {e}")
         elif not p2p_aborted:
@@ -4280,6 +4368,35 @@ def _scrape_locked(func):
             _scrape_lock_release()
     return wrapper
 
+def _resolve_selected_index(selected_index, selected_data, streams):
+    if isinstance(selected_index, int) and 0 <= selected_index < len(streams):
+        return selected_index
+    try:
+        sel = json.loads(selected_data)
+    except Exception:
+        return -1
+    nzb_url = ''
+    meta = sel.get('usenet')
+    if isinstance(meta, dict):
+        nzb_url = meta.get('nzb_url') or ''
+    if nzb_url:
+        for i, s in enumerate(streams):
+            sm = s.get('usenet')
+            if isinstance(sm, dict) and sm.get('nzb_url') == nzb_url:
+                return i
+    sel_url = sel.get('url') or ''
+    if sel_url:
+        for i, s in enumerate(streams):
+            if s.get('url') == sel_url:
+                return i
+    sel_name = sel.get('name') or ''
+    if sel_name:
+        for i, s in enumerate(streams):
+            if (s.get('name') or '') == sel_name and (s.get('provider_id') or '') == (sel.get('provider_id') or ''):
+                return i
+    return -1
+
+
 def _show_modal_abortable(dialog):
     """doModal() care se inchide automat la shutdown Kodi."""
     mon = xbmc.Monitor()
@@ -4475,7 +4592,7 @@ def list_sources(params):
     active_providers =[]
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
@@ -4964,18 +5081,11 @@ def list_sources(params):
         win = ResultsWindow('results.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', results=window_items, meta=meta_dict)
         _show_modal_abortable(win)
         selected_data = win.selected
+        selected_index = getattr(win, 'selected_index', -1)
         del win
         
         if selected_data:
-            try:
-                import json
-                sel_dict = json.loads(selected_data)
-                selected_url = sel_dict.get('url')
-                for i, s in enumerate(filtered_streams):
-                    if s['url'] == selected_url:
-                        ret = i
-                        break
-            except: pass
+            ret = _resolve_selected_index(selected_index, selected_data, filtered_streams)
 
     if ret >= 0:
         # Inchide dialogul de scanare (autoplay/binge — fara ResultsWindow)
@@ -5105,7 +5215,7 @@ def initiate_download(params):
     active_providers = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')

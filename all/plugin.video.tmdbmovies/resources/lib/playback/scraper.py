@@ -7708,6 +7708,131 @@ def scrape_thepiratebay(imdb_id, content_type, season=None, episode=None, title_
         return None
 
 
+def _usenet_stream_key(item):
+    """An NZB source has no URL until playback, so dedup needs its own key."""
+    meta = item.get('usenet') if isinstance(item, dict) else None
+    if isinstance(meta, dict):
+        key = meta.get('nzb_url') or item.get('title') or ''
+        if key:
+            return 'usenet+' + str(key)
+    return ''
+
+
+def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
+    '''Our own Newznab indexers, played by our own NNTP provider (no debrid).'''
+    try:
+        from resources.lib.usenet import config as usenet_config
+        from resources.lib.usenet import indexer as usenet_indexer
+        from resources.lib.usenet import memory as usenet_memory
+    except Exception as exc:
+        log(f"[USENET] engine not available: {exc}")
+        return None
+    if not usenet_config.enabled():
+        log("[USENET] off - tick ENABLE USENET (NZB) in Settings > Usenet")
+        return None
+    if not usenet_config.indexers_enabled():
+        log("[USENET] indexers are off in Settings > Usenet")
+        return None
+    if not usenet_config.indexers():
+        log("[USENET] no indexer configured")
+        return None
+    if not usenet_config.providers():
+        log("[USENET] no Usenet provider configured")
+        return None
+    kind = 'series' if (content_type == 'tv' and season is not None) else 'movie'
+    episodes_only = usenet_config.episodes_only() and kind == 'series'
+    log("[USENET] starting: %d indexer(s), %d provider(s), kind=%s, imdb=%s, mode=%s"
+        % (len(usenet_config.indexers()), len(usenet_config.providers()), kind, imdb_id,
+           usenet_config.fetch_mode()))
+    try:
+        rows, _notes = usenet_indexer.find(
+            kind, imdb_id, season, episode, title_query or '', logger=log,
+            mode=usenet_config.fetch_mode(), min_usable=usenet_config.stop_after(),
+            min_size=usenet_config.min_size_bytes(),
+            episodes_only=episodes_only, per_indexer_limit=usenet_config.max_results())
+    except Exception as exc:
+        log(f"[USENET] search failed: {exc}")
+        return None
+    if not rows:
+        log("[USENET] no results")
+        return None
+    import time as _utime
+    now = _utime.time()
+    show_age = usenet_config.age_badge()
+    show_grabs = usenet_config.grabs_badge()
+    streams = []
+    for row in rows:
+        title = (row.get('title') or '').strip()
+        size = int(row.get('size') or 0)
+        age_days, age_text = _usenet_age(row.get('posted'), now)
+        size_text = ('%.2f GB' % (size / 1073741824.0)) if size >= 1073741824 else (
+            ('%.0f MB' % (size / 1048576.0)) if size else '')
+        detail = []
+        if size_text:
+            detail.append(size_text)
+        if size and show_age and age_text:
+            detail.append('AGE ' + age_text)
+        grabs = int(row.get('grabs') or 0)
+        if grabs and show_grabs:
+            detail.append('%d grabs' % grabs)
+        _group_name = _extract_release_group(title)
+        if _group_name and _is_group_junk(_group_name):
+            _group_name = ''
+        streams.append({
+            'name': title,
+            'title': title + (('\n' + ' | '.join(detail)) if detail else ''),
+            'url': '',
+            'quality': _usenet_quality(title),
+            'size': size_text,
+            'provider': 'NZB',
+            'provider_id': 'usenet_nzb',
+            'server': row.get('indexer') or 'Indexer',
+            'info': {'indexer': row.get('indexer') or 'Indexer', 'age_days': age_days,
+                     'age_text': age_text,
+                     'release_state': usenet_memory.state(
+                         usenet_config.nzb_key(row.get('nzb_url') or '')),
+                     'provider_name': usenet_config.active_provider_name(),
+                     'releaseGroup': _group_name, 'grabs': grabs if show_grabs else 0},
+            'usenet': {'nzb_url': row.get('nzb_url', ''),
+                       'indexer': row.get('indexer') or 'Indexer',
+                       'age_days': age_days, 'age_text': age_text, 'size': size,
+                       'grabs': grabs if show_grabs else 0},
+            'direct': False,
+        })
+    log("[USENET] %d release(s) ready" % len(streams))
+    return streams or None
+
+
+def _usenet_quality(title):
+    low = (title or '').lower()
+    if re.search(r'2160p|\b4k\b|\buhd\b', low):
+        return '4K'
+    if '1080p' in low:
+        return '1080p'
+    if '720p' in low:
+        return '720p'
+    return 'SD'
+
+
+def _usenet_age(posted, now=None):
+    '''(days, badge) from the posting date: an old NZB is usually a taken-down one.'''
+    import time as _utime
+    try:
+        posted = int(posted or 0)
+    except Exception:
+        posted = 0
+    if posted <= 0:
+        return -1, ''
+    seconds = max(0, int((now or _utime.time()) - posted))
+    hours = seconds // 3600
+    days = seconds // 86400
+    if hours < 48:
+        return int(days), '%dh' % max(1, hours)
+    if days < 365:
+        return int(days), '%dd' % days
+    return int(days), '%.1fy' % (days / 365.25)
+
+
 def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_callback=None, target_providers=None, override_title=None, override_year=None, tmdb_id=None, _alt_tried=False):
     """
     Orchestreaza scanarea PARALELA (Multithreading).
@@ -7805,6 +7930,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom4': ('Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom4', ADDON.getSetting('custom4_name') or 'Custom 4')),
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
+        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
         'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
@@ -7832,7 +7958,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:
@@ -7943,7 +8069,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 for item in items_to_add:
                     if not isinstance(item, dict): continue
                     url = item.get('url', '')
-                    if not url or not isinstance(url, str): continue
+                    if not url or not isinstance(url, str):
+                        url = _usenet_stream_key(item)
+                    if not url:
+                        continue
                     
                     clean_url = url.split('|')[0]
                     if filter_duplicates:
@@ -8059,7 +8188,10 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 for item in items_to_add:
                     if not isinstance(item, dict): continue
                     url = item.get('url', '')
-                    if not url or not isinstance(url, str): continue
+                    if not url or not isinstance(url, str):
+                        url = _usenet_stream_key(item)
+                    if not url:
+                        continue
                     clean_url = url.split('|')[0]
                     if filter_duplicates:
                         if clean_url in seen_urls: continue
@@ -8129,7 +8261,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         for _item in _s2 or []:
                             if not isinstance(_item, dict):
                                 continue
-                            _u = str(_item.get('url', '')).split('|')[0]
+                            _u = (str(_item.get('url', '')).split('|')[0]
+                                  or _usenet_stream_key(_item))
                             if not _u or _u in seen_urls:
                                 continue
                             if filter_duplicates:

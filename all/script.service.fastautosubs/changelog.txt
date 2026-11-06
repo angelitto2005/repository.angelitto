@@ -1,3 +1,6 @@
+1.0.23
+- Fixed: full movies played through the vfs.tmdbm add-on
+
 1.0.22
 - Fixed: Fast AutoSubs no longer searches subtitles for TMDbM Trailers live streams.
 

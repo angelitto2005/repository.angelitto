@@ -1,3 +1,13 @@
+1.1.331
+- New: Usenet (NZB) streaming with your own Newznab indexers and NNTP providers, no debrid needed.
+- Six indexer slots and two providers (SSL, optional backup), with Sequential/Parallel search, per-indexer switches and indexer/provider tests.
+- Sources window shows a USENET label with the indexer name, NZB age, grabs and PLAYED/UNAVAILABLE markers.
+- New native VFS engine (vfs.tmdbm) for faster 4K playback, installable from this repository; the local server remains as fallback.
+- Plays stored video files, RAR and multi-volume 7z sets with seeking, read-ahead, memory cache and gap filling.
+- Faster opening and seeking: the playback plan is reused, the first articles are cached, and resume waits for playback before seeking.
+- Fixed 4K seeking and large releases (last-article checksum, RAR5 volume offsets, TLS with many connections), and stalled connections are retried.
+- The Usenet cache is cleaned automatically and indexer keys and provider credentials are no longer logged.
+
 1.1.330
 - Fixed a bug with P2P providers switch.
 - Added five built-in P2P providers under P2P Public Trackers: Claw, TILL, Vela, VipTorrent and Torz.

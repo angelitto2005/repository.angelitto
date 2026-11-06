@@ -1184,7 +1184,8 @@ class AutoSubsPlayer(xbmc.Player):
         if "youtube" in str(movieFullPath).lower(): 
             return True
         _mp_lower = str(movieFullPath).lower()
-        if "tmdbm" in _mp_lower:
+        # Substringul gol "tmdbm" prindea si vfs.tmdbm (tmdbm://, film intreg prin Usenet)
+        if "tmdbm.trailers" in _mp_lower:
             log("Detectat TMDbM Trailers in cale. Skip.")
             return True
         if "googlevideo" in _mp_lower:

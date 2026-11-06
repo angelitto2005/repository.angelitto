@@ -208,6 +208,91 @@
 		<setting type="lsep" label="EasyNews"/>
 		<setting id="easynews_noseek" type="bool" label="EasyNews: Play Without Seek (Fixes startup errors)" default="false"/>
     </category>
+
+	<!-- 4b. USENET (NZB) -->
+    <category label="[B][COLOR FFFFEA00]Usenet[/COLOR][/B]">
+        <setting label="[B][COLOR FFFFEA00]General[/COLOR][/B]" type="lsep" />
+        <setting id="use_usenet_nzb" type="bool" label="[COLOR FFCCCCFF][B]Enable [/B][/COLOR][COLOR FF00CED1][B]Usenet (NZB)[/B][/COLOR][COLOR FFCCCCFF]   your own indexer and NNTP provider, no debrid needed[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.episodes_only" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Single episodes only[/B]   (skips season and show packs)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.min_size_mb" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Minimum release size[/B]  (MB)[/COLOR]" default="50" range="0,10,500" option="int"/>
+        <setting id="usenet_nzb.max_results" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Maximum results per indexer[/B][/COLOR]" default="30" range="5,5,60" option="int"/>
+        <setting id="usenet_nzb.age_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the NZB age[/B] in the source list[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.grabs_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the grab count[/B] in the source list   (how many times the NZB was downloaded)[/COLOR]" default="true"/>
+
+        <setting label="[B][COLOR FFFFEA00]Indexers[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.indexers.enabled" type="bool" label="[COLOR FFCCCCFF][B]Use indexers[/B]   search the Newznab indexers below[/COLOR]" default="true"/>
+        <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - one at a time (saves quota)|Parallel - all at once" default="0" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Next Indexer If Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-3,true) + eq(-1,0)"/>
+
+        <setting id="usenet_nzb.indexer1.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 1[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer1.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer1.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexer2.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 2[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer2.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer2.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexer3.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 3[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer3.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer3.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexer4.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 4[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer4.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer4.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexer5.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 5[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer5.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer5.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexer6.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 6[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.indexer6.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.indexer6.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+
+        <setting id="usenet_nzb.indexers" type="text" label="[COLOR FFCCCCFF][B]More indexers[/B]   (optional) address : API key, comma between indexers[/COLOR]" default=""/>
+        <setting type="lsep" label="      [COLOR FFCCCCFF][B]e.g.[/B]  https://api.indexer-one.com : KEY1, https://indexer-two.net/api : KEY2[/COLOR]"/>
+
+        <setting label="[B][COLOR FFFFEA00]Providers[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.provider1.enabled" type="bool" label="[COLOR FF00CED1][B]Provider 1[/B][/COLOR][COLOR FFCCCCFF]   use this NNTP provider[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.provider1.host" type="text" label="      [COLOR FFCCCCFF]└─ [B]server address[/B]   (e.g. news.example.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.provider1.port" type="enum" label="      [COLOR FFCCCCFF]└─ [B]port[/B][/COLOR]" values="563 (secure)|443 (secure, if 563 is blocked)|119 (unsecure)" default="0" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.provider1.ssl" type="bool" label="      [COLOR FFCCCCFF]└─ [B]secure connection[/B]  (SSL/TLS)[/COLOR]" default="true" visible="eq(-3,true)"/>
+        <setting id="usenet_nzb.provider1.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B]   (8-12 is enough, more only helps 4K)[/COLOR]" default="8" range="1,1,60" option="int" visible="eq(-4,true)"/>
+        <setting id="usenet_nzb.provider1.user" type="text" label="      [COLOR FFCCCCFF]└─ [B]username[/B][/COLOR]" default="" visible="eq(-5,true)"/>
+        <setting id="usenet_nzb.provider1.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
+
+        <setting id="usenet_nzb.provider2.enabled" type="bool" label="[COLOR FF00CED1][B]Provider 2[/B][/COLOR][COLOR FFCCCCFF]   use this NNTP provider   (leave off if you have only one)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.provider2.host" type="text" label="      [COLOR FFCCCCFF]└─ [B]server address[/B]   (e.g. news.example.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.provider2.port" type="enum" label="      [COLOR FFCCCCFF]└─ [B]port[/B][/COLOR]" values="563 (secure)|443 (secure, if 563 is blocked)|119 (unsecure)" default="0" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.provider2.ssl" type="bool" label="      [COLOR FFCCCCFF]└─ [B]secure connection[/B]  (SSL/TLS)[/COLOR]" default="true" visible="eq(-3,true)"/>
+        <setting id="usenet_nzb.provider2.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B][/COLOR]" default="8" range="1,1,60" option="int" visible="eq(-4,true)"/>
+        <setting id="usenet_nzb.provider2.user" type="text" label="      [COLOR FFCCCCFF]└─ [B]username[/B][/COLOR]" default="" visible="eq(-5,true)"/>
+        <setting id="usenet_nzb.provider2.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
+        <setting id="usenet_nzb.provider2.backup" type="bool" label="      [COLOR FFCCCCFF]└─ [B]backup[/B]   (used only if Provider 1 fails)[/COLOR]" default="true" visible="eq(-7,true)"/>
+
+        <setting label="[B][COLOR FFFFEA00]Playback[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.vfs" type="bool" label="[COLOR FFCCCCFF][B]Native VFS engine[/B]   (faster, needs the vfs.tmdbm add-on)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.install_vfs" type="action" label="      [COLOR FFCCCCFF]└─ [/COLOR][B][COLOR FFF70D1A]Install the VFS engine[/COLOR][/B]   [COLOR FFCCCCFF](from the Angelitto repository)[/COLOR]" visible="eq(-1,true) + !System.HasAddon(vfs.tmdbm)" action="InstallAddon(vfs.tmdbm)"/>
+        <setting id="usenet_nzb.health" type="enum" label="[COLOR FFCCCCFF][B]Check availability[/B]   (not active yet)[/COLOR]" values="Do not check|When I play a source|While listing results" default="1"/>
+        <setting id="usenet_nzb.health_max" type="slider" label="      [COLOR FFCCCCFF]└─ [B]How many to check[/B]   (each one = 1 NZB download)[/COLOR]" default="8" range="1,1,20" option="int" visible="eq(-1,2)"/>
+        <setting id="usenet_nzb.timeout" type="slider" label="[COLOR FFCCCCFF][B]Network timeout[/B]  (seconds)[/COLOR]" default="20" range="10,5,60" option="int"/>
+
+        <setting label="[B][COLOR FFFFEA00]Advanced[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.prefetch_mb" type="slider" label="[COLOR FFCCCCFF][B]Read-ahead buffer[/B]  (MB)[/COLOR]" default="12" range="4,2,64" option="int"/>
+        <setting id="usenet_nzb.cache_mb" type="slider" label="[COLOR FFCCCCFF][B]Memory cache per playback[/B]  (MB)[/COLOR]" default="36" range="8,4,128" option="int"/>
+        <setting label="[B][COLOR FFFFEA00]Missing articles[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.hole_filling" type="bool" label="[COLOR FFCCCCFF][B]Fill gaps[/B]   (keep playing a release with small defects)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.hole_percent" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Give up above[/B]  (%)   (0 = no limit)[/COLOR]" default="2" range="0,1,10" option="int" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.hole_consecutive" type="slider" label="      [COLOR FFCCCCFF]└─ [B]...or after[/B]  (missing in a row)   (0 = no limit)[/COLOR]" default="4" range="0,1,30" option="int" visible="eq(-2,true)"/>
+        <setting label="[B][COLOR FFFFEA00]Test and diagnostics[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.test_provider1" type="action" label="[COLOR FFCCCCFF][B]Test Provider 1[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=1)"/>
+        <setting id="usenet_nzb.test_provider2" type="action" label="[COLOR FFCCCCFF][B]Test Provider 2[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=2)"/>
+        <setting id="usenet_nzb.test_indexers" type="action" label="[COLOR FFCCCCFF][B]Test indexers[/B]   (search + today's quota)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_indexers)"/>
+
+        <setting label="[B][COLOR FFFFEA00]Compatibility[/COLOR][/B]" type="lsep" />
+        <setting id="usenet_nzb.client" type="enum" label="[COLOR FFCCCCFF][B]Indexer client identity[/B]   (some indexers block streaming apps; a downloader name is safer)[/COLOR]" values="Addon default|SABnzbd|NZBGet|Sonarr|Radarr|Prowlarr|Chrome|Custom" default="0"/>
+        <setting id="usenet_nzb.user_agent" type="text" label="      [COLOR FFCCCCFF]└─ [B]Custom user agent[/B]   (used when Custom is selected)[/COLOR]" default="" visible="eq(-1,7)"/>
+    </category>
 	
 	<!-- 5. STREMIO -->
     <category label="[B][COLOR cyan]Stremio[/COLOR][/B]">

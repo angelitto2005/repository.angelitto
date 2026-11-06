@@ -1,0 +1,22 @@
+Source code for vfs.tmdbm
+=========================
+
+The complete corresponding source code for vfs.tmdbm (TMDb Movies VFS) is
+published in this repository at:
+
+  source/vfs.tmdbm/
+  https://github.com/angelitto2005/repository.angelitto/tree/main/source/vfs.tmdbm
+
+vfs.tmdbm is distributed as a compiled add-on under the GNU General Public
+License version 2 or later. The published source contains the complete C++
+sources, the vendored Mbed TLS sources, the Kodi devkit interface headers, the
+build scripts and the license texts.
+
+If the repository is unavailable, the same source is available from the author,
+Angelitto, on written request, to any third party, for at least three years
+from the date that version was distributed, at no charge for electronic
+delivery. Requests can be made by opening an issue at:
+https://github.com/angelitto2005/repository.angelitto/issues
+
+The same information is included in every vfs.tmdbm release zip as
+THIRD-PARTY-NOTICES.txt.

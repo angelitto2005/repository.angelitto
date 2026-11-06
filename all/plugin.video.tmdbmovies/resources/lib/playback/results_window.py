@@ -267,6 +267,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.all_results = list(self.results)
         self.meta = kwargs.get('meta', {})
         self.selected = None
+        self.selected_index = -1
         self.filter_applied = False
         self.last_cm_time = 0
         self.is_info_open = False
@@ -477,6 +478,15 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             is_aio = provider_id in ['aiostreams']
             is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             is_p2p = provider_id.startswith('p2p_')
+
+            # Usenet (NZB): our own indexers, played by our own NNTP provider.
+            _nzb_meta = {}
+            for _holder in (res.get('usenet'), (res.get('raw_stream_data') or {}).get('usenet'),
+                            info.get('usenet')):
+                if isinstance(_holder, dict) and _holder:
+                    _nzb_meta = _holder
+                    break
+            is_nzb = provider_id == 'usenet_nzb' or bool(_nzb_meta)
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
@@ -503,7 +513,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
 
-            if is_p2p:
+            if is_nzb:
+                debrid_label = '[COLOR FFFFEA00]NZB+[/COLOR]'
+            elif is_p2p:
                 debrid_label = '[COLOR gold]P2P[/COLOR]'
             elif is_aio or is_stremio_addon:
                 addon_name_raw = info.get('addon', '')
@@ -533,6 +545,29 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
+
+            if is_nzb:
+                _nzb_provider = (_nzb_meta.get('provider_name')
+                                 or info.get('provider_name') or '')
+                parts.append(f"[B][COLOR FFFFEA00]{_nzb_provider or 'Usenet'}[/COLOR][/B]")
+                _nzb_state = (_nzb_meta.get('release_state')
+                              or info.get('release_state') or '')
+                if _nzb_state == 'played':
+                    parts.append("[COLOR FF00FA9A][B]PLAYED[/B][/COLOR]")
+                elif _nzb_state == 'failed':
+                    parts.append("[COLOR FFF535AA][B]UNAVAILABLE[/B][/COLOR]")
+                _nzb_indexer = _nzb_meta.get('indexer') or info.get('indexer') or ''
+                if _nzb_indexer:
+                    parts.append(f"[COLOR FFCCCCFF][B]{_nzb_indexer}[/B][/COLOR]")
+                _nzb_age = _nzb_meta.get('age_text') or info.get('age_text') or ''
+                if _nzb_age:
+                    parts.append(f"[COLOR FF87CEEB][B]AGE {_nzb_age}[/B][/COLOR]")
+                try:
+                    _nzb_grabs = int(_nzb_meta.get('grabs') or info.get('grabs') or 0)
+                except Exception:
+                    _nzb_grabs = 0
+                if _nzb_grabs > 0:
+                    parts.append(f"[COLOR FF00CED1][B]{_nzb_grabs} GRABS[/B][/COLOR]")
             
             # Detectare RO DUBBED (mutat devreme ca sa fie disponibil pentru FileList/SpeedApp/SeedPool)
             ro_indexer = info.get('indexer', '')
@@ -590,7 +625,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     parts.append("[COLOR FF87CEEB][B]INT[/B][/COLOR]")
             
             # Formatare Addon si Indexer (Pentru AIO si Stremio Addons) vs HTTP Normal
-            if is_aio or is_stremio_addon:
+            if (is_aio or is_stremio_addon) and not is_nzb:
                 addon_name = info.get('addon', '')
                 indexer = info.get('indexer', '')
                 
@@ -613,7 +648,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     if idx_display:
                         parts.append(f"[COLOR lightskyblue][B]{idx_display}[/B][/COLOR]")
                         
-            if not (is_aio or is_stremio_addon):
+            if not (is_aio or is_stremio_addon) and not is_nzb:
                 # HTTP Normal sau P2P
                 p_color = AIO_ADDON_COLORS.get(provider_id.lower(), 'red')
                 if _fl_handled:
@@ -799,6 +834,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             li = xbmcgui.ListItem(res['name'])
             
             li.setProperty('tmdbmovies.count', f"{idx+1}.")
+            li.setProperty('tmdbmovies.src_index', str(res.get('src_index', idx)))
             li.setProperty('tmdbmovies.quality', quality)
             li.setProperty('tmdbmovies.debrid', debrid_label)  
             li.setProperty('tmdbmovies.highlight', base_color)
@@ -841,6 +877,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             item = self.getControl(2000).getSelectedItem()
             if item:
                 self.selected = item.getProperty('tmdbmovies.data')
+                try: self.selected_index = int(item.getProperty('tmdbmovies.src_index'))
+                except: self.selected_index = -1
             self.close()
         elif controlId == 3000:
             return
@@ -869,6 +907,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 self.clear_filter()
                 return
             self.selected = None
+            self.selected_index = -1
             self.close()
 
     def handle_context_menu(self):

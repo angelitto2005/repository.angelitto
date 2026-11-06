@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <addon id="plugin.video.tmdbmovies"
-       version="1.1.330"
+       version="1.1.331"
        name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B]"
        provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
     <requires>
@@ -8,6 +8,7 @@
         <import addon="script.module.requests" version="2.22.0" />
         <import addon="script.module.resolveurl" version="5.0.0" />
         <import addon="inputstream.adaptive" version="19.0.0" />
+        <import addon="vfs.tmdbm" version="0.1.0" optional="true" />
     </requires>
     
     <extension point="xbmc.python.pluginsource" library="resources/lib/router.py">

@@ -671,6 +671,68 @@ def _notify_active_provider():
     except Exception:
         pass
 
+def _usenet_test_provider(index):
+    """Settings > Usenet > Test provider: connect, log in, report what failed."""
+    try:
+        from resources.lib.usenet import config as usenet_config
+        from resources.lib.usenet import nntp as usenet_nntp
+    except Exception as exc:
+        xbmcgui.Dialog().ok('Usenet', 'The Usenet module is not available: %s' % exc)
+        return
+    if not usenet_config.provider_enabled(int(index)):
+        xbmcgui.Dialog().ok('Usenet', 'Provider %s is off. Turn it on in Settings > Usenet > Providers.' % index)
+        return
+    provider = usenet_config.provider(int(index))
+    if not provider:
+        xbmcgui.Dialog().ok('Usenet', 'Set the host of provider %s first.' % index)
+        return
+    ok, message = usenet_nntp.probe(provider)
+    xbmc.log('[TMDb Movies] [Usenet] provider %s: %s' % (index, message), xbmc.LOGINFO)
+    xbmcgui.Dialog().ok('Usenet provider %s' % index, message)
+
+
+def _usenet_test_indexers():
+    """Settings > Usenet > Test indexers: every enabled indexer, all at once.
+
+    The fetching strategy (Sequential/Parallel) is not used here: it only
+    decides how a normal source search asks the indexers, not this test.
+    """
+    try:
+        from resources.lib.usenet import config as usenet_config
+        from resources.lib.usenet import indexer as usenet_indexer
+    except Exception as exc:
+        xbmcgui.Dialog().ok('Usenet', 'The Usenet module is not available: %s' % exc)
+        return
+    if not usenet_config.indexers_enabled():
+        xbmcgui.Dialog().ok('Usenet', 'Indexers are off. Turn them on in Settings > Usenet > Indexers.')
+        return
+    entries = usenet_config.indexers()
+    skipped = []
+    for number in range(1, getattr(usenet_config, 'INDEXER_SLOTS', 6) + 1):
+        if usenet_config.flag('usenet_nzb.indexer%d.enabled' % number, False) \
+                and not usenet_config.indexer_slot(number):
+            skipped.append(number)
+    if not entries and not skipped:
+        xbmcgui.Dialog().ok('Usenet', 'Add at least one indexer first (address : API key).')
+        return
+    lines = ['Testing %d indexer(s) at once. The fetching strategy is ignored here.' % len(entries)]
+    xbmc.log('[TMDb Movies] [Usenet] testing %d indexer(s), strategy ignored: %s'
+             % (len(entries), ', '.join(entry.get('name', '?') for entry in entries)),
+             xbmc.LOGINFO)
+    from concurrent.futures import ThreadPoolExecutor
+    workers = max(1, min(4, len(entries)))
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetTest') as pool:
+        answers = list(pool.map(usenet_indexer.test, entries))
+    for entry, (ok, message) in zip(entries, answers):
+        lines.append(('[COLOR FF00FA9A]OK[/COLOR]   ' if ok else '[COLOR FFF535AA]FAIL[/COLOR] ') + message)
+        xbmc.log('[TMDb Movies] [Usenet] %s' % message, xbmc.LOGINFO)
+    for number in skipped:
+        lines.append('[COLOR FFFFD700]SKIP[/COLOR]   Indexer %d is on but its address or API key is missing'
+                     % number)
+        xbmc.log('[TMDb Movies] [Usenet] indexer %d is on but incomplete, not tested' % number,
+                 xbmc.LOGINFO)
+    xbmcgui.Dialog().textviewer('Usenet indexers', '\n\n'.join(lines))
+
 def run_plugin():
     global _handle
     import time
@@ -719,6 +781,14 @@ def run_plugin():
         _notify_active_provider()
         # DEBUG TIMING (pastreaza — util la depanare lag pornire):
         # xbmc.log(f"[TIMING] root menu: import={int((_t2-_t1)*1000)}ms build={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms", xbmc.LOGINFO)
+        return
+
+    if mode == 'usenet_test_provider':
+        _usenet_test_provider(params.get('index') or '1')
+        return
+
+    if mode == 'usenet_test_indexers':
+        _usenet_test_indexers()
         return
 
     if mode == 'color_picker':
@@ -2482,6 +2552,27 @@ def run_service():
     except:
         return
 
+    # --- Usenet (NZB): the local HTTP server must outlive a single plugin call ---
+    try:
+        from resources.lib.usenet import service_host as _usenet_host
+        _usenet_host.start()
+    except Exception as _usenet_start_error:
+        xbmc.log('[TMDb Movies] Usenet server error: %s' % _usenet_start_error, xbmc.LOGERROR)
+
+    # --- Usenet (NZB): trim the caches kept in the profile (NZBs 3 days / 256 MB,
+    # VFS plans 12 h). The HTTP server does the NZB pass itself, but the VFS path
+    # never starts it, so this runs on every boot regardless of the stream engine. ---
+    def _usenet_cache_cleanup():
+        try:
+            xbmc.sleep(3000)
+            from resources.lib.usenet import config as _usenet_config
+            _usenet_config.cleanup_nzb()
+            from resources.lib.usenet import vfs as _usenet_vfs
+            _usenet_vfs.cleanup()
+        except Exception:
+            pass
+    threading.Thread(target=_usenet_cache_cleanup, daemon=True).start()
+
     # --- GIL responsiveness (fix spinner-infinit dupa provider switch) ---
     # Kodi ruleaza serviciul + pluginul + callbackurile GUI in ACELASI
     # interpret Python (GIL partajat). Sync-ul de provider switch porneste
@@ -3081,7 +3172,14 @@ def run_service():
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 
-    TMDbMonitor().run()
+    try:
+        TMDbMonitor().run()
+    finally:
+        try:
+            from resources.lib.usenet import service_host as _usenet_host
+            _usenet_host.stop()
+        except Exception:
+            pass
 
 
 def run_script():

@@ -1,0 +1,80 @@
+TMDb Movies VFS (vfs.tmdbm) 0.1.2 - source package
+
+This archive contains the complete source used to build both release
+binaries: vfs.tmdbm.dll for Windows x86_64 and libvfs.tmdbm.so for Android
+armeabi-v7a. The source is identical for both platforms; only the toolchain
+and the output file differ. Kodi loads library_windows or library_android
+from the same add-on folder, depending on the platform it runs on.
+
+Contents
+- src/                     add-on entry point and Usenet engine (C++17)
+- vendor/mbedtls/          mbedTLS 3.6.2, used under GPL-2.0-or-later
+- vendor/xbmc/             Kodi 21.3-Omega devkit headers (GPL-2.0-or-later)
+- tools/                   test harnesses and diagnostics
+- licenses/                full license texts
+- CMakeLists.txt           build definition for both platforms
+- build.cmd                Windows configure and build with the bundled layout
+- addon.xml                add-on metadata (both platform libraries)
+- BUILD.txt                this file
+
+Windows build (x86_64)
+----------------------
+Requirements (not included, download separately)
+- MinGW-w64 GCC 16.2.0, UCRT, posix threads, SEH (winlibs by Brecht Sanders)
+  https://winlibs.com/
+- CMake 4.4.5
+- Ninja (shipped with the winlibs toolchain used for this release)
+
+Expected folder layout for build.cmd
+  toolchain/mingw64/bin/g++.exe
+  toolchain/mingw64/bin/ninja.exe
+  toolchain/cmake-4.4.5-windows-x86_64/bin/cmake.exe
+
+Build
+  build.cmd
+
+Output
+  build/dist/vfs.tmdbm/vfs.tmdbm.dll
+  build/dist/vfs.tmdbm-0.1.2.zip   (add-on zip with the DLL and licenses)
+
+Android build (armeabi-v7a)
+---------------------------
+Requirements (not included, download separately)
+- Android NDK r21e (21.4.7075529). Do not use a newer NDK: Kodi 21 on Android
+  ships the libc++ from NDK r21e, and a binary built with NDK r27c aborts with
+  SIGABRT when the add-on closes.
+  https://dl.google.com/android/repository/android-ndk-r21e-windows-x86_64.zip
+- CMake 3.20 or newer
+- Ninja
+
+Configure and build (cmd.exe, from this folder)
+  set NDK=toolchain\android-ndk-r21e
+  cmake -S . -B build-android-r21e -G Ninja ^
+    -DCMAKE_MAKE_PROGRAM=toolchain\mingw64\bin\ninja.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_TOOLCHAIN_FILE=%NDK%\build\cmake\android.toolchain.cmake ^
+    -DANDROID_ABI=armeabi-v7a ^
+    -DANDROID_PLATFORM=android-21 ^
+    -DANDROID_STL=c++_shared
+  cmake --build build-android-r21e --config Release
+
+Output
+  build-android-r21e/dist/vfs.tmdbm/libvfs.tmdbm.so
+
+Packaging one universal add-on
+------------------------------
+Kodi reads library_windows on Windows and library_android on Android from the
+same add-on.xml, so one zip can serve both platforms. Put into a folder named
+vfs.tmdbm:
+  addon.xml
+  vfs.tmdbm.dll
+  libvfs.tmdbm.so
+  LICENSE.txt
+  THIRD-PARTY-NOTICES.txt
+  licenses/
+and zip the folder itself (the archive must contain vfs.tmdbm/addon.xml).
+
+Tests
+  python tools/engine_harness.py   (local, no provider; uses build stream_test)
+  python tools/python_plan_test.py (local plan writer checks)
+  python tools/kodi_vfs_test.py    (needs a running Kodi with the add-on)

@@ -27,6 +27,14 @@ if __name__ == '__main__':
     from entry import run_plugin
     run_plugin()
     try:
+        from resources.lib.core.threads import settle as _settle_threads
+        _left = _settle_threads(2.0)
+        if _left:
+            xbmc.log('[ROUTER] threads still running at return: %s' % ', '.join(_left),
+                     xbmc.LOGINFO)
+    except Exception:
+        pass
+    try:
         _is_bg = len(sys.argv) > 2 and 'clear_provider_cache' in sys.argv[2]
         if not _is_bg:
             # Instrumentare blocaj-post-randare — LOGDEBUG (invizibil normal).
