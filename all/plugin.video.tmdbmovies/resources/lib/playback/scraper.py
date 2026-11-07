@@ -233,6 +233,36 @@ def _normalize_quality(quality_str):
         return 'SD'
 
 
+# Tipul sursei pentru filtrul de calitate si pentru limita pe categorie.
+# 'web' simplu e tratat ca WEB-DL (nu e rip); WEBRip are regula lui inainte.
+_SOURCE_KIND_RULES = (
+    ('remux', re.compile(r'\b(?:bd)?remux\b', re.I)),
+    ('bluray', re.compile(r'\b(?:blu-?ray|bdrip|brrip)\b', re.I)),
+    ('webrip', re.compile(r'\bweb[-. ]?rip\b', re.I)),
+    ('webdl', re.compile(r'\bweb[-. ]?dl\b', re.I)),
+    ('webdl', re.compile(r'\bweb\b', re.I)),
+    ('hdtv', re.compile(r'\b(?:hd|pd)tv\b', re.I)),
+    ('dvd', re.compile(r'\bdvd(?:rip|r)?\b', re.I)),
+)
+
+
+def _stream_source_kind(stream):
+    """remux / bluray / webdl / webrip / hdtv / dvd / other, din nume si info."""
+    parts = [str(stream.get('name', '')), str(stream.get('title', '')),
+             str(stream.get('quality', ''))]
+    info = stream.get('info')
+    if isinstance(info, dict):
+        parts.append(str(info.get('original_info_str', '')))
+        parts.append(str(info.get('releaseGroup', '')))
+    elif info:
+        parts.append(str(info))
+    text = ' '.join(parts)
+    for kind, pattern in _SOURCE_KIND_RULES:
+        if pattern.search(text):
+            return kind
+    return 'other'
+
+
 def _hdr_dv_flags(text):
     t = str(text or '').lower()
     has_dv = ('dolby vision' in t or '.dv.' in t or ' dv ' in t or 'dovi' in t
@@ -276,6 +306,15 @@ def filter_streams_for_display(streams):
     # vechi facea calitatea cheie primara si grupurile doar tiebreaker).
     try: sort_opt = int(ADDON.getSetting('source_sorting') or '0')
     except: sort_opt = 0
+    try: quality_filter = int(ADDON.getSetting('quality_filter') or '0')
+    except: quality_filter = 0
+    try: max_per_category = int(ADDON.getSetting('max_per_category') or '0')
+    except: max_per_category = 0
+    allowed_kinds = {
+        1: ('remux', 'bluray', 'webdl'),
+        2: ('remux', 'bluray'),
+        3: ('remux',),
+    }.get(quality_filter, ())
     # Statistici pentru toate calitatile
     stats = {'total': len(streams), '4K': 0, '1080p': 0, '720p': 0, 'SD': 0, 'filtered': 0}
     
@@ -284,8 +323,10 @@ def filter_streams_for_display(streams):
         normalized = _normalize_quality(stream.get('quality', 'SD'))
         stats[normalized] = stats.get(normalized, 0) + 1
     
-    # Daca nu e nimic de exclus, returneaza toate
-    if not any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd, exclude_dv, exclude_hdr]):
+    has_exclusions = any([exclude_4k, exclude_1080p, exclude_720p, exclude_sd,
+                          exclude_dv, exclude_hdr])
+    # Daca nu e nimic de exclus sau limitat, returneaza toate
+    if not has_exclusions and not allowed_kinds and max_per_category <= 0:
         if sort_opt > 0:
             return streams, stats
         sorted_streams = sorted(streams, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
@@ -308,6 +349,8 @@ def filter_streams_for_display(streams):
         normalized = _normalize_quality(stream.get('quality', 'SD'))
         if normalized in excluded:
             continue
+        if allowed_kinds and _stream_source_kind(stream) not in allowed_kinds:
+            continue
             
         if exclude_dv or exclude_hdr:
             full_text = (str(stream.get('name', '')) + ' ' + str(stream.get('title', '')) + ' ' + str(stream.get('info', ''))).lower()
@@ -323,13 +366,26 @@ def filter_streams_for_display(streams):
                 
         filtered.append(stream)
     
-    stats['filtered'] = len(streams) - len(filtered)
-    
     # Sortare (grup-major la optiunile 1+ — pastram ordinea deja sortata)
     if filtered and sort_opt == 0:
         filtered = sorted(filtered, key=lambda x: _get_quality_priority(x.get('quality', 'SD')), reverse=True)
-    
-    log(f"[FILTER-UI] Display filter: {len(streams)} total -> {len(filtered)} shown (excluded {stats['filtered']})")
+
+    # Limita per rezolutie + tip sursa: dupa sortare, ca sa ramana cele mai bune N.
+    if max_per_category > 0 and filtered:
+        counts = {}
+        capped = []
+        for stream in filtered:
+            bucket = (_normalize_quality(stream.get('quality', 'SD')), _stream_source_kind(stream))
+            seen = counts.get(bucket, 0)
+            if seen >= max_per_category:
+                continue
+            counts[bucket] = seen + 1
+            capped.append(stream)
+        filtered = capped
+
+    stats['filtered'] = len(streams) - len(filtered)
+    if stats['filtered']:
+        log(f"[FILTER-UI] Display filter: {len(streams)} total -> {len(filtered)} shown (excluded {stats['filtered']})")
     
     return filtered, stats
 

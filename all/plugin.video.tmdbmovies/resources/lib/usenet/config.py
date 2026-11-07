@@ -208,8 +208,14 @@ def hole_consecutive():
     return number('usenet_nzb.hole_consecutive', DEFAULT_HOLE_CONSECUTIVE, 0, 30)
 
 
+def performance_profile():
+    """0 auto, 1 low-end, 2 fast, 3 custom - see engine.PROFILE_*."""
+    return number('usenet_nzb.performance', 0, 0, 3)
+
+
 def player_options():
     return {'timeout': timeout(), 'prefetch_bytes': prefetch_bytes(), 'cache_bytes': cache_bytes(),
+            'profile': performance_profile(),
             'hole_filling': hole_filling(), 'hole_percent': hole_percent(),
             'hole_consecutive': hole_consecutive()}
 
@@ -399,8 +405,9 @@ def normalise_url(value):
 
 def indexer_name(url):
     host = re.sub(r'^https?://', '', str(url or ''), flags=re.I).split('/', 1)[0].lower()
+    host = host.split(':', 1)[0]
     for key, name in _PRESETS.items():
-        if host == key or host.startswith(key + '.'):
+        if host == key or host.startswith(key + '.') or host.endswith('.' + key):
             return name
     cleaned = re.sub(r'^(api|www|feed)\.', '', host)
     for key, name in _PRESETS.items():

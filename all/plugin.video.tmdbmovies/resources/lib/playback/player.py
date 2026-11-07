@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import json
 from resources.lib.core.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON, kodi_abort_requested
 from resources.lib.core.utils import log, get_json, extract_details, get_language, clean_text
-from resources.lib.playback.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group
+from resources.lib.playback.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group, _stream_source_kind
 from resources.lib.api.tmdb_api import set_metadata
 from resources.lib.providers.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble, wipe_plugin_bookmarks
 from resources.lib import subtitle as subtitles
@@ -236,16 +236,21 @@ _AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor',
 # CLASIFICARE SURSE PE 4 CATEGORII (HTTP / AIO / STREMIO / P2P)
 # =============================================================================
 def classify_stream_source(stream):
-    """Returneaza categoria sursei: 'p2p' (p2p_*), 'aio' (aiostreams),
+    """Returneaza categoria sursei: 'p2p' (p2p_*), 'aio' (aiostreams + Usenet NZB),
     'stremio' (torrentio/mediafusion/comet/meteor/usenet/custom1-5) sau 'http'."""
     pid = str(stream.get('provider_id', ''))
     if pid.startswith('p2p_'):
         return 'p2p'
-    if pid == 'aiostreams':
+    if pid in ('aiostreams', 'usenet_nzb'):
         return 'aio'
     if pid in _AIO_STREMIO_IDS:
         return 'stremio'
     return 'http'
+
+
+def _is_usenet_stream(stream):
+    """Usenet e sortat cu AIO, dar la redare are ramura lui (prepare_stream)."""
+    return bool(stream.get('usenet')) or str(stream.get('provider_id', '')) == 'usenet_nzb'
 
 
 def _is_instant_source(s):
@@ -279,20 +284,15 @@ def _split_instant(streams):
 
 
 # IERARHIA DE PROVIDERI pentru auto-play (pool-ul de mai jos):
-# 0 usenet direct (NZB) -> 1 premiumize -> 2 torbox -> 3 realdebrid
-# -> 4 offcloud -> 5 alldebrid -> 6 easynews (web) -> 7 http
+# 0 usenet direct (NZB) -> 1 toate serviciile debrid (EasyNews inclus) -> 2 http
 # P2P nu intra deloc in autoplay (nu porneste instant).
-# Usenet direct se desparte de EasyNews web: pentru usenet mergem cu seek
-# normal, in timp ce EasyNews are probleme de pornire/derulare (de aceea
-# i se adauga seekable=0 in calea de play, vezi mai jos in functie).
-_AUTOPLAY_TIERS = (
-    'usenet', 'premiumize', 'torbox', 'realdebrid', 'offcloud', 'alldebrid',
-    'easynews', 'http',
-)
+# EasyNews nu mai are un tier separat: este un serviciu Usenet direct si
+# concureaza cu debrid-urile pe calitate, nu pe ordinea serviciilor.
+_AUTOPLAY_TIERS = ('usenet', 'debrid', 'http')
 
 
 def _autoplay_tier(s):
-    """0..7 conform ierarhiei de mai sus, sau None daca sursa nu intra in autoplay."""
+    """0..2 conform ierarhiei de mai sus, sau None daca sursa nu intra in autoplay."""
     cat = classify_stream_source(s)
     if cat == 'p2p':
         return None
@@ -308,17 +308,17 @@ def _autoplay_tier(s):
     # EasyNews web (addon/debrid/nume sau URL) - o parte din regula deja
     # existenta in calea de play si in find_best_stream_index.
     if 'easynews' in addon or 'easynews' in debrid or 'easynews' in s.get('url', '').lower():
-        return _AUTOPLAY_TIERS.index('easynews')
+        return _AUTOPLAY_TIERS.index('debrid')
 
     # Usenet direct: providerul dedicat sau un manifest de usenet pus intr-un
     # slot custom1-5 (provider_id = customN, dar numele manifestului contine
     # "usenet").
-    if pid == 'usenet' or 'usenet' in addon or 'usenet' in src_prov:
+    if pid in ('usenet', 'usenet_nzb') or 'usenet' in addon or 'usenet' in src_prov:
         return _AUTOPLAY_TIERS.index('usenet')
 
     for srv in ('premiumize', 'torbox', 'realdebrid', 'offcloud', 'alldebrid'):
         if srv in debrid:
-            return _AUTOPLAY_TIERS.index(srv)
+            return _AUTOPLAY_TIERS.index('debrid')
     return _AUTOPLAY_TIERS.index('http')
 
 
@@ -456,7 +456,8 @@ def _binge_lanes(cands, prev):
 
 # Tabela de tier-uri pt fiecare optiune de Source Priority (sort_opt):
 # prima pozitie = cel mai sus (score maxim), cached se consulta DOAR la aio/stremio.
-# 'aio_orig' pastreaza ordinea originala din lista (cheie statica).
+# 'aio_orig' = grupul AIO Original; in interiorul lui AIO si Usenet sunt
+# sortate quality > size (ordinea bruta a thread-urilor nu mai decide).
 _SORT_TIERS = {
     1: ['aio_orig', 'stremio', 'http', 'p2p'],
     2: ['aio_orig', 'stremio', 'p2p', 'http'],
@@ -468,6 +469,14 @@ _SORT_TIERS = {
     8: ['http', 'aio_stremio_c', 'aio_stremio_u', 'p2p'],
     9: ['p2p', 'aio_stremio_c', 'http', 'aio_stremio_u'],
 }
+# 10 = Mixed + TRaSH: fara tier-uri de provider, quality primul criteriu,
+# apoi scorul TRaSH si marimea (vezi sort_streams_by_quality).
+# Bump la _SORT_CACHE_REV cind se schimba algoritmul: cache-urile vechi se
+# re-sorteaza o data, apoi afisarea ramane instant.
+_SORT_CACHE_REV = 101
+# In modurile fara TRaSH, tipul sursei sta intre rezolutie si marime:
+# un Remux mic trece inaintea unui BluRay mare.
+_SOURCE_SORT_RANK = {'remux': 6, 'bluray': 5, 'webdl': 4, 'webrip': 3, 'hdtv': 2, 'dvd': 1}
 
 
 def _tier_matches(tier, cat, is_cached):
@@ -1618,12 +1627,12 @@ def _release_score(text, q_score, group=''):
 
 
 def sort_streams_by_quality(streams):
-    """TRaSH doar pe optiunile AIO Original; restul ramane calitate > marime > seeders."""
+    """Quality e primul criteriu in toate modurile; TRaSH ordoneaza doar in interiorul aceleiasi rezolutii."""
     import re
     try: sort_opt = int(ADDON.getSetting('source_sorting') or '0')
     except: sort_opt = 0
     tiers = _SORT_TIERS.get(sort_opt)
-    trash = bool(tiers) and tiers[0] == 'aio_orig'
+    trash = sort_opt in (1, 2, 10)
 
     def get_sort_key(s):
         quality_field = s.get('quality', '').lower()
@@ -1675,7 +1684,9 @@ def sort_streams_by_quality(streams):
             if not group:
                 group = _extract_release_group(s.get('name') or '')
             release = _release_score(text_combined, q_score, group)
-        
+
+        source_rank = _SOURCE_SORT_RANK.get(_stream_source_kind(s), 0)
+
         # Marime MB
         size_mb = 0.0
         size_field = s.get('size', '')
@@ -1725,25 +1736,32 @@ def sort_streams_by_quality(streams):
         # Group Score pt Setari (4 categorii: HTTP / AIO / Stremio / P2P)
         cat = classify_stream_source(s)
         is_cached = isinstance(info_dict, dict) and info_dict.get('is_cached', False)
+        # Usenet si EasyNews se redau direct, deci nu au ce cauta la uncached.
+        _pid_l = str(s.get('provider_id', '')).lower()
+        _svc_l = str(info_dict.get('debrid_service', '')).lower() if isinstance(info_dict, dict) else ''
+        if _pid_l == 'usenet_nzb' or _svc_l == 'easynews':
+            is_cached = True
 
         if tiers:
             n = len(tiers)
             for ti, tier in enumerate(tiers):
                 if _tier_matches(tier, cat, is_cached):
                     g_score = n - 1 - ti
-                    # Tier-urile "Original" pastreaza ordinea originala din lista
+                    # AIO Original: in interiorul grupului, AIO + Usenet dupa
+                    # quality > size (ordinea de terminare a thread-urilor nu
+                    # mai strecoara un 4K printre 1080p).
                     if tier == 'aio_orig':
-                        return (g_score, 0, 0, 0.0, 0) if trash else (g_score, 0, 0.0, 0)
+                        return (g_score, q_score, source_rank, size_mb, seeders)
                     if trash:
-                        return (g_score, release, freshness, size_mb, seeders)
-                    return (g_score, q_score, size_mb, seeders)
+                        return (g_score, q_score, release, freshness, size_mb, seeders)
+                    return (g_score, q_score, source_rank, size_mb, seeders)
             if trash:
-                return (0, release, freshness, size_mb, seeders)
-            return (0, q_score, size_mb, seeders)
+                return (0, q_score, release, freshness, size_mb, seeders)
+            return (0, q_score, source_rank, size_mb, seeders)
 
         if trash:
-            return (0, release, freshness, size_mb, seeders)
-        return (0, q_score, size_mb, seeders)
+            return (0, q_score, release, freshness, size_mb, seeders)
+        return (0, q_score, source_rank, size_mb, seeders)
 
     streams.sort(key=get_sort_key, reverse=True)
     return streams
@@ -1896,7 +1914,8 @@ class TMDbPlayer(xbmc.Player):
             return
         
         # Determine the current source's group type (same logic as play_with_rollover)
-        current_is_aio = source_prov in _AIO_STREMIO_IDS
+        current_is_aio = (not _is_usenet_stream(self.streams[self.start_index])
+                          and classify_stream_source(self.streams[self.start_index]) in ('aio', 'stremio'))
         current_group = 'aio_stremio' if current_is_aio else 'http'
         
         # Scan forward for next source of the SAME group
@@ -1905,7 +1924,8 @@ class TMDbPlayer(xbmc.Player):
             prov = str(self.streams[i].get('provider_id', ''))
             if prov.startswith('p2p_'):
                 continue
-            s_aio = prov in _AIO_STREMIO_IDS
+            s_aio = (not _is_usenet_stream(self.streams[i])
+                     and classify_stream_source(self.streams[i]) in ('aio', 'stremio'))
             s_group = 'aio_stremio' if s_aio else 'http'
             if s_group == current_group:
                 next_idx = i
@@ -3687,7 +3707,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     first_prov = str(first_stream.get('provider_id', ''))
     if first_prov.startswith('p2p_'):
         initial_type = 'p2p'
-    elif first_prov in _AIO_STREMIO_IDS:
+    elif not _is_usenet_stream(first_stream) and classify_stream_source(first_stream) in ('aio', 'stremio'):
         initial_type = 'aio_stremio'
     else:
         initial_type = 'http'
@@ -3698,7 +3718,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             stream = streams[i]
             url = stream.get('url', '')
 
-            is_aio = stream.get('provider_id') in _AIO_STREMIO_IDS
+            is_usenet = _is_usenet_stream(stream)
+            is_aio = not is_usenet and classify_stream_source(stream) in ('aio', 'stremio')
             is_p2p = str(stream.get('provider_id', '')).startswith('p2p_')
             current_type = 'p2p' if is_p2p else ('aio_stremio' if is_aio else 'http')
 
@@ -5050,9 +5071,9 @@ def list_sources(params):
             streams = deduplicate_streams(streams)
             streams = sort_streams_by_quality(streams)
             if use_cache:
-                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration, cur_sort_opt)
+                cache_db.set_source_cache(search_id, streams, final_error, final_empty, final_scanned, cache_duration, cur_sort_opt + _SORT_CACHE_REV)
             # lista e deja sortata cu optiunea curenta — display-ul nu mai re-sorteaza
-            cached_sort_opt = cur_sort_opt
+            cached_sort_opt = cur_sort_opt + _SORT_CACHE_REV
 
         try:
             _alt_prop2 = win.getProperty('tmdbmovies.alt_numbering') or ''
@@ -5078,7 +5099,7 @@ def list_sources(params):
     all_streams_count = len(streams)
     try: cur_sort_opt = int(ADDON.getSetting('source_sorting') or '0')
     except: cur_sort_opt = 0
-    if cached_sort_opt is None or cached_sort_opt != cur_sort_opt:
+    if cached_sort_opt is None or cached_sort_opt != cur_sort_opt + _SORT_CACHE_REV:
         streams = sort_streams_by_quality(streams)
     filtered_streams, quality_stats = filter_streams_for_display(streams)
     

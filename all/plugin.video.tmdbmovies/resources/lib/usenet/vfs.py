@@ -24,7 +24,7 @@ ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
 FOLDER = 'usenet-vfs/'
 KEEP_SECONDS = 12 * 3600
-PLAN_VERSION = 4
+PLAN_VERSION = 5
 
 
 def enabled():

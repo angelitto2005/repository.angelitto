@@ -68,7 +68,9 @@
 					<description>Skip</description>
 					<width>75</width>
 					<height>36</height>
-					<label>[B][COLOR FFFF4444]Skip[/COLOR][/B]</label>
+					<label>[B]Skip[/B]</label>
+					<textcolor>FFFFFFFF</textcolor>
+					<focusedcolor>FFFF4444</focusedcolor>
 					<font>font12</font>
 					<align>center</align>
 					<aligny>center</aligny>
@@ -78,9 +80,9 @@
 					<!-- ========================================================== -->
 					<pulseonselect>no</pulseonselect>
 					<shadowcolor>ff000000</shadowcolor>
-					<!-- FOCUS: negru semitransparent (vizibil) cand selectezi butonul -->
-					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
-					<!-- NO-FOCUS: gri semitransparent cand nu e selectat (am adaugat border="6" ca sa nu mai arate ciudat) -->
+					<!-- FOCUS: gri mai inchis, doar textul se coloreaza -->
+					<texturefocus border="6" colordiffuse="C0141414">white.png</texturefocus>
+					<!-- NO-FOCUS: gri semitransparent, text alb bold -->
 					<texturenofocus border="6" colordiffuse="80555555">white.png</texturenofocus>
 				</control>
 				
@@ -88,7 +90,9 @@
 					<description>No</description>
 					<width>75</width>
 					<height>36</height>
-					<label>[B][COLOR FF6AFB92]No[/COLOR][/B]</label>
+					<label>[B]No[/B]</label>
+					<textcolor>FFFFFFFF</textcolor>
+					<focusedcolor>FF6AFB92</focusedcolor>
 					<font>font12</font>
 					<align>center</align>
 					<aligny>center</aligny>
@@ -98,7 +102,7 @@
 					<!-- ========================================================== -->
 					<pulseonselect>no</pulseonselect>
 					<shadowcolor>ff000000</shadowcolor>
-					<texturefocus border="6" colordiffuse="A0000000">white.png</texturefocus>
+					<texturefocus border="6" colordiffuse="C0141414">white.png</texturefocus>
 					<texturenofocus border="6" colordiffuse="80555555">white.png</texturenofocus>
 				</control>
 			</control>

@@ -1,3 +1,15 @@
+1.1.335
+- Usenet releases packed as a RAR inside another RAR are now skipped with a clear reason, instead of starting with only an audio track.
+- Usenet now sorts together with AIO in every Source Priority mode: it no longer drops below AIO or Stremio, and a 4K release can no longer appear between 1080p ones.
+- New "Mixed + TRaSH" Source Priority option: resolution first, then the TRaSH release score (source, group, HDR, audio), then size.
+- Resolution is now the first criterion in the AIO Original TRaSH modes too, so all 4K sources stay together.
+- EasyNews is no longer picked last during auto-play; all debrid services, EasyNews included, compete in one group.
+- New Source Filtering options: show only Remux / BluRay / WEB-DL releases, and cap the list per resolution + source (for example 3 x 4K Remux and 3 x 1080p WEB-DL).
+- New Performance profile under Usenet > Advanced: Auto, Low-end box, Fast box or Custom; Custom brings back the read-ahead and cache sliders without the small-box limits.
+- In the Quality > Size modes, Remux now comes before BluRay regardless of file size; within the same source type, size still decides.
+- Skip Intro buttons now make the selected one obvious: white background and a coloured label, while the other stays grey with white text.
+- NZB.Info now shows its full name in the source list instead of "NZB", including lists that were already cached.
+
 1.1.334
 - Usenet results now drop releases of another film or another year, including when only Usenet is enabled.
 - With Source Priority set to an AIO Original option, sources are sorted with a TRaSH-style score: source, resolution, HDR/DV, audio and edition.

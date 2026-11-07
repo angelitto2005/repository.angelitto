@@ -43,6 +43,13 @@ LOW_CORE_CORES = 4                  # small Android boxes: more workers than thi
 LOW_CORE_WORKERS = 24               # ... but every configured connection may still feed a pipelined worker
 LOW_CORE_PREFETCH_BYTES = 24 * 1024 * 1024
 LOW_CORE_CACHE_BYTES = 36 * 1024 * 1024
+PROFILE_AUTO = 0                    # cores decide (the old behaviour)
+PROFILE_LOW = 1                     # force the small-box numbers
+PROFILE_FAST = 2                    # force the large numbers
+PROFILE_CUSTOM = 3                  # the sliders decide, no low-core clamp
+PROFILE_NAMES = ('auto', 'low-end', 'fast', 'custom')
+FAST_PREFETCH_BYTES = 64 * 1024 * 1024
+FAST_CACHE_BYTES = 128 * 1024 * 1024
 
 
 def _cores():
@@ -270,20 +277,27 @@ class Session(object):
             raise SessionError('no Usenet provider is configured')
         connections = sum(pool.limit for pool in self.pools)
         cores = _cores()
+        profile = int(self.options.get('profile') or PROFILE_AUTO)
+        profile = max(PROFILE_AUTO, min(PROFILE_CUSTOM, profile))
+        low_core = cores <= LOW_CORE_CORES
         worker_cap = MAX_WORKERS
-        if cores <= LOW_CORE_CORES:
+        if profile == PROFILE_LOW or (profile == PROFILE_AUTO and low_core):
             worker_cap = min(worker_cap, LOW_CORE_WORKERS)
         self.worker_target = max(1, min(worker_cap, connections))
         self.pipeline = max(1, int(self.options.get('pipeline') or PIPELINE))
         self.timeout = int(self.options.get('timeout') or 20)
         prefetch = int(self.options.get('prefetch_bytes') or 12 * 1024 * 1024)
         cache = int(self.options.get('cache_bytes') or 36 * 1024 * 1024)
-        if cores <= LOW_CORE_CORES:
+        if profile == PROFILE_LOW or (profile == PROFILE_AUTO and low_core):
             prefetch = min(prefetch, LOW_CORE_PREFETCH_BYTES)
             cache = min(cache, LOW_CORE_CACHE_BYTES)
+        elif profile == PROFILE_FAST:
+            prefetch = FAST_PREFETCH_BYTES
+            cache = FAST_CACHE_BYTES
         self.prefetch_bytes = max(prefetch, min(HARD_PREFETCH_BYTES,
                                                 self.worker_target * self.pipeline * PREFETCH_PER_SLOT_BYTES))
         self.cache_limit = max(cache, self.prefetch_bytes + CACHE_MARGIN_BYTES)
+        self.profile = profile
         self.cache = OrderedDict()
         self.cache_bytes = 0
         self.lock = threading.RLock()
@@ -296,6 +310,7 @@ class Session(object):
         self.hole_consecutive = int(self.options.get('hole_consecutive',
                                                      DEFAULT_HOLE_CONSECUTIVE) or 0)
         self.missing = 0
+        self.missing_report = []
         self.segments = 0
         self.missing_run = 0
         self.longest_run = 0
@@ -353,6 +368,7 @@ class Session(object):
         wanted = list(message_ids)
         found = [None] * len(wanted)
         left = list(range(len(wanted)))
+        report = []
         for pool in self._pool_order():
             if not left:
                 break
@@ -374,7 +390,8 @@ class Session(object):
                     _log('%s refused the login - switching provider' % pool.label,
                          warning=True)
                     break
-                except Exception:
+                except Exception as exc:
+                    report.append('%s: %s' % (pool.label, type(exc).__name__))
                     break
                 attempt_started = time.time()
                 try:
@@ -392,9 +409,10 @@ class Session(object):
                         time.sleep(0.2)
                         continue
                     break
-                except Exception:
+                except Exception as exc:
                     pool.discard(connection)
                     pool.failures += 1
+                    report.append('%s: %s' % (pool.label, type(exc).__name__))
                     if attempt + 1 < TRANSIENT_TRIES:
                         continue
                     if (pool.failures >= FAILURES_BEFORE_DOWN
@@ -429,10 +447,12 @@ class Session(object):
                 for slot, reply in zip(left, replies):
                     if reply[2] is None:
                         remaining.append(slot)
+                        report.append('%s: %d' % (pool.label, reply[1]))
                     else:
                         found[slot] = reply[2]
                 left = remaining
                 break
+        self.missing_report = report
         return found
 
     def _article(self, message_id, urgent=False):
@@ -441,7 +461,8 @@ class Session(object):
     def _decode_first(self, segments):
         article = self._article(segments[0][2] if isinstance(segments[0], tuple) else segments[0])
         if article is None:
-            raise SessionError('the first article of this release is gone from the provider')
+            detail = ', '.join(self.missing_report) or 'no provider answered'
+            raise SessionError('the first article of this release is gone from the provider (%s)' % detail)
         try:
             return yenc.decode(article)
         except yenc.YencError as exc:
@@ -471,12 +492,13 @@ class Session(object):
 
     def prepare(self):
         _log('engine: %d worker(s) x %d pipelined on %d core(s), %s, prefetch %.0f MB, '
-             'cache %.0f MB, timeout %ds'
+             'cache %.0f MB, timeout %ds, profile %s'
              % (self.worker_target, self.pipeline, _cores(),
                 ', '.join('%s %d%s' % (pool.label, pool.limit,
                                        ' backup' if pool.provider.get('backup') else '')
                           for pool in self.pools),
-                self.prefetch_bytes / 1048576.0, self.cache_limit / 1048576.0, self.timeout))
+                self.prefetch_bytes / 1048576.0, self.cache_limit / 1048576.0, self.timeout,
+                PROFILE_NAMES[self.profile]))
         try:
             files = nzb.parse(self.data)
         except nzb.NzbError as exc:
@@ -528,6 +550,16 @@ class Session(object):
         if not layout.get('unp_size'):
             raise SessionError('the RAR header does not say how big the film is')
         self.inner_name = (layout.get('name') or '').strip()
+        # Unele repack-uri pun un set RAR/7z in interiorul altui RAR. Primul
+        # fisier din volumul exterior e atunci un volum intern (.r08 etc.),
+        # nu filmul; fara garda, Kodi primeste 400 MB din mijlocul arhivei si
+        # gaseste doar un flux audio. Respingem release-ul, playerul trece
+        # la urmatoarea sursa.
+        inner_head = head[layout['offset']:layout['offset'] + 8]
+        if (inner_head.startswith(b'Rar!\x1a\x07')
+                or inner_head.startswith(b'7z\xbc\xaf\x27\x1c')
+                or re.search(r'\.(?:rar|r\d{2,3}|7z(?:\.\d+)?)$', self.inner_name, re.I)):
+            raise SessionError('this release is a RAR inside a RAR - not supported')
         self.container = 'iso' if (self.inner_name.lower().endswith('.iso') or
                                    (not self.inner_name and
                                     _sniff(head, layout['offset']) == 'iso')) else 'rar'

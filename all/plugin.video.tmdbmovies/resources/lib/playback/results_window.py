@@ -11,6 +11,17 @@ QUALITY_ICONS = {
     'SD':    'flagsd.png',
 }
 
+# Listele din cache scrise inainte de maparea NZB.Info contin fallback-ul 'Nzb'.
+_NZB_INDEXER_ALIASES = {
+    'nzb': 'NZB.Info', 'nzb.info': 'NZB.Info', 'nzbinfo': 'NZB.Info',
+    'api.nzb.info': 'NZB.Info', 'www.nzb.info': 'NZB.Info',
+}
+
+
+def _nzb_indexer_label(value):
+    text = str(value or '').strip()
+    return _NZB_INDEXER_ALIASES.get(text.lower(), text)
+
 _RE_COMPILED = {}
 def _cached_re(pattern):
     if pattern not in _RE_COMPILED:
@@ -550,7 +561,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 _nzb_provider = (_nzb_meta.get('provider_name')
                                  or info.get('provider_name') or '')
                 parts.append(f"[B][COLOR FFFFEA00]{_nzb_provider or 'Usenet'}[/COLOR][/B]")
-                _nzb_indexer = _nzb_meta.get('indexer') or info.get('indexer') or ''
+                _nzb_indexer = _nzb_indexer_label(_nzb_meta.get('indexer') or info.get('indexer') or '')
                 if _nzb_indexer:
                     parts.append(f"[COLOR FFCCCCFF][B]{_nzb_indexer}[/B][/COLOR]")
                 _nzb_age = _nzb_meta.get('age_text') or info.get('age_text') or ''
@@ -858,7 +869,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             li.setProperty('tmdbmovies.audio', ', '.join(audio_tags))
             li.setProperty('tmdbmovies.lang', ', '.join(info.get('languages', [])))
             li.setProperty('tmdbmovies.addon', info.get('addon', ''))
-            li.setProperty('tmdbmovies.indexer', info.get('indexer', '')) # Ignoram setarea de hide pentru Info
+            li.setProperty('tmdbmovies.indexer', _nzb_indexer_label(info.get('indexer', ''))) # Ignoram setarea de hide pentru Info
             
             # Status si Tip
             is_cached = info.get('is_cached', False)
@@ -1182,12 +1193,12 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
         # --- PROVIDER INFO ---
         addon = info.get('addon', '') or stream_data.get('provider_id', '')
-        indexer = info.get('indexer', '') or info.get('server', '')
+        indexer = _nzb_indexer_label(info.get('indexer', '') or info.get('server', ''))
         debrid = info.get('debrid_service', '')
         
         prov_parts = []
         if addon: prov_parts.append(f"[COLOR gray]Addon:[/COLOR] {addon.capitalize()}")
-        if indexer: prov_parts.append(f"[COLOR gray]Tracker:[/COLOR] {indexer.capitalize()}")
+        if indexer: prov_parts.append(f"[COLOR gray]Tracker:[/COLOR] {indexer if indexer == 'NZB.Info' else indexer.capitalize()}")
         if debrid: prov_parts.append(f"[COLOR gray]Debrid:[/COLOR] {debrid.capitalize()}")
         
         if prov_parts:
