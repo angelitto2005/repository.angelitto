@@ -844,8 +844,10 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
             li = xbmcgui.ListItem(res['name'])
             
-            li.setProperty('tmdbmovies.count', f"{idx+1}.")
-            li.setProperty('tmdbmovies.src_index', str(res.get('src_index', idx)))
+            _src_index = res.get('src_index', idx)
+            # Acelasi numar ca in logul player-ului, chiar si dupa o filtrare.
+            li.setProperty('tmdbmovies.count', f"{_src_index+1}.")
+            li.setProperty('tmdbmovies.src_index', str(_src_index))
             li.setProperty('tmdbmovies.quality', quality)
             li.setProperty('tmdbmovies.debrid', debrid_label)  
             li.setProperty('tmdbmovies.highlight', base_color)
@@ -890,6 +892,13 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 self.selected = item.getProperty('tmdbmovies.data')
                 try: self.selected_index = int(item.getProperty('tmdbmovies.src_index'))
                 except: self.selected_index = -1
+                try:
+                    import xbmc
+                    xbmc.log("[TMDb Movies] [RESULTS-WINDOW] Picked UI #%s (list position %d, source %d)"
+                             % (item.getProperty('tmdbmovies.count'),
+                                self.getControl(2000).getSelectedPosition() + 1,
+                                self.selected_index + 1), xbmc.LOGINFO)
+                except: pass
             self.close()
         elif controlId == 3000:
             return

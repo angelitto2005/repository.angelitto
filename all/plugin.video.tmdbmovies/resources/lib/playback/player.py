@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 import json
 from resources.lib.core.config import get_headers, BASE_URL, API_KEY, IMG_BASE, ADDON, kodi_abort_requested
 from resources.lib.core.utils import log, get_json, extract_details, get_language, clean_text
-from resources.lib.playback.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group, _stream_source_kind
+from resources.lib.playback.scraper import get_external_ids, get_stream_data, filter_streams_for_display, _extract_release_group, _stream_source_kind, _fake_stream_reason
 from resources.lib.api.tmdb_api import set_metadata
 from resources.lib.providers.watched_provider import dispatch_mark_watched, dispatch_mark_unwatched, dispatch_scrobble, wipe_plugin_bookmarks
 from resources.lib import subtitle as subtitles
@@ -2491,6 +2491,12 @@ def start_playback_monitor(player_instance, dialog=None):
             try: xbmcgui.Window(10000).clearProperty('tmdbmovies.release_name')
             except: pass
             
+            # Un player blocat in OpenFile (ex. ISO/UDF) nu raporteaza isPlaying(),
+            # dar Stop ii poate anula deschiderea inainte de urmatoarea sursa.
+            try:
+                xbmc.Player().stop()
+            except Exception:
+                pass
             if hasattr(player_instance, 'trigger_rollover') and getattr(player_instance, 'source_type', None) != 'p2p':
                 player_instance.trigger_rollover()
             elif getattr(player_instance, 'source_type', None) == 'p2p':
@@ -3687,6 +3693,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
     total_streams = len(streams)
     log(f"[PLAYER] Total sources: {total_streams}")
+    log(f"[PLAYER] Starting from source {start_index + 1}")
     
     p_title = info_tag.get('title', 'Unknown')
     p_year = info_tag.get('year', '')
@@ -3713,10 +3720,20 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         initial_type = 'http'
     log(f"[PLAYER] Initial source type: {initial_type} (provider: {first_prov})")
 
+    try:
+        _allow_iso = ADDON.getSetting('usenet_nzb.allow_iso') == 'true'
+    except Exception:
+        _allow_iso = False
+
     for i in range(start_index, total_streams):
         try:
             stream = streams[i]
             url = stream.get('url', '')
+
+            _why_fake = _fake_stream_reason(stream, _allow_iso)
+            if _why_fake:
+                log(f"[PLAYER] Skip source {i+1}: {_why_fake}")
+                continue
 
             is_usenet = _is_usenet_stream(stream)
             is_aio = not is_usenet and classify_stream_source(stream) in ('aio', 'stremio')
@@ -4189,7 +4206,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if len(_stream_label) > 130:
                     _stream_label = _stream_label[:127] + "..."
                 if _stream_label:
-                    enriched += f"\n[COLOR FF20B2AA]Source:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]"
+                    enriched += f"\n[COLOR FF20B2AA]Source {valid_index + 1}:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]"
                     if _size or _quality:
                         enriched += f"  • [B][COLOR yellow]{_size}[/COLOR][/B] • [B][COLOR {c_qual}]{_quality}[/COLOR][/B]" if _size and _quality else ""
                 info_tag['plot'] = enriched

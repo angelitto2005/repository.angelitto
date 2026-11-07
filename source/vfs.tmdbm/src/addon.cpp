@@ -7,10 +7,16 @@
 #include <kodi/General.h>
 #include <kodi/addon-instance/VFS.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdio>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <sys/types.h>
+#include <thread>
 #include <vector>
 
 #ifdef __ANDROID__
@@ -27,8 +33,10 @@ constexpr int CHUNK_SIZE = 256 * 1024;
 struct FileHandle
 {
   std::shared_ptr<engine::Stream> stream;
+  std::string token;
   int64_t position{0};
   bool error_logged{false};
+  bool cancelled_logged{false};
 };
 
 void EngineLog(engine::LogLevel level, const char* message)
@@ -113,6 +121,11 @@ std::string FirstPath(const std::string& token)
 std::string WarmPath(const std::string& token)
 {
   return kodi::vfs::TranslateSpecialProtocol(PLAN_FOLDER) + token + ".first2";
+}
+
+std::string ActivePath()
+{
+  return kodi::vfs::TranslateSpecialProtocol(PLAN_FOLDER) + "active";
 }
 
 bool ReadTextFile(const std::string& path, std::string& text)
@@ -278,6 +291,177 @@ bool UrlAllowed(const kodi::addon::VFSUrl& url)
   return url.GetProtocol() == PROTOCOL;
 }
 
+constexpr int SESSION_IDLE_SECONDS = 45;
+constexpr size_t SESSION_MAX_IDLE = 2;
+
+struct SessionEntry
+{
+  std::shared_ptr<engine::Stream> stream;
+  int refs = 0;
+  double last_used = 0;
+};
+
+std::mutex g_session_mutex;
+std::map<std::string, std::shared_ptr<SessionEntry>> g_sessions;
+std::map<std::string, std::weak_ptr<std::mutex>> g_start_locks;
+
+double NowSeconds()
+{
+  return std::chrono::duration<double>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
+std::shared_ptr<std::mutex> StartLock(const std::string& token)
+{
+  std::lock_guard<std::mutex> lock(g_session_mutex);
+  std::weak_ptr<std::mutex>& slot = g_start_locks[token];
+  std::shared_ptr<std::mutex> found = slot.lock();
+  if (!found)
+  {
+    found = std::make_shared<std::mutex>();
+    slot = found;
+  }
+  return found;
+}
+
+bool IsOtherPlanActive(const std::string& token)
+{
+  static std::mutex active_mutex;
+  static std::string active;
+  static double checked = 0;
+  std::lock_guard<std::mutex> lock(active_mutex);
+  const double now = NowSeconds();
+  if (now - checked >= 0.5)
+  {
+    checked = now;
+    active.clear();
+    std::string text;
+    if (ReadTextFile(ActivePath(), text))
+    {
+      const size_t line = text.find('\n');
+      if (line != std::string::npos && text.compare(0, line, "tmdbm-active 1") == 0)
+      {
+        const size_t end = text.find('\n', line + 1);
+        const std::string value =
+            text.substr(line + 1,
+                        end == std::string::npos ? std::string::npos : end - line - 1);
+        if (ValidToken(value))
+          active = value;
+      }
+    }
+    if (!active.empty() && !kodi::vfs::FileExists(PlanPath(active)))
+      active.clear();
+  }
+  return !active.empty() && active != token;
+}
+
+std::shared_ptr<engine::Stream> AcquireStream(const std::string& token,
+                                              const std::shared_ptr<const engine::Plan>& plan,
+                                              bool& reused, std::string& error)
+{
+  auto serial = StartLock(token);
+  std::lock_guard<std::mutex> guard(*serial);
+  {
+    std::lock_guard<std::mutex> lock(g_session_mutex);
+    auto found = g_sessions.find(token);
+    if (found != g_sessions.end())
+    {
+      if (found->second->stream && found->second->stream->Usable())
+      {
+        ++found->second->refs;
+        found->second->last_used = NowSeconds();
+        reused = true;
+        return found->second->stream;
+      }
+      g_sessions.erase(found);
+    }
+  }
+
+  reused = false;
+  auto stream = std::make_shared<engine::Stream>(plan);
+  std::vector<uint8_t> first;
+  if (LoadFirstArticle(token, *plan, first))
+  {
+    stream->PrimeFirstArticle(std::move(first));
+    kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: the first article came from the plan cache");
+    std::vector<WarmArticle> warm;
+    if (LoadWarmArticles(token, *plan, warm))
+    {
+      for (WarmArticle& article : warm)
+        stream->PrimeArticle(article.index, std::move(article.data));
+      kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: %d warm articles came from the plan cache",
+                static_cast<int>(warm.size()));
+    }
+  }
+  if (!stream->Start(error))
+    return nullptr;
+  auto entry = std::make_shared<SessionEntry>();
+  entry->stream = stream;
+  entry->refs = 1;
+  entry->last_used = NowSeconds();
+  {
+    std::lock_guard<std::mutex> lock(g_session_mutex);
+    g_sessions[token] = entry;
+  }
+  return stream;
+}
+
+void CloseIdleSessions()
+{
+  std::vector<std::shared_ptr<engine::Stream>> closing;
+  const double now = NowSeconds();
+  {
+    std::lock_guard<std::mutex> lock(g_session_mutex);
+    for (auto it = g_sessions.begin(); it != g_sessions.end();)
+    {
+      if (it->second->refs <= 0 && now - it->second->last_used > SESSION_IDLE_SECONDS)
+      {
+        closing.push_back(it->second->stream);
+        it = g_sessions.erase(it);
+      }
+      else
+        ++it;
+    }
+    for (;;)
+    {
+      size_t idle = 0;
+      auto oldest = g_sessions.end();
+      for (auto it = g_sessions.begin(); it != g_sessions.end(); ++it)
+      {
+        if (it->second->refs > 0)
+          continue;
+        ++idle;
+        if (oldest == g_sessions.end() || it->second->last_used < oldest->second->last_used)
+          oldest = it;
+      }
+      if (idle <= SESSION_MAX_IDLE || oldest == g_sessions.end())
+        break;
+      closing.push_back(oldest->second->stream);
+      g_sessions.erase(oldest);
+    }
+  }
+  for (auto& stream : closing)
+  {
+    engine::Trace("closing an idle usenet stream");
+    stream->Close();
+  }
+}
+
+void CloseAllSessions()
+{
+  std::vector<std::shared_ptr<engine::Stream>> closing;
+  {
+    std::lock_guard<std::mutex> lock(g_session_mutex);
+    for (auto& item : g_sessions)
+      closing.push_back(item.second->stream);
+    g_sessions.clear();
+    g_start_locks.clear();
+  }
+  for (auto& stream : closing)
+    stream->Close();
+}
+
 std::string PlanName(const engine::Plan& plan)
 {
   const size_t slash = plan.name.find_last_of("/\\");
@@ -297,50 +481,59 @@ bool MatchesPlan(const kodi::addon::VFSUrl& url, const engine::Plan& plan)
 class ATTR_DLL_LOCAL CUsenetVFS : public kodi::addon::CInstanceVFS
 {
 public:
-  explicit CUsenetVFS(const kodi::addon::IInstanceInfo& instance) : CInstanceVFS(instance) {}
+  explicit CUsenetVFS(const kodi::addon::IInstanceInfo& instance) : CInstanceVFS(instance)
+  {
+    reaper_ = std::thread([this]() { ReapLoop(); });
+  }
+
+  ~CUsenetVFS() override
+  {
+    stopping_.store(true);
+    reap_cv_.notify_all();
+    if (reaper_.joinable())
+      reaper_.join();
+    CloseAllSessions();
+  }
 
   kodi::addon::VFSFileHandle Open(const kodi::addon::VFSUrl& url) override
   {
     if (!UrlAllowed(url))
       return nullptr;
+    const std::string token = url.GetHostname();
     std::shared_ptr<const engine::Plan> plan;
     std::string error;
-    if (!LoadPlan(url.GetHostname(), plan, error))
+    if (!LoadPlan(token, plan, error))
     {
-      kodi::Log(ADDON_LOG_ERROR, "vfs.tmdbm: cannot open %s: %s",
-                url.GetHostname().c_str(), error.c_str());
+      kodi::Log(ADDON_LOG_ERROR, "vfs.tmdbm: cannot open %s: %s", token.c_str(),
+                error.c_str());
       return nullptr;
     }
     if (!MatchesPlan(url, *plan))
       return nullptr;
-    auto stream = std::make_shared<engine::Stream>(plan);
-    std::vector<uint8_t> first;
-    if (LoadFirstArticle(url.GetHostname(), *plan, first))
+    if (IsOtherPlanActive(token))
     {
-      stream->PrimeFirstArticle(std::move(first));
-      kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: the first article came from the plan cache");
-      std::vector<WarmArticle> warm;
-      if (LoadWarmArticles(url.GetHostname(), *plan, warm))
-      {
-        for (WarmArticle& article : warm)
-          stream->PrimeArticle(article.index, std::move(article.data));
-        kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: %d warm articles came from the plan cache",
-                  static_cast<int>(warm.size()));
-      }
+      kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: ignoring %s: another source is playing",
+                token.c_str());
+      return nullptr;
     }
-    if (!stream->Start(error))
+    bool reused = false;
+    std::shared_ptr<engine::Stream> stream = AcquireStream(token, plan, reused, error);
+    if (!stream)
     {
-      kodi::Log(ADDON_LOG_ERROR, "vfs.tmdbm: cannot start %s: %s",
-                url.GetHostname().c_str(), error.c_str());
+      kodi::Log(ADDON_LOG_ERROR, "vfs.tmdbm: cannot start %s: %s", token.c_str(),
+                error.c_str());
       return nullptr;
     }
     const std::string name = FileName(url);
     kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: open %s (%s, %.1f MB, %d part(s))",
-              url.GetHostname().c_str(), (name.empty() ? plan->name : name).c_str(),
+              token.c_str(), (name.empty() ? plan->name : name).c_str(),
               static_cast<double>(plan->length) / 1048576.0,
               static_cast<int>(plan->parts.size()));
+    if (reused)
+      kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: reusing the warm stream for %s", token.c_str());
     auto* handle = new FileHandle();
     handle->stream = stream;
+    handle->token = token;
     return handle;
   }
 
@@ -350,8 +543,16 @@ public:
     if (!handle)
       return false;
     engine::Trace("addon close begin");
-    if (handle->stream)
-      handle->stream->Close();
+    {
+      std::lock_guard<std::mutex> lock(g_session_mutex);
+      auto found = g_sessions.find(handle->token);
+      if (found != g_sessions.end() && found->second->stream == handle->stream)
+      {
+        if (found->second->refs > 0)
+          --found->second->refs;
+        found->second->last_used = NowSeconds();
+      }
+    }
     engine::Trace("addon close end");
     delete handle;
     return true;
@@ -362,6 +563,16 @@ public:
     auto* handle = static_cast<FileHandle*>(context);
     if (!handle || !handle->stream)
       return -1;
+    if (IsOtherPlanActive(handle->token))
+    {
+      if (!handle->cancelled_logged)
+      {
+        handle->cancelled_logged = true;
+        kodi::Log(ADDON_LOG_INFO, "vfs.tmdbm: %s cancelled: another source is playing",
+                  handle->token.c_str());
+      }
+      return -1;
+    }
     const int64_t got = handle->stream->Read(handle->position, buffer, size);
     if (got < 0)
     {
@@ -438,6 +649,26 @@ public:
     std::string error;
     return LoadPlan(url.GetHostname(), plan, error) && MatchesPlan(url, *plan);
   }
+
+private:
+  void ReapLoop()
+  {
+    std::unique_lock<std::mutex> lock(reap_mutex_);
+    while (!stopping_.load())
+    {
+      reap_cv_.wait_for(lock, std::chrono::seconds(5));
+      if (stopping_.load())
+        break;
+      lock.unlock();
+      CloseIdleSessions();
+      lock.lock();
+    }
+  }
+
+  std::thread reaper_;
+  std::atomic<bool> stopping_{false};
+  std::mutex reap_mutex_;
+  std::condition_variable reap_cv_;
 };
 
 class ATTR_DLL_LOCAL CMyAddon : public kodi::addon::CAddonBase

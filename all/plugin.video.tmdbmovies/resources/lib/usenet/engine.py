@@ -507,6 +507,8 @@ class Session(object):
             raise error
         media, kind = nzb.pick_media(files)
         if media is None:
+            if kind == 'sample':
+                raise SessionError('this NZB contains only a sample or trailer')
             raise SessionError('this NZB contains no video')
         self.media_name = media.name or 'video'
         if kind == '7z':

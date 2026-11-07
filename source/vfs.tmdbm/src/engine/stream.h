@@ -37,6 +37,7 @@ public:
   Stream& operator=(const Stream&) = delete;
 
   bool Start(std::string& error);
+  bool Usable() const;
   void PrimeFirstArticle(std::vector<uint8_t> data);
   void PrimeArticle(int index, std::vector<uint8_t> data);
   void Close();

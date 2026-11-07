@@ -1,3 +1,11 @@
+1.1.336
+- Fake releases with an image extension inside the file name (for example .jpg.mkv) or a sample/trailer marker (for example .sampl.mkv) are filtered out, and full-disc ISO releases are hidden by default; ISO can be re-enabled under Usenet.
+- The Custom performance profile now shows its read-ahead and cache sliders as soon as it is selected.
+- Skip Intro now shows the selected button with a darker grey background and a red or green label, while the other stays lighter grey with white text.
+- The native VFS keeps a warm Usenet connection pool when the player reopens the same file, and stops reading an old source as soon as another one starts.
+- The number next to each source now matches the player's "Testing source" counter and its log, including when a filter is active.
+- The video OSD info now shows which source is playing, for example "Source 30:", so after an automatic rollover the current source is always visible.
+
 1.1.335
 - Usenet releases packed as a RAR inside another RAR are now skipped with a clear reason, instead of starting with only an audio track.
 - Usenet now sorts together with AIO in every Source Priority mode: it no longer drops below AIO or Stremio, and a 4K release can no longer appear between 1080p ones.

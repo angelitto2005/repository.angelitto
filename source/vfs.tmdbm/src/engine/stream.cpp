@@ -247,6 +247,12 @@ public:
 
   int64_t Length() const { return plan_->length; }
 
+  bool Usable() const
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return started_ && !closing_.load() && !fatal_.load();
+  }
+
   bool Start(std::string& error)
   {
     if (started_)
@@ -1409,6 +1415,11 @@ bool Stream::Start(std::string& error)
   if (!started)
     impl_->Close();
   return started;
+}
+
+bool Stream::Usable() const
+{
+  return impl_ ? impl_->Usable() : false;
 }
 
 void Stream::Close()

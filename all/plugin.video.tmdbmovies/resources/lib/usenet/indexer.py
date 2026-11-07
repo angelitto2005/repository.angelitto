@@ -38,7 +38,7 @@ def _agent():
 
 _LOCK = threading.Lock()
 _LIMITS = re.compile(rb'<[^>]*apilimits\b([^>]*)>', re.I)
-_SAMPLE = re.compile(r'\b(sample|trailer|featurette|extras?)\b', re.I)
+_SAMPLE = re.compile(r'\b(sampl(?:e)?|trailer|teaser|featurette|extras?)\b', re.I)
 _SECRET = re.compile(r'((?:apikey|api_key|key|token)=)[^&\s]+', re.I)
 _CREDENTIALS = re.compile(r'(https?://)[^/\s:@]+:[^/\s@]+@')
 

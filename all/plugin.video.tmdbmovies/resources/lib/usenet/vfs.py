@@ -24,7 +24,7 @@ ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
 FOLDER = 'usenet-vfs/'
 KEEP_SECONDS = 12 * 3600
-PLAN_VERSION = 5
+PLAN_VERSION = 6
 
 
 def enabled():
@@ -62,7 +62,7 @@ def cleanup(max_age=KEEP_SECONDS):
     except Exception:
         return
     for name in names:
-        if not name.endswith(('.plan', '.first', '.first2', '.tmp')):
+        if name != 'active' and not name.endswith(('.plan', '.first', '.first2', '.tmp')):
             continue
         path = folder + name
         try:
@@ -167,6 +167,14 @@ def _write(path, text):
     os.replace(temp, path)
 
 
+def _write_active(folder, key):
+    """Tell the VFS which plan is playing, so it stops probing older ones."""
+    try:
+        _write(folder + 'active', 'tmdbm-active 1\n%s\n' % key)
+    except Exception:
+        pass
+
+
 def _write_first(path, session):
     """Keep the article prepare() already decoded, so the VFS need not fetch it."""
     data = session.first_article()
@@ -234,6 +242,7 @@ def prepare_stream(nzb_url):
             name = _plan_reuse(folder + key + '.plan', digest)
             if name:
                 engine._log('plan reused for %s' % key)
+                _write_active(folder, key)
                 return '%s://%s/%s' % (SCHEME, key, quote(name)), '', False
         try:
             with open(path, 'rb') as handle:
@@ -276,6 +285,7 @@ def prepare_stream(nzb_url):
                 except Exception:
                     pass
             _write(folder + key + '.plan', _plan_text(session, info, providers, digest))
+            _write_active(folder, key)
         except Exception as exc:
             return '', 'the VFS plan could not be written (%s)' % str(exc)[:90], True
         name = info.get('name') or 'video.mkv'

@@ -20,6 +20,8 @@ _SEVEN = re.compile(r'\.7z(?:\.\d+)?$', re.I)
 _SEVEN_VOLUME = re.compile(r'\.7z\.(\d+)$', re.I)
 _YENC_SIZE = re.compile(r'yEnc\s+(\d+)\s+\((\d+)\s*/\s*(\d+)\)', re.I)
 _NAMED = re.compile(r'[\[(](\d{1,5})\s*(?:/|of)\s*\d{1,5}[\])]')
+_SAMPLE_FILE = re.compile(
+    r'(^|[.\s_\-])(?:sampl(?:e)?|trailer|teaser|featurette|preview)([.\s_\-]|$)', re.I)
 _QUOTED = re.compile(r'"([^"]+)"')
 _FILE_TAG = re.compile(rb'<file(?=[\s>])')
 _SUBJECT = re.compile(rb'\bsubject\s*=\s*(["\'])(.*?)\1', re.S)
@@ -175,13 +177,16 @@ def _parse_tree(data):
 # -- picking the film ---------------------------------------------------------
 
 def pick_media(files):
-    """(NzbFile, kind) for the biggest candidate, or (None, None)."""
+    """(NzbFile, kind) for the biggest real candidate, or (None, None)."""
     candidates = [f for f in files if f.kind in ('video', 'rar', '7z', 'unknown')]
     if not candidates:
         return None, None
     videos = [f for f in candidates if f.kind == 'video']
-    if videos:
-        return max(videos, key=lambda f: f.bytes), 'video'
+    real = [f for f in videos
+            if not _SAMPLE_FILE.search(f.name or '')
+            and not _SAMPLE_FILE.search(f.subject or '')]
+    if real:
+        return max(real, key=lambda f: f.bytes), 'video'
     rars = [f for f in candidates if f.kind == 'rar']
     if rars:
         volumes = rar_volumes(files)
@@ -190,6 +195,8 @@ def pick_media(files):
     if seven:
         volumes = seven_volumes(files)
         return (volumes[0], '7z') if volumes else (max(seven, key=lambda f: f.bytes), '7z')
+    if videos:
+        return None, 'sample'
     return max(candidates, key=lambda f: f.bytes), 'unknown'
 
 

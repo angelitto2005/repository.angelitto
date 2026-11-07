@@ -220,6 +220,7 @@
         <setting id="usenet_nzb.max_results" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Maximum results per indexer[/B][/COLOR]" default="30" range="5,5,60" option="int"/>
         <setting id="usenet_nzb.age_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the NZB age[/B] in the source list[/COLOR]" default="true"/>
         <setting id="usenet_nzb.grabs_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the grab count[/B] in the source list   (how many times the NZB was downloaded)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.allow_iso" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Allow full-disc ISO[/B]   (slow over Usenet: the ISO is scanned before playback)[/COLOR]" default="false"/>
 
         <setting label="[B][COLOR FFFFEA00]Indexers[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.indexers.enabled" type="bool" label="[COLOR FFCCCCFF][B]Use indexers[/B]   search the Newznab indexers below[/COLOR]" default="true"/>
@@ -281,10 +282,8 @@
 
         <setting label="[B][COLOR FFFFEA00]Advanced[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.performance" type="enum" label="[COLOR FFCCCCFF][B]Performance profile[/B][/COLOR]" values="Auto (recommended)|Low-end box|Fast box|Custom" default="0"/>
-        <setting type="lsep" label="      [COLOR FFCCCCFF]└─ 24 workers, 24 MB read-ahead, up to 104 MB cache[/COLOR]" visible="eq(-1,1)"/>
-        <setting type="lsep" label="      [COLOR FFCCCCFF]└─ up to 48 workers, 64-96 MB read-ahead, 128 MB cache[/COLOR]" visible="eq(-2,2)"/>
-        <setting id="usenet_nzb.prefetch_mb" type="slider" label="[COLOR FFCCCCFF][B]Read-ahead buffer[/B]  (MB)[/COLOR]" default="12" range="4,2,64" option="int" visible="eq(-3,3)"/>
-        <setting id="usenet_nzb.cache_mb" type="slider" label="[COLOR FFCCCCFF][B]Memory cache per playback[/B]  (MB)[/COLOR]" default="36" range="8,4,128" option="int" visible="eq(-4,3)"/>
+        <setting id="usenet_nzb.prefetch_mb" type="slider" label="[COLOR FFCCCCFF][B]Read-ahead buffer[/B]  (MB)[/COLOR]" default="12" range="4,2,64" option="int" subsetting="true" visible="eq(-1,3)"/>
+        <setting id="usenet_nzb.cache_mb" type="slider" label="[COLOR FFCCCCFF][B]Memory cache per playback[/B]  (MB)[/COLOR]" default="36" range="8,4,128" option="int" subsetting="true" visible="eq(-2,3)"/>
         <setting label="[B][COLOR FFFFEA00]Missing articles[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.hole_filling" type="bool" label="[COLOR FFCCCCFF][B]Fill gaps[/B]   (keep playing a release with small defects)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.hole_percent" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Give up above[/B]  (%)   (0 = no limit)[/COLOR]" default="2" range="0,1,10" option="int" visible="eq(-1,true)"/>

@@ -216,8 +216,9 @@ def main():
         base.check('first article reused', any('plan cache' in line for line in lines))
         base.check('warm articles reused',
                    any('warm articles came from the plan cache' in line for line in lines))
-        base.check('engine closed', base.wait_log('stream closed', log_offset,
-                                                  time.time() + 8))
+        # 0.1.6 keeps the stream warm for 45 s, so closing is expected after that.
+        base.check('engine closed after idle TTL',
+                   base.wait_log('stream closed', log_offset, time.time() + 55))
         print('PYTHON PLAN TEST PASSED')
     finally:
         try:

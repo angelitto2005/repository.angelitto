@@ -271,6 +271,36 @@ def _hdr_dv_flags(text):
     return has_hdr, bool(has_dv)
 
 
+_FAKE_IMAGE_VIDEO_RE = re.compile(
+    r'\.(?:jpe?g|png|gif|webp|bmp|tiff?)\.'
+    r'(?:mkv|mp4|avi|iso|ts|m4v|mov|wmv|flv|mpg|mpeg|m2ts)(?:\s|$)', re.I)
+_ISO_EXT_RE = re.compile(r'\.iso(?:\s|$)', re.I)
+_FAKE_SAMPLE_RE = re.compile(
+    r'(^|[.\s_\-])(?:sampl(?:e)?|trailer|teaser|featurette|preview)([.\s_\-]|$)', re.I)
+_FAKE_MIN_USENET_BYTES = 20 * 1024 * 1024
+
+
+def _fake_stream_reason(stream, allow_iso=False):
+    """Motivul pentru care sursa e clar falsa / neredabila, sau ''."""
+    text = '%s %s' % (stream.get('name', ''), stream.get('title', ''))
+    if _FAKE_IMAGE_VIDEO_RE.search(text):
+        return 'image renamed as video'
+    if _FAKE_SAMPLE_RE.search(text):
+        return 'sample or trailer'
+    usenet = stream.get('usenet') or {}
+    if not usenet:
+        return ''
+    if not allow_iso and _ISO_EXT_RE.search(text):
+        return 'full-disc ISO'
+    try:
+        size = int(usenet.get('size') or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if 0 < size < _FAKE_MIN_USENET_BYTES:
+        return 'file too small'
+    return ''
+
+
 def _migrate_hdr_dv_setting():
     try:
         if ADDON.getSetting('exclude_hdr_dv') == 'true':
@@ -310,6 +340,19 @@ def filter_streams_for_display(streams):
     except: quality_filter = 0
     try: max_per_category = int(ADDON.getSetting('max_per_category') or '0')
     except: max_per_category = 0
+    try: allow_iso = ADDON.getSetting('usenet_nzb.allow_iso') == 'true'
+    except: allow_iso = False
+    kept = []
+    dropped = {}
+    for stream in streams:
+        reason = _fake_stream_reason(stream, allow_iso)
+        if reason:
+            dropped[reason] = dropped.get(reason, 0) + 1
+            continue
+        kept.append(stream)
+    if dropped:
+        log("[FILTER-FAKE] Dropped %d fake source(s): %s" % (sum(dropped.values()), dropped))
+        streams = kept
     allowed_kinds = {
         1: ('remux', 'bluray', 'webdl'),
         2: ('remux', 'bluray'),
