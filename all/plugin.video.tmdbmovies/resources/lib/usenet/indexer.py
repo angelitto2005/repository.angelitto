@@ -338,6 +338,10 @@ def _title_tokens(text):
             and not re.fullmatch(r'(?:19|20)\d{2}', word)]
 
 
+_EPISODE_MARK = re.compile(
+    r'(?<![0-9a-z])s\d{1,2}[\s._-]*e\d{1,3}|(?<![0-9a-z])\d{1,2}x\d{1,3}', re.I)
+
+
 def _title_matches(candidate, query, year, is_movie, alt_query=''):
     """Reject an indexer answer that is plainly another film.
 
@@ -351,6 +355,15 @@ def _title_matches(candidate, query, year, is_movie, alt_query=''):
     folded = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '').lower())
     if not any(token in folded for token in tokens):
         return False
+    # For a series the show name must sit before SxxExx: a show title that only
+    # shows up after it is that episode's name ("Secrets and Lies" is also the
+    # title of 30 Rock S02E08, so a text search returns the wrong series).
+    if not is_movie:
+        mark = _EPISODE_MARK.search(str(candidate or ''))
+        if mark:
+            head = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '')[:mark.start()].lower())
+            if re.search(r'[a-z]{2,}', head) and not any(token in head for token in tokens):
+                return False
     if is_movie and year:
         try:
             wanted = int(year)
