@@ -93,6 +93,23 @@ def _sniff(data, start=0):
     return ''
 
 
+def _looks_image(data, start=0):
+    chunk = data[start:start + 16]
+    if chunk.startswith(b'\xff\xd8\xff'):
+        return True
+    if chunk.startswith(b'\x89PNG\r\n\x1a\n'):
+        return True
+    if chunk[:6] in (b'GIF87a', b'GIF89a'):
+        return True
+    if chunk[:2] == b'BM':
+        return True
+    if chunk[:4] == b'RIFF' and chunk[8:12] == b'WEBP':
+        return True
+    if chunk[:4] in (b'II*\x00', b'MM\x00*'):
+        return True
+    return False
+
+
 def _vint_len(number):
     """Bytes a RAR5 variable-length integer takes (the volume number grows)."""
     length = 1
@@ -562,9 +579,13 @@ class Session(object):
                 or inner_head.startswith(b'7z\xbc\xaf\x27\x1c')
                 or re.search(r'\.(?:rar|r\d{2,3}|7z(?:\.\d+)?)$', self.inner_name, re.I)):
             raise SessionError('this release is a RAR inside a RAR - not supported')
-        self.container = 'iso' if (self.inner_name.lower().endswith('.iso') or
-                                   (not self.inner_name and
-                                    _sniff(head, layout['offset']) == 'iso')) else 'rar'
+        if int(layout.get('unp_size') or 0) < nzb.MIN_INNER_VIDEO_BYTES:
+            raise SessionError('the file inside the RAR is too small to be the film')
+        inner_sniff = _sniff(head, layout['offset'])
+        if not inner_sniff and _looks_image(head, layout['offset']):
+            raise SessionError('the file inside this RAR is an image, not the film')
+        self.container = 'iso' if (self.inner_name.lower().endswith('.iso')
+                                   or inner_sniff == 'iso') else 'rar'
         self.length = layout['unp_size']
         self.part_size = 0
         fmt = layout.get('fmt')
@@ -572,21 +593,24 @@ class Session(object):
             raise SessionError('the first RAR volume is missing from this NZB')
         base_volume = int(layout.get('volume') or 0)
         # Every volume after the first carries a volume-number vint, taken out of its data.
-        tail = nzb.file_size(volumes[0]) - layout['offset'] - layout['length']
+        tail = max(0, nzb.file_size(volumes[0]) - layout['offset'] - layout['length'])
         remaining = self.length
         for index, volume in enumerate(volumes[:400]):
             last = index >= len(volumes) - 1
-            skip = layout['offset']
+            # Volumul 0 are offsetul filmeului dupa poster; volumele urmatoare
+            # incep direct cu headerul de volum + headerul filmului.
+            skip = layout['offset'] if not index else (layout.get('next_offset') or layout['offset'])
             if fmt == 5 and index:
                 skip += _vint_len(base_volume + index)
                 if layout.get('volfield'):
                     skip -= _vint_len(base_volume)
             if last:
                 size = remaining
-            elif fmt == 5 and index and tail > 0:
-                size = nzb.file_size(volume) - skip - tail
             else:
-                size = min(layout['length'], remaining)
+                size = nzb.file_size(volume) - skip - tail
+                if size <= 0:
+                    size = min(layout['length'], remaining)
+                size = min(size, remaining)
             self.parts.append({
                 'id': index,
                 'segments': [item[2] for item in volume.segments],

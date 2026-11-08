@@ -31,6 +31,22 @@ _SEGMENT_BYTES_FIRST = re.compile(
 _SEGMENT_NUMBER_FIRST = re.compile(
     rb'<segment\b[^>]*?\bnumber="(\d+)"[^>]*?\bbytes="(\d+)"[^>]*>([^<]+)</segment>')
 
+MIN_INNER_VIDEO_BYTES = 20 * 1024 * 1024
+_IMAGE_VIDEO_NAME = re.compile(
+    r'\.(?:jpe?g|png|gif|webp|bmp|tiff?)\.'
+    r'(?:mkv|mp4|m4v|avi|iso|ts|m2ts|mov|wmv|webm|mpg|mpeg)$', re.I)
+_RELEASE_EXT = re.compile(
+    r'\.(?:mkv|mp4|m4v|avi|iso|ts|m2ts|mov|wmv|webm|mpg|mpeg)$', re.I)
+
+
+def release_key(title):
+    """The same release can arrive from two indexers with a different ending."""
+    text = (title or '').strip().lower()
+    text = re.sub(r'[\s_]+', '.', text)
+    text = _RELEASE_EXT.sub('', text)
+    text = re.sub(r'\.{2,}', '.', text)
+    return text.strip('.')
+
 
 class NzbError(Exception):
     pass
@@ -289,8 +305,9 @@ def rar_layout(head):
     """Where the stored file's data sits inside one volume.
 
     Returns {'fmt', 'offset', 'length', 'unp_size', 'store', 'encrypted',
-    'name', 'first', 'more'} - 'more' means the file continues in the next
-    volume.
+    'name', 'first', 'more', 'next_offset'} - 'more' means the file continues
+    in the next volume; 'next_offset' is where that next volume's data starts
+    (main header + this file's header), without any poster in front of it.
     """
     if head.startswith(RAR5):
         return _layout_rar5(head)
@@ -299,10 +316,48 @@ def rar_layout(head):
     raise Unsupported('not a RAR volume')
 
 
+def _inner_kind(name):
+    low = (name or '').lower()
+    if _IMAGE_VIDEO_NAME.search(low):
+        return ''
+    if low.endswith(VIDEO_EXT):
+        return 'video'
+    if low.endswith(EXTRA_EXT):
+        return ''
+    if _SEVEN.search(low) or _RAR_NAME.search(low):
+        return 'archive'
+    return 'unknown'
+
+
+def _pick_inner(entries):
+    """The film, not the poster or a sample that sits first in the volume."""
+    def size_of(entry):
+        try:
+            return int(entry.get('unp_size') or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    video = [entry for entry in entries
+             if _inner_kind(entry.get('name')) == 'video'
+             and not _SAMPLE_FILE.search(entry.get('name') or '')
+             and size_of(entry) >= MIN_INNER_VIDEO_BYTES]
+    if video:
+        return max(video, key=size_of)
+    for kind in ('unknown', 'archive'):
+        found = [entry for entry in entries
+                 if _inner_kind(entry.get('name')) == kind
+                 and size_of(entry) >= MIN_INNER_VIDEO_BYTES]
+        if found:
+            return max(found, key=size_of)
+    raise Unsupported('no video file in the first RAR volume')
+
+
 def _layout_rar4(data):
     import struct
     position = len(RAR4)
     first = True
+    main_end = 0
+    entries = []
     while position + 7 <= len(data):
         _crc, kind, flags, head_size = struct.unpack_from('<HBHH', data, position)
         if head_size < 7:
@@ -315,6 +370,7 @@ def _layout_rar4(data):
                 raise Unsupported('the RAR set has encrypted headers')
             if flags & 0x0001:
                 first = bool(flags & 0x0100) if flags & 0x0010 else first
+            main_end = position + head_size + extra
         elif kind == 0x74:                                 # file header
             packed, unpacked = struct.unpack_from('<II', data, position + 7)
             method = data[position + 25]
@@ -328,13 +384,21 @@ def _layout_rar4(data):
             name = data[name_at:name_at + name_size].split(b'\x00')[0].decode('utf-8', 'replace')
             if flags & 0x0004:
                 raise Unsupported('this RAR is password protected')
-            return {'fmt': 4, 'offset': position + head_size, 'length': packed, 'unp_size': unpacked,
-                    'store': method == 0x30, 'encrypted': False, 'name': name,
-                    'first': first, 'more': bool(flags & 0x0002)}
+            entries.append({'fmt': 4, 'offset': position + head_size, 'length': packed,
+                            'unp_size': unpacked, 'store': method == 0x30,
+                            'encrypted': False, 'name': name, 'first': first,
+                            'header_len': head_size,
+                            'more': bool(flags & 0x0002)})
+            position += head_size + packed
+            continue
         elif kind == 0x7B:                                 # end of archive
             break
         position += head_size + extra
-    raise Unsupported('no file header in the first RAR volume')
+    if not entries:
+        raise Unsupported('no file header in the first RAR volume')
+    movie = _pick_inner(entries)
+    movie['next_offset'] = (main_end + movie['header_len']) if main_end else movie['offset']
+    return movie
 
 
 def _layout_rar5(data):
@@ -342,7 +406,10 @@ def _layout_rar5(data):
     first = True
     volume = 0
     has_volume = False
+    main_end = 0
+    entries = []
     while position + 6 < len(data):
+        crc_at = position
         position += 4                                      # header CRC32
         header_size, cursor = _varint(data, position)
         header_start = cursor
@@ -361,6 +428,7 @@ def _layout_rar5(data):
             if has_volume:
                 volume, cursor = _varint(data, cursor)
                 first = volume == 0
+            main_end = header_end + data_size
         elif kind == 4:
             raise Unsupported('the RAR set has encrypted headers')
         elif kind == 2:                                    # file header
@@ -385,14 +453,23 @@ def _layout_rar5(data):
                 record = record_cursor + record_size
             if encrypted:
                 raise Unsupported('this RAR is password protected')
-            return {'fmt': 5, 'offset': header_end, 'length': data_size, 'unp_size': unpacked,
-                    'store': ((compression >> 7) & 0x07) == 0, 'encrypted': False, 'name': name,
-                    'first': first, 'volume': volume, 'volfield': has_volume,
-                    'more': bool(flags & 0x10)}
+            entries.append({'fmt': 5, 'offset': header_end, 'length': data_size,
+                            'unp_size': unpacked,
+                            'store': ((compression >> 7) & 0x07) == 0,
+                            'encrypted': False, 'name': name, 'first': first,
+                            'volume': volume, 'volfield': has_volume,
+                            'header_len': header_end - crc_at,
+                            'more': bool(flags & 0x10)})
+            position = header_end + data_size
+            continue
         elif kind == 5:
             break
         position = header_end + data_size
-    raise Unsupported('no file header in the first RAR volume')
+    if not entries:
+        raise Unsupported('no file header in the first RAR volume')
+    movie = _pick_inner(entries)
+    movie['next_offset'] = (main_end + movie['header_len']) if main_end else movie['offset']
+    return movie
 
 
 # -- stored 7z ----------------------------------------------------------------

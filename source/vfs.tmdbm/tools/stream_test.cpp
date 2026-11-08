@@ -36,7 +36,7 @@ int main(int argc, char** argv)
   {
     std::fprintf(stderr,
                  "usage: stream_test <plan> [--dump file] [--offset bytes] [--length bytes] "
-                 "[--chunk bytes] [--close-after ms]\n");
+                 "[--chunk bytes] [--delay-ms ms] [--close-after ms]\n");
     return 1;
   }
   const std::string plan_path = argv[1];
@@ -45,6 +45,7 @@ int main(int argc, char** argv)
   int64_t length = -1;
   size_t chunk = 1024 * 1024;
   int close_after = -1;
+  int delay_ms = 0;
   for (int index = 2; index < argc; ++index)
   {
     const std::string argument = argv[index];
@@ -56,6 +57,8 @@ int main(int argc, char** argv)
       length = std::atoll(argv[++index]);
     else if (argument == "--chunk" && index + 1 < argc)
       chunk = static_cast<size_t>(std::atoll(argv[++index]));
+    else if (argument == "--delay-ms" && index + 1 < argc)
+      delay_ms = std::atoi(argv[++index]);
     else if (argument == "--close-after" && index + 1 < argc)
       close_after = std::atoi(argv[++index]);
     else
@@ -142,6 +145,8 @@ int main(int argc, char** argv)
       std::fwrite(buffer.data(), 1, static_cast<size_t>(got), dump);
     position += got;
     total += got;
+    if (delay_ms > 0)
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
   }
   if (dump != nullptr)
     std::fclose(dump);

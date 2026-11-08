@@ -18,7 +18,7 @@ import zlib
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from . import config
+from . import config, nzb
 
 TIMEOUT = 15
 MAX_BYTES = 4 * 1024 * 1024
@@ -395,11 +395,13 @@ def _filter_rows(rows, season, episode, min_size, episodes_only, per_indexer_lim
         if episodes_only and not is_single_episode(title, season, episode):
             _why(why, 'pack, not a single episode')
             continue
-        folded = title.lower()
-        if folded in seen_titles:
+        folded = nzb.release_key(title)
+        size_key = size // (100 * 1024 * 1024) if size else 0
+        title_key = (folded, size_key)
+        if title_key in seen_titles:
             _why(why, 'same title twice')
             continue
-        seen_titles.add(folded)
+        seen_titles.add(title_key)
         indexer_name = row.get('indexer') or 'Indexer'
         if per_indexer_limit and per_indexer.get(indexer_name, 0) >= per_indexer_limit:
             _why(why, 'over the per-indexer limit')

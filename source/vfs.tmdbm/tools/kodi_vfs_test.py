@@ -18,7 +18,7 @@ SAMPLE = os.path.join(PROFILE, 'addon_data', 'plugin.video.tmdbmovies', 'vfs-tes
                       'sample.mp4')
 LOG = os.path.join(KODI, 'kodi.log')
 JSONRPC = 'http://127.0.0.1:8080/jsonrpc'
-TOKEN = 'cafebabe12345678'
+TOKEN = os.urandom(8).hex()
 SEG = 64 * 1024
 
 
@@ -259,7 +259,9 @@ def main():
               not any(mid.lower().startswith('k0000') for mid in asked_ids),
               asked_ids[:5])
         check('tail was prefetched', deepest >= len(articles) - 2, deepest)
-        check('engine closed', wait_log('stream closed', log_offset, time.time() + 8))
+        # The warm session stays open for 45 s after the stop, then the
+        # add-on closes the engine.
+        check('engine closed', wait_log('stream closed', log_offset, time.time() + 75))
         lines = recent_log(log_offset)
         print('  log:')
         for line in lines[-25:]:
@@ -269,7 +271,9 @@ def main():
         check('first article primed', any('first article came from the plan cache' in line
                                           for line in lines))
         opens = [line for line in lines if 'vfs.tmdbm: open' in line]
-        check('one stream opened', len(opens) == 1, opens)
+        # Kodi can open the same file twice (probe + player); only one token may appear.
+        tokens = {line.split('vfs.tmdbm: open ', 1)[1].split(' ', 1)[0] for line in opens}
+        check('one stream opened', tokens == {TOKEN}, opens)
         check('sidecar probes ignored', all('sample.mp4' in line for line in opens), opens)
         print('KODI VFS TEST PASSED')
     finally:

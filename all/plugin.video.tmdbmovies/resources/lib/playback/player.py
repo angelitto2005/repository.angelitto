@@ -253,6 +253,18 @@ def _is_usenet_stream(stream):
     return bool(stream.get('usenet')) or str(stream.get('provider_id', '')) == 'usenet_nzb'
 
 
+def _usenet_dedup_key(stream):
+    title = stream.get('name') or ''
+    if not title:
+        return None
+    from resources.lib.usenet.nzb import release_key
+    try:
+        size = int((stream.get('usenet') or {}).get('size') or 0)
+    except (TypeError, ValueError):
+        size = 0
+    return (release_key(title), size // (100 * 1024 * 1024) if size else 0)
+
+
 def _is_instant_source(s):
     """True = sursa porneste fara descarcare in debrid (instant sau deja in cache).
 
@@ -588,7 +600,7 @@ def deduplicate_streams(streams):
         log(f"[DEDUP] Empty streams list, returning")
         return streams
     
-    # Verifica daca filtrarea e activata
+    # Verifica daca filtrarea URL e activata
     try:
         filter_enabled = ADDON.getSetting('filter_duplicate_urls') == 'true'
     except Exception as e:
@@ -597,15 +609,26 @@ def deduplicate_streams(streams):
     
     log(f"[DEDUP] filter_enabled = {filter_enabled}, streams count = {len(streams)}")
     
-    if not filter_enabled:
-        log(f"[DEDUP] Filtering DISABLED, keeping all {len(streams)} streams")
-        return streams
-    
     seen_urls = set()
+    seen_usenet = set()
     unique_streams = []
     duplicates_removed = 0
     
     for stream in streams:
+        if _is_usenet_stream(stream):
+            key = _usenet_dedup_key(stream)
+            if key is not None:
+                if key in seen_usenet:
+                    duplicates_removed += 1
+                    continue
+                seen_usenet.add(key)
+            unique_streams.append(stream)
+            continue
+
+        if not filter_enabled:
+            unique_streams.append(stream)
+            continue
+
         url = stream.get('url', '')
         if not url:
             unique_streams.append(stream)

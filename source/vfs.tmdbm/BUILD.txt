@@ -1,4 +1,4 @@
-TMDb Movies VFS (vfs.tmdbm) 0.1.6 - source package
+TMDb Movies VFS (vfs.tmdbm) 0.1.7 - source package
 
 This archive contains the complete source used to build both release
 binaries: vfs.tmdbm.dll for Windows x86_64 and libvfs.tmdbm.so for Android

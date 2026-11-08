@@ -1,3 +1,7 @@
+1.1.337
+- A RAR release with a poster or a sample stored before the film now streams the film itself instead of serving the image; a set with no real video is skipped and the player moves on.
+- The same Usenet release found by two indexers now shows up only once in the source list.
+
 1.1.336
 - Fake releases with an image extension inside the file name (for example .jpg.mkv) or a sample/trailer marker (for example .sampl.mkv) are filtered out, and full-disc ISO releases are hidden by default; ISO can be re-enabled under Usenet.
 - The Custom performance profile now shows its read-ahead and cache sliders as soon as it is selected.

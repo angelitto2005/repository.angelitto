@@ -170,6 +170,20 @@ public:
     count_ = std::max(0, count_ - 1);
   }
 
+  void FlushIdle()
+  {
+    std::vector<std::shared_ptr<NntpConnection>> idle;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      idle.swap(idle_);
+      count_ = std::max(0, count_ - static_cast<int>(idle.size()));
+    }
+    for (auto& connection : idle)
+      connection->Abort();
+    if (!idle.empty())
+      Trace("pool %d flushed %zu idle connection(s)", index_, idle.size());
+  }
+
   void Shutdown()
   {
     std::vector<std::shared_ptr<NntpConnection>> idle;
@@ -236,7 +250,8 @@ class Stream::Impl : public std::enable_shared_from_this<Stream::Impl>
 {
 public:
   explicit Impl(std::shared_ptr<const Plan> plan)
-    : plan_(std::move(plan)), part_sizes_(plan_->parts.size())
+    : plan_(std::move(plan)), part_sizes_(plan_->parts.size()),
+      head_logged_(plan_->parts.size(), 0)
   {
     for (size_t index = 0; index < plan_->parts.size(); ++index)
       part_sizes_[index].store(plan_->parts[index].part_size);
@@ -421,6 +436,7 @@ public:
       if (articles_attempted_.load() < 4)
         window = std::min(window, std::max(2, std::min(8, workers_)));
       ScheduleAhead(part_index, static_cast<int>(index) + 1, window);
+      ScheduleNextPart(part_index, end_of_part - position);
       const ChunkInfo chunk = GetChunk(part_index, static_cast<int>(index));
       if (!chunk.data)
       {
@@ -539,7 +555,11 @@ private:
         ++entry;
         continue;
       }
-      if (entry->key == tail_key_ && !jobs.empty())
+      // A cold part probe can take seconds; never let it hold back the
+      // articles of the part that is being read right now.
+      const bool head_probe =
+          ArticleOf(entry->key) == 0 && part_sizes_[PartOf(entry->key)].load() <= 0;
+      if ((head_probe || entry->key == tail_key_) && !jobs.empty())
         break;
       Job job;
       job.key = entry->key;
@@ -555,7 +575,7 @@ private:
       }
       entry = queue_.erase(entry);
       jobs.push_back(job);
-      if (job.key == tail_key_)
+      if (head_probe || job.key == tail_key_)
         break;
     }
     return jobs;
@@ -687,9 +707,13 @@ private:
       pool->Discard(connection);
       if (closing_.load())
         return;
-      LogWarning("fetch", exception.what());
+      const std::string reason = exception.what();
+      pool->FlushIdle();
+      LogWarning("fetch", pool->config.label + ": " + reason);
+      if (reason.find("closed") != std::string::npos)
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
       for (const Job& job : jobs)
-        HandleFailure(job, -1, false, exception.what());
+        HandleFailure(job, -1, false, reason);
       return;
     }
     const double elapsed = Now() - started;
@@ -790,6 +814,19 @@ private:
     lru_.push_front(job.key);
     slot.lru = lru_.begin();
     cache_bytes_ += slot.bytes;
+    if (job.article == 0)
+    {
+      const int part_index = PartOf(job.key);
+      if (part_sizes_[part_index].load() <= 0)
+      {
+        part_sizes_[part_index].store(slot.bytes);
+        Trace("part %d size learned: %lld bytes", plan_->parts[part_index].id,
+              static_cast<long long>(slot.bytes));
+        const int64_t read = read_offset_.load();
+        if (plan_->parts[part_index].media_start <= read + plan_->prefetch * 2)
+          SchedulePartHeadLocked(part_index);
+      }
+    }
     EvictLocked();
     cv_.notify_all();
   }
@@ -801,10 +838,17 @@ private:
       return;
     const auto found = slots_.find(job.key);
     if (found == slots_.end())
+    {
+      Trace("failure %d:%d has no slot", job.part, job.article);
       return;
+    }
     Slot& slot = found->second;
     if (slot.state != Slot::State::Fetching)
+    {
+      Trace("failure %d:%d slot state %d", job.part, job.article,
+            static_cast<int>(slot.state));
       return;
+    }
     const auto& articles = plan_->parts[job.part].articles;
     const bool critical = job.article == 0 ||
                           static_cast<size_t>(job.article) + 1 == articles.size();
@@ -1063,6 +1107,57 @@ private:
     }
     if (queued)
       job_cv_.notify_all();
+  }
+
+  void ScheduleNextPart(int part_index, int64_t remaining)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (closing_.load() || fatal_.load())
+      return;
+    const int next = part_index + 1;
+    if (next >= static_cast<int>(plan_->parts.size()))
+      return;
+    const int64_t trigger =
+        std::min<int64_t>(plan_->prefetch, std::max<int64_t>(4 * 1024 * 1024, CacheLimit() / 4));
+    if (remaining > trigger)
+      return;
+    if (!head_logged_[next])
+    {
+      head_logged_[next] = 1;
+      Log(LogLevel::Info, "part %d: head prefetch started %.0f MB before the boundary",
+          plan_->parts[next].id, remaining / 1048576.0);
+    }
+    SchedulePartHeadLocked(next);
+  }
+
+  void SchedulePartHeadLocked(int part_index)
+  {
+    const PlanPart& part = plan_->parts[part_index];
+    if (part.length <= 0 || part.articles.empty())
+      return;
+    const int64_t part_size = part_sizes_[part_index].load();
+    if (part_size <= 0)
+    {
+      EnqueueLocked(MakeKey(part_index, 0), 0);
+      job_cv_.notify_all();
+      return;
+    }
+    const int64_t head_bytes = std::min<int64_t>(
+        std::min<int64_t>(CacheLimit() / 5, plan_->prefetch / 2), kHardPrefetchBytes);
+    int count = static_cast<int>((head_bytes + part_size - 1) / part_size);
+    count = std::min(count, static_cast<int>(part.articles.size()));
+    count = std::min(count, std::max(8, workers_ * pipeline_));
+    if (count <= 0)
+      return;
+    const int64_t read = read_offset_.load();
+    for (int index = 0; index < count; ++index)
+    {
+      int64_t offset = part.media_start + static_cast<int64_t>(index) * part_size - part.skip;
+      if (offset < 0)
+        offset = 0;
+      EnqueueLocked(MakeKey(part_index, index), offset > read ? offset - read : 0);
+    }
+    job_cv_.notify_all();
   }
 
   int Lookahead(int part_index, int64_t remaining) const
@@ -1342,6 +1437,7 @@ private:
 
   std::shared_ptr<const Plan> plan_;
   std::vector<std::atomic<int64_t>> part_sizes_;
+  std::vector<char> head_logged_;
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   std::condition_variable job_cv_;
