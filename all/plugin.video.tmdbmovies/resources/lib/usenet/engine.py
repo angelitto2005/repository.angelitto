@@ -90,6 +90,8 @@ def _sniff(data, start=0):
         return 'avi'
     if len(data) > start + 200 and data[start] == 0x47 and data[start + 188] == 0x47:
         return 'ts'
+    if len(data) > start + 200 and data[start + 4] == 0x47 and data[start + 196] == 0x47:
+        return 'ts'
     return ''
 
 

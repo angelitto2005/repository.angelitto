@@ -1,3 +1,6 @@
+1.1.340
+- Full-disc Blu-ray releases posted as a raw BDMV set now play instead of being rejected as "not a video".
+
 1.1.339
 - NetMirror no longer opens a different film when the search returns a similar title: the match is checked on the search result and again on the film page, with a year check for movies and for series, so for example "Heart of the Beast" can no longer start "The Beast" from 2020.
 - Source lists cached with the old matching are re-scraped once after the update.
