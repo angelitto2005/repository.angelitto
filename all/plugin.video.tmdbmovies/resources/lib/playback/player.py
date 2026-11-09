@@ -661,6 +661,41 @@ def deduplicate_streams(streams):
     
 
 
+def _netmirror_prepare(stream, url, headers):
+    """Re-semnare URL NetMirror din cache. Returneaza (url, headers, skip)."""
+    base = str(url or '').split('|')[0]
+    if 'net52.cc' not in base.lower() or '.m3u8' not in base.lower():
+        return url, headers, False
+    timeout = max(2.0, min(6.0, PLAYER_CHECK_TIMEOUT / 2))
+    try:
+        body = (requests.get(base, headers=headers or {}, timeout=timeout, verify=False).text or '')
+    except Exception as e:
+        log(f"[PLAYER-CHECK] NetMirror master error: {e}")
+        return url, headers, False
+    if 'in=unknown' not in body.lower() and (
+            '#EXT-X-STREAM-INF' in body or '#EXTINF' in body or '#EXT-X-TARGETDURATION' in body):
+        return url, headers, False
+    try:
+        from resources.lib.playback.scraper import netmirror_refresh_stream
+        fresh_url, fresh_headers = netmirror_refresh_stream(stream)
+    except Exception as e:
+        log(f"[PLAYER-CHECK] NetMirror refresh error: {e}")
+        return '', None, True
+    if not fresh_url:
+        log("[PLAYER-CHECK] NetMirror refresh failed - sursa sarita")
+        return '', None, True
+    try:
+        fresh_body = (requests.get(fresh_url, headers=fresh_headers or {}, timeout=timeout, verify=False).text or '')
+        if 'in=unknown' in fresh_body.lower() or not (
+                '#EXT-X-STREAM-INF' in fresh_body or '#EXTINF' in fresh_body or '#EXT-X-TARGETDURATION' in fresh_body):
+            log("[PLAYER-CHECK] NetMirror refresh tot invalid - sursa sarita")
+            return '', None, True
+    except Exception as e:
+        log(f"[PLAYER-CHECK] NetMirror refresh verify error: {e}")
+    log("[PLAYER-CHECK] NetMirror URL re-semnat pentru play")
+    return f"{fresh_url}|{urllib.parse.urlencode(fresh_headers or {})}", fresh_headers, False
+
+
 def check_url_validity(url, headers=None, max_timeout=None):
     """Verifica daca URL-ul este accesibil si NU e intermediar."""
     if max_timeout is None:
@@ -684,7 +719,7 @@ def check_url_validity(url, headers=None, max_timeout=None):
                 return
             
             clean_url_lower = clean_url.lower()
-            
+
             # =========================================================
             # BYPASS PENTRU WORKERS SI M3U8 SI GOOGLE SI CDN-URI SEMNATE
             # =========================================================
@@ -3937,29 +3972,37 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
             full_info = (raw_n + stream.get('title', '')).lower()
             c_qual = "FF1E90FF"
-            qual_txt = "SD"
+            stream_q = str(stream.get('quality') or '').strip().lower()
+            qual_txt = {'4k': '4K', '2160p': '4K', '1080p': '1080p', '720p': '720p', '480p': '480p'}.get(stream_q, 'SD')
             
             clean_info = full_info.replace('ds4k', '').replace('sdr4k', '').replace('hdr4k', '').replace('4khdhub', '')
             res_count = sum(1 for r in['2160p', '1080p', '720p', '480p', '360p'] if r in full_info)
             if '4k' in clean_info and '2160p' not in full_info: res_count += 1
             
-            if res_count >= 2:
-                if '2160' in clean_info or '4k' in clean_info:
-                    qual_txt = "4K"; c_qual = "FFFF00FF"
+            if qual_txt == 'SD':
+                if res_count >= 2:
+                    if '2160' in clean_info or '4k' in clean_info:
+                        qual_txt = "4K"; c_qual = "FFFF00FF"
+                    elif '1080' in clean_info:
+                        qual_txt = "1080p"; c_qual = "FF7CFC00"
+                    elif '720' in clean_info:
+                        qual_txt = "720p"; c_qual = "FFBA55D3"
+                    else:
+                        qual_txt = "SD"; c_qual = "FF1E90FF"
+                elif '2160' in clean_info or '4k' in clean_info:
+                    qual_txt = "4K"; c_qual = "FFFF00FF" 
                 elif '1080' in clean_info:
-                    qual_txt = "1080p"; c_qual = "FF7CFC00"
+                    qual_txt = "1080p"; c_qual = "FF7CFC00" 
                 elif '720' in clean_info:
-                    qual_txt = "720p"; c_qual = "FFBA55D3"
-                else:
-                    qual_txt = "SD"; c_qual = "FF1E90FF"
-            elif '2160' in clean_info or '4k' in clean_info:
-                qual_txt = "4K"; c_qual = "FFFF00FF" 
-            elif '1080' in clean_info:
-                qual_txt = "1080p"; c_qual = "FF7CFC00" 
-            elif '720' in clean_info:
-                qual_txt = "720p"; c_qual = "FFBA55D3" 
-            elif '480' in clean_info:
-                qual_txt = "480p"
+                    qual_txt = "720p"; c_qual = "FFBA55D3" 
+                elif '480' in clean_info:
+                    qual_txt = "480p"
+            if qual_txt == '4K':
+                c_qual = "FFFF00FF"
+            elif qual_txt == '1080p':
+                c_qual = "FF7CFC00"
+            elif qual_txt == '720p':
+                c_qual = "FFBA55D3"
             
             # Show progress dialog for ALL sources (AIO/Stremio included)
             if p_dialog is None:
@@ -4041,6 +4084,14 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         log(f"[PLAYER] PrimeSrc Resolve error: {e}")
                         is_valid = False
                 
+                if 'net52.cc' in base_url.lower() and '.m3u8' in base_url.lower():
+                    url, check_headers, nm_skip = _netmirror_prepare(stream, url, check_headers)
+                    if nm_skip:
+                        continue
+                    if url != stream.get('url'):
+                        stream['url'] = url
+                    base_url = url.split('|')[0]
+
                 if not is_valid:
                     if is_aio or any(x in base_url.lower() for x in['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
                         is_valid = True

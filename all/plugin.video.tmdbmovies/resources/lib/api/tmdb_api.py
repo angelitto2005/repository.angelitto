@@ -1067,6 +1067,72 @@ def get_tmdb_tv_standard(action, page_no):
     return requests.get(url, timeout=15)
 
 
+# =============================================================================
+# TRENDING SNAPSHOT (paginare consistenta pentru rankingurile live TMDB)
+# =============================================================================
+_TRENDING_MOVIE_ACTIONS = {'tmdb_movies_trending_day', 'tmdb_movies_trending_week'}
+_TRENDING_TV_ACTIONS = {'tmdb_tv_trending_day', 'tmdb_tv_trending_week'}
+_TRENDING_SNAPSHOT_HOURS = 0.25
+_TRENDING_MAX_FETCH = 10
+
+
+def _trending_snapshot(action, page, content_type, page_limit):
+    """Lista unica pentru trending: dedupe + filtru junk + paginare locala."""
+    key = f"trend_snapshot_{content_type}_{action}_{LANG}"
+    cache = MainCache()
+    snap = cache.get(key)
+    if not isinstance(snap, dict):
+        snap = {'items': [], 'api_pages': 0, 'total_pages': 0, 'ts': int(time.time())}
+    items = list(snap.get('items') or [])
+    ids = {str(it.get('id')) for it in items if isinstance(it, dict) and it.get('id')}
+    api_pages = int(snap.get('api_pages') or 0)
+    total_pages = int(snap.get('total_pages') or 0)
+    limit = int(page_limit or 20)
+    need = max(1, int(page or 1)) * limit + limit
+    fetch_fn = get_tmdb_movies_standard if content_type == 'movie' else get_tmdb_tv_standard
+    fetched = 0
+    while len(items) < need and fetched < _TRENDING_MAX_FETCH:
+        if total_pages and api_pages >= total_pages:
+            break
+        next_page = api_pages + 1
+        try:
+            resp = fetch_fn(action, next_page)
+            if not resp or getattr(resp, 'status_code', 0) != 200:
+                break
+            data = resp.json() or {}
+        except Exception as e:
+            log(f"[TRENDING] Fetch eroare {action} p{next_page}: {e}")
+            break
+        results = data.get('results') or []
+        total_pages = int(data.get('total_pages') or total_pages or 0)
+        api_pages = next_page
+        fetched += 1
+        for it in results:
+            if not isinstance(it, dict):
+                continue
+            tid = str(it.get('id') or '')
+            if not tid or tid in ids:
+                continue
+            if _is_tmdb_list_junk(it):
+                continue
+            ids.add(tid)
+            items.append(it)
+        if len(results) < 20:
+            total_pages = api_pages
+            break
+    if not items:
+        return None
+    snap = {
+        'items': items,
+        'api_pages': api_pages,
+        'total_pages': total_pages,
+        'ts': snap.get('ts') or int(time.time()),
+    }
+    if fetched:
+        cache.set(key, snap, expiration=_TRENDING_SNAPSHOT_HOURS)
+    return snap
+
+
 def build_movie_list(params):
     # --- PRIORITATE FOREGROUND ---
     window = xbmcgui.Window(10000)
@@ -1089,6 +1155,8 @@ def build_movie_list(params):
         return
 
     from resources.lib.core.config import PAGE_LIMIT
+    is_trending = action in _TRENDING_MOVIE_ACTIONS
+    snap = _trending_snapshot(action, page, 'movie', PAGE_LIMIT) if is_trending else None
     ITEMS_PER_API_PAGE = 20
     api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
     start_api_page = (page - 1) * api_pages_needed + 1
@@ -1097,30 +1165,38 @@ def build_movie_list(params):
 
 # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"list_movie_{action}_{page}"
-    cached_data = get_fast_cache(cache_key)
-    if cached_data:
-        render_from_fast_cache(cached_data, view_type='movies')
-        return
+    if not is_trending:
+        cached_data = get_fast_cache(cache_key)
+        if cached_data:
+            render_from_fast_cache(cached_data, view_type='movies')
+            return
     # ---------------------------------
 
     # Fetch multiple API pages daca PAGE_LIMIT > 20
     all_results = []
     more_pages = False
-    for api_page in range(start_api_page, start_api_page + api_pages_needed):
-        results = trakt_sync.get_tmdb_from_db(action, api_page)
-        if not results:
-            cache_lang = "ro-RO" if "romania_" in action else LANG
-            string = f"{action}_{api_page}_{cache_lang}"
-            data = cache_object(get_tmdb_movies_standard, string, [action, api_page], expiration=24)
-            if data:
-                results = data.get('results', [])
-        if not results:
-            break
-        all_results.extend(results)
-        if api_page == start_api_page + api_pages_needed - 1:
-            more_pages = True
-        if len(results) < ITEMS_PER_API_PAGE:
-            break
+    if snap:
+        _snap_items = list(snap.get('items') or [])
+        _start = (page - 1) * PAGE_LIMIT
+        all_results = _snap_items[_start:_start + PAGE_LIMIT]
+        more_pages = (len(_snap_items) > _start + PAGE_LIMIT) or (
+            int(snap.get('api_pages') or 0) < int(snap.get('total_pages') or 0))
+    else:
+        for api_page in range(start_api_page, start_api_page + api_pages_needed):
+            results = trakt_sync.get_tmdb_from_db(action, api_page)
+            if not results:
+                cache_lang = "ro-RO" if "romania_" in action else LANG
+                string = f"{action}_{api_page}_{cache_lang}"
+                data = cache_object(get_tmdb_movies_standard, string, [action, api_page], expiration=24)
+                if data:
+                    results = data.get('results', [])
+            if not results:
+                break
+            all_results.extend(results)
+            if api_page == start_api_page + api_pages_needed - 1:
+                more_pages = True
+            if len(results) < ITEMS_PER_API_PAGE:
+                break
 
     if action == 'tmdb_movies_digital':
         try:
@@ -1244,7 +1320,8 @@ def build_movie_list(params):
     xbmcplugin.setContent(HANDLE, 'movies')
     
     # Pre-fetch paginile urmatoare INAINTE de endOfDirectory (maxim timp pentru thread)
-    trigger_next_page_warmup(action, page, 'movie')
+    if not is_trending:
+        trigger_next_page_warmup(action, page, 'movie')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
@@ -1252,9 +1329,10 @@ def build_movie_list(params):
 
     
     # Save to RAM
-    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
-                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
-                                'resume_time': i['resume_time'], 'total_time': i['total_time']} for i in cache_list])
+    if not is_trending:
+        set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                    'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                    'resume_time': i['resume_time'], 'total_time': i['total_time']} for i in cache_list])
 
 
 def build_tvshow_list(params):
@@ -1276,36 +1354,46 @@ def build_tvshow_list(params):
         return
 
     from resources.lib.core.config import PAGE_LIMIT
+    is_trending = action in _TRENDING_TV_ACTIONS
+    snap = _trending_snapshot(action, page, 'tv', PAGE_LIMIT) if is_trending else None
     ITEMS_PER_API_PAGE = 20
     api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
     start_api_page = (page - 1) * api_pages_needed + 1
 
 # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"list_tv_{action}_{page}"
-    cached_data = get_fast_cache(cache_key)
-    if cached_data:
-        render_from_fast_cache(cached_data, view_type='tvshows')
-        return
+    if not is_trending:
+        cached_data = get_fast_cache(cache_key)
+        if cached_data:
+            render_from_fast_cache(cached_data, view_type='tvshows')
+            return
     # ---------------------------------
 
     # Fetch multiple API pages daca PAGE_LIMIT > 20
     all_results = []
     more_pages = False
-    for api_page in range(start_api_page, start_api_page + api_pages_needed):
-        results = trakt_sync.get_tmdb_from_db(action, api_page)
-        if not results:
-            cache_lang = "ro-RO" if "romania_" in action else LANG
-            string = f"{action}_{api_page}_{cache_lang}"
-            data = cache_object(get_tmdb_tv_standard, string, [action, api_page], expiration=24)
-            if data:
-                results = data.get('results', [])
-        if not results:
-            break
-        all_results.extend(results)
-        if api_page == start_api_page + api_pages_needed - 1:
-            more_pages = True
-        if len(results) < ITEMS_PER_API_PAGE:
-            break
+    if snap:
+        _snap_items = list(snap.get('items') or [])
+        _start = (page - 1) * PAGE_LIMIT
+        all_results = _snap_items[_start:_start + PAGE_LIMIT]
+        more_pages = (len(_snap_items) > _start + PAGE_LIMIT) or (
+            int(snap.get('api_pages') or 0) < int(snap.get('total_pages') or 0))
+    else:
+        for api_page in range(start_api_page, start_api_page + api_pages_needed):
+            results = trakt_sync.get_tmdb_from_db(action, api_page)
+            if not results:
+                cache_lang = "ro-RO" if "romania_" in action else LANG
+                string = f"{action}_{api_page}_{cache_lang}"
+                data = cache_object(get_tmdb_tv_standard, string, [action, api_page], expiration=24)
+                if data:
+                    results = data.get('results', [])
+            if not results:
+                break
+            all_results.extend(results)
+            if api_page == start_api_page + api_pages_needed - 1:
+                more_pages = True
+            if len(results) < ITEMS_PER_API_PAGE:
+                break
 
     if not all_results:
         xbmcplugin.endOfDirectory(HANDLE)
@@ -1367,7 +1455,8 @@ def build_tvshow_list(params):
     xbmcplugin.setContent(HANDLE, 'tvshows')
 
     # Pre-fetch paginile urmatoare INAINTE de endOfDirectory (maxim timp pentru thread)
-    trigger_next_page_warmup(action, page, 'tv')
+    if not is_trending:
+        trigger_next_page_warmup(action, page, 'tv')
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=True)
     # Important: Curatam proprietatea ca sa stie fundalul ca am terminat
     window.clearProperty('tmdbmovies_loading_active')
@@ -1375,9 +1464,10 @@ def build_tvshow_list(params):
 
     
     # Save to RAM
-    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
-                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
-                                'resume_time': 0, 'total_time': 0} for i in cache_list])
+    if not is_trending:
+        set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                    'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                    'resume_time': 0, 'total_time': 0} for i in cache_list])
 
 # Meniul contextual se construieste pentru FIECARE rand (la 160 de seriale sunt
 # 10 setari x 160 = 1600 de citiri). getSetting() valideaza cache-ul cu

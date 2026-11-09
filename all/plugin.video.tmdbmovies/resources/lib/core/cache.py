@@ -8,6 +8,8 @@ from resources.lib.core.database import connect
 from resources.lib.core.config import ADDON, ADDON_DATA_DIR
 
 class MainCache:
+    SOURCES_REV = 2
+
     def __init__(self):
         self.dbcon = connect()
         self.dbcur = self.dbcon.cursor()
@@ -30,6 +32,9 @@ class MainCache:
             except: pass
             try:
                 self.dbcur.execute("ALTER TABLE sources_cache ADD COLUMN sort_opt text")
+            except: pass
+            try:
+                self.dbcur.execute("ALTER TABLE sources_cache ADD COLUMN rev integer")
             except: pass
             
             self.dbcon.commit()
@@ -87,12 +92,12 @@ class MainCache:
         sort_opt = optiunea de sortare folosita cand lista a fost salvata (None pt randuri vechi)."""
         try:
             current_time = int(time.time())
-            self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers, sort_opt FROM sources_cache WHERE id = ?", (search_id,))
+            self.dbcur.execute("SELECT expires, streams, failed_providers, scanned_providers, sort_opt, rev FROM sources_cache WHERE id = ?", (search_id,))
             result = self.dbcur.fetchone()
             
             if result:
-                expires, streams_blob, failed_json, scanned_json, saved_sort_opt = result
-                if expires > current_time:
+                expires, streams_blob, failed_json, scanned_json, saved_sort_opt, saved_rev = result
+                if expires > current_time and saved_rev == self.SOURCES_REV:
                     streams = []
                     if streams_blob:
                         try: streams = json.loads(zlib.decompress(streams_blob))
@@ -136,8 +141,8 @@ class MainCache:
             json_failed = json.dumps({"error": error_providers, "empty": empty_providers})
             json_scanned = json.dumps(scanned_providers)
             
-            self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, sort_opt, expires) VALUES (?, ?, ?, ?, ?, ?)", 
-                               (search_id, compressed_streams, json_failed, json_scanned, sort_opt, expires))
+            self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, sort_opt, expires, rev) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                               (search_id, compressed_streams, json_failed, json_scanned, sort_opt, expires, self.SOURCES_REV))
             self.dbcon.commit()
         except: pass
         

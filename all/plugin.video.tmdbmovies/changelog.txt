@@ -1,3 +1,9 @@
+1.1.339
+- NetMirror no longer opens a different film when the search returns a similar title: the match is checked on the search result and again on the film page, with a year check for movies and for series, so for example "Heart of the Beast" can no longer start "The Beast" from 2020.
+- Source lists cached with the old matching are re-scraped once after the update.
+- NetMirror links saved in the source cache are re-signed automatically before playback, so an expired link no longer shows the "too many requests" image instead of the film.
+- Trending pages are now built from one consistent snapshot, so a film can no longer appear on two pages.
+
 1.1.338
 - Usenet sources from another series are now rejected when the show name appears only inside the episode title
 

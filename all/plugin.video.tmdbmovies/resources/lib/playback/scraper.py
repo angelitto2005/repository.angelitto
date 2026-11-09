@@ -1036,15 +1036,46 @@ def _nm_norm(value):
     return re.sub(r'[^a-z0-9]+', ' ', txt).strip()
 
 
-def _nm_rank(candidate, wanted):
+_NM_PARTIAL_MIN = 0.7
+_NM_YEAR_TOLERANCE = 2
+_NM_MAX_CANDIDATES = 3
+_NM_STALE_MARKER = 'in=unknown'
+
+
+def _nm_rank(candidate, wanted, wanted_raw=None):
     cand = _nm_norm(candidate)
-    if not cand or not wanted:
+    if wanted and cand:
+        if cand == wanted:
+            return 0
+        if len(wanted) < 4:
+            return 2
+        if wanted in cand:
+            return 1
+        if cand in wanted and len(cand) >= max(4, int(round(len(wanted) * _NM_PARTIAL_MIN))):
+            return 1
         return 2
-    if cand == wanted:
+    raw_c = str(candidate or '').strip().lower()
+    raw_w = str(wanted_raw or '').strip().lower()
+    return 0 if raw_c and raw_c == raw_w else 2
+
+
+def _nm_year(value):
+    m = re.search(r'(19|20)\d{2}', str(value or ''))
+    return int(m.group(0)) if m else 0
+
+
+def _nm_year_score(post_year, wanted_year, is_tv):
+    """Distanta de an pentru sortare, sau None cand anul descalifica potrivirea."""
+    if not wanted_year or not post_year:
         return 0
-    if cand in wanted or wanted in cand:
-        return 1
-    return 2
+    diff = post_year - wanted_year
+    if is_tv:
+        if diff < -1:
+            return None
+        return diff if diff >= 0 else 1
+    if abs(diff) > _NM_YEAR_TOLERANCE:
+        return None
+    return abs(diff)
 
 
 def _nm_cookie_path():
@@ -1276,6 +1307,9 @@ def _nm_master_quality(session, url, headers):
         log(f"[NETMIRROR] Master indisponibil: {e}")
         return '', 'net'
     body = r.text or ''
+    if _NM_STALE_MARKER in body.lower():
+        log("[NETMIRROR] Master cu semnatura invalida ('in=unknown') - sursa sarita")
+        return '', 'stale'
     if '#EXT-X-STREAM-INF' not in body:
         if 'Only Valid Users' in body or 'Invalid User' in body or r.status_code in (401, 403):
             log(f"[NETMIRROR] Master respins (HTTP {r.status_code}) - token invalid sau regiune blocata")
@@ -1302,6 +1336,92 @@ def _nm_label_quality(label):
     return ''
 
 
+def _nm_parse_stream_url(url):
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(str(url or ''))
+        if 'net52.cc' not in (parsed.netloc or '').lower():
+            return '', ''
+        match = re.match(r'(/mobile(?:/[a-z]+)?)/hls/([^/]+)\.m3u8$', parsed.path or '', re.I)
+        if not match:
+            return '', ''
+        return match.group(1), match.group(2)
+    except Exception:
+        return '', ''
+
+
+def netmirror_refresh_stream(stream):
+    """Re-semnare URL NetMirror din cache. Returneaza (url, headers) sau ('', None)."""
+    base = str((stream or {}).get('url') or '').split('|')[0].strip()
+    prefix, content_id = _nm_parse_stream_url(base)
+    if not prefix or not content_id:
+        return '', None
+    token = _nm_get_token(max_wait=5)
+    if not token:
+        return '', None
+    title = str(stream.get('match_title') or stream.get('title') or '').strip()
+    title = re.sub(r'\s*\(\d{4}\)\s*$', '', title)
+    title = re.sub(r'\s+S\d{1,2}E\d{1,2}\s*$', '', title, flags=re.I)
+    play_h = _nm_play_headers(token)
+    try:
+        r = get_shared_session().get(
+            f"{_NM_BASE}{prefix}/playlist.php?id={quote(content_id)}&t={quote(title)}&tm={int(time.time())}",
+            headers=play_h, timeout=15, verify=False)
+        if not r.ok:
+            log(f"[NETMIRROR] Refresh playlist HTTP {r.status_code} pentru {content_id}")
+            return '', None
+        data = r.json() or {}
+    except Exception as e:
+        log(f"[NETMIRROR] Refresh playlist eroare: {e}")
+        return '', None
+    entries = data if isinstance(data, list) else ((data or {}).get('playlist') or (data or {}).get('data') or [])
+    sources = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for src in (entry.get('sources') or []):
+            if not isinstance(src, dict):
+                continue
+            raw = str(src.get('file') or '')
+            if not raw:
+                continue
+            if raw.startswith('//'):
+                full = f"https:{raw}"
+            elif raw.startswith('http'):
+                full = raw
+            else:
+                full = f"{_NM_BASE}{raw if raw.startswith('/') else '/' + raw}"
+            sources.append((str(src.get('label') or 'Auto'), _nm_label_quality(src.get('label')), full))
+    if not sources:
+        return '', None
+    info = stream.get('info')
+    if isinstance(info, dict):
+        info = info.get('original_info_str') or info.get('info') or ''
+    info = str(info or '')
+    label_hint = info[len('NetMirror '):].strip() if info.lower().startswith('netmirror ') else ''
+    want_q = str(stream.get('quality') or '').strip().lower()
+    chosen = ''
+    if label_hint:
+        for label, quality, full in sources:
+            if label.lower() == label_hint.lower():
+                chosen = full
+                break
+    if not chosen and want_q:
+        for label, quality, full in sources:
+            if quality and quality.lower() == want_q:
+                chosen = full
+                break
+    if not chosen:
+        for label, quality, full in sources:
+            if label.lower() == 'auto':
+                chosen = full
+                break
+    if not chosen:
+        chosen = sources[0][2]
+    log(f"[NETMIRROR] Refresh {content_id}: {len(sources)} surse, calitate ceruta {want_q or '-'}, ales {label_hint or 'Auto'}")
+    return chosen, play_h
+
+
 def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None):
     if ADDON.getSetting('use_netmirror') == 'false': return None
     if not title_query: return None
@@ -1316,6 +1436,8 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
     s = get_shared_session()
     play_h = _nm_play_headers(token)
     wanted = _nm_norm(title_query)
+    wanted_year = _nm_year(year_query)
+    is_tv = content_type == 'tv'
 
     for plat_name, ott, prefix in _NM_PLATFORMS:
         try:
@@ -1328,9 +1450,23 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
                 return None
             results = payload.get('searchResult') or []
             if not results: continue
-            results = sorted(results, key=lambda it: _nm_rank(str(it.get('t') or it.get('title') or ''), wanted))
+            candidates = []
+            for res in results:
+                if not isinstance(res, dict) or not res.get('id'):
+                    continue
+                rank = _nm_rank(str(res.get('t') or res.get('title') or ''), wanted, title_query)
+                if rank > 1:
+                    continue
+                dist = _nm_year_score(_nm_year(res.get('y') or res.get('year')), wanted_year, is_tv)
+                if dist is None:
+                    continue
+                candidates.append((rank, dist, res))
+            if not candidates:
+                log(f"[NETMIRROR] {plat_name}: nicio potrivire pentru '{title_query}'")
+                continue
+            candidates.sort(key=lambda entry: (entry[0], entry[1]))
 
-            for res in results[:6]:
+            for rank, dist, res in candidates[:_NM_MAX_CANDIDATES]:
                 content_id = res.get('id')
                 if not content_id: continue
                 pr = s.get(f"{_NM_BASE}{prefix}/post.php?id={quote(str(content_id))}&t={int(time.time())}",
@@ -1341,6 +1477,15 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
                     _nm_invalidate_token('post refuzat')
                     return None
                 if post.get('status') == 'n' or post.get('error'): continue
+
+                post_title = str(post.get('title') or post.get('t') or res.get('t') or '')
+                if _nm_rank(post_title, wanted, title_query) > 1:
+                    log(f"[NETMIRROR] {plat_name}: sar peste {content_id} ('{post_title}' nu e '{title_query}')")
+                    continue
+                post_year = _nm_year(post.get('year') or res.get('y'))
+                if _nm_year_score(post_year, wanted_year, is_tv) is None:
+                    log(f"[NETMIRROR] {plat_name}: sar peste {content_id} ('{post_title}' e din {post_year}, cerut {wanted_year})")
+                    continue
 
                 if content_type == 'tv':
                     if post.get('type') != 't' and not post.get('season') and not post.get('episodes'):
@@ -1385,6 +1530,8 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
                     if reason == 'auth':
                         _nm_invalidate_token('master refuzat')
                         return None
+                    if reason == 'stale':
+                        log("[NETMIRROR] Sursa cu semnatura expirata - sar peste candidat")
                     continue
 
                 streams = []
@@ -1403,10 +1550,12 @@ def scrape_netmirror(imdb_id, content_type, season=None, episode=None, title_que
                         'title': display_title,
                         'size': '',
                         'info': f"NetMirror {label}",
-                        'provider_id': 'netmirror'
+                        'provider_id': 'netmirror',
+                        'match_title': post_title,
+                        'match_year': post_year
                     })
                 if streams:
-                    log(f"[NETMIRROR] {plat_name}: {len(streams)} surse ({probed}) pentru '{title_query}'")
+                    log(f"[NETMIRROR] {plat_name}: {len(streams)} surse ({probed}) pentru '{title_query}' -> '{post_title}' ({post_year or '-'})")
                     return streams
 
         except Exception as e:
