@@ -8,7 +8,9 @@ cannot be streamed at all, and we say so instead of serving garbage.
 """
 
 import html
+import lzma
 import re
+import struct
 import xml.etree.ElementTree as ET
 
 VIDEO_EXT = ('.mkv', '.mp4', '.m4v', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.webm', '.mpg', '.mpeg',
@@ -301,6 +303,37 @@ def _varint(data, position):
     raise Unsupported('truncated RAR header')
 
 
+def rar_names_unsorted(volumes):
+    """True when the names carry no usable order (obfuscated repacks)."""
+    keys = [_volume_key(item.name) for item in volumes]
+    return len(set(keys)) < len(keys) or any(key[0] == 9 for key in keys)
+
+
+def rar5_volume(head):
+    """The volume number from a RAR5 main header, or None when it has none."""
+    if not head.startswith(RAR5):
+        return None
+    try:
+        position = len(RAR5) + 4
+        header_size, cursor = _varint(head, position)
+        header_start = cursor
+        kind, cursor = _varint(head, cursor)
+        if kind != 1:
+            return None
+        flags, cursor = _varint(head, cursor)
+        if flags & 0x01:
+            _extra, cursor = _varint(head, cursor)
+        if flags & 0x02:
+            _data, cursor = _varint(head, cursor)
+        archive_flags, cursor = _varint(head, cursor)
+        if not archive_flags & 0x02:
+            return None
+        number, cursor = _varint(head, cursor)
+        return number if header_start + header_size >= cursor else None
+    except Unsupported:
+        return None
+
+
 def rar_layout(head):
     """Where the stored file's data sits inside one volume.
 
@@ -513,14 +546,278 @@ def seven_volumes(files):
     return sorted(best, key=lambda f: _seven_key(f.name))
 
 
-def seven_layout(head):
-    """The stored file data starts after the 32-byte start header."""
-    if not head.startswith(SEVEN) or len(head) < 32:
-        raise Unsupported('not a 7z archive')
-    import struct
-    next_offset, next_size = struct.unpack_from('<QQ', head, 12)
-    if next_offset <= 0:
-        raise Unsupported('this 7z archive has no file data')
-    if next_size <= 0:
-        raise Unsupported('the 7z header is missing from the first volume')
-    return {'offset': 32, 'length': next_offset, 'header_size': next_size}
+def _seven_number(data, pos):
+    """One 7z variable-length number: (value, new position)."""
+    first = data[pos]
+    pos += 1
+    mask = 0x80
+    value = 0
+    for index in range(8):
+        if not (first & mask):
+            value |= (first & (mask - 1)) << (8 * index)
+            return value, pos
+        value |= data[pos] << (8 * index)
+        pos += 1
+        mask >>= 1
+    return value, pos
+
+
+def _seven_digests_length(data, pos, count):
+    defined = data[pos]
+    pos += 1
+    if defined:
+        return pos + 4 * count
+    flags = data[pos:pos + (count + 7) // 8]
+    pos += len(flags)
+    for index in range(count):
+        if flags[index // 8] & (0x80 >> (index % 8)):
+            pos += 4
+    return pos
+
+
+def _seven_pack_info(data, pos):
+    pack_pos, pos = _seven_number(data, pos)
+    count, pos = _seven_number(data, pos)
+    sizes = [0] * count
+    while True:
+        prop = data[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x09:
+            for index in range(count):
+                sizes[index], pos = _seven_number(data, pos)
+        elif prop == 0x0A:
+            pos = _seven_digests_length(data, pos, count)
+        else:
+            raise Unsupported('unsupported 7z pack property')
+    return {'pack_pos': pack_pos, 'sizes': sizes}, pos
+
+
+def _seven_unpack_info(data, pos):
+    prop = data[pos]
+    pos += 1
+    if prop != 0x0B:
+        raise Unsupported('unsupported 7z folder layout')
+    count, pos = _seven_number(data, pos)
+    if data[pos]:
+        raise Unsupported('this 7z keeps its folder list outside the archive')
+    pos += 1
+    folders = []
+    for _ in range(count):
+        coders_count, pos = _seven_number(data, pos)
+        coders = []
+        total_in = total_out = 0
+        for _ in range(coders_count):
+            flags = data[pos]
+            pos += 1
+            size = flags & 0x0F
+            method = data[pos:pos + size]
+            pos += size
+            if flags & 0x10:
+                num_in, pos = _seven_number(data, pos)
+                num_out, pos = _seven_number(data, pos)
+            else:
+                num_in = num_out = 1
+            props = b''
+            if flags & 0x20:
+                length, pos = _seven_number(data, pos)
+                props = data[pos:pos + length]
+                pos += length
+            coders.append({'method': method, 'props': props,
+                           'num_in': num_in, 'num_out': num_out})
+            total_in += num_in
+            total_out += num_out
+        for _ in range(max(0, total_out - 1)):
+            _, pos = _seven_number(data, pos)
+            _, pos = _seven_number(data, pos)
+        packed_streams = total_in - max(0, total_out - 1)
+        if packed_streams > 1:
+            for _ in range(packed_streams):
+                _, pos = _seven_number(data, pos)
+        folders.append({'coders': coders, 'num_in': total_in,
+                        'num_out': total_out, 'unpack': 0})
+    while True:
+        prop = data[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x0C:
+            for folder in folders:
+                sizes_out = []
+                for _ in range(folder['num_out']):
+                    value, pos = _seven_number(data, pos)
+                    sizes_out.append(value)
+                folder['unpack'] = sizes_out[-1] if sizes_out else 0
+        elif prop == 0x0A:
+            pos = _seven_digests_length(data, pos, len(folders))
+        else:
+            raise Unsupported('unsupported 7z unpack property 0x%02x' % prop)
+    return folders, pos
+
+
+def _seven_substreams(data, pos, folders):
+    counts = [1] * len(folders)
+    while True:
+        prop = data[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x0D:
+            for index in range(len(folders)):
+                counts[index], pos = _seven_number(data, pos)
+        elif prop == 0x09:
+            for folder, count in zip(folders, counts):
+                sizes = []
+                for _ in range(count - 1):
+                    value, pos = _seven_number(data, pos)
+                    sizes.append(value)
+                sizes.append(folder.get('unpack', 0) - sum(sizes))
+                folder['stream_sizes'] = sizes
+        elif prop == 0x0A:
+            pos = _seven_digests_length(data, pos, sum(counts))
+        else:
+            raise Unsupported('unsupported 7z substream property')
+    for folder, count in zip(folders, counts):
+        folder['num_streams'] = count
+    return pos
+
+
+def seven_streams(data, pos):
+    """Pack, folder and substream tables of one 7z StreamsInfo block."""
+    result = {'pack_pos': 0, 'sizes': [], 'folders': []}
+    while True:
+        prop = data[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x06:
+            pack, pos = _seven_pack_info(data, pos)
+            result['pack_pos'] = pack['pack_pos']
+            result['sizes'] = pack['sizes']
+        elif prop == 0x07:
+            result['folders'], pos = _seven_unpack_info(data, pos)
+        elif prop == 0x08:
+            pos = _seven_substreams(data, pos, result['folders'])
+        else:
+            raise Unsupported('unsupported 7z stream property')
+    for folder in result['folders']:
+        folder.setdefault('num_streams', 1)
+    return result, pos
+
+
+def _seven_lzma(packed, filters, size):
+    """7z streams have no end marker: stop at the announced size."""
+    engine = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
+    out = engine.decompress(packed, max_length=size)
+    while len(out) < size and not engine.eof:
+        more = engine.decompress(b'', max_length=size - len(out))
+        if not more:
+            break
+        out += more
+    return out
+
+
+def seven_decode_pack(packed, folder):
+    """Decode the packed 7z header with the standard library only."""
+    if len(folder.get('coders') or []) != 1:
+        raise Unsupported('this 7z header uses a filter chain')
+    coder = folder['coders'][0]
+    method = coder['method']
+    props = coder['props'] or b''
+    size = folder['unpack']
+    if method == b'\x00':
+        return packed[:size]
+    if method == b'\x03\x01\x01' and len(props) >= 5:
+        value = props[0]
+        filters = [{'id': lzma.FILTER_LZMA1,
+                    'dict_size': struct.unpack('<I', props[1:5])[0],
+                    'lc': value % 9, 'lp': (value // 9) % 5, 'pb': value // 45}]
+        return _seven_lzma(packed, filters, size)
+    if method == b'\x21' and len(props) == 1:
+        value = props[0]
+        dict_size = (0xFFFFFFFF if value >= 40
+                     else (2 | (value & 1)) << (value // 2 + 11))
+        filters = [{'id': lzma.FILTER_LZMA2, 'dict_size': dict_size}]
+        return _seven_lzma(packed, filters, size)
+    raise Unsupported('unsupported 7z header compression')
+
+
+def seven_read_header(next_bytes, read_pack):
+    """The real 7z header from the next-header block at the archive end."""
+    kind = next_bytes[:1]
+    if kind == b'\x01':
+        return next_bytes
+    if kind != b'\x17':
+        raise Unsupported('unknown 7z header type')
+    streams, _ = seven_streams(next_bytes, 1)
+    folders = streams.get('folders') or []
+    sizes = streams.get('sizes') or []
+    if len(folders) != 1 or len(sizes) != 1 or folders[0].get('num_in') != 1:
+        raise Unsupported('this 7z header uses an unsupported layout')
+    packed = read_pack(streams.get('pack_pos', 0), sizes[0])
+    header = seven_decode_pack(packed, folders[0])
+    if header[:1] != b'\x01':
+        raise Unsupported('the 7z header did not decode')
+    return header
+
+
+def seven_header_streams(header):
+    """The main StreamsInfo of a plain 7z header."""
+    pos = 0
+    if header[:1] != b'\x01':
+        raise Unsupported('not a 7z header')
+    pos += 1
+    while True:
+        prop = header[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x02:
+            while True:
+                inner = header[pos]
+                pos += 1
+                if inner == 0x00:
+                    break
+                size, pos = _seven_number(header, pos)
+                pos += size
+        elif prop == 0x03:
+            _, pos = seven_streams(header, pos)
+        elif prop == 0x04:
+            return seven_streams(header, pos)[0]
+        elif prop == 0x05:
+            break
+        else:
+            raise Unsupported('unsupported 7z header property')
+    raise Unsupported('this 7z archive has no file streams')
+
+
+def seven_stored_stream(streams):
+    """The biggest stored (Copy) file: offset after the start header, length."""
+    sizes = streams.get('sizes') or []
+    folders = streams.get('folders') or []
+    pack = 0
+    consumed = 0
+    best = None
+    for folder in folders:
+        used = folder.get('num_in') or 0
+        packed = sum(sizes[pack:pack + used])
+        coders = folder.get('coders') or []
+        single = (len(coders) == 1 and coders[0]['num_in'] == 1
+                  and coders[0]['num_out'] == 1)
+        stored = (single and coders[0]['method'] == b'\x00'
+                  and packed == folder.get('unpack'))
+        if stored:
+            sizes_in = folder.get('stream_sizes')
+            if sizes_in is None and folder.get('num_streams', 1) == 1:
+                sizes_in = [folder.get('unpack', 0)]
+            position = streams.get('pack_pos', 0) + consumed
+            for size_in in sizes_in or []:
+                if size_in >= MIN_INNER_VIDEO_BYTES:
+                    item = {'offset': position, 'length': size_in, 'packed': packed}
+                    if best is None or item['length'] > best['length']:
+                        best = item
+                position += size_in
+        pack += used
+        consumed += packed
+    return best

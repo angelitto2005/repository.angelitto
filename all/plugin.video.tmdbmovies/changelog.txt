@@ -1,3 +1,7 @@
+1.1.341
+- Full-disc Blu-ray releases posted as a stored 7z set now play: the film is streamed straight from the archive volumes.
+- RAR sets with random volume names are played in the right order, using the volume numbers inside the archives.
+
 1.1.340
 - Full-disc Blu-ray releases posted as a raw BDMV set now play instead of being rejected as "not a video".
 

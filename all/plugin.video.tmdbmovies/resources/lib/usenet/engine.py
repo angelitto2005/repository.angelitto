@@ -8,7 +8,8 @@ back a few seconds does not hit the network again.
 Three shapes are supported:
   * a plain video file (mkv / mp4 / avi / ts) posted as segments;
   * a stored (uncompressed) RAR set, which is what scene TV releases use;
-  * a stored 7z set, whose file data starts after the 32-byte start header.
+  * a stored 7z set: the 7z header is read, and the biggest file inside - the
+    film - is served straight from the volumes when it is stored, not compressed.
 Compressed or encrypted archives cannot be read sequentially, so they are
 refused with a clear reason instead of serving broken bytes.
 """
@@ -18,6 +19,8 @@ import threading
 import time
 import re
 import os
+import lzma
+import struct
 from collections import OrderedDict
 from concurrent.futures import CancelledError, Future
 
@@ -93,6 +96,25 @@ def _sniff(data, start=0):
     if len(data) > start + 200 and data[start + 4] == 0x47 and data[start + 196] == 0x47:
         return 'ts'
     return ''
+
+
+def _seven_cut(segments, start, end):
+    """The articles covering one byte range of a volume, with the first skip."""
+    found = []
+    skip = 0
+    position = 0
+    for number, size, mid in segments:
+        segment_end = position + size
+        if segment_end <= start:
+            position = segment_end
+            continue
+        if position >= end:
+            break
+        if not found:
+            skip = start - position
+        found.append(mid)
+        position = segment_end
+    return found, skip
 
 
 def _looks_image(data, start=0):
@@ -487,6 +509,48 @@ class Session(object):
         except yenc.YencError as exc:
             raise SessionError('the provider did not send yEnc (%s)' % exc)
 
+    def _seven_read(self, volume_map, cache, offset, size):
+        """Bytes from the concatenated 7z volumes, fetching only what is asked."""
+        out = []
+        while size > 0:
+            low, high = 0, len(volume_map) - 1
+            while low < high:
+                middle = (low + high + 1) // 2
+                if volume_map[middle]['start'] <= offset:
+                    low = middle
+                else:
+                    high = middle - 1
+            volume = volume_map[low]
+            inside = offset - volume['start']
+            segment_start = 0
+            progressed = False
+            for number, segment_size, mid in volume['file'].segments:
+                segment_end = segment_start + segment_size
+                if segment_end > inside and segment_start < inside + size:
+                    data = cache.get(mid)
+                    if data is None:
+                        raw = self._article(mid)
+                        if raw is None:
+                            raise SessionError('a 7z header article is gone from the provider')
+                        try:
+                            data = yenc.decode(raw)['data']
+                        except yenc.YencError as exc:
+                            raise SessionError('the provider did not send yEnc (%s)' % exc)
+                        cache[mid] = data
+                    begin = max(0, inside - segment_start)
+                    take = min(len(data) - begin, size)
+                    if take > 0:
+                        out.append(data[begin:begin + take])
+                        size -= take
+                        offset += take
+                        progressed = True
+                segment_start = segment_end
+                if size <= 0:
+                    break
+            if not progressed:
+                break
+        return b''.join(out)
+
     def _warm_front(self, segments):
         """Keep the next few articles beside the first one.
 
@@ -495,7 +559,8 @@ class Session(object):
         even when everything after it has already arrived.
         """
         self.warm = []
-        wanted = [(index, item[2]) for index, item in enumerate(segments[1:WARM_ARTICLES], start=1)]
+        wanted = [(index, item[2] if isinstance(item, tuple) else item)
+                  for index, item in enumerate(segments[1:WARM_ARTICLES], start=1)]
         if not wanted:
             return
         replies = self._articles([message_id for _index, message_id in wanted])
@@ -566,6 +631,15 @@ class Session(object):
             layout = nzb.rar_layout(head)
         except nzb.Unsupported as exc:
             raise SessionError(str(exc))
+        if layout.get('fmt') == 5 and len(volumes) > 1 and nzb.rar_names_unsorted(volumes):
+            ordered = self._rar_header_order(volumes, first)
+            if ordered is not None and ordered[0] is not volumes[0]:
+                volumes = ordered
+                self.media_name = volumes[0].name or self.media_name
+                first = self._decode_first(volumes[0].segments)
+                self.first_crc_ok = bool(first.get('crc_ok', True))
+                head = first['data']
+                layout = nzb.rar_layout(head)
         if not layout.get('store'):
             raise SessionError('this RAR is compressed - only stored RAR sets can be streamed')
         if not layout.get('unp_size'):
@@ -630,43 +704,97 @@ class Session(object):
         self._warm_tail()
         return self.info()
 
+    def _rar_header_order(self, volumes, first):
+        """The volumes in archive order, from the RAR5 volume number in each header.
+
+        Obfuscated repacks post randomly named volumes, so the file list says
+        nothing about which one follows which; the archive header does.
+        """
+        numbers = {}
+        for volume in volumes:
+            info = first if volume is volumes[0] else self._decode_first(volume.segments)
+            number = nzb.rar5_volume(info['data'])
+            if number is None or number in numbers:
+                return None
+            numbers[number] = volume
+        if sorted(numbers) != list(range(len(numbers))):
+            raise SessionError('a RAR volume is missing from this NZB')
+        return [numbers[index] for index in range(len(numbers))]
+
     def _prepare_seven(self, files):
         volumes = nzb.seven_volumes(files)
         if not volumes:
             raise SessionError('this NZB contains no playable file')
         self.media_name = volumes[0].name or self.media_name
+        if len(volumes) > 1:
+            match = re.search(r'\.7z\.(\d+)$', volumes[0].name or '', re.I)
+            if match and int(match.group(1)) != 1:
+                raise SessionError('the first 7z volume is missing from this NZB')
         first = self._decode_first(volumes[0].segments)
         self.first_crc_ok = bool(first.get('crc_ok', True))
         head = first['data']
+        if not head.startswith(nzb.SEVEN):
+            raise SessionError('not a 7z archive')
+        volume_map = []
+        position = 0
+        for volume in volumes:
+            volume_map.append({'file': volume, 'start': position, 'size': volume.bytes})
+            position += volume.bytes
+        cache = {}
         try:
-            layout = nzb.seven_layout(head)
+            next_offset, next_size = struct.unpack_from('<QQ', head, 12)
+            if next_size <= 0:
+                raise SessionError('the 7z header is missing from the archive')
+            tail = self._seven_read(volume_map, cache, 32 + next_offset, next_size)
+            if len(tail) < next_size:
+                raise SessionError('the 7z header is incomplete - a volume is missing')
+            header = nzb.seven_read_header(
+                tail, lambda offset, size: self._seven_read(volume_map, cache, 32 + offset, size))
+            streams = nzb.seven_header_streams(header)
+            best = nzb.seven_stored_stream(streams)
         except nzb.Unsupported as exc:
             raise SessionError(str(exc))
-        start = layout['offset']
-        self.container = _sniff(head, start)
-        if not self.container:
+        except lzma.LZMAError:
+            raise SessionError('the 7z header could not be decoded')
+        except (struct.error, IndexError):
+            raise SessionError('not a 7z archive')
+        if not best:
             raise SessionError('this 7z archive is compressed - only stored 7z sets can be streamed')
-        self.length = layout['length']
+        start = 32 + best['offset']
+        self.length = best['length']
+        probe = self._seven_read(volume_map, cache, start, _ISO_SECTOR + 8)
+        self.container = _sniff(probe)
+        if not self.container:
+            raise SessionError('the biggest file in this 7z archive is not a video')
         self.part_size = 0
-        remaining = self.length
-        for index, volume in enumerate(volumes[:400]):
-            skip = start if index == 0 else 0
-            size = min(remaining, max(0, nzb.file_size(volume) - skip))
+        for volume in volume_map:
+            low = max(start, volume['start'])
+            high = min(start + self.length, volume['start'] + volume['size'])
+            if high <= low:
+                continue
+            segments, skip = _seven_cut(volume['file'].segments, low - volume['start'],
+                                        high - volume['start'])
+            if not segments:
+                continue
             self.parts.append({
-                'id': index,
-                'segments': [item[2] for item in volume.segments],
+                'id': len(self.parts),
+                'segments': segments,
                 'skip': skip,
-                'length': size,
-                'part_size': len(head) if index == 0 else 0,
+                'length': high - low,
+                'part_size': 0,
             })
-            remaining -= size
-            if remaining <= 0:
+            if high >= start + self.length:
                 break
-        if remaining > 0:
+        if not self.parts:
             raise SessionError('the 7z volumes are shorter than the archive header says')
-        self._pinned.add((0, 0))
-        self._remember((0, 0), head)
-        self._warm_front(volumes[0].segments)
+        first_mid = self.parts[0]['segments'][0]
+        if first_mid in cache:
+            self._pinned.add((0, 0))
+            for index, mid in enumerate(self.parts[0]['segments']):
+                if mid not in cache:
+                    break
+                self._remember((0, index), cache[mid])
+        self._warm_front(self.parts[0]['segments'])
         self.prepared = True
         self._warm_tail()
         return self.info()
