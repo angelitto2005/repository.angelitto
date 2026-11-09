@@ -218,6 +218,116 @@ def pick_media(files):
     return max(candidates, key=lambda f: f.bytes), 'unknown'
 
 
+_EPISODE_S = re.compile(r's(\d{1,2})\s*[._ -]?\s*e(\d{1,3})', re.I)
+_EPISODE_X = re.compile(r'(?<!\d)(\d{1,2})x(\d{1,3})(?!\d)', re.I)
+_EPISODE_NEXT = re.compile(r'[._ -]*e(\d{1,3})', re.I)
+_EPISODE_RANGE = re.compile(r'\s*[-\u2013]\s*(?:e(\d{1,3})|(\d{1,2})(?!\d))', re.I)
+
+
+def episode_pairs(title):
+    """Every (season, episode) a release name declares: S01E01E02, S01E01-E02, 1x01-02."""
+    text = str(title or '').lower()
+    pairs = set()
+    for pattern in (_EPISODE_S, _EPISODE_X):
+        for match in pattern.finditer(text):
+            season = int(match.group(1))
+            pairs.add((season, int(match.group(2))))
+            position = match.end()
+            while True:
+                more = _EPISODE_NEXT.match(text, position)
+                if not more:
+                    break
+                pairs.add((season, int(more.group(1))))
+                position = more.end()
+            span = _EPISODE_RANGE.match(text, position)
+            if span:
+                pairs.add((season, int(span.group(1) or span.group(2))))
+    return pairs
+
+
+def select_media(files, season=None, episode=None, alt_season=None, alt_episode=None):
+    """(NzbFile, kind) for the requested episode inside a pack.
+
+    A pack is posted either as one video per episode or as one RAR/7z set per
+    episode, and the names say which. alt_* is the same episode under an
+    alternate numbering (anime), because one source list can mix both. When no
+    candidate declares an episode the request cannot be matched, so the biggest
+    file remains the choice.
+    """
+    if season is None or episode is None:
+        return pick_media(files)
+    wanted = [(int(season), int(episode))]
+    try:
+        alt = (int(alt_season), int(alt_episode))
+    except (TypeError, ValueError):
+        alt = None
+    if alt and alt not in wanted:
+        wanted.append(alt)
+    choices = _media_choices(files)
+    if not any(episode_pairs(' '.join(texts)) for _head, _kind, _size, texts in choices):
+        return pick_media(files)
+    matches = [choice for choice in choices
+               if any(pair in episode_pairs(' '.join(choice[3])) for pair in wanted)]
+    if not matches and len(choices) == 1:
+        return choices[0][0], choices[0][1]
+    if not matches:
+        raise NzbError('the release has no file for S%02dE%02d' % wanted[0])
+    videos = [choice for choice in matches if choice[1] == 'video']
+    head, kind, _size, _texts = max(videos or matches, key=lambda choice: choice[2])
+    return head, kind
+
+
+def _media_choices(files):
+    """(head, kind, size, texts) for every playable choice in the NZB."""
+    choices = []
+    for item in files:
+        if item.kind not in ('video', 'unknown'):
+            continue
+        if _SAMPLE_FILE.search(item.name or '') or _SAMPLE_FILE.search(item.subject or ''):
+            continue
+        choices.append((item, item.kind, item.bytes, (item.name or '', item.subject or '')))
+    for kind, groups in (('rar', _rar_groups(files)), ('7z', _seven_groups(files))):
+        for group in groups:
+            texts = (group[0].name or '', group[0].subject or '')
+            choices.append((group[0], kind, sum(f.bytes for f in group), texts))
+    return choices
+
+
+def _groups(files, kind, stem):
+    groups = {}
+    for item in files:
+        if item.kind == kind:
+            groups.setdefault(stem(item.name), []).append(item)
+    return list(groups.values())
+
+
+def pack_info(files):
+    """What the NZB really carries: {'pack', 'episodes', 'per_episode'}.
+
+    A pack can be posted under the first episode's name, so the file names are
+    the only place that says how many episodes are inside.
+    """
+    sizes = {}
+    for item in files:
+        if item.kind == 'video':
+            _add_pairs(sizes, item.name or item.subject, item.bytes)
+    for groups in (_rar_groups(files), _seven_groups(files)):
+        for group in groups:
+            total = sum(f.bytes for f in group)
+            _add_pairs(sizes, group[0].name or group[0].subject, total)
+    pairs = sorted(sizes)
+    return {
+        'pack': len(pairs) > 1,
+        'episodes': len(pairs),
+        'per_episode': dict(('S%02dE%02d' % pair, sizes[pair]) for pair in pairs),
+    }
+
+
+def _add_pairs(sizes, text, size):
+    for pair in episode_pairs(text):
+        sizes[pair] = sizes.get(pair, 0) + size
+
+
 def _volume_key(name):
     low = (name or '').lower()
     match = re.search(r'\.part(\d+)\.rar$', low)
@@ -243,14 +353,18 @@ def _volume_stem(name):
     return low[:-4] if low.endswith('.rar') else low
 
 
-def rar_volumes(files):
-    """The volumes of the archive, in order."""
-    named = [f for f in files if f.kind == 'rar']
-    if named:
-        groups = {}
-        for item in named:
-            groups.setdefault(_volume_stem(item.name), []).append(item)
-        best = max(groups.values(), key=lambda group: sum(f.bytes for f in group))
+def _rar_groups(files):
+    return _groups(files, 'rar', _volume_stem)
+
+
+def rar_volumes(files, head=None):
+    """The volumes of the archive, in order; head selects one set of a pack."""
+    groups = _rar_groups(files)
+    if groups:
+        for group in groups:
+            if head is not None and head in group:
+                return sorted(group, key=lambda f: _volume_key(f.name))
+        best = max(groups, key=lambda group: sum(f.bytes for f in group))
         return sorted(best, key=lambda f: _volume_key(f.name))
     # Obfuscated names: use the poster's counter "[03/45]" and keep the run of
     # large files plus the one smaller file that closes the set.
@@ -534,15 +648,19 @@ def _seven_key(name):
     return (0, int(match.group(1))) if match else (1, 0)
 
 
-def seven_volumes(files):
-    """The volumes of the 7z set, in order (a plain .7z is a one-volume set)."""
-    named = [f for f in files if f.kind == '7z']
-    if not named:
+def _seven_groups(files):
+    return _groups(files, '7z', _seven_stem)
+
+
+def seven_volumes(files, head=None):
+    """The volumes of the 7z set, in order; head selects one set of a pack."""
+    groups = _seven_groups(files)
+    if not groups:
         return []
-    groups = {}
-    for item in named:
-        groups.setdefault(_seven_stem(item.name), []).append(item)
-    best = max(groups.values(), key=lambda group: sum(f.bytes for f in group))
+    for group in groups:
+        if head is not None and head in group:
+            return sorted(group, key=lambda f: _seven_key(f.name))
+    best = max(groups, key=lambda group: sum(f.bytes for f in group))
     return sorted(best, key=lambda f: _seven_key(f.name))
 
 
@@ -792,13 +910,13 @@ def seven_header_streams(header):
     raise Unsupported('this 7z archive has no file streams')
 
 
-def seven_stored_stream(streams):
-    """The biggest stored (Copy) file: offset after the start header, length."""
+def seven_stored_streams(streams):
+    """Every stored (Copy) file stream, in header order: offset, length, packed."""
     sizes = streams.get('sizes') or []
     folders = streams.get('folders') or []
     pack = 0
     consumed = 0
-    best = None
+    items = []
     for folder in folders:
         used = folder.get('num_in') or 0
         packed = sum(sizes[pack:pack + used])
@@ -813,11 +931,133 @@ def seven_stored_stream(streams):
                 sizes_in = [folder.get('unpack', 0)]
             position = streams.get('pack_pos', 0) + consumed
             for size_in in sizes_in or []:
-                if size_in >= MIN_INNER_VIDEO_BYTES:
-                    item = {'offset': position, 'length': size_in, 'packed': packed}
-                    if best is None or item['length'] > best['length']:
-                        best = item
+                items.append({'offset': position, 'length': size_in, 'packed': packed})
                 position += size_in
         pack += used
         consumed += packed
+    return items
+
+
+def seven_stored_stream(streams):
+    """The biggest stored (Copy) video file: offset after the start header, length."""
+    best = None
+    for item in seven_stored_streams(streams):
+        if item['length'] >= MIN_INNER_VIDEO_BYTES and (
+                best is None or item['length'] > best['length']):
+            best = item
     return best
+
+
+def _seven_bit_vector(data, pos, count):
+    """7z bit vector: the most significant bit first, 1 bits first."""
+    flags = []
+    value = 0
+    mask = 0
+    for _index in range(count):
+        if mask == 0:
+            value = data[pos]
+            pos += 1
+            mask = 0x80
+        flags.append(bool(value & mask))
+        mask >>= 1
+    return flags, pos
+
+
+def _seven_names(block):
+    """The Name property: UTF-16LE names separated by a zero."""
+    if not block or block[0] != 0x00:
+        return []          # external names live in a sidecar we do not have
+    try:
+        text = block[1:].decode('utf-16-le', 'replace')
+    except Exception:
+        return []
+    return [part for part in text.split('\x00') if part]
+
+
+def seven_file_names(header):
+    """Names of the files that carry data, in header order (directories skipped)."""
+    if header[:1] != b'\x01':
+        raise Unsupported('not a 7z header')
+    pos = 1
+    names = []
+    empty = []
+    while True:
+        prop = header[pos]
+        pos += 1
+        if prop == 0x00:
+            break
+        if prop == 0x02:
+            while True:
+                inner = header[pos]
+                pos += 1
+                if inner == 0x00:
+                    break
+                size, pos = _seven_number(header, pos)
+                pos += size
+        elif prop in (0x03, 0x04):
+            _, pos = seven_streams(header, pos)
+        elif prop == 0x05:
+            count, pos = _seven_number(header, pos)
+            while True:
+                inner = header[pos]
+                pos += 1
+                if inner == 0x00:
+                    break
+                size, pos = _seven_number(header, pos)
+                end = pos + size
+                if inner == 0x0E:
+                    empty, _ = _seven_bit_vector(header, pos, count)
+                elif inner == 0x11:
+                    names = _seven_names(header[pos:end])
+                pos = end
+        else:
+            break
+    if not names:
+        return []
+    if not empty:
+        return names
+    return [name for index, name in enumerate(names)
+            if index >= len(empty) or not empty[index]]
+
+
+def seven_pick_stream(streams, names, season=None, episode=None,
+                      alt_season=None, alt_episode=None):
+    """(stream, name, ambiguous) for the wanted episode inside a stored 7z.
+
+    Inner names decide when the archive carries them; obfuscated archives that
+    hold several episodes are refused instead of playing the wrong one.
+    """
+    items = seven_stored_streams(streams)
+    videos = [item for item in items if item['length'] >= MIN_INNER_VIDEO_BYTES]
+    if not videos:
+        return None, '', False
+    pairs = list(zip(names, items)) if names and len(names) == len(items) else []
+    wanted = set()
+    for season_value, episode_value in ((season, episode), (alt_season, alt_episode)):
+        try:
+            if season_value is not None and episode_value is not None:
+                wanted.add((int(season_value), int(episode_value)))
+        except (TypeError, ValueError):
+            continue
+    if wanted:
+        matches = []
+        for name, item in pairs:
+            if item['length'] < MIN_INNER_VIDEO_BYTES:
+                continue
+            if not (name or '').lower().endswith(VIDEO_EXT):
+                continue
+            if wanted & episode_pairs(name):
+                matches.append((name, item))
+        if matches:
+            name, item = max(matches, key=lambda pair: pair[1]['length'])
+            return item, name, False
+        if len(videos) > 1:
+            return None, '', True
+        return videos[0], '', False
+    best = max(videos, key=lambda item: item['length'])
+    name = ''
+    for pair_name, item in pairs:
+        if item is best:
+            name = pair_name
+            break
+    return best, name, False

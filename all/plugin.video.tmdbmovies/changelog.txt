@@ -1,3 +1,13 @@
+1.1.342
+- Series searches now include Usenet season packs: each quality category is paged, so old and large packs show up too.
+- Playing a pack serves the requested SxxExx file from inside the archive, using the real file names stored in the 7z header.
+- A 7z pack with obfuscated names and several files is refused, so the player moves on instead of replaying the first episode.
+- Autoplay next continues with the next episode from the same pack, without grabbing the release again.
+- Usenet releases show SEASON PACK / SHOW PACK badges, and a release that already played shows AVAILABLE.
+- New "Season pack search pages" setting (1-3, default 1) sits under "Single episodes only", with the extra API cost in the label.
+- Indexers that ignore imdbid+season (DrunkenSlug) are asked again by title, so their packs are not missing.
+- The scan progress window lists Usenet on its own row, and changing the Usenet search settings refreshes the cached source list.
+
 1.1.341
 - Full-disc Blu-ray releases posted as a stored 7z set now play: the film is streamed straight from the archive volumes.
 - RAR sets with random volume names are played in the right order, using the volume numbers inside the archives.

@@ -10,6 +10,25 @@ from resources.lib.core.config import ADDON, ADDON_DATA_DIR
 class MainCache:
     SOURCES_REV = 2
 
+    @staticmethod
+    def _scan_rev():
+        """The source list depends on the Usenet pack settings: toggling one
+        must not keep the old list for hours."""
+        try:
+            if ADDON.getSetting('use_usenet_nzb') != 'true':
+                return 0
+            only = 1 if ADDON.getSetting('usenet_nzb.episodes_only') == 'true' else 0
+            try:
+                pages = int(ADDON.getSetting('usenet_nzb.pack_pages') or '1')
+            except (TypeError, ValueError):
+                pages = 1
+            return 1 + only * 4 + max(1, min(3, pages))
+        except Exception:
+            return 0
+
+    def source_rev(self):
+        return self.SOURCES_REV * 16 + self._scan_rev()
+
     def __init__(self):
         self.dbcon = connect()
         self.dbcur = self.dbcon.cursor()
@@ -97,7 +116,7 @@ class MainCache:
             
             if result:
                 expires, streams_blob, failed_json, scanned_json, saved_sort_opt, saved_rev = result
-                if expires > current_time and saved_rev == self.SOURCES_REV:
+                if expires > current_time and saved_rev == self.source_rev():
                     streams = []
                     if streams_blob:
                         try: streams = json.loads(zlib.decompress(streams_blob))
@@ -131,6 +150,27 @@ class MainCache:
             pass
         return None, None, None, None, None
 
+    def get_source_caches_like(self, prefix):
+        """Every unexpired source list whose id starts with prefix (one season)."""
+        found = []
+        try:
+            current_time = int(time.time())
+            self.dbcur.execute("SELECT streams FROM sources_cache WHERE id GLOB ? AND expires > ? AND rev = ?",
+                               (prefix + '*', current_time, self.source_rev()))
+            rows = self.dbcur.fetchall()
+        except Exception:
+            return found
+        for (streams_blob,) in rows:
+            if not streams_blob:
+                continue
+            try:
+                streams = json.loads(zlib.decompress(streams_blob))
+            except Exception:
+                continue
+            if isinstance(streams, list):
+                found.append(streams)
+        return found
+
     def set_source_cache(self, search_id, streams, error_providers, empty_providers, scanned_providers, expiration_hours, sort_opt=None):
         try:
             expires = int(time.time() + (expiration_hours * 3600))
@@ -142,7 +182,7 @@ class MainCache:
             json_scanned = json.dumps(scanned_providers)
             
             self.dbcur.execute("INSERT OR REPLACE INTO sources_cache (id, streams, failed_providers, scanned_providers, sort_opt, expires, rev) VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                               (search_id, compressed_streams, json_failed, json_scanned, sort_opt, expires, self.SOURCES_REV))
+                               (search_id, compressed_streams, json_failed, json_scanned, sort_opt, expires, self.source_rev()))
             self.dbcon.commit()
         except: pass
         

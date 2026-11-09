@@ -24,7 +24,7 @@ ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
 FOLDER = 'usenet-vfs/'
 KEEP_SECONDS = 12 * 3600
-PLAN_VERSION = 7
+PLAN_VERSION = 8
 
 
 def enabled():
@@ -210,7 +210,7 @@ def _write_warm(path, session):
     return True
 
 
-def prepare_stream(nzb_url):
+def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None):
     """(url, error, retry_with_server).
 
     retry_with_server is True only when the plan itself could not be produced,
@@ -225,12 +225,15 @@ def prepare_stream(nzb_url):
     except Exception:
         pass
     key = config.nzb_key(nzb_url)
+    token = config.episode_token(key, season, episode, alt_season, alt_episode)
     if not indexer.fetch_nzb(nzb_url, key):
         return '', 'the NZB could not be downloaded from the indexer', False
     path = config.nzb_path(key)
     providers = config.primary_providers() + config.backup_providers()
     try:
-        session = engine.Session(key, b'', providers, config.player_options())
+        session = engine.Session(token, b'', providers,
+                                 config.player_options(season, episode,
+                                                       alt_season, alt_episode))
     except engine.SessionError as exc:
         return '', str(exc), False
     except Exception as exc:
@@ -239,11 +242,11 @@ def prepare_stream(nzb_url):
         folder = _folder()
         digest = _fingerprint(session, path, providers) if folder else ''
         if digest:
-            name = _plan_reuse(folder + key + '.plan', digest)
+            name = _plan_reuse(folder + token + '.plan', digest)
             if name:
-                engine._log('plan reused for %s' % key)
-                _write_active(folder, key)
-                return '%s://%s/%s' % (SCHEME, key, quote(name)), '', False
+                engine._log('plan reused for %s' % token)
+                _write_active(folder, token)
+                return '%s://%s/%s' % (SCHEME, token, quote(name)), '', False
         try:
             with open(path, 'rb') as handle:
                 data = handle.read()
@@ -262,33 +265,37 @@ def prepare_stream(nzb_url):
         except Exception as exc:
             return '', 'the release could not be opened (%s)' % str(exc)[:90], False
         try:
+            config.remember_release(key, session.pack, played=True)
+        except Exception:
+            pass
+        try:
             if not folder:
                 return '', 'the profile folder is not writable', True
             if not digest:
                 digest = _fingerprint(session, path, providers)
             cleanup()
             try:
-                if not _write_first(folder + key + '.first', session):
-                    engine._log('first article not cached for %s' % key)
+                if not _write_first(folder + token + '.first', session):
+                    engine._log('first article not cached for %s' % token)
             except Exception as exc:
                 engine._log('first article cache failed (%s)' % str(exc)[:90])
                 try:
-                    os.remove(folder + key + '.first')
+                    os.remove(folder + token + '.first')
                 except Exception:
                     pass
             try:
-                _write_warm(folder + key + '.first2', session)
+                _write_warm(folder + token + '.first2', session)
             except Exception as exc:
                 engine._log('warm article cache failed (%s)' % str(exc)[:90])
                 try:
-                    os.remove(folder + key + '.first2')
+                    os.remove(folder + token + '.first2')
                 except Exception:
                     pass
-            _write(folder + key + '.plan', _plan_text(session, info, providers, digest))
-            _write_active(folder, key)
+            _write(folder + token + '.plan', _plan_text(session, info, providers, digest))
+            _write_active(folder, token)
         except Exception as exc:
             return '', 'the VFS plan could not be written (%s)' % str(exc)[:90], True
         name = info.get('name') or 'video.mkv'
-        return '%s://%s/%s' % (SCHEME, key, quote(name)), '', False
+        return '%s://%s/%s' % (SCHEME, token, quote(name)), '', False
     finally:
         session.close()

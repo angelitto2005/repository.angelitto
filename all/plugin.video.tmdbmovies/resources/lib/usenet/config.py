@@ -1,8 +1,11 @@
 """The settings from Settings > Usenet, read in the shape the engine wants."""
 
 import hashlib
+import json
 import os
 import re
+import threading
+import time
 
 PORT_BY_CHOICE = ('563', '443', '119')
 CLIENT_AGENTS = (
@@ -92,6 +95,71 @@ def nzb_key(url):
     return hashlib.md5((url or '').encode('utf-8')).hexdigest()
 
 
+def episode_token(key, season=None, episode=None, alt_season=None, alt_episode=None):
+    """The plan/session name for one episode of a pack; the NZB keeps its key."""
+    parts = []
+    for one_season, one_episode in ((season, episode), (alt_season, alt_episode)):
+        try:
+            part = 's%02de%02d' % (int(one_season), int(one_episode))
+        except (TypeError, ValueError):
+            continue
+        if part not in parts:
+            parts.append(part)
+    if not parts:
+        return key
+    return hashlib.md5(('%s %s' % (key, ' '.join(parts))).encode('utf-8')).hexdigest()
+
+
+# -- what the NZB really holds, kept between listings ----------------------------
+
+RELEASE_KEEP_SECONDS = 45 * 86400
+RELEASE_MAX = 500
+_RELEASE_LOCK = threading.Lock()
+
+
+def release_records():
+    """Every release the engine has opened: {nzb key: {'pack', 'episodes', 'played'}}."""
+    path = data_file('usenet_packs.json')
+    if not path:
+        return {}
+    try:
+        with open(path, encoding='utf-8') as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def remember_release(key, info, played=True):
+    """Keep the file list the engine saw, so the source list can label the release."""
+    if not key or not isinstance(info, dict):
+        return
+    path = data_file('usenet_packs.json')
+    if not path:
+        return
+    now = time.time()
+    with _RELEASE_LOCK:
+        records = release_records()
+        record = dict(records.get(key) or {})
+        for name in ('pack', 'episodes', 'per_episode'):
+            if name in info:
+                record[name] = info[name]
+        record['at'] = now
+        if played:
+            record['played'] = 1
+        records[key] = record
+        kept = sorted(((name, value) for name, value in records.items()
+                       if now - (value.get('at') or 0) < RELEASE_KEEP_SECONDS),
+                      key=lambda pair: pair[1].get('at') or 0, reverse=True)[:RELEASE_MAX]
+        try:
+            temp = path + '.tmp'
+            with open(temp, 'w', encoding='utf-8') as handle:
+                json.dump(dict(kept), handle)
+            os.replace(temp, path)
+        except Exception:
+            pass
+
+
 def nzb_path(key):
     folder = nzb_dir()
     return (folder + key + '.nzb') if folder else ''
@@ -155,6 +223,11 @@ def max_results():
     return number('usenet_nzb.max_results', 30, 5, 60)
 
 
+def pack_pages():
+    """How many pages of each quality category are read for season packs."""
+    return number('usenet_nzb.pack_pages', 1, 1, 3)
+
+
 def indexer_agent():
     """The identity sent to indexers; empty means the add-on's own name."""
     choice = number('usenet_nzb.client', 0, 0, len(CLIENT_AGENTS) - 1)
@@ -213,11 +286,22 @@ def performance_profile():
     return number('usenet_nzb.performance', 0, 0, 3)
 
 
-def player_options():
-    return {'timeout': timeout(), 'prefetch_bytes': prefetch_bytes(), 'cache_bytes': cache_bytes(),
-            'profile': performance_profile(),
-            'hole_filling': hole_filling(), 'hole_percent': hole_percent(),
-            'hole_consecutive': hole_consecutive()}
+def player_options(season=None, episode=None, alt_season=None, alt_episode=None):
+    options = {'timeout': timeout(), 'prefetch_bytes': prefetch_bytes(),
+               'cache_bytes': cache_bytes(), 'profile': performance_profile(),
+               'hole_filling': hole_filling(), 'hole_percent': hole_percent(),
+               'hole_consecutive': hole_consecutive()}
+    try:
+        options['season'] = int(season)
+        options['episode'] = int(episode)
+    except (TypeError, ValueError):
+        pass
+    try:
+        options['alt_season'] = int(alt_season)
+        options['alt_episode'] = int(alt_episode)
+    except (TypeError, ValueError):
+        pass
+    return options
 
 
 # -- providers -----------------------------------------------------------------

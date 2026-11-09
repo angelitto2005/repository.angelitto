@@ -257,20 +257,55 @@ def results(body, indexer_name):
     return rows
 
 
-def _query(indexer, kind, imdb, season, episode, title):
-    digits = re.sub(r'\D', '', str(imdb or ''))
-    common = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series' if season is not None else 'movie']}
-    if season is None:
-        params = dict(common, t='movie')
-        if digits:
-            params['imdbid'] = digits
-        else:
-            params['q'] = (title or '').strip()
-        rows = results(_get(indexer, params), indexer['name'])
-        if rows or not title:
-            return rows
-        # Some indexers have nothing under the IMDb id: ask by name instead.
-        return results(_get(indexer, dict(common, t='movie', q=title.strip())), indexer['name'])
+_SEASON_WORD_EPISODE = re.compile(
+    r'\b(?:season|seizoen)\s*(\d{1,2})\s*[._ -]*(?:episode|aflevering|ep)\s*[._ -]*(\d{1,3})\b', re.I)
+_SINGLE_EPISODE = re.compile(r'\bs(\d{1,2})\s*[._ -]?\s*e(\d{1,3})\b', re.I)
+_EPISODE_RANGE = re.compile(r'\bs(\d{1,2})\s*e(\d{1,3})\s*[-\u2013]\s*e?(\d{1,3})\b', re.I)
+
+
+_SEASON_RANGE = re.compile(
+    r'\bs(\d{1,2})\s*[-\u2013]\s*s?(\d{1,2})\b'
+    r'|\b(?:seasons?|seizoen(?:en)?)\s*(\d{1,2})\s*[-\u2013]\s*(\d{1,2})\b', re.I)
+_SEASON_MARK = re.compile(
+    r'\bs(\d{1,2})\b(?!\s*[._ -]?\s*e)'
+    r'|\b(?:season|seizoen)\s*(\d{1,2})\b', re.I)
+
+
+def _pack_season_ok(title, season):
+    """A pack for another season must not sit in this episode's list."""
+    text = str(title or '')
+    wanted = int(season)
+    for mark in _SEASON_RANGE.finditer(text):
+        low, high = [int(group) for group in mark.groups() if group][:2]
+        return low <= wanted <= high
+    found = set()
+    for mark in _SEASON_MARK.finditer(text):
+        for group in mark.groups():
+            if group:
+                found.add(int(group))
+    if not found:
+        return True
+    return wanted in found
+
+
+def _pack_title(title, season=None):
+    """No single episode in the name, or a range of episodes: a pack we can use."""
+    text = str(title or '')
+    if _SEASON_WORD_EPISODE.search(text):
+        return False
+    if re.search(r'\.part\d+$', text, re.I):
+        return False
+    if season is not None:
+        for mark in _EPISODE_RANGE.finditer(text):
+            if int(mark.group(1)) == int(season):
+                return False
+    mark = _SINGLE_EPISODE.search(text)
+    if not mark:
+        return True
+    return bool(re.match(r'\s*[-\u2013]\s*e?\d{1,3}\b', text[mark.end():], re.I))
+
+
+def _episode_query(indexer, common, digits, season, episode, title):
     params = dict(common, t='tvsearch', season=int(season), ep=int(episode or 0))
     if digits:
         params['imdbid'] = digits
@@ -284,21 +319,109 @@ def _query(indexer, kind, imdb, season, episode, title):
                                       ep=int(episode or 0), q=title.strip())), indexer['name'])
 
 
-def episode_pairs(title):
-    """Every (season, episode) a release name declares: S01E01E02, S01E01-E02, 1x01-02."""
-    low = re.sub(r'[\._-]+', ' ', str(title or '').lower())
-    pairs = set()
-    for match in re.finditer(r's(\d{1,2})\s*e(\d{1,3})((?:\s*[-]?\s*e?\d{1,3})*)', low):
-        season = int(match.group(1))
-        pairs.add((season, int(match.group(2))))
-        for extra in re.findall(r'(\d{1,3})', match.group(3) or ''):
-            pairs.add((season, int(extra)))
-    for match in re.finditer(r'(\d{1,2})x(\d{1,3})((?:\s*[-]?\s*\d{1,3})*)', low):
-        season = int(match.group(1))
-        pairs.add((season, int(match.group(2))))
-        for extra in re.findall(r'(\d{1,3})', match.group(3) or ''):
-            pairs.add((season, int(extra)))
-    return pairs
+PACK_CATEGORIES = ('5045', '5040')
+
+
+def _season_packs(indexer, digits, season, title, use_cache, logger):
+    """Season packs, cached per season: old packs sit past the first 100 rows,
+    so each quality category is paged instead of asking the whole TV tree."""
+    key = 'series|%s|%s|packs3|%s|%s' % (digits, season,
+                                        indexer.get('url', ''), indexer.get('name', ''))
+    if use_cache:
+        hit, rows = _cache_get(key)
+        if hit:
+            if logger:
+                logger('[USENET] %s: %d season pack(s) from cache' % (indexer['name'], len(rows)))
+            return rows
+    packs, known, answered = [], set(), False
+
+    def ask(category, offset, by_title=False):
+        params = {'extended': 1, 'limit': 100, 'cat': category,
+                  't': 'tvsearch', 'season': int(season)}
+        if offset:
+            params['offset'] = offset
+        if digits and not by_title:
+            params['imdbid'] = digits
+        else:
+            params['q'] = (title or '').strip()
+        return results(_get(indexer, params), indexer['name'])
+
+    def take(found):
+        added = 0
+        for row in found:
+            link = row.get('nzb_url') or ''
+            name = row.get('title')
+            if (link and link not in known and _pack_title(name, season)
+                    and _pack_season_ok(name, season)):
+                known.add(link)
+                packs.append(row)
+                added += 1
+        return added
+
+    rows_seen = 0
+    for category in PACK_CATEGORIES:
+        offset = 0
+        by_title = not digits
+        for _page in range(config.pack_pages()):
+            try:
+                found = ask(category, offset, by_title=by_title)
+                if not found and offset == 0 and not by_title and title:
+                    # Some indexers ignore the IMDb id for a season ask.
+                    by_title = True
+                    found = ask(category, 0, by_title=True)
+            except Exception:
+                break
+            answered = True
+            rows_seen += len(found)
+            added = take(found)
+            if len(found) < 100 or not added:
+                break
+            offset += 100
+    if not packs and rows_seen == 0:
+        # Sub-categories can answer nothing while the whole TV tree has the pack
+        # (one indexer does exactly that), so the generic category is asked once.
+        for by_title in ((False, True) if digits else (True,)):
+            try:
+                found = ask('5000', 0, by_title=by_title)
+            except Exception:
+                continue
+            answered = True
+            take(found)
+            if packs:
+                break
+    if answered and use_cache:
+        _cache_put(key, packs)
+    return packs
+
+
+def _series_query(indexer, common, digits, season, episode, title, use_cache, logger):
+    """Episode sources plus the season packs, the packs cached for the whole season."""
+    rows = _episode_query(indexer, common, digits, season, episode, title)
+    try:
+        packs = _season_packs(indexer, digits, season, title, use_cache, logger)
+    except Exception:
+        packs = []
+    known = set(row.get('nzb_url') for row in rows)
+    return [row for row in packs if row.get('nzb_url') not in known] + rows
+
+
+def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=True, logger=None):
+    digits = re.sub(r'\D', '', str(imdb or ''))
+    common = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series' if season is not None else 'movie']}
+    if season is None:
+        params = dict(common, t='movie')
+        if digits:
+            params['imdbid'] = digits
+        else:
+            params['q'] = (title or '').strip()
+        rows = results(_get(indexer, params), indexer['name'])
+        if rows or not title:
+            return rows
+        # Some indexers have nothing under the IMDb id: ask by name instead.
+        return results(_get(indexer, dict(common, t='movie', q=title.strip())), indexer['name'])
+    if packs:
+        return _series_query(indexer, common, digits, season, episode, title, use_cache, logger)
+    return _episode_query(indexer, common, digits, season, episode, title)
 
 
 def is_single_episode(title, season, episode):
@@ -309,7 +432,7 @@ def is_single_episode(title, season, episode):
         return True
     text = str(title or '')
     low = re.sub(r'[\._-]+', ' ', text.lower())
-    if (int(season), int(episode or 0)) in episode_pairs(text):
+    if (int(season), int(episode or 0)) in nzb.episode_pairs(text):
         return True
     looks_like_pack = (re.search(r'\bs\d{1,2}\s*e\d{1,3}\s*[-]\s*e?\d{1,3}\b', low)
                        or re.search(r'\bs\d{2}\b(?![\s]*e\d)', low)
@@ -456,9 +579,11 @@ def clear_cache():
     return True
 
 
-def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger):
+def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True):
     """(cache_key, rows, from_cache, note) for one indexer."""
     key = _cache_key(kind, imdb, season, episode, indexer)
+    if season is not None:
+        key += '|packs3' if packs else '|ep2'
     if use_cache:
         hit, rows = _cache_get(key)
         if hit:
@@ -466,7 +591,7 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger):
                 logger('[USENET] %s: %d result(s) from cache' % (indexer['name'], len(rows)))
             return key, rows, True, None
     try:
-        rows = _query(indexer, kind, imdb, season, episode, title)
+        rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger)
         if logger:
             logger('[USENET] %s: %d result(s)' % (indexer['name'], len(rows)))
         return key, rows, False, None
@@ -521,7 +646,8 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
         from concurrent.futures import ThreadPoolExecutor
 
         def one(entry):
-            return _ask(entry, kind, imdb, season, episode, title, use_cache, logger)
+            return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
+                        packs=not episodes_only)
 
         workers = max(1, min(4, len(entries)))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetIndexer') as pool:
@@ -538,7 +664,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                    % (len(entries), min_usable))
         for position, entry in enumerate(entries, 1):
             key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
-                                            use_cache, logger)
+                                            use_cache, logger, packs=not episodes_only)
             if note:
                 notes.append(note)
             elif not cached and use_cache:

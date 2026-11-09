@@ -8366,11 +8366,14 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 # Compute per-category source counts from all_streams
                 cat_http = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
                 cat_aio = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
+                cat_usenet = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
                 cat_p2p = {'total': 0, '4K': 0, '1080p': 0, '720p': 0, 'SD': 0}
                 for s in all_streams:
                     pid = s.get('provider_id', '')
                     q = s.get('quality', 'SD')
-                    if pid.startswith('p2p_'):
+                    if pid == 'usenet_nzb':
+                        cat = cat_usenet
+                    elif pid.startswith('p2p_'):
                         cat = cat_p2p
                     elif pid in debrid_providers:
                         cat = cat_aio
@@ -8409,6 +8412,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                     'categories': {
                         'http': cat_http,
                         'aio': cat_aio,
+                        'usenet': cat_usenet,
                         'p2p': cat_p2p,
                     },
                     'alive': alive_names,

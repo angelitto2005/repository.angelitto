@@ -24,7 +24,7 @@ import time
 from concurrent.futures import CancelledError
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
 from . import config, engine, indexer
@@ -104,12 +104,13 @@ def _close_others(keep_key):
         _log('closed %d previous release session(s)' % len(closed))
 
 
-def open_session(key):
-    """(session, info, error)."""
-    session = _existing(key)
+def open_session(token, nzb_key=None, season=None, episode=None,
+                 alt_season=None, alt_episode=None):
+    """(session, info, error). token names the session, nzb_key finds its NZB."""
+    session = _existing(token)
     if session:
-        return session, dict(session.info(), ok=True, key=key), ''
-    path = config.nzb_path(key)
+        return session, dict(session.info(), ok=True, key=token), ''
+    path = config.nzb_path(nzb_key or token)
     if not path or not os.path.exists(path):
         return None, None, 'the NZB is no longer in the profile - pick the source again'
     try:
@@ -119,8 +120,15 @@ def open_session(key):
         return None, None, 'the NZB could not be read (%s)' % exc
     providers = config.primary_providers() + config.backup_providers()
     try:
-        session = engine.Session(key, data, providers, config.player_options())
+        session = engine.Session(token, data, providers,
+                                 config.player_options(season, episode,
+                                                       alt_season, alt_episode))
         info = session.prepare()
+        if nzb_key:
+            try:
+                config.remember_release(nzb_key, session.pack, played=True)
+            except Exception:
+                pass
     except engine.SessionError as exc:
         if getattr(exc, 'bad_nzb', False):
             try:
@@ -130,10 +138,10 @@ def open_session(key):
         return None, None, str(exc)
     except Exception as exc:
         return None, None, 'the release could not be opened (%s)' % str(exc)[:90]
-    info['key'] = key
+    info['key'] = token
     with _LOCK:
-        _SESSIONS[key] = session
-    _close_others(key)
+        _SESSIONS[token] = session
+    _close_others(token)
     return session, info, ''
 
 
@@ -144,6 +152,30 @@ def close_session(key):
         session.close()
         return True
     return False
+
+
+def _episode_query(season, episode, alt_season, alt_episode):
+    pairs = []
+    for prefix, one_season, one_episode in (('', season, episode),
+                                            ('a', alt_season, alt_episode)):
+        try:
+            pairs.append('%ss=%d&%se=%d' % (prefix, int(one_season),
+                                            prefix, int(one_episode)))
+        except (TypeError, ValueError):
+            continue
+    return ('?' + '&'.join(pairs)) if pairs else ''
+
+
+def _episode_of(query):
+    try:
+        season = int(query['s'][0])
+        episode = int(query['e'][0])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None, None, None, None
+    try:
+        return season, episode, int(query['as'][0]), int(query['ae'][0])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return season, episode, None, None
 
 
 # -- request handling ----------------------------------------------------------
@@ -207,7 +239,11 @@ class _Handler(BaseHTTPRequestHandler):
         return self._text(404, 'not found')
 
     def _prepare(self, key):
-        session, info, error = open_session(key)
+        season, episode, alt_season, alt_episode = _episode_of(
+            parse_qs(urlparse(self.path).query))
+        token = config.episode_token(key, season, episode, alt_season, alt_episode)
+        session, info, error = open_session(token, key, season, episode,
+                                            alt_season, alt_episode)
         if error:
             return self._json({'ok': False, 'reason': error})
         return self._json(info)
@@ -409,23 +445,25 @@ def stop():
 
 # -- what the plugin calls -----------------------------------------------------
 
-def prepare_stream(nzb_url):
+def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None):
     """Download the NZB if needed and return (local_url, error)."""
     if not nzb_url:
         return '', 'this source has no NZB link'
     key = config.nzb_key(nzb_url)
+    token = config.episode_token(key, season, episode, alt_season, alt_episode)
     if not indexer.fetch_nzb(nzb_url, key):
         return '', 'the NZB could not be downloaded from the indexer'
     active = ensure_running()
     if not active:
         return '', 'the local Usenet server could not start (is the add-on service running?)'
+    query = _episode_query(season, episode, alt_season, alt_episode)
     try:
-        with urlopen('http://127.0.0.1:%d/prepare/%s' % (active, key), timeout=45) as response:
+        with urlopen('http://127.0.0.1:%d/prepare/%s%s' % (active, key, query), timeout=45) as response:
             answer = json.loads(response.read().decode('utf-8'))
     except Exception as exc:
         return '', 'the Usenet engine did not answer (%s)' % str(exc)[:70]
     if not answer.get('ok'):
-        close_session(key)
+        close_session(token)
         return '', answer.get('reason') or 'the release could not be opened'
     name = answer.get('name') or 'video.mkv'
-    return 'http://127.0.0.1:%d/stream/%s/%s' % (active, key, quote(name)), ''
+    return 'http://127.0.0.1:%d/stream/%s/%s' % (active, token, quote(name)), ''

@@ -3674,6 +3674,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
     win = xbmcgui.Window(10000)
 
     try:
+        win.clearProperty('tmdbmovies.usenet_continue')
+    except Exception:
+        pass
+
+    try:
         _alt_prop = win.getProperty('tmdbmovies.alt_numbering') or ''
         _om, _am = _alt_prop.split('=') if '=' in _alt_prop else ('', '')
         _o = _om.split(':'); _a = _am.split(':')
@@ -3933,7 +3938,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 try:
                     from resources.lib.usenet import vfs as _usenet_vfs
                     if _usenet_vfs.enabled() and _usenet_vfs.available():
-                        _usenet_url, _usenet_why, _usenet_retry = _usenet_vfs.prepare_stream(_usenet_nzb)
+                        _usenet_url, _usenet_why, _usenet_retry = _usenet_vfs.prepare_stream(
+                            _usenet_nzb, season=season, episode=episode,
+                            alt_season=_alt_s, alt_episode=_alt_e)
                         if not _usenet_url:
                             log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
                             if not _usenet_retry:
@@ -3945,7 +3952,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if not _usenet_url:
                     try:
                         from resources.lib.usenet import server as _usenet_server
-                        _usenet_url, _usenet_why = _usenet_server.prepare_stream(_usenet_nzb)
+                        _usenet_url, _usenet_why = _usenet_server.prepare_stream(
+                            _usenet_nzb, season=season, episode=episode,
+                            alt_season=_alt_s, alt_episode=_alt_e)
                     except Exception as _usenet_error:
                         _usenet_url, _usenet_why = '', str(_usenet_error)[:90]
                 if not _usenet_url:
@@ -3953,6 +3962,21 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     continue
                 url = _usenet_url
                 log(f"[PLAYER] Usenet ready: {url}")
+                try:
+                    import json as _pack_json
+                    from resources.lib.usenet import config as _pack_config
+                    _pack_key = _pack_config.nzb_key(_usenet_nzb)
+                    _pack_record = _pack_config.release_records().get(_pack_key) or {}
+                    if _pack_record.get('pack') and _pack_record.get('per_episode'):
+                        win.setProperty('tmdbmovies.usenet_continue', _pack_json.dumps({
+                            'url': _usenet_nzb,
+                            'name': stream.get('name') or '',
+                            'indexer': stream.get('server') or '',
+                            'quality': stream.get('quality') or '',
+                            'tmdb': str(tmdb_id),
+                        }))
+                except Exception:
+                    pass
 
             if not url: continue
             if not url.startswith(('http://', 'https://', 'file://', 'tmdbm://')): continue
@@ -4742,6 +4766,119 @@ class ScanProgressDialog(xbmcgui.WindowXMLDialog):
             self.is_canceled = True
             self.close()
 
+def _continue_pack_source(tmdb_id, season, episode, streams):
+    """The next episode, straight from the pack still on disk, or None.
+
+    Autoplay next usually scrapes again; when the release that just played is a
+    pack the same NZB already holds the next episode, so it is served from the
+    cached file without a new grab.
+    """
+    try:
+        import json as _json
+        from resources.lib.usenet import config as _pack_config
+        data = _json.loads(xbmcgui.Window(10000).getProperty('tmdbmovies.usenet_continue') or '{}')
+        url = data.get('url') or ''
+        if not url or str(data.get('tmdb') or '') != str(tmdb_id):
+            return None
+        try:
+            season, episode = int(season), int(episode)
+        except (TypeError, ValueError):
+            return None
+        key = _pack_config.nzb_key(url)
+        record = _pack_config.release_records().get(key) or {}
+        per_episode = record.get('per_episode') or {}
+        pair = 'S%02dE%02d' % (season, episode)
+        if not record.get('pack') or pair not in per_episode:
+            return None
+        path = _pack_config.nzb_path(key)
+        if not path or not os.path.exists(path):
+            return None
+        for stream in streams:
+            if ((stream.get('usenet') or {}).get('nzb_url') or '') == url:
+                return None
+        size = int(per_episode.get(pair) or 0)
+        size_text = ('%.2f GB' % (size / 1073741824.0)) if size >= 1073741824 else (
+            ('%.0f MB' % (size / 1048576.0)) if size else '')
+        name = data.get('name') or 'Usenet pack'
+        return {
+            'name': name,
+            'title': name + (('\n' + size_text) if size_text else '') + ' | continuing pack',
+            'url': '',
+            'quality': data.get('quality') or '',
+            'size': size_text,
+            'provider': 'NZB',
+            'provider_id': 'usenet_nzb',
+            'server': data.get('indexer') or 'Indexer',
+            'info': {'indexer': data.get('indexer') or 'Indexer',
+                     'quality': data.get('quality') or ''},
+            'usenet': {'nzb_url': url, 'indexer': data.get('indexer') or 'Indexer',
+                       'size': size},
+            'direct': False,
+            '_continue_pack': True,
+        }
+    except Exception:
+        return None
+
+
+def _inject_known_packs(streams, cache_db, tmdb_id, season, episode):
+    """Packs listed for another episode of this season, when they hold this one.
+
+    Indexers title a pack after its first file, so "S01E01" can be the whole
+    season and the request for E02 never returns it. The source cache of the
+    episodes already listed still holds the URL, and the release record says
+    which episodes the NZB really carries.
+    """
+    try:
+        season, episode = int(season), int(episode)
+    except (TypeError, ValueError):
+        return 0
+    try:
+        if ADDON.getSetting('use_usenet_nzb') != 'true':
+            return 0
+        from resources.lib.usenet import config as _pack_config
+        records = _pack_config.release_records()
+    except Exception:
+        return 0
+    if not records:
+        return 0
+    pair = 'S%02dE%02d' % (season, episode)
+    have = set(((stream.get('usenet') or {}).get('nzb_url') or '') for stream in streams)
+    added = 0
+    for cached in cache_db.get_source_caches_like('src_%s_tv_s%de' % (tmdb_id, season)):
+        for stream in cached:
+            url = (stream.get('usenet') or {}).get('nzb_url') or ''
+            if not url or url in have:
+                continue
+            record = records.get(_pack_config.nzb_key(url)) or {}
+            if not record.get('pack') or pair not in (record.get('per_episode') or {}):
+                continue
+            streams.append(stream)
+            have.add(url)
+            added += 1
+    return added
+
+
+def _continue_pack_index(streams, tmdb_id, season, episode):
+    """Index of the pack that just played, when it also holds this episode."""
+    try:
+        import json as _json
+        from resources.lib.usenet import config as _pack_config
+        data = _json.loads(xbmcgui.Window(10000).getProperty('tmdbmovies.usenet_continue') or '{}')
+        url = data.get('url') or ''
+        if not url or str(data.get('tmdb') or '') != str(tmdb_id):
+            return -1
+        pair = 'S%02dE%02d' % (int(season), int(episode))
+        record = _pack_config.release_records().get(_pack_config.nzb_key(url)) or {}
+        if not record.get('pack') or pair not in (record.get('per_episode') or {}):
+            return -1
+        for index, stream in enumerate(streams):
+            if ((stream.get('usenet') or {}).get('nzb_url') or '') == url:
+                return index
+    except Exception:
+        pass
+    return -1
+
+
 @_scrape_locked
 def list_sources(params):
     tmdb_id = params.get('tmdb_id')
@@ -4922,10 +5059,11 @@ def list_sources(params):
         else:
             if http_master_enabled:
                 active_providers.append(pid)
-    show_aio = any(pid in debrid_ids for pid in active_providers)
+    show_aio = any(pid in debrid_ids and pid != 'usenet_nzb' for pid in active_providers)
+    show_usenet = any(pid == 'usenet_nzb' for pid in active_providers)
     show_http = any(pid not in debrid_ids and pid not in p2p_ids for pid in active_providers)
     show_p2p = any(pid in p2p_ids for pid in active_providers)
-    visible_cats = {'aio': show_aio, 'http': show_http, 'p2p': show_p2p}
+    visible_cats = {'aio': show_aio, 'usenet': show_usenet, 'http': show_http, 'p2p': show_p2p}
 
     use_cache = ADDON.getSetting('use_cache_sources') == 'true'
     try: cache_duration = int(ADDON.getSetting('cache_sources_duration'))
@@ -5043,7 +5181,8 @@ def list_sources(params):
                                 f"{lb}SD:{le} [B][COLOR {color}]{d.get('SD',0)}[/COLOR][/B] | "
                                 f"{lb}Total:{le} [B][COLOR {color}]{total}[/COLOR][/B]")
                     rows = []
-                    for label, color, key in [("AIO", "FFFF00FF", "aio"), ("HTTP", "FF7CFC00", "http"), ("P2P", "FFF4A460", "p2p")]:
+                    for label, color, key in [("AIO", "FFFF00FF", "aio"), ("Usenet", "FF00CED1", "usenet"),
+                                              ("HTTP", "FF7CFC00", "http"), ("P2P", "FFF4A460", "p2p")]:
                         if not visible_cats.get(key):
                             continue
                         d = cats.get(key)
@@ -5174,6 +5313,13 @@ def list_sources(params):
                 from resources.lib.subtitle import check_ro_subs_bg as _check_alt
                 _check_alt(imdb_id=imdb_id, tmdb_id=tmdb_id, season=int(_a2[0]), episode=int(_a2[1]))
         except: pass
+
+    _known_packs = _inject_known_packs(streams, cache_db, tmdb_id, season, episode)
+    if _continue_pack_source(tmdb_id, season, episode, streams):
+        _known_packs += 1
+    if _known_packs:
+        log('[BINGE-WATCH] Added %d pack(s) that carry S%02dE%02d'
+            % (_known_packs, int(season), int(episode)))
 
     if not streams:
         try: dialog.close()
@@ -5363,9 +5509,14 @@ def list_sources(params):
         # (altfel episodul urmator ar incepe cu o descarcare in debrid).
         # Cu prev_ctx pornesc treptele de similaritate (pack -> provider -> categorie
         # -> orice instant); fara el, calea legacy de autoplay.
-        ret, _deferred_n = _pick_binge_index(filtered_streams, prev_quality, prev_group, prev_is_sdr,
-                                             prev_debrid, prev_provider, prev_codec, prev_source,
-                                             _bctx or None)
+        _pack_index = _continue_pack_index(filtered_streams, tmdb_id, season, episode)
+        if _pack_index >= 0:
+            ret, _deferred_n = _pack_index, 0
+            log("[BINGE-WATCH] Continuing the current pack (index %d)" % ret)
+        else:
+            ret, _deferred_n = _pick_binge_index(filtered_streams, prev_quality, prev_group, prev_is_sdr,
+                                                 prev_debrid, prev_provider, prev_codec, prev_source,
+                                                 _bctx or None)
 
         if ret >= 0:
             log(f"[BINGE-WATCH] Sursa aleasa index={ret} din {len(filtered_streams)} (instant; {_deferred_n} amanate)")

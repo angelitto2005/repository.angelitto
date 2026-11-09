@@ -371,6 +371,7 @@ class Session(object):
         self._workers = None
         self.media_name = ''
         self.inner_name = ''
+        self.pack = {}
         self.last_read = time.time()
         self.prepared = False
         self.first_crc_ok = True
@@ -589,14 +590,20 @@ class Session(object):
             error = SessionError(str(exc))
             error.bad_nzb = True
             raise error
-        media, kind = nzb.pick_media(files)
+        try:
+            media, kind = nzb.select_media(
+                files, self.options.get('season'), self.options.get('episode'),
+                self.options.get('alt_season'), self.options.get('alt_episode'))
+        except nzb.NzbError as exc:
+            raise SessionError(str(exc))
+        self.pack = nzb.pack_info(files)
         if media is None:
             if kind == 'sample':
                 raise SessionError('this NZB contains only a sample or trailer')
             raise SessionError('this NZB contains no video')
         self.media_name = media.name or 'video'
         if kind == '7z':
-            return self._prepare_seven(files)
+            return self._prepare_seven(files, media)
         if kind == 'video':
             info = self._decode_first(media.segments)
             self.first_crc_ok = bool(info.get('crc_ok', True))
@@ -620,7 +627,7 @@ class Session(object):
             self._warm_tail()
             return self.info()
 
-        volumes = nzb.rar_volumes(files)
+        volumes = nzb.rar_volumes(files, media)
         if not volumes:
             raise SessionError('this NZB contains no playable file')
         self.media_name = volumes[0].name or self.media_name
@@ -721,8 +728,8 @@ class Session(object):
             raise SessionError('a RAR volume is missing from this NZB')
         return [numbers[index] for index in range(len(numbers))]
 
-    def _prepare_seven(self, files):
-        volumes = nzb.seven_volumes(files)
+    def _prepare_seven(self, files, head=None):
+        volumes = nzb.seven_volumes(files, head)
         if not volumes:
             raise SessionError('this NZB contains no playable file')
         self.media_name = volumes[0].name or self.media_name
@@ -751,7 +758,16 @@ class Session(object):
             header = nzb.seven_read_header(
                 tail, lambda offset, size: self._seven_read(volume_map, cache, 32 + offset, size))
             streams = nzb.seven_header_streams(header)
-            best = nzb.seven_stored_stream(streams)
+            names = nzb.seven_file_names(header)
+            season = self.options.get('season')
+            episode = self.options.get('episode')
+            best, inner_name, ambiguous = nzb.seven_pick_stream(
+                streams, names, season, episode,
+                self.options.get('alt_season'), self.options.get('alt_episode'))
+            if best is None and ambiguous:
+                raise SessionError(
+                    'the 7z archive holds several files and none is named S%02dE%02d'
+                    % (int(season), int(episode)))
         except nzb.Unsupported as exc:
             raise SessionError(str(exc))
         except lzma.LZMAError:
@@ -760,6 +776,8 @@ class Session(object):
             raise SessionError('not a 7z archive')
         if not best:
             raise SessionError('this 7z archive is compressed - only stored 7z sets can be streamed')
+        if inner_name:
+            self.inner_name = inner_name
         start = 32 + best['offset']
         self.length = best['length']
         probe = self._seven_read(volume_map, cache, start, _ISO_SECTOR + 8)

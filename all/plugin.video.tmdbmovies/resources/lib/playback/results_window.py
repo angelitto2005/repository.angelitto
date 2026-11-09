@@ -92,8 +92,10 @@ _SHOW_PACK_KEY = _cached_re(r'(complete|collection|boxset|anthology|\bseries\b|\
 
 def is_season_pack(name):
     name = str(name or '')
-    if _PACK_SINGLE_EP.search(name) or _PACK_RANGE.search(name):
+    if _PACK_SINGLE_EP.search(name):
         return False
+    if _PACK_RANGE.search(name):
+        return True
     if _PACK_EP_RANGE.search(name):
         return True
     if _PACK_SEASON_MARK.search(name):
@@ -438,6 +440,15 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         
         try: show_seeders = ADDON.getSetting('show_seeders') != 'false'
         except: show_seeders = True
+
+        _is_tv_meta = bool(self.meta.get('season') and self.meta.get('episode'))
+
+        _release_data = {}
+        try:
+            from resources.lib.usenet import config as _usenet_config
+            _release_data = _usenet_config.release_records()
+        except Exception:
+            _usenet_config = None
         
         # Pre-compute custom colors ONCE (evitam getSetting() in loop)
         if is_custom:
@@ -498,6 +509,15 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     _nzb_meta = _holder
                     break
             is_nzb = provider_id == 'usenet_nzb' or bool(_nzb_meta)
+
+            _release = {}
+            if is_nzb and _release_data and _usenet_config is not None:
+                _nzb_url = _nzb_meta.get('nzb_url') or ''
+                if _nzb_url:
+                    try:
+                        _release = _release_data.get(_usenet_config.nzb_key(_nzb_url)) or {}
+                    except Exception:
+                        _release = {}
             
             # --- ATRIBUIREA CULORILOR PENTRU FUNDAL ---
             if quality == '4K': 
@@ -556,6 +576,14 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
+
+            if is_nzb and _is_tv_meta:
+                if _release.get('pack') or is_season_pack(raw_name):
+                    parts.append("[COLOR FFFF8C00][B]SEASON PACK[/B][/COLOR]")
+                elif is_show_pack(raw_name):
+                    parts.append("[COLOR FFFF8C00][B]SHOW PACK[/B][/COLOR]")
+            if _release.get('played'):
+                parts.append("[COLOR lime][B]AVAILABLE[/B][/COLOR]")
 
             if is_nzb:
                 _nzb_provider = (_nzb_meta.get('provider_name')
