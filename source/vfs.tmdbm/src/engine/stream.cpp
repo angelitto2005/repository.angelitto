@@ -12,6 +12,7 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <list>
 #include <mutex>
 #include <set>
@@ -29,6 +30,8 @@ constexpr int64_t kSeekLogBytes = 16 * 1024 * 1024;
 constexpr int64_t kIndexTailBytes = 8 * 1024 * 1024;
 constexpr int64_t kHardPrefetchBytes = 96 * 1024 * 1024;
 constexpr int kWorkerMargin = 8;
+constexpr double kHedgeSeconds = 4.0;
+constexpr double kHedgeAcquireSeconds = 2.0;
 
 using ChunkPtr = std::shared_ptr<const std::vector<uint8_t>>;
 
@@ -44,6 +47,7 @@ struct Job
   int part = 0;
   int article = 0;
   int avoid = -1;
+  bool hedge = false;
 };
 
 struct QueueEntry
@@ -240,6 +244,9 @@ struct Slot
   int64_t bytes = 0;
   int attempts = 0;
   int avoid_pool = -1;
+  int fetch_pool = -1;
+  double fetch_started = 0;
+  bool hedged = false;
   std::vector<int> missing_pools;
   int64_t queue_distance = 0;
   std::list<uint64_t>::iterator lru;
@@ -302,6 +309,7 @@ public:
         ++active_workers_;
         threads_.emplace_back([self]() { self->WorkerLoop(); });
       }
+      threads_.emplace_back([self]() { self->HedgeLoop(); });
     }
     catch (const std::exception& exception)
     {
@@ -495,6 +503,57 @@ public:
   }
 
 private:
+  void HedgeLoop()
+  {
+    Trace("hedge thread start");
+    while (!closing_.load())
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      if (closing_.load() || fatal_.load())
+        break;
+      if (pools_.size() < 2)
+        continue;
+      int live = 0;
+      for (const auto& pool : pools_)
+        if (!pool->Dead())
+          ++live;
+      if (live < 2)
+        continue;
+      bool queued = false;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const double now = Now();
+        for (auto& item : slots_)
+        {
+          Slot& slot = item.second;
+          if (slot.state != Slot::State::Fetching || slot.hedged ||
+              slot.fetch_started <= 0.0)
+            continue;
+          if (now - slot.fetch_started < kHedgeSeconds)
+            continue;
+          slot.hedged = true;
+          Job job;
+          job.key = item.first;
+          job.part = PartOf(item.first);
+          job.article = ArticleOf(item.first);
+          job.avoid = slot.fetch_pool;
+          job.hedge = true;
+          hedges_.push_back(job);
+          queued = true;
+          if (hedge_logs_ < 20)
+          {
+            ++hedge_logs_;
+            Log(LogLevel::Info, "hedge %d:%d after %.1f s", job.part, job.article,
+                now - slot.fetch_started);
+          }
+        }
+      }
+      if (queued)
+        job_cv_.notify_all();
+    }
+    Trace("hedge thread exit");
+  }
+
   void WorkerLoop()
   {
     const int worker_id = next_worker_id_.fetch_add(1);
@@ -507,7 +566,11 @@ private:
         {
           std::unique_lock<std::mutex> lock(mutex_);
           job_cv_.wait(lock,
-                       [this]() { return closing_.load() || fatal_.load() || !queue_.empty(); });
+                       [this]()
+                       {
+                         return closing_.load() || fatal_.load() || !queue_.empty() ||
+                                !hedges_.empty();
+                       });
           if (closing_.load() || fatal_.load())
             break;
           jobs = TakeBatchLocked();
@@ -535,6 +598,18 @@ private:
   std::vector<Job> TakeBatchLocked()
   {
     std::vector<Job> jobs;
+    while (!hedges_.empty())
+    {
+      Job job = hedges_.front();
+      hedges_.pop_front();
+      const auto found = slots_.find(job.key);
+      if (found == slots_.end() || found->second.state != Slot::State::Fetching ||
+          !found->second.hedged)
+        continue;
+      job.hedge = true;
+      jobs.push_back(job);
+      return jobs;
+    }
     if (queue_.empty())
       return jobs;
     int avoid = -2;
@@ -568,6 +643,8 @@ private:
       job.avoid = avoid;
       slot.state = Slot::State::Fetching;
       ++slot.attempts;
+      slot.fetch_started = Now();
+      slot.fetch_pool = -1;
       if (!slot.counted)
       {
         slot.counted = true;
@@ -582,13 +659,19 @@ private:
   }
 
   bool Acquire(int avoid, std::shared_ptr<NntpConnection>& connection, Pool*& pool,
-               std::string& error)
+               std::string& error, double limit_seconds = 0.0)
   {
+    const double started = Now();
     for (;;)
     {
       if (closing_.load())
       {
         error = "closing";
+        return false;
+      }
+      if (limit_seconds > 0 && Now() - started >= limit_seconds)
+      {
+        error = "no free connection for the hedge";
         return false;
       }
       bool any = false;
@@ -658,6 +741,7 @@ private:
 
   void FetchBatch(const std::vector<Job>& jobs)
   {
+    const bool hedge = !jobs.empty() && jobs.front().hedge;
     std::vector<std::string> ids;
     ids.reserve(jobs.size());
     for (const Job& job : jobs)
@@ -666,11 +750,28 @@ private:
     std::shared_ptr<NntpConnection> connection;
     Pool* pool = nullptr;
     std::string error;
-    if (!Acquire(jobs.front().avoid, connection, pool, error))
+    if (!Acquire(jobs.front().avoid, connection, pool, error,
+                 hedge ? kHedgeAcquireSeconds : 0.0))
     {
+      if (hedge)
+      {
+        Trace("hedge %d:%d skipped: %s", jobs.front().part, jobs.front().article,
+              error.c_str());
+        return;
+      }
       for (const Job& job : jobs)
         HandleFailure(job, -1, false, error);
       return;
+    }
+    if (!hedge)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (const Job& job : jobs)
+      {
+        const auto found = slots_.find(job.key);
+        if (found != slots_.end() && found->second.state == Slot::State::Fetching)
+          found->second.fetch_pool = pool->index_;
+      }
     }
 
     const double started = Now();
@@ -687,8 +788,9 @@ private:
       pool->Narrow();
       LogWarning("fetch", exception.what());
       const int avoid = pools_.size() > 1 ? pool->index_ : -1;
-      for (const Job& job : jobs)
-        HandleFailure(job, avoid, false, exception.what());
+      if (!hedge)
+        for (const Job& job : jobs)
+          HandleFailure(job, avoid, false, exception.what());
       return;
     }
     catch (const NntpAuthError& exception)
@@ -698,8 +800,9 @@ private:
         return;
       pool->MarkDead();
       LogWarning("fetch", exception.what());
-      for (const Job& job : jobs)
-        HandleFailure(job, -1, false, exception.what());
+      if (!hedge)
+        for (const Job& job : jobs)
+          HandleFailure(job, -1, false, exception.what());
       return;
     }
     catch (const std::exception& exception)
@@ -708,12 +811,16 @@ private:
       if (closing_.load())
         return;
       const std::string reason = exception.what();
-      pool->FlushIdle();
+      if (!hedge)
+      {
+        pool->FlushIdle();
+        if (reason.find("closed") != std::string::npos)
+          std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      }
       LogWarning("fetch", pool->config.label + ": " + reason);
-      if (reason.find("closed") != std::string::npos)
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-      for (const Job& job : jobs)
-        HandleFailure(job, -1, false, reason);
+      if (!hedge)
+        for (const Job& job : jobs)
+          HandleFailure(job, -1, false, reason);
       return;
     }
     const double elapsed = Now() - started;
@@ -722,8 +829,9 @@ private:
 
     if (replies.size() != jobs.size())
     {
-      for (const Job& job : jobs)
-        HandleFailure(job, -1, false, "short reply");
+      if (!hedge)
+        for (const Job& job : jobs)
+          HandleFailure(job, -1, false, "short reply");
       return;
     }
     double decode_seconds = 0;
@@ -734,12 +842,14 @@ private:
       const NntpReply& reply = replies[index];
       if (reply.missing)
       {
-        HandleFailure(job, pool->index_, true, "article is missing");
+        if (!hedge)
+          HandleFailure(job, pool->index_, true, "article is missing");
         continue;
       }
       if (reply.body.empty())
       {
-        HandleFailure(job, -1, false, "empty article");
+        if (!hedge)
+          HandleFailure(job, -1, false, "empty article");
         continue;
       }
       const double decode_started = Now();
@@ -753,7 +863,8 @@ private:
                              " decoded, " +
                              std::to_string(decoded.part_end - decoded.begin) + " expected)"
                        : "bad yEnc";
-        HandleFailure(job, avoid, false, reason);
+        if (!hedge)
+          HandleFailure(job, avoid, false, reason);
         continue;
       }
       ++decoded_articles;
@@ -797,9 +908,11 @@ private:
   {
     auto chunk = std::make_shared<std::vector<uint8_t>>(std::move(data));
     std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = slots_.find(job.key);
+    if (found != slots_.end() && found->second.state == Slot::State::Ready)
+      return;
     if (!stored_keys_.insert(job.key).second)
       ++refetches_;
-    const auto found = slots_.find(job.key);
     if (found == slots_.end())
       return;
     Slot& slot = found->second;
@@ -1458,6 +1571,7 @@ private:
   std::list<uint64_t> lru_;
   int64_t cache_bytes_ = 0;
   std::set<QueueEntry, QueueOrder> queue_;
+  std::deque<Job> hedges_;
   std::unordered_set<uint64_t> pinned_;
   std::vector<std::unique_ptr<Pool>> pools_;
   std::vector<std::thread> threads_;
@@ -1484,6 +1598,7 @@ private:
   double wait_seconds_max_ = 0;
   int64_t evictions_ = 0;
   int64_t refetches_ = 0;
+  int hedge_logs_ = 0;
   double decode_seconds_ = 0;
   int64_t decoded_articles_ = 0;
   std::unordered_set<uint64_t> stored_keys_;

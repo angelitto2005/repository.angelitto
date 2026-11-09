@@ -1045,7 +1045,7 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
             <icon>icon.png</icon>
         </assets>
     </extension>
-</addon><addon id="vfs.tmdbm" version="0.1.7" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+</addon><addon id="vfs.tmdbm" version="0.1.8" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
     <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
@@ -1063,8 +1063,8 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
     <assets>
       <icon>icon.png</icon>
     </assets>
-  <path>vfs.tmdbm+android-armv7/vfs.tmdbm-0.1.7.zip</path></extension>
-</addon><addon id="vfs.tmdbm" version="0.1.7" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <path>vfs.tmdbm+android-armv7/vfs.tmdbm-0.1.8.zip</path></extension>
+</addon><addon id="vfs.tmdbm" version="0.1.8" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
   <requires>
     <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
     <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
@@ -1082,5 +1082,5 @@ Cod refactorizat pentru a se alinia cu actualizarile sitului
     <assets>
       <icon>icon.png</icon>
     </assets>
-  <path>vfs.tmdbm+windows-x86_64/vfs.tmdbm-0.1.7.zip</path></extension>
+  <path>vfs.tmdbm+windows-x86_64/vfs.tmdbm-0.1.8.zip</path></extension>
 </addon></addons>

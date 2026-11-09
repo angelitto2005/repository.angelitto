@@ -13,6 +13,7 @@
 
 #include <cerrno>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -463,6 +464,8 @@ void TlsDebug(void* /*context*/, int level, const char* file, int line, const ch
 
 std::string TlsError(int code)
 {
+  if (code == MBEDTLS_ERR_NET_RECV_FAILED || code == MBEDTLS_ERR_NET_SEND_FAILED)
+    return "timeout or connection lost";
   char text[256] = {};
   mbedtls_strerror(code, text, sizeof(text));
   return text[0] == '\0' ? "TLS error " + std::to_string(code) : std::string(text);
@@ -471,60 +474,66 @@ std::string TlsError(int code)
 int SendCallback(void* context, const unsigned char* data, size_t size)
 {
   const SocketHandle socket = static_cast<SocketHandle>(reinterpret_cast<uintptr_t>(context));
+  for (;;)
+  {
 #ifdef _WIN32
-  const int done =
-      send(socket, reinterpret_cast<const char*>(data), static_cast<int>(size), 0);
-  if (done == SOCKET_ERROR)
-  {
-    const int code = WSAGetLastError();
-    if (code == WSAEWOULDBLOCK || code == WSAEINTR)
-      return MBEDTLS_ERR_SSL_WANT_WRITE;
-    return MBEDTLS_ERR_NET_SEND_FAILED;
-  }
-  return done;
+    const int done =
+        send(socket, reinterpret_cast<const char*>(data), static_cast<int>(size), 0);
+    if (done == SOCKET_ERROR)
+    {
+      const int code = WSAGetLastError();
+      if (code == WSAEINTR)
+        continue;
+      return MBEDTLS_ERR_NET_SEND_FAILED;
+    }
+    return done;
 #else
-  const ssize_t done = send(socket, data, size, MSG_NOSIGNAL);
-  if (done < 0)
-  {
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-      return MBEDTLS_ERR_SSL_WANT_WRITE;
-    return MBEDTLS_ERR_NET_SEND_FAILED;
-  }
-  return static_cast<int>(done);
+    const ssize_t done = send(socket, data, size, MSG_NOSIGNAL);
+    if (done < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return MBEDTLS_ERR_NET_SEND_FAILED;
+    }
+    return static_cast<int>(done);
 #endif
+  }
 }
 
 int RecvCallback(void* context, unsigned char* data, size_t size)
 {
   const SocketHandle socket = static_cast<SocketHandle>(reinterpret_cast<uintptr_t>(context));
+  for (;;)
+  {
 #ifdef _WIN32
-  const int got = recv(socket, reinterpret_cast<char*>(data), static_cast<int>(size), 0);
-  if (got == SOCKET_ERROR)
-  {
-    const int code = WSAGetLastError();
-    if (code == WSAEWOULDBLOCK || code == WSAEINTR)
-      return MBEDTLS_ERR_SSL_WANT_READ;
-    return MBEDTLS_ERR_NET_RECV_FAILED;
-  }
-  return got;
+    const int got = recv(socket, reinterpret_cast<char*>(data), static_cast<int>(size), 0);
+    if (got == SOCKET_ERROR)
+    {
+      const int code = WSAGetLastError();
+      if (code == WSAEINTR)
+        continue;
+      return MBEDTLS_ERR_NET_RECV_FAILED;
+    }
+    return got;
 #else
-  const ssize_t got = recv(socket, data, size, 0);
-  if (got < 0)
-  {
-    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-      return MBEDTLS_ERR_SSL_WANT_READ;
-    return MBEDTLS_ERR_NET_RECV_FAILED;
-  }
-  return static_cast<int>(got);
+    const ssize_t got = recv(socket, data, size, 0);
+    if (got < 0)
+    {
+      if (errno == EINTR)
+        continue;
+      return MBEDTLS_ERR_NET_RECV_FAILED;
+    }
+    return static_cast<int>(got);
 #endif
+  }
 }
 
 class TlsTransport : public Transport
 {
 public:
   TlsTransport(SocketHandle socket, std::string host, const std::string& cacert,
-               std::string& error)
-      : socket_(socket), host_(std::move(host))
+               int timeout, std::string& error)
+      : socket_(socket), host_(std::move(host)), timeout_(timeout > 0 ? timeout : 20)
   {
     mbedtls_ssl_init(&ssl_);
     mbedtls_ssl_config_init(&conf_);
@@ -576,9 +585,17 @@ public:
     mbedtls_ssl_set_bio(&ssl_, reinterpret_cast<void*>(static_cast<uintptr_t>(socket_.load())),
                         SendCallback, RecvCallback, nullptr);
 
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(timeout_);
     result = mbedtls_ssl_handshake(&ssl_);
-    while (result == MBEDTLS_ERR_SSL_WANT_READ || result == MBEDTLS_ERR_SSL_WANT_WRITE)
+    while ((result == MBEDTLS_ERR_SSL_WANT_READ || result == MBEDTLS_ERR_SSL_WANT_WRITE) &&
+           std::chrono::steady_clock::now() < deadline)
       result = mbedtls_ssl_handshake(&ssl_);
+    if (result == MBEDTLS_ERR_SSL_WANT_READ || result == MBEDTLS_ERR_SSL_WANT_WRITE)
+    {
+      error = "TLS handshake with " + host_ + " timed out";
+      return;
+    }
     if (result != 0)
     {
       error = "TLS with " + host_ + " failed: " + TlsError(result) + VerifyInfo();
@@ -605,13 +622,22 @@ public:
       error = "TLS is not ready";
       return -1;
     }
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(timeout_);
     for (;;)
     {
       const int got = mbedtls_ssl_read(&ssl_, static_cast<unsigned char*>(data), size);
       if (got >= 0)
         return got;
       if (got == MBEDTLS_ERR_SSL_WANT_READ || got == MBEDTLS_ERR_SSL_WANT_WRITE)
+      {
+        if (std::chrono::steady_clock::now() >= deadline)
+        {
+          error = "timeout";
+          return -1;
+        }
         continue;
+      }
       if (got == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY)
         return 0;
       error = TlsError(got);
@@ -627,6 +653,8 @@ public:
       return false;
     }
     const auto* bytes = static_cast<const unsigned char*>(data);
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(timeout_);
     size_t sent = 0;
     while (sent < size)
     {
@@ -637,7 +665,14 @@ public:
         continue;
       }
       if (done == MBEDTLS_ERR_SSL_WANT_READ || done == MBEDTLS_ERR_SSL_WANT_WRITE)
+      {
+        if (std::chrono::steady_clock::now() >= deadline)
+        {
+          error = "timeout";
+          return false;
+        }
         continue;
+      }
       error = TlsError(done);
       return false;
     }
@@ -669,6 +704,7 @@ private:
 
   std::atomic<SocketHandle> socket_{kBadSocket};
   std::string host_;
+  int timeout_ = 20;
   std::shared_ptr<CaCertificates> ca_;
   mbedtls_ssl_context ssl_{};
   mbedtls_ssl_config conf_{};
@@ -693,7 +729,7 @@ std::unique_ptr<Transport> ConnectTls(const std::string& host, int port, int tim
   const SocketHandle socket = ConnectSocket(host, port, timeout, error);
   if (socket == kBadSocket)
     return nullptr;
-  auto tls = std::unique_ptr<TlsTransport>(new TlsTransport(socket, host, cacert, error));
+  auto tls = std::unique_ptr<TlsTransport>(new TlsTransport(socket, host, cacert, timeout, error));
   if (!tls->Ready())
     return nullptr;
   return std::unique_ptr<Transport>(tls.release());

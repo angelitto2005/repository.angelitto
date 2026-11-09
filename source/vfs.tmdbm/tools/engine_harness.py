@@ -49,9 +49,10 @@ class FakeNntp(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, articles, errors=None, drop_after=None):
+    def __init__(self, articles, errors=None, drop_after=None, silent=False):
         self.articles = articles
         self.errors = errors or {}
+        self.silent = silent
         self.batches = []
         self.batch_ids = []
         self.requests = []
@@ -114,6 +115,8 @@ class Handler(socketserver.BaseRequestHandler):
                     elif upper.startswith('AUTHINFO PASS'):
                         self.request.sendall(b'281 ok\r\n')
                     elif upper.startswith('BODY '):
+                        if self.server.silent:
+                            continue
                         mid = line[5:].strip().strip('<>')
                         with self.server.lock:
                             self.server.requests.append(mid)
@@ -175,11 +178,11 @@ def b64(text):
 
 def write_plan(server_ports, ids, count, pipeline=2, connections=4, workers=4,
                total=None, length=None, hole_percent=2, hole_consecutive=4, tls=False,
-               cacert=None):
+               cacert=None, timeout=5):
     total = total if total is not None else count * SEG
     length = length if length is not None else total
     lines = ['tmdbm-plan 1', 'token test', 'name fake.mkv', 'container mkv',
-             'length %d' % length, 'timeout 5', 'prefetch %d' % (256 * 1024),
+             'length %d' % length, 'timeout %d' % timeout, 'prefetch %d' % (256 * 1024),
              'cache %d' % (8 * 1024 * 1024), 'pipeline %d' % pipeline,
              'workers %d' % workers, 'holefilling 1',
              'holepercent %g' % hole_percent, 'holeconsecutive %d' % hole_consecutive]
@@ -194,7 +197,7 @@ def write_plan(server_ports, ids, count, pipeline=2, connections=4, workers=4,
     return '\n'.join(lines) + '\n'
 
 
-def run_plan(plan_text, offset=None, length=None, chunk=None):
+def run_plan(plan_text, offset=None, length=None, chunk=None, timeout_seconds=120):
     folder = tempfile.mkdtemp(prefix='tmdbusenet-')
     plan_path = os.path.join(folder, 'test.plan')
     dump_path = os.path.join(folder, 'dump.bin')
@@ -207,7 +210,7 @@ def run_plan(plan_text, offset=None, length=None, chunk=None):
         command += ['--length', str(length)]
     if chunk is not None:
         command += ['--chunk', str(chunk)]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds)
     found = b''
     if os.path.exists(dump_path):
         with open(dump_path, 'rb') as handle:
@@ -480,6 +483,56 @@ def test_benchmark():
     check('pipelining hides the round trip', times[2] < times[1] * 0.8, times)
 
 
+def test_hedge():
+    print('native, hedge to the backup provider')
+    count = 2
+    primary = FakeNntp(articles_for(count))
+    primary.delay = 8.0
+    backup = FakeNntp(articles_for(count))
+    serve(primary)
+    serve(backup)
+    try:
+        plan = write_plan([(primary.server_address[1], False, 'slow', 2),
+                           (backup.server_address[1], True, 'fast', 2)],
+                          ids_for(count), count, pipeline=1, workers=4)
+        started = time.time()
+        result, found = run_plan(plan, timeout_seconds=60)
+        elapsed = time.time() - started
+        check('hedge exit code', result.returncode == 0, result.stderr)
+        check('hedge bytes intact', found == expected_file(count),
+              'len %d vs %d' % (len(found), count * SEG))
+        asked = [mid for ids in backup.batch_ids for mid in ids]
+        check('hedge used the backup', 'a0000@fake' in asked, backup.batch_ids)
+        check('hedge beat the slow primary', elapsed < 7.0, '%.1f s' % elapsed)
+    finally:
+        for server in (primary, backup):
+            server.shutdown()
+            server.server_close()
+
+
+def test_silent_provider():
+    print('native, silent provider times out')
+    count = 2
+    server = FakeNntp(articles_for(count), silent=True)
+    serve(server)
+    try:
+        plan = write_plan([(server.server_address[1], False, 'silent', 2)],
+                          ids_for(count), count, pipeline=1, workers=2, timeout=2)
+        started = time.time()
+        result, found = run_plan(plan, timeout_seconds=60)
+        elapsed = time.time() - started
+        output = result.stdout + result.stderr
+        check('silent run finished', result.returncode == 0, result.stderr)
+        check('silent bytes zero-filled', found == b'\x00' * (count * SEG),
+              'len %d' % len(found))
+        check('silent holes counted', 'missing=2' in result.stdout, result.stdout)
+        check('silent timed out', 'timeout' in output.lower(), output[-400:])
+        check('silent bounded time', elapsed < 30, '%.1f s' % elapsed)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def main():
     if not os.path.exists(EXE):
         raise SystemExit('build the project first: %s is missing' % EXE)
@@ -489,6 +542,8 @@ def main():
     test_seek()
     test_missing()
     test_backup()
+    test_hedge()
+    test_silent_provider()
     test_pipeline_one()
     test_tls()
     test_tls_many()
