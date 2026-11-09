@@ -1,5 +1,9 @@
+1.0.14
+- Exclude usenet/NZB files and rebuildable addon_data caches from backups
+- Keep settings, tokens, watched state and library files
+
 1.0.13
-- Changed language to English
+- Change language to English
 
 1.0.12
 - fix missing temp folder error

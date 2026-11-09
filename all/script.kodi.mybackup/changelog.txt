@@ -1,3 +1,7 @@
+1.0.13
+- Excluded usenet/NZB files and rebuildable addon_data caches from backups
+- Kept settings, tokens, watched state and library files
+
 1.0.12
 - Changed language to English
 

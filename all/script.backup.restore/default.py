@@ -60,8 +60,51 @@ GLOBAL_SKIP_DIRS = {
 
 GLOBAL_SKIP_EXT = {
     '.pyc',
+    '.log',
+    '.nzb',
     '.mp4', '.mkv', '.avi', '.ts', '.m2ts',  # Automatically exclude video files
-    '.bak'  # <-- Adaugă această linie
+    '.bak'
+}
+
+# Applied only inside userdata/addon_data. A folder called "cache" or
+# "bin" under addons/ is real addon code, so these are not global.
+ADDON_DATA_SKIP_DIRS = {
+    'usenet',
+    'usenet-vfs',
+    'playlist_search',
+    'http_cache',
+    'art-cache',
+    'cache',
+    'extract_cache',
+    'channel_avatars',
+    'bin',
+    'server_cache',
+    'installation-backups',
+}
+
+# Rebuildable metadata/API caches. Never settings, watched or lists.
+ADDON_DATA_SKIP_FILES = {
+    'metacache.db', 'maincache.db', 'mdblcache.db', 'traktcache.db',
+    'fenomcache.db', 'flicklcache.db', 'punchplaycache.db',
+    'simklcache.db', 'mdblistcache.db', 'debridcache.db',
+    'metadata.db', 'fanarttv.db', 'providers.db', 'artwork.db',
+    'menu.db', 'mdbsync.db', 'simklsync.db', 'traktsync.db',
+    'source_ranker.db', 'spotnet.db', 'meta.5.db',
+    'data_cache.sqlite', 'requests_cache.sqlite',
+    'detonate_cache.json', 'tvshow_data_cache.json',
+}
+
+# A plain cache.db is user data in some addons (e.g. romanianpack),
+# so it is skipped only for the addons where it really is a cache.
+ADDON_DATA_SKIP_CACHE_DB = {
+    'plugin.video.blacklodge',
+    'plugin.video.luc_kodi',
+    'plugin.video.meganexus',
+    'plugin.video.umbrella',
+    'plugin.video.thraxtv',
+    'script.module.magneto',
+    'script.diamondinfo',
+    'plugin.program.autocompletion',
 }
 
 
@@ -299,6 +342,29 @@ def should_skip(filepath):
     return False
 
 
+def should_skip_addon_data_dir(name):
+    n = name.lower()
+    return n in ADDON_DATA_SKIP_DIRS or n.startswith('database_')
+
+
+def should_skip_addon_data_file(filepath, base_dir, name):
+    n = name.lower()
+    if '.cache-' in n:
+        return True
+    addon_id = os.path.relpath(filepath, base_dir).replace(
+        '\\', '/').split('/')[0].lower()
+    base = n
+    for suffix in ('-shm', '-wal', '-journal'):
+        if base.endswith(suffix):
+            base = base[:-len(suffix)]
+            break
+    if base in ADDON_DATA_SKIP_FILES:
+        return True
+    if base == 'cache.db':
+        return addon_id in ADDON_DATA_SKIP_CACHE_DB
+    return False
+
+
 def collect_files():
     xml_files, user_dirs, db_prefixes = get_backup_config()
     files = []
@@ -331,11 +397,13 @@ def collect_files():
             continue
         for root, dirs, fnames in os.walk(sd):
             dirs[:] = [d for d in dirs
-                       if d not in GLOBAL_SKIP_DIRS]
+                       if d not in GLOBAL_SKIP_DIRS
+                       and not should_skip_addon_data_dir(d)]
             for f in fnames:
-                if should_skip(f):
-                    continue
                 fp = os.path.join(root, f)
+                if should_skip(f) or should_skip_addon_data_file(
+                        fp, sd, f):
+                    continue
                 rel = os.path.relpath(
                     fp, USERDATA_DIR).replace('\\', '/')
                 files.append((fp, 'userdata/{0}'.format(rel)))
@@ -1121,7 +1189,8 @@ def show_info():
         '{clean}\n\n'
 
         '[COLOR gray][B]=== IGNORED (JUNK SKIP) ===[/B][/COLOR]\n'
-        '[COLOR silver]__pycache__, .git, .svn, *.pyc, blur_v3, crop_v2, temp, packages[/COLOR]'
+        '[COLOR silver]__pycache__, .git, .svn, *.pyc, *.log, *.nzb, video files, .bak[/COLOR]\n'
+        '[COLOR silver]addon_data: usenet, usenet-vfs, cache, bin, playlist_search, database_*, *cache*.db[/COLOR]'
     ).format(
         kodi=KODI_HOME, bkp=bp_show,
         xml=xml_txt, dirs=dir_txt, db=db_txt,

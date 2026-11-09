@@ -162,16 +162,44 @@ def gather_files_for_backup():
 
     # EXCLUDED FOLDERS AND EXTENSIONS
     skip_folders = ['__pycache__', '.git', '.svn', 'blur_v3', 'crop_v2', 'Downloads', 'Movies Downloads', 'TV Show Downloads']
-    skip_exts = ('.pyc', '.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.bak')
+    skip_exts = ('.pyc', '.log', '.nzb', '.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.bak')
+
+    # Only under userdata/: "cache"/"bin" inside addons/ are real addon files.
+    addon_data_skip_dirs = {'usenet', 'usenet-vfs', 'playlist_search', 'http_cache', 'art-cache', 'cache', 'extract_cache', 'channel_avatars', 'bin', 'server_cache', 'installation-backups'}
+    addon_data_skip_files = {
+        'metacache.db', 'maincache.db', 'mdblcache.db', 'traktcache.db',
+        'fenomcache.db', 'flicklcache.db', 'punchplaycache.db',
+        'simklcache.db', 'mdblistcache.db', 'debridcache.db',
+        'metadata.db', 'fanarttv.db', 'providers.db', 'artwork.db',
+        'menu.db', 'mdbsync.db', 'simklsync.db', 'traktsync.db',
+        'source_ranker.db', 'spotnet.db', 'meta.5.db',
+        'data_cache.sqlite', 'requests_cache.sqlite',
+        'detonate_cache.json', 'tvshow_data_cache.json',
+    }
+    # A plain cache.db is user data in some addons (e.g. romanianpack).
+    addon_data_skip_cache_db = {'plugin.video.blacklodge', 'plugin.video.luc_kodi', 'plugin.video.meganexus', 'plugin.video.umbrella', 'plugin.video.thraxtv', 'script.module.magneto', 'script.diamondinfo', 'plugin.program.autocompletion'}
 
     for d in dirs_to_add:
         full_path = os.path.join(KODI_HOME, os.path.normpath(d))
         if os.path.exists(full_path):
             for root, dirs, files in os.walk(full_path):
-                for junk in skip_folders:
-                    if junk in dirs: dirs.remove(junk)
+                dirs[:] = [x for x in dirs
+                           if x not in skip_folders
+                           and x.lower() not in addon_data_skip_dirs
+                           and not x.lower().startswith('database_')]
                 for file in files:
                     if file.endswith(skip_exts): continue
+                    fl = file.lower()
+                    if '.cache-' in fl: continue
+                    base = fl
+                    for suffix in ('-shm', '-wal', '-journal'):
+                        if base.endswith(suffix):
+                            base = base[:-len(suffix)]
+                            break
+                    if base in addon_data_skip_files: continue
+                    if base == 'cache.db':
+                        top = os.path.relpath(os.path.join(root, file), full_path).replace('\\', '/').split('/')[0].lower()
+                        if top in addon_data_skip_cache_db: continue
                     fp = os.path.join(root, file)
                     rel = os.path.relpath(fp, KODI_HOME)
                     files_to_zip.append((fp, rel))
