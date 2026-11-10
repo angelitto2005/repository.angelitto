@@ -216,9 +216,9 @@
         <setting label="[B][COLOR FFFFEA00]General[/COLOR][/B]" type="lsep" />
         <setting id="use_usenet_nzb" type="bool" label="[COLOR FFCCCCFF][B]Enable [/B][/COLOR][COLOR FF00CED1][B]Usenet (NZB)[/B][/COLOR][COLOR FFCCCCFF]   your own indexer and NNTP provider, no debrid needed[/COLOR]" default="false"/>
         <setting id="usenet_nzb.episodes_only" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Single episodes only[/B]   (skips season and show packs)[/COLOR]" default="true"/>
-        <setting id="usenet_nzb.pack_pages" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Season pack search pages[/B]   per quality category   (1 = minimum API use, 2-3 double the searches but find the oldest packs)[/COLOR]" default="1" range="1,1,3" option="int" visible="eq(-1,false)"/>
+        <setting id="usenet_nzb.pack_pages" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Season pack search pages[/B]   (1 = minimum API use; 2-3 only read deeper while no 1080p or 720p pack was found)[/COLOR]" default="1" range="1,1,3" option="int" visible="eq(-1,false)"/>
         <setting id="usenet_nzb.min_size_mb" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Minimum release size[/B]  (MB)[/COLOR]" default="50" range="0,10,500" option="int"/>
-        <setting id="usenet_nzb.max_results" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Maximum results per indexer[/B][/COLOR]" default="30" range="5,5,60" option="int"/>
+        <setting id="usenet_nzb.max_results" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Maximum results per indexer[/B][/COLOR]" default="30" range="5,5,100" option="int"/>
         <setting id="usenet_nzb.age_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the NZB age[/B] in the source list[/COLOR]" default="true"/>
         <setting id="usenet_nzb.grabs_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the grab count[/B] in the source list   (how many times the NZB was downloaded)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.allow_iso" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Allow full-disc ISO[/B]   (slow over Usenet: the ISO is scanned before playback)[/COLOR]" default="false"/>

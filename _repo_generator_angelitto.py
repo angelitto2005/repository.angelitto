@@ -542,9 +542,14 @@ class Generator:
         if changed:
             addons_root[:] = sorted(addons_root, key=lambda addon: addon.get('id'))
             try:
-                addons_xml.write(
-                    addons_xml_path, encoding="utf-8", xml_declaration=True
+                # Kodi checks the md5 over the raw file: a text-mode write on
+                # Windows would turn every \n into \r\n and break the checksum.
+                data = ElementTree.tostring(
+                    addons_root, encoding="utf-8", xml_declaration=True
                 )
+                data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+                with open(addons_xml_path, "wb") as f:
+                    f.write(data)
                 return changed
             except Exception as e:
                 print(
@@ -555,10 +560,10 @@ class Generator:
 
     def _generate_md5_file(self, addons_xml_path, md5_path):
         try:
-            m = hashlib.md5(
-                open(addons_xml_path, "r", encoding="utf-8").read().encode("utf-8")
-            ).hexdigest()
-            self._save_file(m, file=md5_path)
+            with open(addons_xml_path, "rb") as f:
+                m = hashlib.md5(f.read()).hexdigest()
+            with open(md5_path, "wb") as f:
+                f.write(m.encode("ascii"))
             return True
         except Exception as e:
             print(

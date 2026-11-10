@@ -211,13 +211,17 @@ def cache_object(function, string, url, json_output=True, expiration=48):
     
 
 # --- FAST CACHE (RAM) ---
-def get_fast_cache(key, fresh_only=False):
+def get_fast_cache(key, fresh_only=False, version=None):
     """Returns data from RAM. Language + page_limit + select action + auto_play are part of the key to react instantly to setting changes.
 
     fresh_only=True: NU intoarce copia din fereastra stale-while-revalidate.
     Folosit de constructorul de liste (_list_build_wait), unde datele vechi nu
     pot insemna "alt proces a terminat build-ul" - exact confuzia care lasa
     una din variantele Up Next nereconstruita dupa un marcaj.
+
+    version: pentru listele care depind de un snapshot (trending), cache-ul
+    e valabil doar cat timp snapshot-ul are acelasi stamp. Altfel pagina 2
+    ar putea veni din alt ranking decat pagina 1.
     """
     try:
         import xbmcgui
@@ -234,6 +238,8 @@ def get_fast_cache(key, fresh_only=False):
 
         if data:
             cache_obj = json.loads(data)
+            if version is not None and cache_obj.get('data_ver') != version:
+                return None
             if cache_obj.get('ver') == ver:
                 return cache_obj.get('items')
             if fresh_only:
@@ -254,7 +260,7 @@ def get_fast_cache(key, fresh_only=False):
     except: pass
     return None
 
-def set_fast_cache(key, items):
+def set_fast_cache(key, items, version=None):
     """Saves data in RAM."""
     try:
         import xbmcgui
@@ -268,6 +274,8 @@ def set_fast_cache(key, items):
         window = xbmcgui.Window(10000)
         ver = window.getProperty("tmdbmovies_fast_cache_version")
         cache_obj = {'ver': ver, 'items': items}
+        if version is not None:
+            cache_obj['data_ver'] = version
         window.setProperty(f"tmdbmovies_fast_{actual_key}", json.dumps(cache_obj))
     except: pass
 

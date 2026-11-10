@@ -319,24 +319,34 @@ def _episode_query(indexer, common, digits, season, episode, title):
                                       ep=int(episode or 0), q=title.strip())), indexer['name'])
 
 
-PACK_CATEGORIES = ('5045', '5040')
+def _pack_tier(title):
+    low = (title or '').lower()
+    if re.search(r'2160p|\b4k\b|\buhd\b', low):
+        return '4k'
+    if '1080p' in low:
+        return '1080p'
+    if '720p' in low:
+        return '720p'
+    return ''
 
 
 def _season_packs(indexer, digits, season, title, use_cache, logger):
-    """Season packs, cached per season: old packs sit past the first 100 rows,
-    so each quality category is paged instead of asking the whole TV tree."""
-    key = 'series|%s|%s|packs3|%s|%s' % (digits, season,
-                                        indexer.get('url', ''), indexer.get('name', ''))
+    """Season packs, cached per season: the whole TV tree is asked once, and a
+    100-row page is mostly episodes, so another page is read only while the usual
+    1080p/720p pack tiers are still missing."""
+    pages = config.pack_pages()
+    key = 'series|%s|%s|packs5p%d|%s|%s' % (digits, season, pages,
+                                          indexer.get('url', ''), indexer.get('name', ''))
     if use_cache:
         hit, rows = _cache_get(key)
         if hit:
             if logger:
                 logger('[USENET] %s: %d season pack(s) from cache' % (indexer['name'], len(rows)))
             return rows
-    packs, known, answered = [], set(), False
+    packs, known, tiers, answered = [], set(), set(), False
 
-    def ask(category, offset, by_title=False):
-        params = {'extended': 1, 'limit': 100, 'cat': category,
+    def ask(offset, by_title=False):
+        params = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series'],
                   't': 'tvsearch', 'season': int(season)}
         if offset:
             params['offset'] = offset
@@ -347,7 +357,6 @@ def _season_packs(indexer, digits, season, title, use_cache, logger):
         return results(_get(indexer, params), indexer['name'])
 
     def take(found):
-        added = 0
         for row in found:
             link = row.get('nzb_url') or ''
             name = row.get('title')
@@ -355,40 +364,34 @@ def _season_packs(indexer, digits, season, title, use_cache, logger):
                     and _pack_season_ok(name, season)):
                 known.add(link)
                 packs.append(row)
-                added += 1
-        return added
+                tier = _pack_tier(name)
+                if tier:
+                    tiers.add(tier)
 
-    rows_seen = 0
-    for category in PACK_CATEGORIES:
-        offset = 0
-        by_title = not digits
-        for _page in range(config.pack_pages()):
-            try:
-                found = ask(category, offset, by_title=by_title)
-                if not found and offset == 0 and not by_title and title:
-                    # Some indexers ignore the IMDb id for a season ask.
-                    by_title = True
-                    found = ask(category, 0, by_title=True)
-            except Exception:
-                break
-            answered = True
-            rows_seen += len(found)
-            added = take(found)
-            if len(found) < 100 or not added:
-                break
-            offset += 100
-    if not packs and rows_seen == 0:
-        # Sub-categories can answer nothing while the whole TV tree has the pack
-        # (one indexer does exactly that), so the generic category is asked once.
-        for by_title in ((False, True) if digits else (True,)):
-            try:
-                found = ask('5000', 0, by_title=by_title)
-            except Exception:
-                continue
-            answered = True
-            take(found)
-            if packs:
-                break
+    offset = 0
+    by_title = not digits
+    previous_first = ''
+    for _page in range(pages):
+        try:
+            found = ask(offset, by_title=by_title)
+            if not found and offset == 0 and not by_title and title:
+                # Some indexers ignore the IMDb id for a season ask.
+                by_title = True
+                found = ask(0, by_title=True)
+        except Exception:
+            break
+        answered = True
+        first_link = (found[0].get('nzb_url') or '') if found else ''
+        if first_link and first_link == previous_first:
+            # The indexer ignored offset and repeated the same page.
+            break
+        previous_first = first_link
+        take(found)
+        if '1080p' in tiers and '720p' in tiers:
+            break
+        if len(found) < 100:
+            break
+        offset += 100
     if answered and use_cache:
         _cache_put(key, packs)
     return packs
@@ -499,8 +502,8 @@ def _title_matches(candidate, query, year, is_movie, alt_query=''):
     return True
 
 
-def _filter_rows(rows, season, episode, min_size, episodes_only, per_indexer_limit,
-                 seen_links, seen_titles, per_indexer, why,
+def _filter_rows(rows, season, episode, min_size, episodes_only,
+                 seen_links, seen_titles, why,
                  query_title='', query_year=None, query_alt=''):
     """The releases that would reach the source list, in the order they arrived."""
     kept = []
@@ -538,13 +541,77 @@ def _filter_rows(rows, season, episode, min_size, episodes_only, per_indexer_lim
             _why(why, 'same title twice')
             continue
         seen_titles.add(title_key)
-        indexer_name = row.get('indexer') or 'Indexer'
-        if per_indexer_limit and per_indexer.get(indexer_name, 0) >= per_indexer_limit:
-            _why(why, 'over the per-indexer limit')
-            continue
-        per_indexer[indexer_name] = per_indexer.get(indexer_name, 0) + 1
         kept.append(row)
     return kept
+
+
+_ROW_4K = re.compile(r'2160p|\b4k\b|\buhd\b', re.I)
+_ROW_BLURAY = re.compile(r'\b(bluray|blu-ray|bdrip|bd25|bd50|remux)\b', re.I)
+_ROW_WEB = re.compile(r'\b(web-dl|webdl)\b', re.I)
+_ROW_LOW = re.compile(r'\b(webrip|hdtv|cam|ts|telesync|hdcam)\b', re.I)
+_ROW_HEVC = re.compile(r'\b(hevc|h\.?265|x265|av1)\b', re.I)
+_ROW_AUDIO = re.compile(r'\b(atmos|truehd|dts[- ]?hd|dts[- ]?x)\b', re.I)
+
+
+def _row_score(row, season, episode):
+    """How good a release is, best first: resolution, exact episode, source, codec/audio, grabs, age.
+
+    Used only to choose which N rows survive the per-indexer cap. The source
+    list is sorted again for the UI, so this order never reaches the user.
+    """
+    title = str(row.get('title') or '')
+    low = title.lower()
+    if _ROW_4K.search(low):
+        resolution = 4
+    elif '1080p' in low:
+        resolution = 3
+    elif '720p' in low:
+        resolution = 2
+    else:
+        resolution = 1
+    if 'remux' in low:
+        source = 5
+    elif _ROW_BLURAY.search(low):
+        source = 4
+    elif _ROW_WEB.search(low):
+        source = 3
+    elif _ROW_LOW.search(low):
+        source = 2
+    else:
+        source = 1
+    bonus = (1 if _ROW_HEVC.search(low) else 0) + (1 if _ROW_AUDIO.search(low) else 0)
+    exact = 1
+    if season is not None:
+        try:
+            exact = 1 if (int(season), int(episode or 0)) in nzb.episode_pairs(title) else 0
+        except Exception:
+            exact = 0
+    try:
+        grabs = int(row.get('grabs') or 0)
+    except (TypeError, ValueError):
+        grabs = 0
+    try:
+        posted = int(row.get('posted') or 0)
+    except (TypeError, ValueError):
+        posted = 0
+    return (resolution, exact, source, bonus, grabs, posted)
+
+
+def _cap_per_indexer(rows, limit, season, episode, why):
+    """Keep the best N rows of each indexer, in the order they still had."""
+    if not limit or len(rows) <= limit:
+        return rows
+    groups = {}
+    for row in rows:
+        groups.setdefault(row.get('indexer') or 'Indexer', []).append(row)
+    keep = set()
+    for group in groups.values():
+        group.sort(key=lambda row: _row_score(row, season, episode), reverse=True)
+        for row in group[:limit]:
+            keep.add(id(row))
+        for _row in group[limit:]:
+            _why(why, 'over the per-indexer limit')
+    return [row for row in rows if id(row) in keep]
 
 
 def _cache_key(kind, imdb, season, episode, indexer):
@@ -583,7 +650,7 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
     """(cache_key, rows, from_cache, note) for one indexer."""
     key = _cache_key(kind, imdb, season, episode, indexer)
     if season is not None:
-        key += '|packs3' if packs else '|ep2'
+        key += ('|packs5p%d' % config.pack_pages()) if packs else '|ep2'
     if use_cache:
         hit, rows = _cache_get(key)
         if hit:
@@ -627,15 +694,15 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
     notes = []
     rows = []
-    seen_links, seen_titles, per_indexer, why = set(), set(), {}, {}
+    seen_links, seen_titles, why = set(), set(), {}
     raw_count = 0
 
     def collect(found):
         nonlocal raw_count
         raw_count += len(found)
         kept = _filter_rows(found, season, episode, min_size, episodes_only,
-                            per_indexer_limit, seen_links, seen_titles,
-                            per_indexer, why, query_title=title, query_year=year,
+                            seen_links, seen_titles, why,
+                            query_title=title, query_year=year,
                             query_alt=alt_title)
         rows.extend(kept)
         return len(kept)
@@ -678,6 +745,8 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                     logger('[USENET] sequential: enough after %s, %d indexer(s) not asked'
                            % (entry['name'], len(entries) - position))
                 break
+
+    rows = _cap_per_indexer(rows, per_indexer_limit, season, episode, why)
 
     if logger:
         for note in notes:

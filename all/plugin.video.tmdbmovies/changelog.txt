@@ -1,3 +1,11 @@
+1.1.344
+- Trending lists reopen instantly while their snapshot is valid: the rendered list is cached per snapshot instead of being rebuilt from TMDB on every visit.
+- The trending snapshot refreshes once an hour, and the startup warm-up no longer fetches trending pages that were never reused.
+- Usenet series search asks one TV category on every indexer, so packs and episodes no longer depend on altHUB-only subcategories and the same search works on every provider.
+- Season packs are paged deeper only while a 1080p or 720p pack is still missing; a full page of episodes no longer ends the search.
+- The per-indexer limit keeps the best releases by quality and exact episode instead of the first ones, and can be raised to 100 so a good release on row 61 is not thrown away.
+- Season packs are cached per season and page depth, so changing "Season pack search pages" takes effect immediately and the next episode only asks for its own release.
+
 1.1.342
 - Series searches now include Usenet season packs: each quality category is paged, so old and large packs show up too.
 - Playing a pack serves the requested SxxExx file from inside the archive, using the real file names stored in the 7z header.

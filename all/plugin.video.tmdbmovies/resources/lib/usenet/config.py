@@ -220,11 +220,11 @@ def min_size_bytes():
 
 
 def max_results():
-    return number('usenet_nzb.max_results', 30, 5, 60)
+    return number('usenet_nzb.max_results', 30, 5, 100)
 
 
 def pack_pages():
-    """How many pages of each quality category are read for season packs."""
+    """How many pages a season-pack search may read while 1080p/720p packs are missing."""
     return number('usenet_nzb.pack_pages', 1, 1, 3)
 
 

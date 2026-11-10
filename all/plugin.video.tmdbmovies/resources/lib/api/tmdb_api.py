@@ -1072,7 +1072,7 @@ def get_tmdb_tv_standard(action, page_no):
 # =============================================================================
 _TRENDING_MOVIE_ACTIONS = {'tmdb_movies_trending_day', 'tmdb_movies_trending_week'}
 _TRENDING_TV_ACTIONS = {'tmdb_tv_trending_day', 'tmdb_tv_trending_week'}
-_TRENDING_SNAPSHOT_HOURS = 0.25
+_TRENDING_SNAPSHOT_HOURS = 1
 _TRENDING_MAX_FETCH = 10
 
 
@@ -1157,6 +1157,7 @@ def build_movie_list(params):
     from resources.lib.core.config import PAGE_LIMIT
     is_trending = action in _TRENDING_MOVIE_ACTIONS
     snap = _trending_snapshot(action, page, 'movie', PAGE_LIMIT) if is_trending else None
+    snap_ver = int((snap or {}).get('ts') or 0) if is_trending else None
     ITEMS_PER_API_PAGE = 20
     api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
     start_api_page = (page - 1) * api_pages_needed + 1
@@ -1165,11 +1166,10 @@ def build_movie_list(params):
 
 # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"list_movie_{action}_{page}"
-    if not is_trending:
-        cached_data = get_fast_cache(cache_key)
-        if cached_data:
-            render_from_fast_cache(cached_data, view_type='movies')
-            return
+    cached_data = get_fast_cache(cache_key, version=snap_ver)
+    if cached_data:
+        render_from_fast_cache(cached_data, view_type='movies')
+        return
     # ---------------------------------
 
     # Fetch multiple API pages daca PAGE_LIMIT > 20
@@ -1329,10 +1329,10 @@ def build_movie_list(params):
 
     
     # Save to RAM
-    if not is_trending:
-        set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
-                                    'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
-                                    'resume_time': i['resume_time'], 'total_time': i['total_time']} for i in cache_list])
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                'resume_time': i['resume_time'], 'total_time': i['total_time']} for i in cache_list],
+                   version=snap_ver)
 
 
 def build_tvshow_list(params):
@@ -1356,17 +1356,17 @@ def build_tvshow_list(params):
     from resources.lib.core.config import PAGE_LIMIT
     is_trending = action in _TRENDING_TV_ACTIONS
     snap = _trending_snapshot(action, page, 'tv', PAGE_LIMIT) if is_trending else None
+    snap_ver = int((snap or {}).get('ts') or 0) if is_trending else None
     ITEMS_PER_API_PAGE = 20
     api_pages_needed = max(1, (PAGE_LIMIT + ITEMS_PER_API_PAGE - 1) // ITEMS_PER_API_PAGE)
     start_api_page = (page - 1) * api_pages_needed + 1
 
 # --- FAST CACHE CHECK (RAM) ---
     cache_key = f"list_tv_{action}_{page}"
-    if not is_trending:
-        cached_data = get_fast_cache(cache_key)
-        if cached_data:
-            render_from_fast_cache(cached_data, view_type='tvshows')
-            return
+    cached_data = get_fast_cache(cache_key, version=snap_ver)
+    if cached_data:
+        render_from_fast_cache(cached_data, view_type='tvshows')
+        return
     # ---------------------------------
 
     # Fetch multiple API pages daca PAGE_LIMIT > 20
@@ -1464,10 +1464,10 @@ def build_tvshow_list(params):
 
     
     # Save to RAM
-    if not is_trending:
-        set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
-                                    'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
-                                    'resume_time': 0, 'total_time': 0} for i in cache_list])
+    set_fast_cache(cache_key, [{'label': i['li'].getLabel(), 'url': i['url'], 'is_folder': i['is_folder'], 
+                                'art': i['art'], 'info': i['info'], 'cm': i['cm_items'], 
+                                'resume_time': 0, 'total_time': 0} for i in cache_list],
+                   version=snap_ver)
 
 # Meniul contextual se construieste pentru FIECARE rand (la 160 de seriale sunt
 # 10 setari x 160 = 1600 de citiri). getSetting() valideaza cache-ul cu
@@ -9531,7 +9531,6 @@ def run_background_warmup_sync(content_type):
     try:
         if content_type == 'movie':
             actions = [
-                'tmdb_movies_trending_day', 'tmdb_movies_trending_week', 
                 'tmdb_movies_popular', 'tmdb_movies_top_rated',
                 'tmdb_movies_premieres', 'tmdb_movies_latest_releases',
                 'tmdb_movies_digital',
@@ -9549,7 +9548,6 @@ def run_background_warmup_sync(content_type):
             delay = 0.3
         else:
             actions = [
-                'tmdb_tv_trending_day', 'tmdb_tv_trending_week', 
                 'tmdb_tv_popular', 'tmdb_tv_top_rated',
                 'tmdb_tv_premieres', 'tmdb_tv_airing_today', 
                 'tmdb_tv_on_the_air', 'tmdb_tv_upcoming',
