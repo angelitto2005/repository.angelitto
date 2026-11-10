@@ -5671,6 +5671,8 @@ def get_smart_season_details(tmdb_id, season_num, db_only=False):
                 if res_en.status_code == 404:
                     # sezon inexistent pe TMDb -> cache negativ (nu mai repetam)
                     _season_404_mark(tmdb_id, season_num)
+                    log(f"[SEASON] tv/{tmdb_id}/season/{season_num}: HTTP 404 (season not on TMDb)", xbmc.LOGDEBUG)
+                    return None
                 log(f"[SEASON] tv/{tmdb_id}/season/{season_num}: HTTP {res_en.status_code}", xbmc.LOGWARNING)
                 return None
             data = res_en.json()

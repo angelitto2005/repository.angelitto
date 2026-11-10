@@ -2691,6 +2691,7 @@ def start_playback_monitor(player_instance, dialog=None):
         # ============================================================
         # PLAYERUL S-A OPRIT
         # ============================================================
+        _stopped_at = time.time()
         watched_duration = 0
         if player_instance.playback_start_time > 0:
             watched_duration = time.time() - player_instance.playback_start_time
@@ -3109,8 +3110,8 @@ def start_playback_monitor(player_instance, dialog=None):
             # modificata concurent). Refreshul ramine doar in safety pass-ul de
             # mai jos, dupa ce fereastra s-a asezat si scrierile s-au terminat.
             log("[PLAYER-MONITOR] Container refresh amanat (fereastra media se initializeaza) - preia safety pass")
-            # PLASA DE SIGURANTA (5s): singurul refresh al listei dupa stop.
-            # La 5s toate scrierile s-au terminat (daemoni Up Next, widget
+            # PLASA DE SIGURANTA (3s): singurul refresh al listei dupa stop.
+            # La 3s toate scrierile s-au terminat (daemoni Up Next, widget
             # UpdateLibrary), deci re-citirea prinde datele finale. Garzi:
             # sintem in ACEEASI lista a addonului (Container.FolderPath
             # neschimbat - nu lovim ce navigheaza userul intre timp),
@@ -3127,8 +3128,14 @@ def start_playback_monitor(player_instance, dialog=None):
 
             def _safety_refresh():
                 try:
+                    # 3s budget counted from the stop, not from here: on Android
+                    # the display-mode switch already keeps fullscreenvideo
+                    # active for a while, and adding a fresh wait on top made the
+                    # return to the list feel frozen. Keep at least 1s of settle.
+                    _elapsed = max(0.0, time.time() - _stopped_at)
+                    _wait_budget = max(1.0, 3.0 - _elapsed)
                     _waited = 0.0
-                    while _waited < 5.0:
+                    while _waited < _wait_budget:
                         if kodi_abort_requested():
                             return
                         _nap(250)
@@ -3302,7 +3309,8 @@ def start_playback_monitor(player_instance, dialog=None):
                     # cealalta - exact confuzia de varianta care a produs 19:34.
                     _vv, _vv_src = _visible_variant()
                     log(f"[PLAYER-MONITOR] Safety pass: varianta vizibila "
-                        f"'{_vv or '?'}' ({_vv_src}), tinta={_stale_target:.2f}")
+                        f"'{_vv or '?'}' ({_vv_src}), tinta={_stale_target:.2f}, "
+                        f"asteptare={_wait_budget:.1f}s dupa {_elapsed:.1f}s de la stop")
 
                     # Nimic schimbat la stop (nici marcaj, nici punct de resume):
                     # lista arata identic, deci Container.Refresh ar fi gratuit.
@@ -3311,7 +3319,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     # crash-urilor din CDirectoryCache. Pe 'resume' NU sarim -
                     # cercul de resume se deseneaza la randare, din baza locala.
                     # `_stale_target` e citit dupa ce marcajul si-a deschis
-                    # fereastra (pass-ul porneste la +5s), deci nu ratam un marcaj.
+                    # fereastra (pass-ul porneste la +3s), deci nu ratam un marcaj.
                     if _stale_target <= 0:
                         try:
                             _chg = (xbmcgui.Window(10000).getProperty(

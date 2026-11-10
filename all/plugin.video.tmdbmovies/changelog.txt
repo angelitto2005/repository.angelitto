@@ -1,3 +1,10 @@
+1.1.346
+- The post-stop refresh now waits at most three seconds from the stop instead of five, so returning to the list is faster on Android while the resume circle still updates.
+
+1.1.345
+- Stopping playback returns to the list faster: the post-stop refresh budget counts from the stop, so the Android display switch is no longer followed by another five-second wait.
+- A season that does not exist on TMDb no longer writes a warning during the sync; it is cached as missing and skipped.
+
 1.1.344
 - Trending lists reopen instantly while their snapshot is valid: the rendered list is cached per snapshot instead of being rebuilt from TMDB on every visit.
 - The trending snapshot refreshes once an hour, and the startup warm-up no longer fetches trending pages that were never reused.
