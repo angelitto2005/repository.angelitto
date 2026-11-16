@@ -1078,7 +1078,7 @@ _TRENDING_MAX_FETCH = 10
 
 def _trending_snapshot(action, page, content_type, page_limit):
     """Lista unica pentru trending: dedupe + filtru junk + paginare locala."""
-    key = f"trend_snapshot_{content_type}_{action}_{LANG}"
+    key = f"trend_snapshot_v2_{content_type}_{action}_{LANG}"
     cache = MainCache()
     snap = cache.get(key)
     if not isinstance(snap, dict):
@@ -1117,7 +1117,9 @@ def _trending_snapshot(action, page, content_type, page_limit):
                 continue
             ids.add(tid)
             items.append(it)
-        if len(results) < 20:
+        if not results:
+            # TMDB sends short pages mid-list (19 movies on page 1 today);
+            # only an empty page ends it, not the 20-per-page assumption.
             total_pages = api_pages
             break
     if not items:

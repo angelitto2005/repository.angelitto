@@ -1,3 +1,7 @@
+1.1.347
+- Trending lists no longer stop at 19 titles: the first page is full again and the next page is back.
+- Usenet source lists no longer pick up another series with a similar name (e.g. "Millennium Love" for "Millennium") or a film that shares the word.
+
 1.1.346
 - The post-stop refresh now waits at most three seconds from the stop instead of five, so returning to the list is faster on Android while the resume circle still updates.
 

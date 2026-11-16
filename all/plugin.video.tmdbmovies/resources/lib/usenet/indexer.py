@@ -450,11 +450,14 @@ def _why(why, reason):
 _TITLE_STOP = {
     'the', 'a', 'an', 'and', 'of', 'for', 'with', 'from', 'part', 'complete',
     'extended', 'remastered', 'proper', 'repack', 'internal', 'limited',
+    'series', 'season', 'collection', 'boxset', 'episode',
     'bluray', 'blu', 'ray', 'webrip', 'webdl', 'web', 'hdtv', 'remux',
     'hevc', 'h264', 'h265', 'x264', 'x265', 'avc', 'dts', 'ddp', 'dd', 'atmos',
     'truehd', 'hdr', 'sdr', 'dv', 'uhd', '2160p', '1080p', '720p', '480p',
     'german', 'dl', 'ita', 'eng', 'french', 'multi', 'sub', 'subs', 'ro',
+    'dual', 'audio', 'dubbed', 'subbed',
 }
+_TITLE_GLUE = {'the', 'a', 'an', 'and', 'of', 'for', 'with', 'from', 'part'}
 
 
 def _title_tokens(text):
@@ -462,6 +465,22 @@ def _title_tokens(text):
     words = re.findall(r'[0-9a-z]+', text.lower())
     return [word for word in words if len(word) >= 4 and word not in _TITLE_STOP
             and not re.fullmatch(r'(?:19|20)\d{2}', word)]
+
+
+def _name_words(text):
+    """The name words only: stop at the first release tag or year, keep glue."""
+    clean = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', str(text or ''))
+    words = []
+    for word in re.findall(r'[0-9a-z]+', clean.lower()):
+        if re.fullmatch(r'(?:19|20)\d{2}', word):
+            break
+        if word in _TITLE_GLUE:
+            continue
+        if word in _TITLE_STOP:
+            break
+        if len(word) >= 4:
+            words.append(word)
+    return words
 
 
 _EPISODE_MARK = re.compile(
@@ -481,25 +500,41 @@ def _title_matches(candidate, query, year, is_movie, alt_query=''):
     folded = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '').lower())
     if not any(token in folded for token in tokens):
         return False
-    # For a series the show name must sit before SxxExx: a show title that only
-    # shows up after it is that episode's name ("Secrets and Lies" is also the
-    # title of 30 Rock S02E08, so a text search returns the wrong series).
-    if not is_movie:
-        mark = _EPISODE_MARK.search(str(candidate or ''))
-        if mark:
-            head = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '')[:mark.start()].lower())
-            if re.search(r'[a-z]{2,}', head) and not any(token in head for token in tokens):
-                return False
-    if is_movie and year:
+    wanted = 0
+    if year:
         try:
             wanted = int(year)
         except (TypeError, ValueError):
             wanted = 0
-        if wanted:
+    # For a series the name part must be the show itself: "Millennium Love"
+    # and "Der Millennium Raub" share a word with "Millennium" but are other
+    # series, and a show title that only shows up after SxxExx is the episode
+    # name ("Secrets and Lies" is also the title of 30 Rock S02E08).
+    if not is_movie:
+        name_part = _series_name_part(candidate)
+        words = _name_words(name_part or candidate)
+        if words and not set(words) <= set(tokens):
+            return False
+        # A row with no season or episode marker in a series search is often a
+        # film that shares the word ("Millennium Actress 2002"): the year has
+        # to be the show's year.
+        if not name_part and wanted:
             found = re.findall(r'(?<!\d)((?:19|20)\d{2})(?!\d)', str(candidate or ''))
             if found and wanted not in [int(item) for item in found]:
                 return False
+    if is_movie and wanted:
+        found = re.findall(r'(?<!\d)((?:19|20)\d{2})(?!\d)', str(candidate or ''))
+        if found and wanted not in [int(item) for item in found]:
+            return False
     return True
+
+
+def _series_name_part(candidate):
+    """The text before the first season/episode marker ('' when there is none)."""
+    text = str(candidate or '')
+    starts = [match.start() for match in
+              (_EPISODE_MARK.search(text), _SEASON_MARK.search(text)) if match]
+    return text[:min(starts)] if starts else ''
 
 
 def _filter_rows(rows, season, episode, min_size, episodes_only,
