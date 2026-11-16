@@ -223,6 +223,28 @@ PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifica audio-only doar pe SD/720p,
 # =============================================================================
 _active_player = None
 
+# A slow preparation must not start playback after the user picked another source.
+_play_attempt = 0
+_play_attempt_lock = threading.Lock()
+
+
+def begin_play_attempt():
+    global _play_attempt
+    with _play_attempt_lock:
+        _play_attempt += 1
+        return _play_attempt
+
+
+def invalidate_play_attempts():
+    """Any preparation still running is stale: the source list was left."""
+    begin_play_attempt()
+
+
+def _play_attempt_is_current(attempt):
+    with _play_attempt_lock:
+        return attempt == _play_attempt
+
+
 # Globals for reopening sources window on P2P cancel
 _saved_window_items = None
 _saved_meta_dict = None
@@ -3675,6 +3697,7 @@ def format_for_results_window(streams, poster_url, meta=None):
 def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False):
 
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
+    _attempt = begin_play_attempt()
     
     # ===========================================================================
     # CURATAM WINDOW PROPERTIES LA INCEPUT (FARA URME DE ALTE ADDONURI)
@@ -3948,7 +3971,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     if _usenet_vfs.enabled() and _usenet_vfs.available():
                         _usenet_url, _usenet_why, _usenet_retry = _usenet_vfs.prepare_stream(
                             _usenet_nzb, season=season, episode=episode,
-                            alt_season=_alt_s, alt_episode=_alt_e)
+                            alt_season=_alt_s, alt_episode=_alt_e,
+                            should_continue=lambda: _play_attempt_is_current(_attempt))
+                        if not _play_attempt_is_current(_attempt):
+                            log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
+                            return
                         if not _usenet_url:
                             log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
                             if not _usenet_retry:
@@ -3968,6 +3995,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if not _usenet_url:
                     log(f"[PLAYER] Usenet release skipped: {_usenet_why}", xbmc.LOGWARNING)
                     continue
+                if not _play_attempt_is_current(_attempt):
+                    log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
+                    return
                 url = _usenet_url
                 log(f"[PLAYER] Usenet ready: {url}")
                 try:
@@ -4154,6 +4184,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             continue
     
     if valid_url:
+        if not _play_attempt_is_current(_attempt):
+            log("[PLAYER] stale source ignored before playback")
+            return
         log(f"[PLAYER] === START PLAYBACK SOURCE {valid_index + 1} ===")
         
         # Android: skip Playlist.Clear (inutil, ca Redlight)
@@ -4356,6 +4389,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             from resources.lib.subtitle.subtitles import set_playback_context
             set_playback_context(unique_ids["imdb"])
         
+        if not _play_attempt_is_current(_attempt):
+            log("[PLAYER] stale source ignored before playback")
+            return
         if resolve_only:
             # TMDb Helper: doar resolve prin setResolvedUrl, fara player.play()
             xbmcplugin.setResolvedUrl(_current_handle(), True, li)

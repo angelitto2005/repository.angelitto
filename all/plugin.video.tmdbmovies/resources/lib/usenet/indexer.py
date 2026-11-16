@@ -8,6 +8,7 @@ for an hour and one that answered "limit reached" until the next day. Answers
 are cached for a few hours, so opening the same film twice costs nothing.
 """
 
+import html
 import json
 import os
 import re
@@ -30,6 +31,8 @@ CACHE_KEEP = 60
 DAY_SHARE = 0.9
 DEFAULT_API_MAX = 200
 RETRY_AFTER = 3600
+NZBINDEX_PAUSE = 900
+BINSEARCH_PAUSE = 900
 USER_AGENT = 'plugin.video.tmdbmovies usenet'
 
 
@@ -408,7 +411,12 @@ def _series_query(indexer, common, digits, season, episode, title, use_cache, lo
     return [row for row in packs if row.get('nzb_url') not in known] + rows
 
 
-def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=True, logger=None):
+def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=True, logger=None,
+           year=None):
+    if indexer.get('builtin') == 'nzbindex':
+        return _nzbindex_rows(indexer, title, year, season, episode)
+    if indexer.get('builtin') == 'binsearch':
+        return _binsearch_rows(indexer, title, year, season, episode)
     digits = re.sub(r'\D', '', str(imdb or ''))
     common = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series' if season is not None else 'movie']}
     if season is None:
@@ -537,6 +545,202 @@ def _series_name_part(candidate):
     return text[:min(starts)] if starts else ''
 
 
+# -- the built-in free search --------------------------------------------------
+
+def _nzbindex_get(indexer, params, timeout=None):
+    """The site's own RSS feed: no account and no key, but it throttles bursts."""
+    url = indexer['url'].rstrip('/') + '/rss?' + urlencode(params)
+    if not _allowed(indexer['url'], 'api'):
+        raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
+    request = Request(url, headers={'User-Agent': _agent(),
+                                    'Accept': 'application/rss+xml, application/xml'})
+    try:
+        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+            body = response.read(MAX_BYTES + 1)
+    except Exception as exc:
+        code = getattr(exc, 'code', None)
+        if code == 429:
+            _pause(indexer['url'], _now() + NZBINDEX_PAUSE, ('api',))
+            raise LimitReached('%s asked to wait - it is asked again in a few minutes'
+                               % indexer['name'])
+        raise LimitReached('%s did not answer (%s)'
+                           % (indexer['name'], code or type(exc).__name__))
+    _note(indexer['url'], 'api', body)
+    if len(body) > MAX_BYTES:
+        raise LimitReached('%s sent an answer that is too large' % indexer['name'])
+    return body
+
+
+def _free_query_title(title):
+    """A query of name words only: the site tokenises on punctuation."""
+    text = str(title or '').replace('&', ' and ')
+    text = re.sub(r"['\u2018\u2019`]", '', text)
+    text = re.sub(r'[^0-9A-Za-z]+', ' ', text)
+    return ' '.join(text.split())
+
+
+def _free_queries(title, year, season, episode):
+    """Title + year wins; the shorter forms only run when nothing matched."""
+    base = _free_query_title(title)
+    if not base:
+        return []
+    year = str(year or '').strip()
+    if not re.fullmatch(r'(?:19|20)\d{2}', year):
+        year = ''
+    if season is None:
+        return [' '.join(piece for piece in (base, year) if piece)]
+    try:
+        season = int(season)
+        episode = int(episode or 0)
+    except (TypeError, ValueError):
+        return []
+    queries = []
+    for pieces in ((base, year, 'S%02dE%02d' % (season, episode)),
+                   (base, 'S%02dE%02d' % (season, episode)),
+                   (base, year, 'S%dE%d' % (season, episode))):
+        query = ' '.join(piece for piece in pieces if piece)
+        if query not in queries:
+            queries.append(query)
+    return queries
+
+
+def _free_clean(title):
+    """A release name from the first file of the collection."""
+    text = re.sub(r'^\[\d+/\d+\]\s*[-:]?\s*', '', str(title or '')).strip()
+    quoted = re.search(r'["\u201c\u201d]([^"\u201c\u201d]+)["\u201c\u201d]', text)
+    if quoted:
+        text = quoted.group(1)
+    text = re.sub(r'\s+yEnc(\s+\d+)?\s*$', '', text, flags=re.I).strip()
+    text = re.sub(r'\.(?:par2|nfo|nzb)$', '', text, flags=re.I)
+    return text.strip()
+
+
+def _nzbindex_rows(indexer, title, year, season, episode):
+    for query in _free_queries(title, year, season, episode):
+        found = results(_nzbindex_get(indexer, {'q': query, 'max': 100, 'complete': 1,
+                                               'sort': 'agedesc', 'page': 0}),
+                        indexer['name'])
+        page_rows, seen = [], set()
+        useful = False
+        for row in found:
+            link = str(row.get('nzb_url') or '')
+            if link.startswith('http://www.nzbindex.com/'):
+                link = 'https://' + link[7:]
+                row['nzb_url'] = link
+            if not link or link in seen:
+                continue
+            try:
+                size = int(row.get('size') or 0)
+            except (TypeError, ValueError):
+                size = 0
+            if size <= 0:
+                continue
+            row['size'] = size
+            row['title'] = _free_clean(row.get('title'))
+            if not row['title'] or row['title'] in seen:
+                continue
+            seen.add(link)
+            seen.add(row['title'])
+            page_rows.append(row)
+            if not useful:
+                useful = _title_matches(row['title'], title, year,
+                                        season is None)
+        if page_rows and useful:
+            return page_rows
+    return []
+
+
+_SIZE_UNITS = {'tb': 1024 ** 4, 'gb': 1024 ** 3, 'mb': 1024 ** 2, 'kb': 1024, 'b': 1}
+_AGE_SECONDS = {'minute': 60, 'hour': 3600, 'day': 86400,
+                'week': 7 * 86400, 'month': 30 * 86400, 'year': 365 * 86400}
+
+
+def _binsearch_size(text):
+    match = re.search(r'([\d.]+)\s*(tb|gb|mb|kb|b)\b', str(text or ''), re.I)
+    if not match:
+        return 0
+    try:
+        return int(float(match.group(1)) * _SIZE_UNITS[match.group(2).lower()])
+    except ValueError:
+        return 0
+
+
+def _binsearch_posted(text, now=None):
+    match = re.search(r'(\d+)\s*(minute|hour|day|week|month|year)s?',
+                      str(text or ''), re.I)
+    if not match:
+        return 0
+    return int((now or _now()) - int(match.group(1)) * _AGE_SECONDS[match.group(2).lower()])
+
+
+def _binsearch_get(indexer, params, timeout=None):
+    """The site's search page: no account, plain HTML, 25 rows a page."""
+    url = indexer['url'].rstrip('/') + '/search?' + urlencode(params)
+    if not _allowed(indexer['url'], 'api'):
+        raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
+    request = Request(url, headers={'User-Agent': _agent(), 'Accept': 'text/html'})
+    try:
+        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+            body = response.read(MAX_BYTES + 1)
+    except Exception as exc:
+        code = getattr(exc, 'code', None)
+        if code == 429:
+            _pause(indexer['url'], _now() + BINSEARCH_PAUSE, ('api',))
+            raise LimitReached('%s asked to wait - it is asked again in a few minutes'
+                               % indexer['name'])
+        if code == 403:
+            raise LimitReached('%s asked for a browser check - try again later'
+                               % indexer['name'])
+        raise LimitReached('%s did not answer (%s)'
+                           % (indexer['name'], code or type(exc).__name__))
+    _note(indexer['url'], 'api', body)
+    if len(body) > MAX_BYTES:
+        raise LimitReached('%s sent an answer that is too large' % indexer['name'])
+    head = body[:4096].lower()
+    if b'just a moment' in head or b'cf-chl' in head:
+        raise LimitReached('%s asked for a browser check - try again later' % indexer['name'])
+    return body
+
+
+def _binsearch_rows(indexer, title, year, season, episode):
+    for query in _free_queries(title, year, season, episode):
+        body = _binsearch_get(indexer, {'q': query}).decode('utf-8', 'replace')
+        page_rows, seen = [], set()
+        useful = False
+        for raw in re.findall(r'<tr\b[^>]*>.*?</tr>', body, re.S):
+            token = re.search(r'<input type="checkbox"[^>]*name="([A-Za-z0-9+/=_-]+)"', raw)
+            subject = re.search(r'<a[^>]*href="/details/[^"]+">([^<]+)</a>', raw)
+            if not token or not subject:
+                continue
+            flat = ' '.join(html.unescape(re.sub(r'<[^>]+>', ' ', raw)).split())
+            if 'incomplete' in flat.lower() or not re.search(r'\bcomplete\s+files?\b',
+                                                             flat, re.I):
+                continue
+            name = _free_clean(html.unescape(subject.group(1)))
+            if not name:
+                continue
+            size_match = re.search(r'bg-white">([^<]+)</span>', raw)
+            size = _binsearch_size(size_match.group(1) if size_match else '')
+            if size <= 0:
+                continue
+            link = '%s/nzb?%s' % (indexer['url'].rstrip('/'),
+                                  urlencode({'q': query, token.group(1): 'on'}))
+            if link in seen:
+                continue
+            seen.add(link)
+            age_match = re.search(r'<td class="min-w-20">([^<]+)</td>', raw)
+            page_rows.append({
+                'indexer': indexer['name'], 'title': name, 'nzb_url': link,
+                'size': size, 'grabs': 0, 'password': False,
+                'posted': _binsearch_posted(age_match.group(1) if age_match else ''),
+            })
+            if not useful:
+                useful = _title_matches(name, title, year, season is None)
+        if page_rows and useful:
+            return page_rows
+    return []
+
+
 def _filter_rows(rows, season, episode, min_size, episodes_only,
                  seen_links, seen_titles, why,
                  query_title='', query_year=None, query_alt=''):
@@ -649,9 +853,9 @@ def _cap_per_indexer(rows, limit, season, episode, why):
     return [row for row in rows if id(row) in keep]
 
 
-def _cache_key(kind, imdb, season, episode, indexer):
+def _cache_key(kind, imdb, season, episode, indexer, year=''):
     """One answer per indexer: a partial sequential answer must never hide the others."""
-    return '%s|%s|%s|%s|%s|%s' % (kind, imdb, season, episode,
+    return '%s|%s|%s|%s|%s|%s|%s' % (kind, imdb, season, episode, year or '',
                                    indexer.get('url', ''), indexer.get('name', ''))
 
 
@@ -681,9 +885,9 @@ def clear_cache():
     return True
 
 
-def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True):
+def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None):
     """(cache_key, rows, from_cache, note) for one indexer."""
-    key = _cache_key(kind, imdb, season, episode, indexer)
+    key = _cache_key(kind, imdb, season, episode, indexer, year)
     if season is not None:
         key += ('|packs5p%d' % config.pack_pages()) if packs else '|ep2'
     if use_cache:
@@ -693,7 +897,8 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
                 logger('[USENET] %s: %d result(s) from cache' % (indexer['name'], len(rows)))
             return key, rows, True, None
     try:
-        rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger)
+        rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger,
+                      year=year)
         if logger:
             logger('[USENET] %s: %d result(s)' % (indexer['name'], len(rows)))
         return key, rows, False, None
@@ -708,9 +913,11 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
          episodes_only=False, per_indexer_limit=0):
     """Search the configured indexers. Returns (rows, notes).
 
-    Sequential asks the next indexer only while fewer than 'min_usable' releases
-    passed the filters; parallel asks every selected indexer at once. Answers are
-    cached per indexer, so one partial answer never hides the others.
+    Sequential asks every enabled free built-in together, because they have no
+    search quota, then the paid indexers one at a time while their own usable
+    answers stay below 'min_usable': free results never silence a keyed indexer.
+    Parallel asks every selected indexer at once. Answers are cached per indexer,
+    so one partial answer never hides the others.
     """
     if not config.indexers_enabled():
         return [], ['indexers are off in the settings']
@@ -749,7 +956,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
         def one(entry):
             return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
-                        packs=not episodes_only)
+                        packs=not episodes_only, year=year)
 
         workers = max(1, min(4, len(entries)))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetIndexer') as pool:
@@ -761,25 +968,57 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                 _cache_put(key, found)
             collect(found)
     else:
+        free = [entry for entry in entries if entry.get('builtin')]
+        paid = [entry for entry in entries if not entry.get('builtin')]
         if logger:
-            logger('[USENET] sequential: asking up to %d indexer(s), stop at %d usable'
-                   % (len(entries), min_usable))
-        for position, entry in enumerate(entries, 1):
+            logger('[USENET] sequential: %d free together, %d with a key one by one until a key gives %d usable'
+                   % (len(free), len(paid), min_usable))
+        if free:
+            from concurrent.futures import ThreadPoolExecutor
+
+            if logger:
+                logger('[USENET] free together: %s'
+                       % ', '.join(entry.get('name') or '?' for entry in free))
+
+            def free_one(entry):
+                return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
+                            packs=not episodes_only, year=year)
+
+            before = len(rows)
+            workers = max(1, min(4, len(free)))
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetFree') as pool:
+                answers = list(pool.map(free_one, free))
+            for key, found, cached, note in answers:
+                if note:
+                    notes.append(note)
+                elif not cached and use_cache:
+                    _cache_put(key, found)
+                collect(found)
+            if logger:
+                logger('[USENET] free: %d usable (total %d of %d)'
+                       % (len(rows) - before, len(rows), min_usable))
+        paid_kept = 0
+        for position, entry in enumerate(paid, 1):
             key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
-                                            use_cache, logger, packs=not episodes_only)
+                                            use_cache, logger, packs=not episodes_only,
+                                            year=year)
             if note:
                 notes.append(note)
             elif not cached and use_cache:
                 _cache_put(key, found)
             here = collect(found)
+            paid_kept += here
             if logger:
-                logger('[USENET] sequential: %s -> %d usable (total %d of %d)'
-                       % (entry['name'], here, len(rows), min_usable))
-            if len(rows) >= min_usable:
-                if logger:
-                    logger('[USENET] sequential: enough after %s, %d indexer(s) not asked'
-                           % (entry['name'], len(entries) - position))
+                logger('[USENET] sequential: %s -> %d usable with a key (%d of %d)'
+                       % (entry['name'], here, paid_kept, min_usable))
+            if paid_kept >= min_usable:
+                if logger and position < len(paid):
+                    logger('[USENET] sequential: enough with a key after %s, %d not asked'
+                           % (entry['name'], len(paid) - position))
                 break
+        if logger and paid and paid_kept < min_usable:
+            logger('[USENET] sequential: only %d usable with a key after all %d'
+                   % (paid_kept, len(paid)))
 
     rows = _cap_per_indexer(rows, per_indexer_limit, season, episode, why)
 
@@ -900,6 +1139,27 @@ def fetch_nzb(url, key=None, timeout=25):
 def test(indexer):
     """(ok, message) for one indexer: caps, then a real search if needed."""
     url = indexer['url']
+    if indexer.get('builtin') == 'nzbindex':
+        try:
+            body = _nzbindex_get(indexer, {'q': 'the matrix 1999', 'max': 5, 'complete': 1},
+                                 timeout=12)
+            if b'<rss' in body[:4096].lower() or b'<channel' in body[:4096].lower():
+                return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
+            return False, '%s answered something unexpected' % indexer['name']
+        except (KeyRejected, LimitReached) as exc:
+            return False, redact(exc)
+        except Exception as exc:
+            return False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
+    if indexer.get('builtin') == 'binsearch':
+        try:
+            body = _binsearch_get(indexer, {'q': 'the matrix 1999'}, timeout=12)
+            if b'type="checkbox"' in body:
+                return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
+            return False, '%s answered something unexpected' % indexer['name']
+        except (KeyRejected, LimitReached) as exc:
+            return False, redact(exc)
+        except Exception as exc:
+            return False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
     try:
         body = _get(indexer, {'t': 'caps'}, timeout=12)
         if b'<caps' in body[:4096].lower() or b'<server' in body[:4096].lower():

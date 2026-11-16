@@ -28,6 +28,8 @@ DEFAULT_HOLE_CONSECUTIVE = 4
 NZB_KEEP_SECONDS = 3 * 86400
 NZB_MAX_BYTES = 256 * 1024 * 1024
 INDEXER_SLOTS = 6
+NZBINDEX_URL = 'https://www.nzbindex.com'
+BINSEARCH_URL = 'https://www.binsearch.info'
 
 
 def addon():
@@ -473,6 +475,7 @@ _PRESETS = {
     'tabula-rasa': 'Tabula Rasa', 'tabula-rasa.pw': 'Tabula Rasa',
     'nzb.su': 'nzb.su',
     'nzb.info': 'NZB.Info', 'api.nzb.info': 'NZB.Info',
+    'nzb.life': 'NZB.Life', 'api.nzb.life': 'NZB.Life',
 }
 
 
@@ -497,7 +500,11 @@ def indexer_name(url):
     for key, name in _PRESETS.items():
         if cleaned == key:
             return name
-    return cleaned.split('.')[0].capitalize() or 'Indexer'
+    labels = cleaned.split('.') if cleaned else []
+    if len(labels) > 1 and len(labels[0]) <= 4:
+        # nzb.info / nzb.life share the first label: keep the domain too.
+        return labels[0].upper() + '.' + labels[1].capitalize()
+    return labels[0].capitalize() if labels else 'Indexer'
 
 
 def split_entry(chunk):
@@ -557,12 +564,31 @@ def indexers_enabled():
     return flag('usenet_nzb.indexers.enabled', True)
 
 
+def nzbindex_enabled():
+    """The built-in free search; no account and no key."""
+    return flag('usenet_nzb.nzbindex', True)
+
+
+def binsearch_enabled():
+    """The second free search; it reads the site's HTML, so it is opt-in."""
+    return flag('usenet_nzb.binsearch', False)
+
+
 def indexers():
     """The slots in order, then the extra comma list; one entry per address."""
     if not indexers_enabled():
         return []
     found = []
     seen = set()
+    if nzbindex_enabled():
+        # Asked first: a free search should not spend a paid indexer's quota.
+        found.append({'name': 'NZBIndex', 'url': NZBINDEX_URL, 'key': 'free',
+                      'builtin': 'nzbindex'})
+        seen.add(NZBINDEX_URL)
+    if binsearch_enabled():
+        found.append({'name': 'Binsearch', 'url': BINSEARCH_URL, 'key': 'free',
+                      'builtin': 'binsearch'})
+        seen.add(BINSEARCH_URL)
     for number in range(1, INDEXER_SLOTS + 1):
         item = indexer_slot(number)
         if item and item['url'] not in seen:

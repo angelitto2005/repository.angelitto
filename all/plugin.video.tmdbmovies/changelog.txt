@@ -1,3 +1,8 @@
+1.1.348
+- Usenet has two free built-in searches, both without an account: NZBIndex and Binsearch.
+- Test indexers shows NZB.Info and NZB.Life by name instead of a short "NZB"; two indexers with the same name are shown with their address.
+- A slow Usenet source left behind no longer starts playing over the source already running, and backing out of the source list keeps it from taking the stream over.
+
 1.1.347
 - Trending lists no longer stop at 19 titles: the first page is full again and the next page is back.
 - Usenet source lists no longer pick up another series with a similar name (e.g. "Millennium Love" for "Millennium") or a film that shares the word.

@@ -210,13 +210,20 @@ def _write_warm(path, session):
     return True
 
 
-def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None):
+def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None,
+                   should_continue=None):
     """(url, error, retry_with_server).
 
     retry_with_server is True only when the plan itself could not be produced,
     so the caller may repeat the release through the local HTTP server. A
     release that simply has no working articles is not retried there.
+
+    should_continue is checked before the slow work and again before the active
+    marker is written: an abandoned attempt must not take the VFS away from the
+    source that is already playing.
     """
+    if should_continue and not should_continue():
+        return '', 'cancelled', False
     if not nzb_url:
         return '', 'this source has no NZB link', False
     try:
@@ -244,6 +251,8 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
         if digest:
             name = _plan_reuse(folder + token + '.plan', digest)
             if name:
+                if should_continue and not should_continue():
+                    return '', 'cancelled', False
                 engine._log('plan reused for %s' % token)
                 _write_active(folder, token)
                 return '%s://%s/%s' % (SCHEME, token, quote(name)), '', False
@@ -264,6 +273,8 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
             return '', str(exc), False
         except Exception as exc:
             return '', 'the release could not be opened (%s)' % str(exc)[:90], False
+        if should_continue and not should_continue():
+            return '', 'cancelled', False
         try:
             config.remember_release(key, session.pack, played=True)
         except Exception:

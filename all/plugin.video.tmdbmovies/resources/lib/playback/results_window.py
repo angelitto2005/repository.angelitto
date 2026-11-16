@@ -913,6 +913,14 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
         self.getControl(2000).addItems(items)
 
+    def close(self):
+        try:
+            from resources.lib.playback.player import invalidate_play_attempts
+            invalidate_play_attempts()
+        except Exception:
+            pass
+        return super(ResultsWindow, self).close()
+
     def onClick(self, controlId):
         if controlId == 2000:
             item = self.getControl(2000).getSelectedItem()

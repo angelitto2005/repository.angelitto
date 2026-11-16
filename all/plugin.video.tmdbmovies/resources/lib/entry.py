@@ -715,6 +715,13 @@ def _usenet_test_indexers():
     if not entries and not skipped:
         xbmcgui.Dialog().ok('Usenet', 'Add at least one indexer first (address : API key).')
         return
+    names = [entry.get('name') or '?' for entry in entries]
+    if len(set(names)) < len(names):
+        # Two hosts may share a short name; show the address so the test
+        # result cannot be mistaken for the other indexer.
+        for entry in entries:
+            host = (entry.get('url') or '').split('://', 1)[-1].split('/', 1)[0]
+            entry['name'] = '%s (%s)' % (entry.get('name') or '?', host)
     lines = ['Testing %d indexer(s) at once. The fetching strategy is ignored here.' % len(entries)]
     xbmc.log('[TMDb Movies] [Usenet] testing %d indexer(s), strategy ignored: %s'
              % (len(entries), ', '.join(entry.get('name', '?') for entry in entries)),
