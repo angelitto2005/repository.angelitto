@@ -5029,6 +5029,9 @@ def _parse_stremio_addon_stream(s, addon_name, provider_id):
     # Garbage validation: none, emoji, codec terms, GB/MB
     if indexer and (indexer.lower() == 'none' or re.search(r'[🗂️⚙️💾📅🏴]', indexer)):
         indexer = ''
+    # EasyNews++ has no indexers; its globe line is audio languages.
+    if provider_id == 'easynewspp':
+        indexer = ''
             
     # 6. Calitate
     quality = _extract_quality_from_string(raw_name)
@@ -8181,6 +8184,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom4': ('Custom 4', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom4', ADDON.getSetting('custom4_name') or 'Custom 4')),
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
+        'easynewspp': ('EasyNews++', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'easynewspp', 'EasyNews++')),
         'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
@@ -8209,7 +8213,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:

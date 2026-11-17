@@ -1,3 +1,13 @@
+1.1.349
+- New EasyNews++ provider in Stremio addons: paste its manifest.json URL under Usenet, and its sources show EN++ in the source list.
+- Search Usenet in the context menu (off by default under Usenet settings): Search Now, a search history you can rename or delete, and playback through your Usenet provider.
+- Stored 7z releases whose NZB lists yEnc article sizes now open correctly, including large sports packs.
+- RAR sets with posting-tool prefixes or unordered RAR5 volume names now open correctly and faster.
+- Videos split into numbered parts (Movie.mkv.001, .002, ...) play as one file, without an archive.
+- When a Usenet source is skipped, a short notification now says why before the next source is tried.
+- Search Usenet playback shows colored release details in the OSD info screen: quality, source, codec, audio, size and indexer.
+- Trakt rate-limit waits now stop when Kodi is closing, so the service no longer delays exit.
+
 1.1.348
 - Usenet has two free built-in searches, both without an account: NZBIndex and Binsearch.
 - Test indexers shows NZB.Info and NZB.Life by name instead of a short "NZB"; two indexers with the same name are shown with their address.

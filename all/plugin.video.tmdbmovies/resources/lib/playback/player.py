@@ -245,13 +245,30 @@ def _play_attempt_is_current(attempt):
         return attempt == _play_attempt
 
 
+def _show_usenet_failover(reason):
+    try:
+        text = str(reason or '').replace('\n', ' ').strip()
+        low = text.lower()
+        if 'gone' in low or 'missing' in low or 'not enough' in low:
+            text = 'Articles missing on your providers. Trying next source...'
+        elif text:
+            text = 'Usenet: %s. Trying next source...' % text[:80]
+        else:
+            text = 'Usenet source failed. Trying next source...'
+        xbmcgui.Dialog().notification(
+            "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+            "[B][COLOR FFCCCCFF]%s[/COLOR][/B]" % text, TMDbmovies_ICON, 3500)
+    except Exception:
+        pass
+
+
 # Globals for reopening sources window on P2P cancel
 _saved_window_items = None
 _saved_meta_dict = None
 _saved_filtered_streams = None
 
 # AIO/Stremio provider IDs for type grouping
-_AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
+_AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
 
 
 # =============================================================================
@@ -537,7 +554,7 @@ def _tier_matches(tier, cat, is_cached):
         return cat in ('aio', 'stremio') and not is_cached
     return False
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # AFISAREA NUMELUI PROVIDERULUI (RESPECTA NUMELE PERSONALIZATE)
@@ -562,7 +579,7 @@ def get_provider_display_name(provider_id):
         'torrentio': 'Torrentio', 'primesrcme': 'PrimeSrc', 'vaplayer': 'VAPlayer',
         'flixer': 'Flixer', 'fshdnet': 'FSHDnet', 'aiostreams': 'AIOStreams',
         'mediafusion': 'MediaFusion', 'comet': 'Comet', 'meteor': 'Meteor', 'torz': 'Torz',
-        'usenet': 'Usenet',
+        'usenet': 'Usenet', 'easynewspp': 'EasyNews++',
         'p2p_yts': 'YTS', 'p2p_torrentio': 'Torrentio P2P', 'p2p_comet': 'Comet P2P',
         'p2p_mediafusion': 'MediaFusion P2P', 'p2p_filelist': 'FileList',
         'p2p_speedapp': 'SpeedApp', 'p2p_seedpool': 'SeedPool', 'p2p_knaben': 'Knaben',
@@ -595,7 +612,7 @@ def get_fallback_provider_id(name_string):
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
         'vaplayer': 'vaplayer', 'flixer': 'flixer', 'fshd': 'fshdnet',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor', 'torz': 'torz',
-        'usenet': 'usenet', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
+        'usenet': 'usenet', 'easynews++': 'easynewspp', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
         'aio': 'aiostreams',
         # Cache vechi / Istoric (sa nu se piarda daca exista deja stocate):
         'vidzee': 'vidzee', 'rogflix': 'rogflix', 'xdmovies': 'xdmovies'
@@ -2216,7 +2233,7 @@ def _silent_scrape_next_episode(player):
         active_providers = []
         http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
         p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
         p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
         for pid in ALL_KNOWN_PROVIDERS:
             is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
@@ -2766,6 +2783,7 @@ def start_playback_monitor(player_instance, dialog=None):
             _damage_line = _nzb_damage_since(_log_path, _log_mark)
         if _damage_line and not _near_end:
             log("[PLAYER-MONITOR] Usenet source damaged (%s) - trying next" % _damage_line)
+            _show_usenet_failover('articles missing')
             _monitor_release(_claim_token)
             player_instance.trigger_rollover(allow_started=True)
             return
@@ -3979,6 +3997,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         if not _usenet_url:
                             log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
                             if not _usenet_retry:
+                                if i + 1 < total_streams:
+                                    _show_usenet_failover(_usenet_why)
                                 continue
                     else:
                         _usenet_why = 'the VFS add-on is off'
@@ -3994,6 +4014,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         _usenet_url, _usenet_why = '', str(_usenet_error)[:90]
                 if not _usenet_url:
                     log(f"[PLAYER] Usenet release skipped: {_usenet_why}", xbmc.LOGWARNING)
+                    if i + 1 < total_streams:
+                        _show_usenet_failover(_usenet_why)
                     continue
                 if not _play_attempt_is_current(_attempt):
                     log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
@@ -5089,7 +5111,7 @@ def list_sources(params):
     active_providers =[]
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
@@ -5726,7 +5748,7 @@ def initiate_download(params):
     active_providers = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')

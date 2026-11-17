@@ -1032,6 +1032,42 @@ def run_plugin():
                         params.get('title', ''), params.get('year', ''))
         return
 
+    if mode == 'usenet_search':
+        from resources.lib.playback.usenet_search import search_menu
+        search_menu(params)
+        return
+
+    if mode == 'usenet_search_input':
+        from resources.lib.playback.usenet_search import search_input
+        search_input(params)
+        return
+
+    if mode == 'usenet_results':
+        from resources.lib.playback.usenet_search import search_results
+        search_results(params)
+        return
+
+    if mode == 'usenet_history_rename':
+        from resources.lib.playback.usenet_search import history_rename
+        history_rename(params)
+        return
+
+    if mode == 'usenet_history_delete':
+        from resources.lib.playback.usenet_search import history_delete
+        history_delete(params)
+        return
+
+    if mode == 'usenet_history_clear':
+        from resources.lib.playback.usenet_search import history_clear
+        history_clear(params)
+        return
+
+    if mode == 'usenet_custom_play':
+        from resources.lib.playback.usenet_search import play_result
+        play_result(params.get('nzb_url', ''), params.get('title', ''),
+                    params.get('indexer', ''), params.get('size', ''))
+        return
+
     if mode == 'detonate_clear_cache':
         from resources.lib.cloud.detonate import clear_detonate_cache
         ok = clear_detonate_cache()

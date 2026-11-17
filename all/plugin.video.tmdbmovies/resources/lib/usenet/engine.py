@@ -22,7 +22,7 @@ import os
 import lzma
 import struct
 from collections import OrderedDict
-from concurrent.futures import CancelledError, Future
+from concurrent.futures import CancelledError, Future, as_completed
 
 from . import config, nntp, nzb, yenc
 
@@ -96,25 +96,6 @@ def _sniff(data, start=0):
     if len(data) > start + 200 and data[start + 4] == 0x47 and data[start + 196] == 0x47:
         return 'ts'
     return ''
-
-
-def _seven_cut(segments, start, end):
-    """The articles covering one byte range of a volume, with the first skip."""
-    found = []
-    skip = 0
-    position = 0
-    for number, size, mid in segments:
-        segment_end = position + size
-        if segment_end <= start:
-            position = segment_end
-            continue
-        if position >= end:
-            break
-        if not found:
-            skip = start - position
-        found.append(mid)
-        position = segment_end
-    return found, skip
 
 
 def _looks_image(data, start=0):
@@ -511,7 +492,11 @@ class Session(object):
             raise SessionError('the provider did not send yEnc (%s)' % exc)
 
     def _seven_read(self, volume_map, cache, offset, size):
-        """Bytes from the concatenated 7z volumes, fetching only what is asked."""
+        """Bytes from the concatenated 7z volumes, fetching only what is asked.
+
+        Offsets are decoded bytes: the NZB lists yEnc article sizes, which are
+        larger, and using those drifts until the header lands in the wrong article.
+        """
         out = []
         while size > 0:
             low, high = 0, len(volume_map) - 1
@@ -523,31 +508,42 @@ class Session(object):
                     high = middle - 1
             volume = volume_map[low]
             inside = offset - volume['start']
-            segment_start = 0
+            segments = volume['file'].segments
+            part = volume.get('part_size') or 0
+            if inside < 0 or inside >= volume['size'] or not segments or part <= 0:
+                break
+            index = min(inside // part, len(segments) - 1)
+            begin = inside - index * part
             progressed = False
-            for number, segment_size, mid in volume['file'].segments:
-                segment_end = segment_start + segment_size
-                if segment_end > inside and segment_start < inside + size:
-                    data = cache.get(mid)
-                    if data is None:
-                        raw = self._article(mid)
-                        if raw is None:
-                            raise SessionError('a 7z header article is gone from the provider')
-                        try:
-                            data = yenc.decode(raw)['data']
-                        except yenc.YencError as exc:
-                            raise SessionError('the provider did not send yEnc (%s)' % exc)
-                        cache[mid] = data
-                    begin = max(0, inside - segment_start)
-                    take = min(len(data) - begin, size)
-                    if take > 0:
-                        out.append(data[begin:begin + take])
-                        size -= take
-                        offset += take
-                        progressed = True
-                segment_start = segment_end
-                if size <= 0:
+            while size > 0 and inside < volume['size'] and index < len(segments):
+                mid = segments[index][2]
+                data = cache.get(mid)
+                if data is None:
+                    raw = self._article(mid)
+                    if raw is None:
+                        raise SessionError('a 7z header article is gone from the provider')
+                    try:
+                        data = yenc.decode(raw)['data']
+                    except yenc.YencError as exc:
+                        raise SessionError('the provider did not send yEnc (%s)' % exc)
+                    cache[mid] = data
+                if begin >= len(data):
+                    step = max(1, part - begin)
+                    offset += step
+                    inside += step
+                    index += 1
+                    begin = 0
+                    continue
+                take = min(len(data) - begin, size, volume['size'] - inside)
+                if take <= 0:
                     break
+                out.append(data[begin:begin + take])
+                size -= take
+                offset += take
+                inside += take
+                index += 1
+                begin = 0
+                progressed = True
             if not progressed:
                 break
         return b''.join(out)
@@ -634,6 +630,16 @@ class Session(object):
         first = self._decode_first(volumes[0].segments)
         self.first_crc_ok = bool(first.get('crc_ok', True))
         head = first['data']
+        if not head.startswith(nzb.RAR4) and not head.startswith(nzb.RAR5):
+            try:
+                parts = nzb.numbered_parts(files, media)
+            except nzb.Unsupported as exc:
+                raise SessionError(str(exc))
+            if parts:
+                if parts[0] is not volumes[0] and parts[0].name != volumes[0].name:
+                    first = self._decode_first(parts[0].segments)
+                    self.first_crc_ok = bool(first.get('crc_ok', True))
+                return self._prepare_split(parts, first)
         try:
             layout = nzb.rar_layout(head)
         except nzb.Unsupported as exc:
@@ -711,19 +717,75 @@ class Session(object):
         self._warm_tail()
         return self.info()
 
+    def _prepare_split(self, parts, first=None):
+        """A video split into numbered files: serve the files back to back."""
+        if not parts:
+            raise SessionError('this NZB contains no playable file')
+        if first is None:
+            first = self._decode_first(parts[0].segments)
+        self.first_crc_ok = bool(first.get('crc_ok', True))
+        self.media_name = parts[0].name or self.media_name
+        self.inner_name = parts[0].name or ''
+        self.container = _sniff(first['data'])
+        if not self.container:
+            raise SessionError('the first numbered video part is not a video')
+        sizes = {}
+        data = first.get('data') or b''
+        sizes[0] = (int(first.get('size') or 0) or nzb.file_size(parts[0]), len(data))
+        if len(parts) > 1:
+            workers = self._workers_for_reads()
+            futures = {workers.submit(self._decode_first, part.segments): index
+                       for index, part in enumerate(parts[1:], 1)}
+            for future in as_completed(futures):
+                index = futures.pop(future)
+                info = future.result()
+                chunk = info.get('data') or b''
+                sizes[index] = (int(info.get('size') or 0) or nzb.file_size(parts[index]),
+                                len(chunk))
+        for index, part in enumerate(parts):
+            size, part_size = sizes.get(index, (0, 0))
+            if size <= 0 or part_size <= 0:
+                raise SessionError('a numbered video part could not be sized')
+            self.parts.append({
+                'id': index,
+                'segments': [item[2] for item in part.segments],
+                'skip': 0,
+                'length': size,
+                'part_size': part_size,
+            })
+            self.length += size
+            if index == 0:
+                self._remember((0, 0), data)
+        self._pinned.add((0, 0))
+        self._warm_front(parts[0].segments)
+        self.prepared = True
+        self._warm_tail()
+        return self.info()
+
     def _rar_header_order(self, volumes, first):
         """The volumes in archive order, from the RAR5 volume number in each header.
 
         Obfuscated repacks post randomly named volumes, so the file list says
-        nothing about which one follows which; the archive header does.
+        nothing about which one follows which; the archive header does. Read
+        the headers in parallel: a 275-volume set no longer pays one round
+        trip after another before playback can start.
         """
         numbers = {}
-        for volume in volumes:
-            info = first if volume is volumes[0] else self._decode_first(volume.segments)
-            number = nzb.rar5_volume(info['data'])
-            if number is None or number in numbers:
-                return None
-            numbers[number] = volume
+        number = nzb.rar5_volume(first['data'])
+        if number is None or number in numbers:
+            return None
+        numbers[number] = volumes[0]
+        if len(volumes) > 1:
+            workers = self._workers_for_reads()
+            futures = [workers.submit(self._decode_first, volume.segments)
+                       for volume in volumes[1:]]
+            waiting = dict(zip(futures, volumes[1:]))
+            for future in as_completed(futures):
+                volume = waiting.pop(future)
+                number = nzb.rar5_volume(future.result()['data'])
+                if number is None or number in numbers:
+                    return None
+                numbers[number] = volume
         if sorted(numbers) != list(range(len(numbers))):
             raise SessionError('a RAR volume is missing from this NZB')
         return [numbers[index] for index in range(len(numbers))]
@@ -737,17 +799,31 @@ class Session(object):
             match = re.search(r'\.7z\.(\d+)$', volumes[0].name or '', re.I)
             if match and int(match.group(1)) != 1:
                 raise SessionError('the first 7z volume is missing from this NZB')
-        first = self._decode_first(volumes[0].segments)
-        self.first_crc_ok = bool(first.get('crc_ok', True))
-        head = first['data']
+        first_info = self._decode_first(volumes[0].segments)
+        self.first_crc_ok = bool(first_info.get('crc_ok', True))
+        head = first_info['data']
         if not head.startswith(nzb.SEVEN):
             raise SessionError('not a 7z archive')
         volume_map = []
-        position = 0
-        for volume in volumes:
-            volume_map.append({'file': volume, 'start': position, 'size': volume.bytes})
-            position += volume.bytes
         cache = {}
+        position = 0
+        firsts = [first_info]
+        if len(volumes) > 1:
+            workers = self._workers_for_reads()
+            futures = [workers.submit(self._decode_first, volume.segments)
+                       for volume in volumes[1:]]
+            for future in futures:
+                firsts.append(future.result())
+        for index, volume in enumerate(volumes):
+            info = firsts[index]
+            size = int(info.get('size') or 0) or nzb.file_size(volume)
+            part_size = len(info.get('data') or b'')
+            if size <= 0 or part_size <= 0:
+                raise SessionError('a 7z volume could not be sized')
+            volume_map.append({'file': volume, 'start': position, 'size': size,
+                               'part_size': part_size})
+            cache[volume.segments[0][2]] = info['data']
+            position += size
         try:
             next_offset, next_size = struct.unpack_from('<QQ', head, 12)
             if next_size <= 0:
@@ -785,19 +861,29 @@ class Session(object):
         if not self.container:
             raise SessionError('the biggest file in this 7z archive is not a video')
         self.part_size = 0
+        first_part_mid = ''
         for volume in volume_map:
             low = max(start, volume['start'])
             high = min(start + self.length, volume['start'] + volume['size'])
             if high <= low:
                 continue
-            segments, skip = _seven_cut(volume['file'].segments, low - volume['start'],
-                                        high - volume['start'])
+            part = volume['part_size']
+            local_start = low - volume['start']
+            local_end = high - volume['start']
+            first_index = local_start // part
+            last_index = min((local_end - 1) // part, len(volume['file'].segments) - 1)
+            if first_index > last_index:
+                continue
+            segments = [mid for _number, _size, mid in
+                        volume['file'].segments[first_index:last_index + 1]]
             if not segments:
                 continue
+            if not first_part_mid:
+                first_part_mid = segments[0]
             self.parts.append({
                 'id': len(self.parts),
                 'segments': segments,
-                'skip': skip,
+                'skip': local_start - first_index * part,
                 'length': high - low,
                 'part_size': 0,
             })
@@ -805,13 +891,9 @@ class Session(object):
                 break
         if not self.parts:
             raise SessionError('the 7z volumes are shorter than the archive header says')
-        first_mid = self.parts[0]['segments'][0]
-        if first_mid in cache:
+        if first_part_mid in cache:
             self._pinned.add((0, 0))
-            for index, mid in enumerate(self.parts[0]['segments']):
-                if mid not in cache:
-                    break
-                self._remember((0, index), cache[mid])
+            self._remember((0, 0), cache[first_part_mid])
         self._warm_front(self.parts[0]['segments'])
         self.prepared = True
         self._warm_tail()

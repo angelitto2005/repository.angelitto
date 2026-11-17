@@ -215,6 +215,7 @@
     <category label="[B][COLOR FFFFEA00]Usenet[/COLOR][/B]">
         <setting label="[B][COLOR FFFFEA00]General[/COLOR][/B]" type="lsep" />
         <setting id="use_usenet_nzb" type="bool" label="[COLOR FFCCCCFF][B]Enable [/B][/COLOR][COLOR FF00CED1][B]Usenet (NZB)[/B][/COLOR][COLOR FFCCCCFF]   your own indexer and NNTP provider, no debrid needed[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.context_search" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Search Usenet in the context menu[/B]   (free indexers only; asks for your own words)[/COLOR]" default="false" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.episodes_only" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Single episodes only[/B]   (skips season and show packs)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.pack_pages" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Season pack search pages[/B]   (1 = minimum API use; 2-3 only read deeper while no 1080p or 720p pack was found)[/COLOR]" default="1" range="1,1,3" option="int" visible="eq(-1,false)"/>
         <setting id="usenet_nzb.min_size_mb" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Minimum release size[/B]  (MB)[/COLOR]" default="50" range="0,10,500" option="int"/>
@@ -365,6 +366,11 @@
         <setting type="lsep" label="Usenet (EasyNews)"/>
         <setting id="use_usenet" type="bool" label="Enable [B][COLOR FF00CED1]Usenet[/COLOR][/B]" default="false"/>
         <setting id="usenet_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-1,true)"/>
+
+        <!-- EasyNews++ -->
+        <setting type="lsep" label="EasyNews++"/>
+        <setting id="use_easynewspp" type="bool" label="Enable [B][COLOR FF00CED1]EasyNews++[/COLOR][/B]" default="false"/>
+        <setting id="easynewspp_manifest.0" type="text" label="  URL manifest.json" default="" subsetting="true" visible="eq(-1,true)"/>
         
         <!-- Custom Stremio Addons -->
         <setting type="lsep" label="Custom Stremio Addons"/>

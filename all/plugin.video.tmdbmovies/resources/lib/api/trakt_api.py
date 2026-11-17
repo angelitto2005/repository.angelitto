@@ -52,6 +52,32 @@ NEXT_PAGE_ICON = os.path.join(ADDON_PATH, 'resources', 'media', 'item_next.png')
 
 _token_lock = threading.Lock()
 _last_notify_time = 0
+_abort_monitor = None
+
+
+def _abort_requested():
+    global _abort_monitor
+    try:
+        if _abort_monitor is None:
+            _abort_monitor = xbmc.Monitor()
+        return bool(_abort_monitor.abortRequested())
+    except Exception:
+        return False
+
+
+def _wait_or_abort(seconds):
+    global _abort_monitor
+    try:
+        seconds = max(0.0, float(seconds))
+    except (TypeError, ValueError):
+        seconds = 0.0
+    try:
+        if _abort_monitor is None:
+            _abort_monitor = xbmc.Monitor()
+        return bool(_abort_monitor.waitForAbort(seconds))
+    except Exception:
+        time.sleep(seconds)
+        return _abort_requested()
 
 # --- INCEPUT MODIFICARE: SESIUNE GLOBALA TRAKT (Ca in SALTS) ---
 from requests.adapters import HTTPAdapter
@@ -497,6 +523,8 @@ def _do_request(method, url, headers, data=None, params=None):
 
 
 def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination=False):
+    if _abort_requested():
+        return (None, 0) if pagination else None
     token = get_trakt_token()
     
     # Identificam daca endpoint-ul solicitat necesita autentificare obligatorie
@@ -522,6 +550,8 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
     max_retries = 3
 
     for attempt in range(max_retries + 1):
+        if _abort_requested():
+            return (None, 0) if pagination else None
         try:
             r = _do_request(method, url, headers, data, params)
             if r is None:
@@ -535,7 +565,10 @@ def trakt_api_request(endpoint, method='GET', data=None, params=None, pagination
                     log(f"[TRAKT] 429 Rate Limit on {endpoint}. "
                         f"Waiting {retry_after}s... (attempt {attempt + 1}/{max_retries})",
                         xbmc.LOGWARNING)
-                    time.sleep(retry_after)
+                    if _wait_or_abort(retry_after):
+                        log("[TRAKT] Shutdown while rate-limited; retry cancelled.",
+                            xbmc.LOGINFO)
+                        return (None, 0) if pagination else None
                     continue
                 else:
                     log(f"[TRAKT] 429 Rate Limit PERSISTENT on {endpoint}. "
@@ -620,6 +653,8 @@ def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
     all_data = list(first_page)
     
     def _fetch_page(page_num):
+        if _abort_requested():
+            return []
         page_data = trakt_api_request(endpoint, params={**p, 'page': page_num})
         if page_data and isinstance(page_data, list):
             return page_data
@@ -628,6 +663,8 @@ def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         pages = range(2, page_count + 1)
         for page_result in executor.map(_fetch_page, pages):
+            if _abort_requested():
+                break
             all_data.extend(page_result)
     
     log(f"[TRAKT] Paginated {endpoint}: {len(all_data)} items from {page_count} pages")
@@ -639,12 +676,16 @@ def _get_trakt_paginated_list(endpoint, params=None, max_workers=5):
 # MODIFICAT: get_trakt_request_worker — retry pe 401
 # ══════════════════════════════════════════════════════════
 def get_trakt_request_worker(endpoint, params=None):
+    if _abort_requested():
+        return None
     token = get_trakt_token()
     headers = get_trakt_headers(token)
     url = f"{TRAKT_API_URL}{endpoint}"
 
     max_retries = 3
     for attempt in range(max_retries + 1):
+        if _abort_requested():
+            return None
         r = requests.get(url, headers=headers, params=params, timeout=15)
 
         # ── 429 Rate Limit → asteptam si reincercam ──
@@ -653,7 +694,10 @@ def get_trakt_request_worker(endpoint, params=None):
             if attempt < max_retries:
                 log(f"[TRAKT] 429 in worker on {endpoint}. "
                     f"Waiting {retry_after}s...", xbmc.LOGWARNING)
-                time.sleep(retry_after)
+                if _wait_or_abort(retry_after):
+                    log("[TRAKT] Shutdown while rate-limited; retry cancelled.",
+                        xbmc.LOGINFO)
+                    return None
                 continue
             else:
                 log(f"[TRAKT] 429 PERSISTENT in worker on {endpoint}.",

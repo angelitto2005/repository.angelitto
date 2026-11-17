@@ -1664,6 +1664,11 @@ def _get_full_context_menu(tmdb_id, content_type, title='', is_in_favorites_view
     if _cm_setting('show_cm_youtube') != 'false':
         cm.append(('[B][COLOR FFF70D1A]Search Youtube[/COLOR][/B]', f"Container.Update({plugin_url(yt_params_dict)})"))
 
+    if (ADDON.getSetting('use_usenet_nzb') == 'true'
+            and ADDON.getSetting('usenet_nzb.context_search') == 'true'):
+        us_params = {'mode': 'usenet_search'}
+        cm.append(('[B][COLOR FF00CED1]Search Usenet[/COLOR][/B]', f"Container.Update({plugin_url(us_params)})"))
+
     # Ultima optiune. Container.Update ca lista sa inlocuiasca pagina (Back revine aici).
     if content_type == 'movie' and _cm_setting('show_cm_detonate') != 'false':
         det_params_dict = {'mode': 'detonate_search', 'query': title, 'tmdb_id': tmdb_id,

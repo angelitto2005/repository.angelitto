@@ -18,6 +18,7 @@ VIDEO_EXT = ('.mkv', '.mp4', '.m4v', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.w
 EXTRA_EXT = ('.par2', '.nfo', '.sfv', '.srr', '.nzb', '.jpg', '.jpeg', '.png', '.txt', '.url',
              '.srt', '.sub', '.idx', '.ass', '.ssa', '.exe', '.db', '.sfv')
 _RAR_NAME = re.compile(r'\.(?:part\d+\.rar|rar|r\d{2,3}|\d{3})$', re.I)
+_NUMBERED_PART = re.compile(r'^(.*)\.(\d{3,})$', re.I)
 _SEVEN = re.compile(r'\.7z(?:\.\d+)?$', re.I)
 _SEVEN_VOLUME = re.compile(r'\.7z\.(\d+)$', re.I)
 _YENC_SIZE = re.compile(r'yEnc\s+(\d+)\s+\((\d+)\s*/\s*(\d+)\)', re.I)
@@ -344,13 +345,17 @@ def _volume_key(name):
     return (9, 0)
 
 
+_VOLUME_PREFIX = re.compile(r'^\[[^\]]{1,80}\]\s*\\?[^:]{0,80}::\s*', re.I)
+
+
 def _volume_stem(name):
     low = (name or '').lower()
     for pattern in (r'\.part\d+\.rar$', r'\.[r-z]\d{2}$', r'\.\d{3}$'):
         match = re.search(pattern, low)
         if match:
-            return low[:match.start()]
-    return low[:-4] if low.endswith('.rar') else low
+            return _VOLUME_PREFIX.sub('', low[:match.start()])
+    stem = low[:-4] if low.endswith('.rar') else low
+    return _VOLUME_PREFIX.sub('', stem)
 
 
 def _rar_groups(files):
@@ -392,6 +397,37 @@ def rar_volumes(files, head=None):
             volumes.append(item)
             closed = True
     return volumes
+
+
+def numbered_parts(files, head=None):
+    """Video files split by number (Movie.mkv.001, Movie.mkv.002, ...) in order."""
+    groups = {}
+    for item in files:
+        match = _NUMBERED_PART.match(item.name or '')
+        if not match:
+            continue
+        base = match.group(1).lower()
+        if _SEVEN.search(base) or base.endswith('.rar') or re.search(r'\.[r-z]\d{2}$', base):
+            continue
+        groups.setdefault(base, []).append((int(match.group(2)), item))
+    if not groups:
+        return []
+    chosen = None
+    if head is not None:
+        for entries in groups.values():
+            if any(item is head or item.name == head.name for _number, item in entries):
+                chosen = entries
+                break
+        if chosen is None:
+            return []
+    else:
+        chosen = max(groups.values(),
+                     key=lambda entries: sum(item.bytes for _number, item in entries))
+    chosen.sort(key=lambda pair: pair[0])
+    numbers = [number for number, _item in chosen]
+    if numbers != list(range(1, len(numbers) + 1)):
+        raise Unsupported('a numbered video part is missing from this NZB')
+    return [item for _number, item in chosen]
 
 
 # -- stored RAR ---------------------------------------------------------------

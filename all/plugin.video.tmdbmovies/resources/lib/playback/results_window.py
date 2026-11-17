@@ -173,6 +173,7 @@ AIO_ADDON_COLORS = {
     'cineby': 'FFFF8C00',
     'cinefreak': 'FF00FF00',
     'usenet':         'FF00CED1',
+    'easynews++':     'FF00CED1',
     'usenetstreamer': 'FFFFA500',
     'p2p_yts':        'FFDAA520',
     'p2p_torrentio':  'FFDAA520',
@@ -498,7 +499,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '') or res.get('provider_id', '')
             
             is_aio = provider_id in ['aiostreams']
-            is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+            is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             is_p2p = provider_id.startswith('p2p_')
 
             # Usenet (NZB): our own indexers, played by our own NNTP provider.
@@ -544,7 +545,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # -------------------------------------------------------------
             debrid_label = 'HTTP'
 
-            if is_nzb:
+            if provider_id == 'easynewspp':
+                debrid_label = '[COLOR FF00CED1]EN++[/COLOR]'
+            elif is_nzb:
                 debrid_label = '[COLOR FFFFEA00]NZB+[/COLOR]'
             elif is_p2p:
                 debrid_label = '[COLOR gold]P2P[/COLOR]'
