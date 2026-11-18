@@ -29,8 +29,21 @@ namespace
 constexpr int64_t kSeekLogBytes = 16 * 1024 * 1024;
 constexpr int64_t kIndexTailBytes = 8 * 1024 * 1024;
 constexpr int64_t kHardPrefetchBytes = 96 * 1024 * 1024;
+constexpr int64_t kKeepBytes = 4 * 1024 * 1024;
+constexpr int64_t kKeepShare = 8;
+constexpr int64_t kKeepArticles = 64;
+constexpr int64_t kSideQueueDistance = 256 * 1024 * 1024;
 constexpr int kWorkerMargin = 8;
 constexpr double kHedgeSeconds = 4.0;
+constexpr double kHedgeMaxSeconds = 12.0;
+constexpr double kHedgeFactor = 2.5;
+constexpr double kHedgePinnedSeconds = 1.5;
+constexpr double kHedgePinnedMaxSeconds = 6.0;
+constexpr double kHedgePinnedFactor = 1.5;
+constexpr int kHedgeMaxActive = 8;
+constexpr int kHedgeMaxSpeculative = 4;
+constexpr int64_t kHedgeWindowMin = 2 * 1024 * 1024;
+constexpr int64_t kHedgeWindowMax = 8 * 1024 * 1024;
 constexpr double kHedgeAcquireSeconds = 2.0;
 
 using ChunkPtr = std::shared_ptr<const std::vector<uint8_t>>;
@@ -48,6 +61,7 @@ struct Job
   int article = 0;
   int avoid = -1;
   bool hedge = false;
+  bool side = false;
 };
 
 struct QueueEntry
@@ -241,6 +255,7 @@ struct Slot
   ChunkPtr data;
   bool zero_filled = false;
   bool counted = false;
+  bool side_only = false;
   int64_t bytes = 0;
   int attempts = 0;
   int avoid_pool = -1;
@@ -346,7 +361,10 @@ public:
         plan_->prefetch / 1048576.0, plan_->cache / 1048576.0, cache_note, plan_->timeout);
 
     ScheduleAhead(0, 0, Lookahead(0, plan_->length));
+    PinHead();
     WarmTail();
+    Log(LogLevel::Info, "cache keeps %d head and %d tail article(s)", head_keep_,
+        tail_keep_);
     return true;
   }
 
@@ -386,12 +404,14 @@ public:
     bytes_decoded_ += slot.bytes;
   }
 
-  int64_t Read(int64_t offset, uint8_t* dest, size_t size)
+  int64_t Read(int64_t offset, uint8_t* dest, size_t size, bool lead = true)
   {
     if (!started_ || closing_.load() || fatal_.load())
       return -1;
     if (offset < 0 || offset >= plan_->length)
       return 0;
+    if (!lead)
+      return SideRead(offset, dest, size);
 
     const bool tail_read = offset >= plan_->length - kIndexTailBytes;
     const int64_t previous = last_read_.load();
@@ -484,6 +504,71 @@ public:
     return static_cast<int64_t>(done);
   }
 
+  int64_t SideRead(int64_t offset, uint8_t* dest, size_t size)
+  {
+    size_t done = 0;
+    int64_t position = offset;
+    while (done < size && position < plan_->length)
+    {
+      int64_t local = 0;
+      const int part_index = Locate(position, local);
+      if (part_index < 0)
+        break;
+      const PlanPart& part = plan_->parts[part_index];
+      const int64_t end_of_part = part.media_start + part.length;
+      const int64_t remaining = std::min(plan_->length - position, end_of_part - position);
+      const int64_t room = std::min<int64_t>(static_cast<int64_t>(size - done), remaining);
+      if (room <= 0)
+      {
+        position = end_of_part;
+        continue;
+      }
+      if (!EnsurePartSize(part_index, true))
+      {
+        if (closing_.load() || fatal_.load())
+          return done > 0 ? static_cast<int64_t>(done) : -1;
+        return done > 0 ? static_cast<int64_t>(done) : -1;
+      }
+      const int64_t part_size = part_sizes_[part_index].load();
+      const int64_t volume_position = part.skip + (position - part.media_start);
+      const int64_t index = volume_position / part_size;
+      if (index >= static_cast<int64_t>(part.articles.size()))
+      {
+        position = end_of_part;
+        continue;
+      }
+      const ChunkInfo chunk = GetChunk(part_index, static_cast<int>(index), true);
+      if (!chunk.data)
+      {
+        if (closing_.load() || fatal_.load())
+          return done > 0 ? static_cast<int64_t>(done) : -1;
+        continue;
+      }
+      const int64_t inside = volume_position - index * part_size;
+      if (inside >= static_cast<int64_t>(chunk.data->size()))
+      {
+        int64_t next = part.media_start + (index + 1) * part_size - part.skip;
+        if (index + 1 >= static_cast<int64_t>(part.articles.size()))
+          next = end_of_part;
+        if (next <= position)
+          next = position + 1;
+        position = std::min(next, end_of_part);
+        continue;
+      }
+      const int64_t take =
+          std::min<int64_t>(static_cast<int64_t>(chunk.data->size()) - inside, room);
+      std::memcpy(dest + done, chunk.data->data() + inside, static_cast<size_t>(take));
+      done += static_cast<size_t>(take);
+      position += take;
+    }
+    if (done > 0)
+    {
+      side_bytes_.fetch_add(static_cast<int64_t>(done));
+      side_reads_.fetch_add(1);
+    }
+    return static_cast<int64_t>(done);
+  }
+
   StreamStats Stats() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -491,6 +576,8 @@ public:
     stats.articles = articles_attempted_.load();
     stats.missing = missing_;
     stats.bytes = bytes_decoded_;
+    stats.side_bytes = side_bytes_.load();
+    stats.side_reads = side_reads_.load();
     stats.article_seconds = article_seconds_;
     stats.providers = provider_stats_;
     return stats;
@@ -503,6 +590,40 @@ public:
   }
 
 private:
+  double HedgeThresholdLocked(bool pinned) const
+  {
+    double seconds = 0;
+    int64_t articles = 0;
+    for (const auto& pool : pools_)
+    {
+      if (pool->config.backup)
+        continue;
+      const auto found = provider_stats_.find(pool->config.label);
+      if (found == provider_stats_.end() || found->second.articles <= 0)
+        continue;
+      seconds += found->second.seconds;
+      articles += found->second.articles;
+    }
+    if (pinned)
+    {
+      const double base =
+          articles >= 8 ? (seconds / articles) * kHedgePinnedFactor : kHedgePinnedSeconds;
+      return std::min(kHedgePinnedMaxSeconds,
+                      std::max(kHedgePinnedSeconds, base));
+    }
+    if (articles < 8)
+      return kHedgeSeconds;
+    const double average = seconds / articles;
+    return std::min(kHedgeMaxSeconds,
+                    std::max(kHedgeSeconds, average * kHedgeFactor));
+  }
+
+  int64_t HedgeWindowBytes() const
+  {
+    return std::min(kHedgeWindowMax,
+                    std::max(kHedgeWindowMin, plan_->prefetch / 16));
+  }
+
   void HedgeLoop()
   {
     Trace("hedge thread start");
@@ -523,28 +644,93 @@ private:
       {
         std::lock_guard<std::mutex> lock(mutex_);
         const double now = Now();
-        for (auto& item : slots_)
+        const double pinned_threshold = HedgeThresholdLocked(true);
+        const double prefetch_threshold = HedgeThresholdLocked(false);
+        const int64_t read = read_offset_.load();
+        const int64_t window_end = read + HedgeWindowBytes();
+        int active = 0;
+        int active_speculative = 0;
+        for (const auto& item : slots_)
         {
-          Slot& slot = item.second;
-          if (slot.state != Slot::State::Fetching || slot.hedged ||
-              slot.fetch_started <= 0.0)
-            continue;
-          if (now - slot.fetch_started < kHedgeSeconds)
-            continue;
-          slot.hedged = true;
-          Job job;
-          job.key = item.first;
-          job.part = PartOf(item.first);
-          job.article = ArticleOf(item.first);
-          job.avoid = slot.fetch_pool;
-          job.hedge = true;
-          hedges_.push_back(job);
-          queued = true;
-          if (hedge_logs_ < 20)
+          const Slot& slot = item.second;
+          if (slot.hedged && slot.state == Slot::State::Fetching)
           {
-            ++hedge_logs_;
-            Log(LogLevel::Info, "hedge %d:%d after %.1f s", job.part, job.article,
-                now - slot.fetch_started);
+            ++active;
+            if (pinned_.count(item.first) == 0)
+              ++active_speculative;
+          }
+        }
+        int budget = kHedgeMaxActive - active;
+        int speculative_budget = kHedgeMaxSpeculative - active_speculative;
+        if (budget > 0)
+        {
+          struct Candidate
+          {
+            uint64_t key = 0;
+            int64_t distance = 0;
+            bool pinned = false;
+          };
+          std::vector<Candidate> candidates;
+          for (auto& item : slots_)
+          {
+            Slot& slot = item.second;
+            if (slot.state != Slot::State::Fetching || slot.hedged ||
+                slot.fetch_started <= 0.0)
+              continue;
+            const bool pinned = pinned_.count(item.first) != 0;
+            if (slot.side_only && !pinned)
+              continue;
+            const double threshold = pinned ? pinned_threshold : prefetch_threshold;
+            if (now - slot.fetch_started < threshold)
+              continue;
+            const int64_t start = SlotStart(item.first);
+            const int64_t part_size = part_sizes_[PartOf(item.first)].load();
+            const int64_t size = part_size > 0 ? part_size : slot.bytes;
+            const bool near_read = start + size > read && start < window_end;
+            if (!pinned && !near_read)
+              continue;
+            const int64_t distance = start > read ? start - read : read - start;
+            candidates.push_back({item.first, distance, pinned});
+          }
+          std::sort(candidates.begin(), candidates.end(),
+                    [](const Candidate& left, const Candidate& right)
+                    {
+                      if (left.pinned != right.pinned)
+                        return left.pinned;
+                      return left.distance < right.distance;
+                    });
+          for (const Candidate& candidate : candidates)
+          {
+            if (budget <= 0)
+              break;
+            if (!candidate.pinned && speculative_budget <= 0)
+              break;
+            const auto found = slots_.find(candidate.key);
+            if (found == slots_.end())
+              continue;
+            Slot& slot = found->second;
+            if (slot.state != Slot::State::Fetching || slot.hedged)
+              continue;
+            slot.hedged = true;
+            Job job;
+            job.key = candidate.key;
+            job.part = PartOf(candidate.key);
+            job.article = ArticleOf(candidate.key);
+            job.avoid = slot.fetch_pool;
+            job.hedge = true;
+            job.side = slot.side_only;
+            hedges_.push_back(job);
+            --budget;
+            if (!candidate.pinned)
+              --speculative_budget;
+            queued = true;
+            if (hedge_logs_ < 20)
+            {
+              ++hedge_logs_;
+              Log(LogLevel::Info, "hedge %d:%d after %.1f s (%s)", job.part, job.article,
+                  now - slot.fetch_started,
+                  candidate.pinned ? "waiting" : "prefetch");
+            }
           }
         }
       }
@@ -641,6 +827,7 @@ private:
       job.part = PartOf(entry->key);
       job.article = ArticleOf(entry->key);
       job.avoid = avoid;
+      job.side = slot.side_only;
       slot.state = Slot::State::Fetching;
       ++slot.attempts;
       slot.fetch_started = Now();
@@ -935,9 +1122,12 @@ private:
         part_sizes_[part_index].store(slot.bytes);
         Trace("part %d size learned: %lld bytes", plan_->parts[part_index].id,
               static_cast<long long>(slot.bytes));
-        const int64_t read = read_offset_.load();
-        if (plan_->parts[part_index].media_start <= read + plan_->prefetch * 2)
-          SchedulePartHeadLocked(part_index);
+        if (!job.side)
+        {
+          const int64_t read = read_offset_.load();
+          if (plan_->parts[part_index].media_start <= read + plan_->prefetch * 2)
+            SchedulePartHeadLocked(part_index);
+        }
       }
     }
     EvictLocked();
@@ -1092,18 +1282,59 @@ private:
     return cache_limit_ > 0 ? cache_limit_ : plan_->cache;
   }
 
+  int KeepCount(int64_t part_size) const
+  {
+    if (part_size <= 0)
+      return 0;
+    const int64_t budget = std::max<int64_t>(
+        part_size, std::min<int64_t>(kKeepBytes, CacheLimit() / kKeepShare));
+    return static_cast<int>(
+        std::min<int64_t>(kKeepArticles, (budget + part_size - 1) / part_size));
+  }
+
+  bool Protected(uint64_t key) const
+  {
+    return pinned_.count(key) != 0 || keep_.count(key) != 0;
+  }
+
+  bool EvictSideLocked(int64_t read)
+  {
+    for (auto entry = lru_.end(); entry != lru_.begin();)
+    {
+      --entry;
+      const uint64_t key = *entry;
+      if (Protected(key))
+        continue;
+      const auto found = slots_.find(key);
+      if (found == slots_.end() || found->second.state != Slot::State::Ready ||
+          !found->second.side_only)
+        continue;
+      const int64_t start = SlotStart(key);
+      if (start < read + kHardPrefetchBytes && start + found->second.bytes > read)
+        continue;
+      cache_bytes_ -= found->second.bytes;
+      slots_.erase(found);
+      lru_.erase(entry);
+      ++evictions_;
+      return true;
+    }
+    return false;
+  }
+
   void EvictLocked()
   {
+    const int64_t read = read_offset_.load();
     while (cache_bytes_ > CacheLimit() && !lru_.empty())
     {
-      const int64_t read = read_offset_.load();
+      if (EvictSideLocked(read))
+        continue;
       bool removed = false;
       auto entry = lru_.end();
       while (entry != lru_.begin())
       {
         --entry;
         const uint64_t key = *entry;
-        if (pinned_.count(key) != 0)
+        if (Protected(key))
           continue;
         const auto found = slots_.find(key);
         if (found == slots_.end() || found->second.state != Slot::State::Ready)
@@ -1127,7 +1358,7 @@ private:
         for (auto candidate = lru_.begin(); candidate != lru_.end(); ++candidate)
         {
           const uint64_t key = *candidate;
-          if (pinned_.count(key) != 0)
+          if (Protected(key))
             continue;
           const auto found = slots_.find(key);
           if (found == slots_.end() || found->second.state != Slot::State::Ready)
@@ -1292,7 +1523,7 @@ private:
         2, std::min<int64_t>(wanted, static_cast<int64_t>(part.articles.size()))));
   }
 
-  ChunkInfo GetChunk(int part_index, int article)
+  ChunkInfo GetChunk(int part_index, int article, bool side = false)
   {
     const uint64_t key = MakeKey(part_index, article);
     const double started = Now();
@@ -1305,19 +1536,25 @@ private:
       auto found = slots_.find(key);
       if (found == slots_.end())
       {
-        EnqueueLocked(key, 0);
+        EnqueueLocked(key, side ? kSideQueueDistance : 0);
         found = slots_.find(key);
+        found->second.side_only = side;
         job_cv_.notify_all();
       }
       Slot& slot = found->second;
+      if (!side)
+        slot.side_only = false;
       if (slot.state == Slot::State::Ready)
       {
-        TouchLocked(key, slot);
-        if (!waited_once)
-          ++cache_hits_;
+        if (!side)
+        {
+          TouchLocked(key, slot);
+          if (!waited_once)
+            ++cache_hits_;
+        }
         return {slot.data, slot.zero_filled};
       }
-      if (slot.state == Slot::State::Queued)
+      if (!side && slot.state == Slot::State::Queued)
         PromoteLocked(key, 0);
       pinned_.insert(key);
       cv_.wait(lock,
@@ -1334,7 +1571,7 @@ private:
       if (closing_.load() || fatal_.load())
         return {};
       const double waited = Now() - started;
-      if (waited > 0.1)
+      if (!side && waited > 0.1)
       {
         ++cache_waits_;
         wait_seconds_ += waited;
@@ -1343,21 +1580,37 @@ private:
       }
       if (waited > 2.5 && slow_reads_.fetch_add(1) < 8)
         Log(LogLevel::Warning,
-            "read waited %.1fs for article %d of part %d (%lld MB decoded so far)", waited,
-            article, plan_->parts[part_index].id,
+            "%s waited %.1fs for article %d of part %d (%lld MB decoded so far)",
+            side ? "extra reader" : "read", waited, article,
+            plan_->parts[part_index].id,
             static_cast<long long>(bytes_decoded_ / 1048576));
     }
   }
 
-  bool EnsurePartSize(int part_index)
+  bool EnsurePartSize(int part_index, bool side = false)
   {
     if (part_sizes_[part_index].load() > 0)
       return true;
-    const ChunkInfo info = GetChunk(part_index, 0);
+    const ChunkInfo info = GetChunk(part_index, 0, side);
     if (!info.data || info.zero || info.data->empty())
       return false;
     part_sizes_[part_index].store(static_cast<int64_t>(info.data->size()));
     return true;
+  }
+
+  void PinHead()
+  {
+    if (plan_->parts.empty() || plan_->parts[0].articles.empty())
+      return;
+    const int64_t part_size = part_sizes_[0].load();
+    const int count = std::min<int>(
+        KeepCount(part_size), static_cast<int>(plan_->parts[0].articles.size()));
+    if (count <= 0)
+      return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    head_keep_ = count;
+    for (int index = 0; index < count; ++index)
+      keep_.insert(MakeKey(0, index));
   }
 
   void WarmTail()
@@ -1381,16 +1634,21 @@ private:
     const PlanPart& part = plan_->parts[part_index];
     const int64_t part_size = part_sizes_[part_index].load();
     const int64_t volume = part.skip + part.length - 1;
-    int64_t index = volume / part_size;
-    if (index >= static_cast<int64_t>(part.articles.size()))
-      index = static_cast<int64_t>(part.articles.size()) - 1;
-    const uint64_t key = MakeKey(part_index, static_cast<int>(index));
+    const int total = static_cast<int>(part.articles.size());
+    int64_t last = volume / part_size;
+    if (last >= total)
+      last = total - 1;
+    const int count = std::min(KeepCount(part_size), static_cast<int>(last) + 1);
+    const int first = static_cast<int>(last) - count + 1;
+    const uint64_t last_key = MakeKey(part_index, static_cast<int>(last));
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      pinned_.insert(key);
-      tail_key_ = key;
-      EnqueueLocked(key, -1);
-      PromoteLocked(key, -1);
+      tail_keep_ = count;
+      for (int index = first; index <= static_cast<int>(last); ++index)
+        keep_.insert(MakeKey(part_index, index));
+      EnqueueLocked(last_key, -1);
+      PromoteLocked(last_key, -1);
+      tail_key_ = last_key;
     }
     job_cv_.notify_all();
   }
@@ -1402,8 +1660,7 @@ private:
     for (auto entry = slots_.begin(); entry != slots_.end();)
     {
       Slot& slot = entry->second;
-      if (slot.state != Slot::State::Queued || entry->first == tail_key_ ||
-          pinned_.count(entry->first) != 0)
+      if (slot.state != Slot::State::Queued || Protected(entry->first))
       {
         ++entry;
         continue;
@@ -1455,6 +1712,8 @@ private:
     const double average = stats.article_seconds * 1000.0 / stats.articles;
     const double fetched = wall > 0.1 ? megabytes / wall : 0.0;
     int64_t read_bytes = 0;
+    int64_t side_bytes = 0;
+    int64_t side_reads = 0;
     int64_t hits = 0;
     int64_t waits = 0;
     int64_t evictions = 0;
@@ -1466,6 +1725,8 @@ private:
     {
       std::lock_guard<std::mutex> lock(mutex_);
       read_bytes = read_bytes_.load();
+      side_bytes = side_bytes_.load();
+      side_reads = side_reads_.load();
       hits = cache_hits_;
       waits = cache_waits_;
       wait_seconds = wait_seconds_;
@@ -1498,11 +1759,13 @@ private:
     Log(LogLevel::Info,
         "stream stats: %.1f MB served in %.1f s (%.1f MB/s), first byte %.1f s, %lld waits "
         "%.1f s (max %.1f s), %lld evictions, %lld refetches, %lld cache hits, decode %.1f "
-        "ms/article, cache %.0f MB",
+        "ms/article, %lld extra reads %.1f MB, cache %.0f MB",
         read_bytes / 1048576.0, wall, served, first_read_cs_.load() / 100.0,
         static_cast<long long>(waits), wait_seconds, wait_max,
         static_cast<long long>(evictions), static_cast<long long>(refetches),
-        static_cast<long long>(hits), decode_average, CacheLimit() / 1048576.0);
+        static_cast<long long>(hits), decode_average,
+        static_cast<long long>(side_reads), side_bytes / 1048576.0,
+        CacheLimit() / 1048576.0);
   }
 
   void DoClose()
@@ -1544,6 +1807,7 @@ private:
       slots_.clear();
       lru_.clear();
       pinned_.clear();
+      keep_.clear();
       cache_bytes_ = 0;
     }
   }
@@ -1573,6 +1837,9 @@ private:
   std::set<QueueEntry, QueueOrder> queue_;
   std::deque<Job> hedges_;
   std::unordered_set<uint64_t> pinned_;
+  std::unordered_set<uint64_t> keep_;
+  int head_keep_ = 0;
+  int tail_keep_ = 0;
   std::vector<std::unique_ptr<Pool>> pools_;
   std::vector<std::thread> threads_;
   std::once_flag close_once_;
@@ -1592,6 +1859,8 @@ private:
   std::atomic<bool> seek_pending_{false};
   std::atomic<int64_t> first_read_cs_{0};
   std::atomic<int64_t> read_bytes_{0};
+  std::atomic<int64_t> side_bytes_{0};
+  std::atomic<int64_t> side_reads_{0};
   int64_t cache_hits_ = 0;
   int64_t cache_waits_ = 0;
   double wait_seconds_ = 0;
@@ -1656,9 +1925,9 @@ int64_t Stream::Length() const
   return impl_ ? impl_->Length() : 0;
 }
 
-int64_t Stream::Read(int64_t offset, uint8_t* dest, size_t size)
+int64_t Stream::Read(int64_t offset, uint8_t* dest, size_t size, bool lead)
 {
-  return impl_ ? impl_->Read(offset, dest, size) : -1;
+  return impl_ ? impl_->Read(offset, dest, size, lead) : -1;
 }
 
 StreamStats Stream::Stats() const

@@ -41,17 +41,24 @@ def start_download_thread(url, title, year, tmdb_id, c_type, season=None, episod
     if provider_id.startswith('p2p_') or url.startswith('magnet:'):
         xbmcgui.Dialog().notification("Download", "Not available for P2P sources", xbmcgui.NOTIFICATION_ERROR)
         return
+    extra_headers = {}
+    if provider_id == 'easynews_direct':
+        try:
+            from resources.lib.api.easynews_direct import auth_headers
+            extra_headers = auth_headers()
+        except Exception:
+            pass
     unique_id = get_dl_id(tmdb_id, c_type, season, episode)
     window = xbmcgui.Window(10000)
     window.setProperty(unique_id, 'active')
     window.clearProperty(f"{unique_id}_stop")
     
     import threading
-    t = threading.Thread(target=_download_worker, args=(url, title, year, tmdb_id, c_type, season, episode, release_name))
+    t = threading.Thread(target=_download_worker, args=(url, title, year, tmdb_id, c_type, season, episode, release_name, extra_headers))
     t.daemon = True
     t.start()
 
-def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release_name):
+def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release_name, extra_headers=None):
     unique_id = get_dl_id(tmdb_id, c_type, season, episode)
     window = xbmcgui.Window(10000)
     
@@ -136,6 +143,8 @@ def _download_worker(url, title, year, tmdb_id, c_type, season, episode, release
         except: pass
     if 'User-Agent' not in headers:
         headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    if extra_headers:
+        headers.update(extra_headers)
 
     xbmc.log(f"[DOWNLOAD] Start: {file_path}", xbmc.LOGINFO)
 

@@ -560,10 +560,6 @@ def indexer_slot(number):
                     text('usenet_nzb.indexer%d.key' % number, ''))
 
 
-def indexers_enabled():
-    return flag('usenet_nzb.indexers.enabled', True)
-
-
 def nzbindex_enabled():
     """The built-in free search; no account and no key."""
     return flag('usenet_nzb.nzbindex', True)
@@ -576,8 +572,6 @@ def binsearch_enabled():
 
 def indexers():
     """The slots in order, then the extra comma list; one entry per address."""
-    if not indexers_enabled():
-        return []
     found = []
     seen = set()
     if nzbindex_enabled():
@@ -609,6 +603,11 @@ def fetch_mode():
 def stop_after():
     """In sequential mode the next indexer is asked while fewer are usable."""
     return number('usenet_nzb.stop_after', 4, 1, 10)
+
+
+def context_search_scope():
+    """'all', 'free' or 'paid' for the custom text search."""
+    return ('all', 'free', 'paid')[number('usenet_nzb.context_search_scope', 1, 0, 2)]
 
 
 def ready():

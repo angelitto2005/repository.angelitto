@@ -29,14 +29,17 @@ constexpr const char* PROTOCOL = "tmdbm";
 constexpr const char* PLAN_FOLDER =
     "special://profile/addon_data/plugin.video.tmdbmovies/usenet-vfs/";
 constexpr int CHUNK_SIZE = 256 * 1024;
+constexpr int64_t LEAD_AFTER_BYTES = 32 * 1024 * 1024;
 
 struct FileHandle
 {
   std::shared_ptr<engine::Stream> stream;
   std::string token;
   int64_t position{0};
+  int64_t read_total{0};
   bool error_logged{false};
   bool cancelled_logged{false};
+  bool side_logged{false};
 };
 
 void EngineLog(engine::LogLevel level, const char* message)
@@ -299,6 +302,7 @@ struct SessionEntry
   std::shared_ptr<engine::Stream> stream;
   int refs = 0;
   double last_used = 0;
+  FileHandle* lead = nullptr;
 };
 
 std::mutex g_session_mutex;
@@ -356,6 +360,29 @@ bool IsOtherPlanActive(const std::string& token)
   return !active.empty() && active != token;
 }
 
+void CloseOtherSessions(const std::string& keep)
+{
+  std::vector<std::shared_ptr<engine::Stream>> closing;
+  {
+    std::lock_guard<std::mutex> lock(g_session_mutex);
+    for (auto it = g_sessions.begin(); it != g_sessions.end();)
+    {
+      if (it->first != keep && it->second->refs <= 0)
+      {
+        closing.push_back(it->second->stream);
+        it = g_sessions.erase(it);
+      }
+      else
+        ++it;
+    }
+  }
+  for (auto& stream : closing)
+  {
+    engine::Trace("closing a warm usenet stream for a new release");
+    std::thread([stream]() { stream->Close(); }).detach();
+  }
+}
+
 std::shared_ptr<engine::Stream> AcquireStream(const std::string& token,
                                               const std::shared_ptr<const engine::Plan>& plan,
                                               bool& reused, std::string& error)
@@ -379,6 +406,7 @@ std::shared_ptr<engine::Stream> AcquireStream(const std::string& token,
   }
 
   reused = false;
+  CloseOtherSessions(token);
   auto stream = std::make_shared<engine::Stream>(plan);
   std::vector<uint8_t> first;
   if (LoadFirstArticle(token, *plan, first))
@@ -534,6 +562,13 @@ public:
     auto* handle = new FileHandle();
     handle->stream = stream;
     handle->token = token;
+    {
+      std::lock_guard<std::mutex> lock(g_session_mutex);
+      auto found = g_sessions.find(token);
+      if (found != g_sessions.end() && found->second->stream == stream &&
+          !found->second->lead)
+        found->second->lead = handle;
+    }
     return handle;
   }
 
@@ -548,6 +583,8 @@ public:
       auto found = g_sessions.find(handle->token);
       if (found != g_sessions.end() && found->second->stream == handle->stream)
       {
+        if (found->second->lead == handle)
+          found->second->lead = nullptr;
         if (found->second->refs > 0)
           --found->second->refs;
         found->second->last_used = NowSeconds();
@@ -573,7 +610,28 @@ public:
       }
       return -1;
     }
-    const int64_t got = handle->stream->Read(handle->position, buffer, size);
+    bool lead = true;
+    {
+      std::lock_guard<std::mutex> lock(g_session_mutex);
+      auto found = g_sessions.find(handle->token);
+      if (found != g_sessions.end() && found->second->stream == handle->stream)
+      {
+        SessionEntry& entry = *found->second;
+        if (!entry.lead ||
+            (entry.lead != handle && handle->read_total >= LEAD_AFTER_BYTES))
+          entry.lead = handle;
+        lead = entry.lead == handle;
+      }
+    }
+    if (!lead && !handle->side_logged)
+    {
+      handle->side_logged = true;
+      kodi::Log(ADDON_LOG_INFO,
+                "vfs.tmdbm: extra reader at %.2f GB (for example chapter pictures): "
+                "the player's read-ahead stays where it is",
+                static_cast<double>(handle->position) / 1073741824.0);
+    }
+    const int64_t got = handle->stream->Read(handle->position, buffer, size, lead);
     if (got < 0)
     {
       if (!handle->error_logged)
@@ -584,6 +642,10 @@ public:
                   handle->stream->LastError().c_str());
       }
       return -1;
+    }
+    {
+      std::lock_guard<std::mutex> lock(g_session_mutex);
+      handle->read_total += got;
     }
     handle->position += got;
     return static_cast<ssize_t>(got);

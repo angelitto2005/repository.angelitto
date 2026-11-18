@@ -910,7 +910,7 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
 
 def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='',
          logger=None, use_cache=True, mode=None, min_usable=None, min_size=0,
-         episodes_only=False, per_indexer_limit=0, free_only=False):
+         episodes_only=False, per_indexer_limit=0, scope=''):
     """Search the configured indexers. Returns (rows, notes).
 
     Sequential asks every enabled free built-in together, because they have no
@@ -919,16 +919,21 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
     Parallel asks every selected indexer at once. Answers are cached per indexer,
     so one partial answer never hides the others.
 
-    free_only keeps the built-in no-account searches only; it is used by the
-    custom text search so a free query never spends a keyed indexer's quota.
+    scope 'all', 'free' or 'paid' narrows which indexers are asked; the custom
+    text search uses it so a free query never spends a keyed indexer's quota.
     """
-    if not config.indexers_enabled():
-        return [], ['indexers are off in the settings']
+    selection = str(scope or 'all').strip().lower()
+    if selection not in ('all', 'free', 'paid'):
+        selection = 'all'
     entries = config.indexers()
-    if free_only:
+    if selection == 'free':
         entries = [entry for entry in entries if entry.get('builtin')]
+    elif selection == 'paid':
+        entries = [entry for entry in entries if not entry.get('builtin')]
     if not entries:
-        return [], ['no free indexer is enabled' if free_only else 'no indexer is configured']
+        return [], [{'free': 'no free indexer is enabled',
+                     'paid': 'no paid indexer is enabled'}.get(selection,
+                                                               'no indexer is configured')]
     if min_usable is None:
         min_usable = config.stop_after()
     min_usable = max(1, int(min_usable))

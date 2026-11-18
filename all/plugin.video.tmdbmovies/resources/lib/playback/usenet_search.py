@@ -1,4 +1,4 @@
-"""Custom text search over the free Usenet indexers, played through the NNTP engine."""
+"""Custom text search over the Usenet indexers picked in Settings, played through the NNTP engine."""
 
 import json
 import os
@@ -318,8 +318,8 @@ def search_results(params=None):
         _item(handle, 'usenet_search', '[B][COLOR FFFF5555]Usenet engine is not available[/COLOR][/B]')
         xbmcplugin.endOfDirectory(handle, True, False, True)
         return
-    if not usenet_config.enabled() or not usenet_config.indexers_enabled():
-        _item(handle, 'usenet_search', '[B][COLOR FFFF5555]Enable Usenet and its indexers first[/COLOR][/B]')
+    if not usenet_config.enabled():
+        _item(handle, 'usenet_search', '[B][COLOR FFFF5555]Enable Usenet first[/COLOR][/B]')
         xbmcplugin.endOfDirectory(handle, True, False, True)
         return
     if not usenet_config.providers():
@@ -327,18 +327,22 @@ def search_results(params=None):
         xbmcplugin.endOfDirectory(handle, True, False, True)
         return
 
+    scope = usenet_config.context_search_scope()
     progress = xbmcgui.DialogProgressBG()
     try:
-        progress.create('Usenet search', 'Searching NZBIndex and Binsearch...')
+        progress.create('Usenet search', {
+            'free': 'Searching the free indexers...',
+            'paid': 'Searching the paid indexers...',
+        }.get(scope, 'Searching all indexers...'))
     except Exception:
         progress = None
     try:
         rows, notes = indexer.find(
             'movie', '', None, None, title=query, year=None, alt_title='',
-            logger=_log, use_cache=False, mode='sequential',
+            logger=_log, use_cache=False, mode=usenet_config.fetch_mode(),
             min_usable=usenet_config.stop_after(), min_size=usenet_config.min_size_bytes(),
             episodes_only=False, per_indexer_limit=usenet_config.max_results(),
-            free_only=True)
+            scope=scope)
     except Exception as exc:
         rows, notes = [], [str(exc)[:120]]
     finally:

@@ -703,9 +703,6 @@ def _usenet_test_indexers():
     except Exception as exc:
         xbmcgui.Dialog().ok('Usenet', 'The Usenet module is not available: %s' % exc)
         return
-    if not usenet_config.indexers_enabled():
-        xbmcgui.Dialog().ok('Usenet', 'Indexers are off. Turn them on in Settings > Usenet > Indexers.')
-        return
     entries = usenet_config.indexers()
     skipped = []
     for number in range(1, getattr(usenet_config, 'INDEXER_SLOTS', 6) + 1):
@@ -2682,6 +2679,18 @@ def run_service():
     except Exception as _usenet_start_error:
         xbmc.log('[TMDb Movies] Usenet server error: %s' % _usenet_start_error, xbmc.LOGERROR)
 
+    # --- EasyNews Direct: keep the loopback proxy running as a fallback so the
+    # login never appears in Kodi's player path or in subtitle add-on logs. ---
+    try:
+        from resources.lib.api import easynews_proxy as _easynews_proxy
+        if _easynews_proxy.start():
+            xbmc.log('[TMDb Movies] [EASYNEWS-PROXY] local server started', xbmc.LOGINFO)
+        else:
+            xbmc.log('[TMDb Movies] [EASYNEWS-PROXY] no free port for the local server', xbmc.LOGERROR)
+    except Exception as _easynews_proxy_error:
+        xbmc.log('[TMDb Movies] [EASYNEWS-PROXY] server error: %s' % _easynews_proxy_error,
+                 xbmc.LOGERROR)
+
     # --- Usenet (NZB): trim the caches kept in the profile (NZBs 3 days / 256 MB,
     # VFS plans 12 h). The HTTP server does the NZB pass itself, but the VFS path
     # never starts it, so this runs on every boot regardless of the stream engine. ---
@@ -3301,6 +3310,11 @@ def run_service():
         try:
             from resources.lib.usenet import service_host as _usenet_host
             _usenet_host.stop()
+        except Exception:
+            pass
+        try:
+            from resources.lib.api import easynews_proxy as _easynews_proxy
+            _easynews_proxy.stop()
         except Exception:
             pass
 

@@ -7969,6 +7969,69 @@ def _usenet_stream_key(item):
     return ''
 
 
+def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
+                           title_query=None, year_query=None, alt_title=None):
+    '''EasyNews username/password: web search and a direct download stream, no NNTP.'''
+    if not title_query:
+        log("[EASYNEWS-DIRECT] no title")
+        return None
+    try:
+        from resources.lib.api import easynews_direct
+    except Exception as exc:
+        log(f"[EASYNEWS-DIRECT] module unavailable: {exc}")
+        return None
+    if not easynews_direct.configured():
+        log("[EASYNEWS-DIRECT] username/password missing")
+        return None
+    try:
+        rows = easynews_direct.search(title_query, alt_title, year_query,
+                                      content_type, season, episode)
+    except Exception as exc:
+        log(f"[EASYNEWS-DIRECT] search failed: {type(exc).__name__}")
+        return None
+    if not rows:
+        log("[EASYNEWS-DIRECT] no results")
+        return None
+    streams = []
+    for row in rows:
+        name = (row.get('name') or '').strip()
+        url = row.get('url') or ''
+        if not name or not url:
+            continue
+        size_bytes = int(row.get('size') or 0)
+        size_text = ('%.2f GB' % (size_bytes / 1073741824.0)) if size_bytes >= 1073741824 else (
+            ('%.0f MB' % (size_bytes / 1048576.0)) if size_bytes else '')
+        quality = _extract_quality_from_string(name) or 'SD'
+        group = _extract_release_group(name)
+        if group and _is_group_junk(group):
+            group = ''
+        streams.append({
+            'name': name,
+            'title': name,
+            'url': url,
+            'quality': quality,
+            'size': size_text,
+            'provider': 'EasyNews Direct',
+            'provider_id': 'easynews_direct',
+            'source_provider': 'EasyNews Direct',
+            'server': '',
+            'direct': True,
+            'info': {
+                'debrid_service': 'easynews',
+                'is_cached': True,
+                'addon': 'EasyNews Direct',
+                'provider': 'EasyNews Direct',
+                'source_provider': 'EasyNews Direct',
+                'indexer': '',
+                'quality': quality,
+                'size': size_text,
+                'releaseGroup': group,
+            },
+        })
+    log("[EASYNEWS-DIRECT] %d source(s) ready" % len(streams))
+    return streams or None
+
+
 def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None, alt_title=None):
     '''Our own Newznab indexers, played by our own NNTP provider (no debrid).'''
     try:
@@ -7979,9 +8042,6 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
         return None
     if not usenet_config.enabled():
         log("[USENET] off - tick ENABLE USENET (NZB) in Settings > Usenet")
-        return None
-    if not usenet_config.indexers_enabled():
-        log("[USENET] indexers are off in Settings > Usenet")
         return None
     if not usenet_config.indexers():
         log("[USENET] no indexer configured")
@@ -8185,6 +8245,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
         'easynewspp': ('EasyNews++', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'easynewspp', 'EasyNews++')),
+        'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
         'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
@@ -8213,7 +8274,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     to_run = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_providers = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'easynews_direct', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_providers = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
     if target_providers is not None:

@@ -207,15 +207,20 @@
 		<setting id="filter_web_sources" type="bool" label="Filter [B][COLOR FF00FA9A]WEB[/COLOR][COLOR gold] (RD ONLY)[/COLOR][/B] sources" default="false"/>
 		<setting id="aio_verify_links" type="bool" label="Verify AIO/Stremio links (fail fast)" default="true"/>
 		
-		<setting type="lsep" label="EasyNews"/>
-		<setting id="easynews_noseek" type="bool" label="EasyNews: Play Without Seek (Fixes startup errors)" default="false"/>
+		<setting type="lsep" label="EasyNews Direct"/>
+		<setting id="use_easynews_direct" type="bool" label="Enable [B][COLOR FF00CED1]EasyNews Direct[/COLOR][/B]   username and password, web sources, no NNTP or Stremio addon" default="false"/>
+		<setting id="easynews_direct_user" type="text" label="  Username" default="" subsetting="true" visible="eq(-1,true)"/>
+		<setting id="easynews_direct_pass" type="text" label="  Password" default="" option="hidden" subsetting="true" visible="eq(-2,true)"/>
+		<setting id="easynews_direct_max" type="slider" label="  Max results per search   (one search request per title)" default="30" range="5,5,100" option="int" visible="eq(-3,true)"/>
+
+		<setting type="lsep" label="EasyNews Playback"/>
+		<setting id="easynews_noseek" type="bool" label="Play Without Seek (fixes startup errors)" default="false"/>
     </category>
 
 	<!-- 4b. USENET (NZB) -->
     <category label="[B][COLOR FFFFEA00]Usenet[/COLOR][/B]">
         <setting label="[B][COLOR FFFFEA00]General[/COLOR][/B]" type="lsep" />
         <setting id="use_usenet_nzb" type="bool" label="[COLOR FFCCCCFF][B]Enable [/B][/COLOR][COLOR FF00CED1][B]Usenet (NZB)[/B][/COLOR][COLOR FFCCCCFF]   your own indexer and NNTP provider, no debrid needed[/COLOR]" default="false"/>
-        <setting id="usenet_nzb.context_search" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Search Usenet in the context menu[/B]   (free indexers only; asks for your own words)[/COLOR]" default="false" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.episodes_only" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Single episodes only[/B]   (skips season and show packs)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.pack_pages" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Season pack search pages[/B]   (1 = minimum API use; 2-3 only read deeper while no 1080p or 720p pack was found)[/COLOR]" default="1" range="1,1,3" option="int" visible="eq(-1,false)"/>
         <setting id="usenet_nzb.min_size_mb" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Minimum release size[/B]  (MB)[/COLOR]" default="50" range="0,10,500" option="int"/>
@@ -224,11 +229,14 @@
         <setting id="usenet_nzb.grabs_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the grab count[/B] in the source list   (how many times the NZB was downloaded)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.allow_iso" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Allow full-disc ISO[/B]   (slow over Usenet: the ISO is scanned before playback)[/COLOR]" default="false"/>
 
+        <setting label="[B][COLOR FFFFEA00]Custom search[/COLOR][/B]" type="lsep" visible="eq(-8,true)"/>
+        <setting id="usenet_nzb.context_search" type="bool" label="[COLOR FFCCCCFF][B]Search Usenet in the context menu[/B]   (asks for your own words)[/COLOR]" default="false" visible="eq(-9,true)"/>
+        <setting id="usenet_nzb.context_search_scope" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Indexers for custom search[/B][/COLOR]" values="All indexers|Only free|Only paid" default="1" visible="eq(-1,true)"/>
+
         <setting label="[B][COLOR FFFFEA00]Indexers[/COLOR][/B]" type="lsep" />
-        <setting id="usenet_nzb.indexers.enabled" type="bool" label="[COLOR FFCCCCFF][B]Use indexers[/B]   search the Newznab indexers below[/COLOR]" default="true"/>
-        <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]" visible="eq(-1,true)"/>
-        <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - free together, paid one by one (saves quota)|Parallel - all at once" default="0" visible="eq(-2,true)"/>
-        <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Next Keyed Indexer If Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-3,true) + eq(-1,0)"/>
+        <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]"/>
+        <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - free together, paid one by one (saves quota)|Parallel - all at once" default="0"/>
+        <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Ask Next Indexer if Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-1,0)"/>
 
         <setting id="usenet_nzb.indexer1.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 1[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer1.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
@@ -256,8 +264,8 @@
 
         <setting id="usenet_nzb.indexers" type="text" label="[COLOR FFCCCCFF][B]More indexers[/B]   (optional) address : API key, comma between indexers[/COLOR]" default=""/>
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]e.g.[/B]  https://api.indexer-one.com : KEY1, https://indexer-two.net/api : KEY2[/COLOR]"/>
-        <setting id="usenet_nzb.nzbindex" type="bool" label="[COLOR FF00CED1][B]NZBIndex (free)[/B][/COLOR][COLOR FFCCCCFF]   public search, no account or API key; asked first so your indexer quota lasts longer[/COLOR]" default="true"/>
-        <setting id="usenet_nzb.binsearch" type="bool" label="[COLOR FF00CED1][B]Binsearch (free)[/B][/COLOR][COLOR FFCCCCFF]   public search, no account; older and rarer releases, 25 results per search[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.nzbindex" type="bool" label="[COLOR FF00CED1][B]NZBIndex[/B][/COLOR][COLOR FFCCCCFF]   (free indexer)[/COLOR]" default="true"/>
+        <setting id="usenet_nzb.binsearch" type="bool" label="[COLOR FF00CED1][B]Binsearch[/B][/COLOR][COLOR FFCCCCFF]   (free indexer)[/COLOR]" default="false"/>
 
         <setting label="[B][COLOR FFFFEA00]Providers[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.provider1.enabled" type="bool" label="[COLOR FF00CED1][B]Provider 1[/B][/COLOR][COLOR FFCCCCFF]   use this NNTP provider[/COLOR]" default="true"/>

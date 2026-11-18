@@ -22,6 +22,58 @@ def _nzb_indexer_label(value):
     text = str(value or '').strip()
     return _NZB_INDEXER_ALIASES.get(text.lower(), text)
 
+
+_PROVIDER_DISPLAY = {
+    'easynews_direct': 'EasyNews Direct',
+    'easynewspp': 'EasyNews++',
+    'usenet_nzb': 'Usenet',
+    'usenet': 'Usenet',
+    'aiostreams': 'AIOStreams',
+}
+
+
+def _source_provider_label(info, provider_id, usenet_meta=None):
+    pid = str(provider_id or '').strip().lower()
+    if pid in _PROVIDER_DISPLAY:
+        return _PROVIDER_DISPLAY[pid]
+    for key in ('provider', 'addon', 'source_provider'):
+        value = str((info or {}).get(key) or '').strip()
+        if value and value.lower() not in ('unknown', 'none'):
+            return value
+    if pid:
+        return pid.replace('p2p_', '').replace('_', ' ').title()
+    return 'Unknown'
+
+
+def _source_indexer_label(info, provider_id, usenet_meta=None):
+    pid = str(provider_id or '').strip().lower()
+    if pid in ('easynews_direct', 'easynewspp'):
+        return 'EasyNews'
+    value = ''
+    if isinstance(usenet_meta, dict):
+        value = usenet_meta.get('indexer') or ''
+    if not value:
+        value = (info or {}).get('indexer') or (info or {}).get('server') or ''
+    return _nzb_indexer_label(value)
+
+
+def _source_server_label(info, provider_id, usenet_meta=None):
+    pid = str(provider_id or '').strip().lower()
+    if pid == 'usenet_nzb':
+        return str((usenet_meta or {}).get('provider_name')
+                   or (info or {}).get('provider_name') or 'Usenet')
+    if pid == 'easynews_direct':
+        return 'EasyNews'
+    if pid == 'easynewspp':
+        return 'EasyNews++'
+    if pid == 'aiostreams':
+        value = str((info or {}).get('debrid_service') or '').strip()
+        if value.lower() in ('', 'aiostreams', 'none'):
+            value = str((info or {}).get('addon') or 'AIOStreams').strip()
+        return value
+    return str((info or {}).get('debrid_service') or (info or {}).get('server')
+               or (info or {}).get('addon') or '')
+
 _RE_COMPILED = {}
 def _cached_re(pattern):
     if pattern not in _RE_COMPILED:
@@ -174,6 +226,7 @@ AIO_ADDON_COLORS = {
     'cinefreak': 'FF00FF00',
     'usenet':         'FF00CED1',
     'easynews++':     'FF00CED1',
+    'easynews direct': 'FF00CED1',
     'usenetstreamer': 'FFFFA500',
     'p2p_yts':        'FFDAA520',
     'p2p_torrentio':  'FFDAA520',
@@ -498,7 +551,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             raw_name = res['name']
             provider_id = res.get('raw_stream_data', {}).get('provider_id', '') or res.get('provider_id', '')
             
-            is_aio = provider_id in ['aiostreams']
+            is_aio = provider_id in ['aiostreams', 'easynews_direct']
             is_stremio_addon = provider_id in ['torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
             is_p2p = provider_id.startswith('p2p_')
 
@@ -874,6 +927,9 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 title_color_focus = 'FFCCCCFF' # FFFFFF00 Galbenul original stralucitor FFCCCCFF silver
 
             li = xbmcgui.ListItem(res['name'])
+            display_provider = _source_provider_label(info, provider_id, _nzb_meta)
+            display_indexer = _source_indexer_label(info, provider_id, _nzb_meta)
+            display_server = _source_server_label(info, provider_id, _nzb_meta)
             
             _src_index = res.get('src_index', idx)
             # Acelasi numar ca in logul player-ului, chiar si dupa o filtrare.
@@ -894,15 +950,15 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             li.setProperty('tmdbmovies.poster', global_poster)
             li.setProperty('tmdbmovies.plot', global_plot)
             li.setProperty('tmdbmovies.fanart', self.meta.get('fanart', ''))
-            li.setProperty('tmdbmovies.provider', provider)
-            li.setProperty('tmdbmovies.server', server)
+            li.setProperty('tmdbmovies.provider', display_provider)
+            li.setProperty('tmdbmovies.server', display_server)
             li.setProperty('tmdbmovies.size', size)
             li.setProperty('tmdbmovies.group', release_group)
             li.setProperty('tmdbmovies.codec', codec)
             li.setProperty('tmdbmovies.audio', ', '.join(audio_tags))
             li.setProperty('tmdbmovies.lang', ', '.join(info.get('languages', [])))
-            li.setProperty('tmdbmovies.addon', info.get('addon', ''))
-            li.setProperty('tmdbmovies.indexer', _nzb_indexer_label(info.get('indexer', ''))) # Ignoram setarea de hide pentru Info
+            li.setProperty('tmdbmovies.addon', '')
+            li.setProperty('tmdbmovies.indexer', display_indexer) # Ignoram setarea de hide pentru Info
             
             # Status si Tip
             is_cached = info.get('is_cached', False)
@@ -1054,7 +1110,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                         
                     year = str(self.meta.get('year', ''))
                     
-                    start_download_thread(url, title, year, tmdb_id, c_type, season, episode, release_name=raw_release_name)
+                    start_download_thread(url, title, year, tmdb_id, c_type, season, episode, release_name=raw_release_name,
+                                          provider_id=stream_data.get('provider_id', ''))
             elif ret == 2: self.apply_filter('quality', '4K')
             elif ret == 3: self.apply_filter('quality', '1080p')
             elif ret == 4: self.apply_filter('quality', '720p')
@@ -1240,15 +1297,23 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             lines.append(" • ".join(host_parts))
             
         # --- PROVIDER INFO ---
-        addon = info.get('addon', '') or stream_data.get('provider_id', '')
-        indexer = _nzb_indexer_label(info.get('indexer', '') or info.get('server', ''))
-        debrid = info.get('debrid_service', '')
-        
+        raw_data = stream_data.get('raw_stream_data') or {}
+        provider_id = str(stream_data.get('provider_id')
+                          or (raw_data.get('provider_id') if isinstance(raw_data, dict) else '')
+                          or '').strip()
+        usenet_meta = stream_data.get('usenet') or info.get('usenet') or {}
+        addon = _source_provider_label(info, provider_id, usenet_meta)
+        indexer = _source_indexer_label(info, provider_id, usenet_meta)
+        debrid = str(info.get('debrid_service') or '').strip()
+
         prov_parts = []
-        if addon: prov_parts.append(f"[COLOR gray]Addon:[/COLOR] {addon.capitalize()}")
-        if indexer: prov_parts.append(f"[COLOR gray]Tracker:[/COLOR] {indexer if indexer == 'NZB.Info' else indexer.capitalize()}")
-        if debrid: prov_parts.append(f"[COLOR gray]Debrid:[/COLOR] {debrid.capitalize()}")
-        
+        if addon:
+            prov_parts.append(f"[COLOR gray]Provider:[/COLOR] {addon}")
+        if indexer:
+            prov_parts.append(f"[COLOR gray]Indexer:[/COLOR] {indexer}")
+        if debrid and debrid.lower() != 'easynews':
+            prov_parts.append(f"[COLOR gray]Debrid:[/COLOR] {debrid}")
+
         if prov_parts:
             lines.append(" • ".join(prov_parts))
             

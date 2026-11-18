@@ -36,7 +36,9 @@ int main(int argc, char** argv)
   {
     std::fprintf(stderr,
                  "usage: stream_test <plan> [--dump file] [--offset bytes] [--length bytes] "
-                 "[--chunk bytes] [--delay-ms ms] [--close-after ms]\n");
+                 "[--chunk bytes] [--delay-ms ms] [--close-after ms] "
+                 "[--side-offset bytes] [--side-length bytes] [--side-dump file] "
+                 "[--side-after] [--side-both]\n");
     return 1;
   }
   const std::string plan_path = argv[1];
@@ -46,6 +48,11 @@ int main(int argc, char** argv)
   size_t chunk = 1024 * 1024;
   int close_after = -1;
   int delay_ms = 0;
+  int64_t side_offset = -1;
+  int64_t side_length = 0;
+  std::string side_dump_path;
+  bool side_after = false;
+  bool side_both = false;
   for (int index = 2; index < argc; ++index)
   {
     const std::string argument = argv[index];
@@ -61,6 +68,16 @@ int main(int argc, char** argv)
       delay_ms = std::atoi(argv[++index]);
     else if (argument == "--close-after" && index + 1 < argc)
       close_after = std::atoi(argv[++index]);
+    else if (argument == "--side-offset" && index + 1 < argc)
+      side_offset = std::atoll(argv[++index]);
+    else if (argument == "--side-length" && index + 1 < argc)
+      side_length = std::atoll(argv[++index]);
+    else if (argument == "--side-dump" && index + 1 < argc)
+      side_dump_path = argv[++index];
+    else if (argument == "--side-after")
+      side_after = true;
+    else if (argument == "--side-both")
+      side_both = true;
     else
     {
       std::fprintf(stderr, "unknown argument %s\n", argument.c_str());
@@ -109,6 +126,69 @@ int main(int argc, char** argv)
   if (chunk < 64 * 1024)
     chunk = 64 * 1024;
 
+  auto run_side = [&]() -> int
+  {
+    if (side_offset < 0 || side_length <= 0)
+      return 0;
+    if (side_length > stream.Length() - side_offset)
+      side_length = std::max<int64_t>(0, stream.Length() - side_offset);
+    std::FILE* side_dump = nullptr;
+    if (!side_dump_path.empty())
+    {
+      side_dump = std::fopen(side_dump_path.c_str(), "wb");
+      if (side_dump == nullptr)
+      {
+        std::fprintf(stderr, "cannot write %s\n", side_dump_path.c_str());
+        return 1;
+      }
+    }
+    std::vector<uint8_t> side_buffer(chunk);
+    int64_t side_position = side_offset;
+    const int64_t side_end = side_offset + side_length;
+    int64_t side_total = 0;
+    uint32_t side_crc = 0;
+    while (side_position < side_end)
+    {
+      const size_t wanted =
+          static_cast<size_t>(std::min<int64_t>(chunk, side_end - side_position));
+      const int64_t got =
+          stream.Read(side_position, side_buffer.data(), wanted, false);
+      if (got < 0)
+      {
+        std::fprintf(stderr, "side read failed at %lld: %s\n",
+                     static_cast<long long>(side_position), stream.LastError().c_str());
+        if (side_dump != nullptr)
+          std::fclose(side_dump);
+        return 3;
+      }
+      if (got == 0)
+        break;
+      side_crc = engine::Crc32(side_buffer.data(), static_cast<size_t>(got), side_crc);
+      if (side_dump != nullptr)
+        std::fwrite(side_buffer.data(), 1, static_cast<size_t>(got), side_dump);
+      side_position += got;
+      side_total += got;
+    }
+    if (side_dump != nullptr)
+      std::fclose(side_dump);
+    std::printf("side-read=%lld side-crc32=%08x\n", static_cast<long long>(side_total),
+                side_crc);
+    std::fflush(stdout);
+    return 0;
+  };
+
+  if (!side_after || side_both)
+  {
+    const int side_exit = run_side();
+    if (side_exit != 0)
+    {
+      stream.Close();
+      if (closer.joinable())
+        closer.join();
+      return side_exit;
+    }
+  }
+
   std::FILE* dump = nullptr;
   if (!dump_path.empty())
   {
@@ -117,6 +197,8 @@ int main(int argc, char** argv)
     {
       std::fprintf(stderr, "cannot write %s\n", dump_path.c_str());
       stream.Close();
+      if (closer.joinable())
+        closer.join();
       return 1;
     }
   }
@@ -150,6 +232,18 @@ int main(int argc, char** argv)
   }
   if (dump != nullptr)
     std::fclose(dump);
+
+  if (side_after || side_both)
+  {
+    const int side_exit = run_side();
+    if (side_exit != 0)
+    {
+      stream.Close();
+      if (closer.joinable())
+        closer.join();
+      return side_exit;
+    }
+  }
 
   const engine::StreamStats stats = stream.Stats();
   const double seconds =

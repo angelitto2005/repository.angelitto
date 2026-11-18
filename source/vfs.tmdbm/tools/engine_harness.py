@@ -197,10 +197,13 @@ def write_plan(server_ports, ids, count, pipeline=2, connections=4, workers=4,
     return '\n'.join(lines) + '\n'
 
 
-def run_plan(plan_text, offset=None, length=None, chunk=None, timeout_seconds=120):
+def run_plan(plan_text, offset=None, length=None, chunk=None, timeout_seconds=120,
+             side_offset=None, side_length=None, want_side=False, side_after=False,
+             side_both=False):
     folder = tempfile.mkdtemp(prefix='tmdbusenet-')
     plan_path = os.path.join(folder, 'test.plan')
     dump_path = os.path.join(folder, 'dump.bin')
+    side_path = os.path.join(folder, 'side.bin')
     with open(plan_path, 'w', newline='\n') as handle:
         handle.write(plan_text)
     command = [EXE, plan_path, '--dump', dump_path]
@@ -210,19 +213,32 @@ def run_plan(plan_text, offset=None, length=None, chunk=None, timeout_seconds=12
         command += ['--length', str(length)]
     if chunk is not None:
         command += ['--chunk', str(chunk)]
+    if side_offset is not None:
+        command += ['--side-offset', str(side_offset), '--side-dump', side_path]
+    if side_length is not None:
+        command += ['--side-length', str(side_length)]
+    if side_after:
+        command += ['--side-after']
+    if side_both:
+        command += ['--side-both']
     result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds)
     found = b''
     if os.path.exists(dump_path):
         with open(dump_path, 'rb') as handle:
             found = handle.read()
+    side = b''
+    if os.path.exists(side_path):
+        with open(side_path, 'rb') as handle:
+            side = handle.read()
     try:
         os.remove(plan_path)
-        if os.path.exists(dump_path):
-            os.remove(dump_path)
+        for path in (dump_path, side_path):
+            if os.path.exists(path):
+                os.remove(path)
         os.rmdir(folder)
     except OSError:
         pass
-    return result, found
+    return (result, found, side) if want_side else (result, found)
 
 
 def check(name, condition, detail=''):
@@ -321,6 +337,67 @@ def test_seek():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_side_reader():
+    print('native, side reader isolated')
+    server = FakeNntp(articles_for(COUNT))
+    serve(server)
+    try:
+        plan = write_plan([(server.server_address[1], False, 'fake', 4)], ids_for(COUNT), COUNT)
+        expected = expected_file(COUNT)
+        side_offset = 300 * SEG + 100
+        side_length = SEG
+        wanted_side = expected[side_offset:side_offset + side_length]
+        wanted_main = expected[:2 * SEG]
+        result, found, side = run_plan(plan, offset=0, length=len(wanted_main),
+                                       side_offset=side_offset, side_length=side_length,
+                                       want_side=True)
+        check('side exit', result.returncode == 0, result.stderr)
+        check('side bytes', side == wanted_side,
+              'len %d vs %d' % (len(side), len(wanted_side)))
+        check('side crc', ('side-crc32=%08x' % (zlib.crc32(wanted_side) & 0xFFFFFFFF))
+              in result.stdout, result.stdout)
+        check('main bytes', found == wanted_main,
+              'len %d vs %d' % (len(found), len(wanted_main)))
+        check('side leaves the player position', 'read jump' not in result.stderr,
+              result.stderr[-400:])
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_keep_cache():
+    print('native, head and tail stay cached')
+    main_length = 192 * SEG
+    expected = expected_file(COUNT)
+    head_article = 5
+    tail_article = COUNT - 5
+    for label, article, wanted in (
+            ('head', head_article, expected[head_article * SEG:(head_article + 1) * SEG]),
+            ('tail', tail_article, expected[tail_article * SEG:(tail_article + 1) * SEG])):
+        server = FakeNntp(articles_for(COUNT))
+        serve(server)
+        try:
+            plan = write_plan([(server.server_address[1], False, 'fake', 4)],
+                              ids_for(COUNT), COUNT)
+            result, found, side = run_plan(plan, offset=0, length=main_length,
+                                           side_offset=article * SEG, side_length=SEG,
+                                           want_side=True, side_both=True)
+            output = result.stdout + result.stderr
+            check(label + ' exit', result.returncode == 0, result.stderr)
+            check(label + ' pins', 'cache keeps 16 head and 16 tail article(s)' in output,
+                  output[-800:])
+            check(label + ' main bytes', found == expected[:main_length],
+                  'len %d vs %d' % (len(found), main_length))
+            check(label + ' side bytes', side == wanted,
+                  'len %d vs %d' % (len(side), len(wanted)))
+            target = 'a%04d@fake' % article
+            asked = server.requests.count(target)
+            check(label + ' not refetched', asked == 1, '%s asked %d times' % (target, asked))
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 def test_missing():
@@ -510,6 +587,30 @@ def test_hedge():
             server.server_close()
 
 
+def test_hedge_bounded():
+    print('native, hedge stays near the player')
+    count = 200
+    primary = FakeNntp(articles_for(count))
+    primary.delay = 6.0
+    backup = FakeNntp(articles_for(count))
+    serve(primary)
+    serve(backup)
+    try:
+        plan = write_plan([(primary.server_address[1], False, 'slow', 16),
+                           (backup.server_address[1], True, 'fast', 16)],
+                          ids_for(count), count, pipeline=2, workers=16, timeout=10)
+        result, found = run_plan(plan, offset=0, length=4 * SEG, timeout_seconds=60)
+        asked = set(mid for ids in backup.batch_ids for mid in ids)
+        check('bounded hedge exit', result.returncode == 0, result.stderr)
+        check('bounded hedge bytes', found == expected_file(count)[:4 * SEG],
+              'len %d' % len(found))
+        check('bounded hedge is capped', len(asked) <= 12, sorted(asked))
+    finally:
+        for server in (primary, backup):
+            server.shutdown()
+            server.server_close()
+
+
 def test_silent_provider():
     print('native, silent provider times out')
     count = 2
@@ -540,9 +641,12 @@ def main():
     test_stale_connections()
     test_part_crc()
     test_seek()
+    test_side_reader()
+    test_keep_cache()
     test_missing()
     test_backup()
     test_hedge()
+    test_hedge_bounded()
     test_silent_provider()
     test_pipeline_one()
     test_tls()

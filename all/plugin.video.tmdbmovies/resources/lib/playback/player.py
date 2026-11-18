@@ -271,6 +271,16 @@ _saved_filtered_streams = None
 _AIO_STREMIO_IDS = {'aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5'}
 
 
+def _provider_ready(pid):
+    if pid != 'easynews_direct':
+        return True
+    try:
+        return bool((ADDON.getSetting('easynews_direct_user') or '').strip()
+                    and ADDON.getSetting('easynews_direct_pass'))
+    except Exception:
+        return False
+
+
 # =============================================================================
 # CLASIFICARE SURSE PE 4 CATEGORII (HTTP / AIO / STREMIO / P2P)
 # =============================================================================
@@ -280,7 +290,7 @@ def classify_stream_source(stream):
     pid = str(stream.get('provider_id', ''))
     if pid.startswith('p2p_'):
         return 'p2p'
-    if pid in ('aiostreams', 'usenet_nzb'):
+    if pid in ('aiostreams', 'usenet_nzb', 'easynews_direct'):
         return 'aio'
     if pid in _AIO_STREMIO_IDS:
         return 'stremio'
@@ -554,7 +564,7 @@ def _tier_matches(tier, cat, is_cached):
         return cat in ('aio', 'stremio') and not is_cached
     return False
 
-ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
+ALL_KNOWN_PROVIDERS = ['sooti', 'webstreamr', 'streamvix', 'vidlink', 'vsembed', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'hdhub', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'easynews_direct', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5', 'aiostreams', 'p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
 
 # =============================================================================
 # AFISAREA NUMELUI PROVIDERULUI (RESPECTA NUMELE PERSONALIZATE)
@@ -579,7 +589,7 @@ def get_provider_display_name(provider_id):
         'torrentio': 'Torrentio', 'primesrcme': 'PrimeSrc', 'vaplayer': 'VAPlayer',
         'flixer': 'Flixer', 'fshdnet': 'FSHDnet', 'aiostreams': 'AIOStreams',
         'mediafusion': 'MediaFusion', 'comet': 'Comet', 'meteor': 'Meteor', 'torz': 'Torz',
-        'usenet': 'Usenet', 'easynewspp': 'EasyNews++',
+        'usenet': 'Usenet', 'usenet_nzb': 'Usenet', 'easynewspp': 'EasyNews++', 'easynews_direct': 'EasyNews Direct',
         'p2p_yts': 'YTS', 'p2p_torrentio': 'Torrentio P2P', 'p2p_comet': 'Comet P2P',
         'p2p_mediafusion': 'MediaFusion P2P', 'p2p_filelist': 'FileList',
         'p2p_speedapp': 'SpeedApp', 'p2p_seedpool': 'SeedPool', 'p2p_knaben': 'Knaben',
@@ -612,7 +622,7 @@ def get_fallback_provider_id(name_string):
         'hdhub4u': 'hdhub4u', 'hdhub': 'hdhub', 'primesrcme': 'primesrcme',
         'vaplayer': 'vaplayer', 'flixer': 'flixer', 'fshd': 'fshdnet',
         'torrentio': 'torrentio', 'mediafusion': 'mediafusion', 'comet': 'comet', 'meteor': 'meteor', 'torz': 'torz',
-        'usenet': 'usenet', 'easynews++': 'easynewspp', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
+        'usenet': 'usenet', 'easynews++': 'easynewspp', 'easynews direct': 'easynews_direct', 'custom1': 'custom1', 'custom2': 'custom2', 'custom3': 'custom3', 'custom4': 'custom4', 'custom5': 'custom5',
         'aio': 'aiostreams',
         # Cache vechi / Istoric (sa nu se piarda daca exista deja stocate):
         'vidzee': 'vidzee', 'rogflix': 'rogflix', 'xdmovies': 'xdmovies'
@@ -1136,6 +1146,15 @@ def extract_stream_info(stream):
             'moviesdrive': 'MoviesDrive',
             'hdhub': 'HDHub',
             'torrentio': 'Torrentio',
+            'mediafusion': 'MediaFusion',
+            'comet': 'Comet',
+            'meteor': 'Meteor',
+            'torz': 'Torz',
+            'usenet': 'Usenet',
+            'usenet_nzb': 'Usenet',
+            'easynewspp': 'EasyNews++',
+            'easynews_direct': 'EasyNews Direct',
+            'aiostreams': 'AIOStreams',
             'primesrcme': 'PrimeSrc',
             'vaplayer': 'VAPlayer',
             'flixer': 'Flixer',
@@ -1477,6 +1496,14 @@ def extract_stream_info(stream):
     if 'dual' in full_info and 'audio' in full_info:
         tags.append("Dual-Audio")
     
+    _stream_info = stream.get('info') if isinstance(stream.get('info'), dict) else {}
+    _usenet_meta = stream.get('usenet') if isinstance(stream.get('usenet'), dict) else {}
+    _pid = str(provider_id or '').lower()
+    indexer = str(_stream_info.get('indexer') or _usenet_meta.get('indexer') or '').strip()
+    if not indexer and _pid in ('usenet', 'usenet_nzb'):
+        indexer = str(stream.get('server') or '').strip()
+    if _pid in ('easynews_direct', 'easynewspp'):
+        indexer = 'EasyNews'
     return {
         'provider': provider, 
         'source_provider': source_provider,
@@ -1484,7 +1511,8 @@ def extract_stream_info(stream):
         'server': server, 
         'size': size, 
         'quality': quality, 
-        'tags': tags
+        'tags': tags,
+        'indexer': indexer
     }
 
 def build_display_items(streams, poster_url):
@@ -2233,11 +2261,11 @@ def _silent_scrape_next_episode(player):
         active_providers = []
         http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
         p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+        debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'easynews_direct', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
         p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
         for pid in ALL_KNOWN_PROVIDERS:
             is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
-            if not is_enabled:
+            if not is_enabled or not _provider_ready(pid):
                 continue
             if pid in debrid_ids:
                 active_providers.append(pid)
@@ -3009,6 +3037,7 @@ def start_playback_monitor(player_instance, dialog=None):
         # POST-PLAYBACK: DIALOGURI + REFRESH (in thread separat)
         # ==============================================================
         def _post_playback_dialogs():
+            log("[PLAYER-MONITOR] post-playback thread started")
             # Kodi is closing: do not sit in sleeps while it waits for this script
             if kodi_abort_requested():
                 return
@@ -3135,6 +3164,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     _spawn_thread(target=_update_lib_watch, args=(player_instance.content_type, 'mark_as_watched', _lib_title, player_instance.tmdb_id, player_instance.season, player_instance.episode), daemon=True).start()
                 except:
                     pass
+            _fs_started = time.time()
             for _fs_wait in range(34):
                 try:
                     if not xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
@@ -3142,6 +3172,8 @@ def start_playback_monitor(player_instance, dialog=None):
                 except:
                     break
                 _nap(150)
+            log("[PLAYER-MONITOR] post-playback fullscreen wait %.1fs"
+                % (time.time() - _fs_started))
             # NU reimprospatam containerul aici. La 0.7-1.2s dupa stop Kodi isi
             # re-initializeaza fereastra media (MyVideoNav, 10025): logul real
             # arata "Control 55 in window 10025 has been asked to focus" in
@@ -3957,7 +3989,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
             # AIO/Debrid: skip intermediate code, go straight to playback
             if is_aio or any(x in (url or '').lower() for x in ['real-debrid.com', 'alldebrid', 'premiumize', 'torbox', 'debrid']):
-                if is_aio and ADDON.getSetting('aio_verify_links') == 'true':
+                if (is_aio and str(stream.get('provider_id', '')) != 'easynews_direct'
+                        and ADDON.getSetting('aio_verify_links') == 'true'):
                     if p_dialog is None:
                         p_dialog = xbmcgui.DialogProgressBG()
                         p_dialog.create("[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]", "Testing source...")
@@ -4234,6 +4267,26 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         current_stream = streams[valid_index]
 
+        if str(current_stream.get('provider_id', '')) == 'easynews_direct':
+            try:
+                from resources.lib.api.easynews_direct import resolve_playback
+                direct = resolve_playback(valid_url)
+                if direct:
+                    valid_url = direct
+                    if '|seekable=' not in valid_url:
+                        valid_url += '|seekable=1'
+                    log("[PLAYER] EasyNews direct CDN link resolved")
+                else:
+                    from resources.lib.api.easynews_proxy import playback_url
+                    proxied = playback_url(valid_url)
+                    if proxied:
+                        valid_url = proxied
+                        log("[PLAYER] EasyNews direct resolve failed - using loopback proxy")
+                    else:
+                        log("[PLAYER] EasyNews direct resolve and proxy unavailable")
+            except Exception as e:
+                log("[PLAYER] EasyNews direct resolve error: %s" % e)
+
         # ==============================================================
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
@@ -4248,7 +4301,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     is_en = True
                     
                 if is_en:
-                    if '|' in valid_url:
+                    if 'seekable=1' in valid_url:
+                        valid_url = valid_url.replace('seekable=1', 'seekable=0')
+                    elif '|' in valid_url:
                         valid_url += '&seekable=0'
                     else:
                         valid_url += '|seekable=0'
@@ -4334,6 +4389,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 _quality = info_extr.get('quality', '') or current_stream.get('quality', '')
                 _size = info_extr.get('size', '') or current_stream.get('size', '')
                 _provider = info_extr.get('provider', '') or ''
+                _indexer = info_extr.get('indexer', '') or ''
                 header_parts = []
                 if _tagline:
                     header_parts.append(f"[B][COLOR FFFF69B4]{_tagline}[/COLOR][/B]")
@@ -4355,6 +4411,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     meta_line.append(f"[B][COLOR FFFFEA00]{_size}[/COLOR][/B]")
                 if _provider:
                     meta_line.append(f"[COLOR FFBA55D3]{_provider}[/COLOR]")
+                if _indexer and _indexer.lower() != _provider.lower():
+                    meta_line.append(f"[COLOR FF87CEEB]{_indexer}[/COLOR]")
                 meta_str = "  •  ".join(meta_line) if meta_line else ""
                 enriched = ""
                 if header:
@@ -5111,11 +5169,11 @@ def list_sources(params):
     active_providers =[]
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'easynews_direct', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
-        if not is_enabled:
+        if not is_enabled or not _provider_ready(pid):
             continue
         if pid in debrid_ids:
             active_providers.append(pid)
@@ -5748,11 +5806,11 @@ def initiate_download(params):
     active_providers = []
     http_master_enabled = ADDON.getSetting('enable_http_scrapers') == 'true'
     p2p_master_enabled = ADDON.getSetting('enable_p2p_providers') == 'true'
-    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
+    debrid_ids = ['aiostreams', 'torrentio', 'mediafusion', 'comet', 'meteor', 'torz', 'usenet', 'easynewspp', 'easynews_direct', 'usenet_nzb', 'custom1', 'custom2', 'custom3', 'custom4', 'custom5']
     p2p_ids = ['p2p_yts', 'p2p_torrentio', 'p2p_comet', 'p2p_mediafusion', 'p2p_filelist', 'p2p_speedapp', 'p2p_seedpool', 'p2p_knaben', 'p2p_thepiratebay', 'p2p_claw', 'p2p_till', 'p2p_vela', 'p2p_viptorrent', 'p2p_torz', 'p2p_custom1', 'p2p_custom2', 'p2p_custom3', 'p2p_custom4', 'p2p_custom5']
     for pid in ALL_KNOWN_PROVIDERS:
         is_enabled = ADDON.getSetting(f'use_{pid}') == 'true' or (pid == 'aiostreams' and ADDON.getSetting('aiostreams') == 'true')
-        if not is_enabled:
+        if not is_enabled or not _provider_ready(pid):
             continue
         if pid in debrid_ids:
             active_providers.append(pid)
@@ -5866,7 +5924,8 @@ def initiate_download(params):
              raw_release_name = None
 
         # START DOWNLOAD
-        start_download_thread(url, clean_title_backup, year, tmdb_id, c_type, season, episode, release_name=raw_release_name)
+        start_download_thread(url, clean_title_backup, year, tmdb_id, c_type, season, episode, release_name=raw_release_name,
+                              provider_id=selected_stream.get('provider_id', ''))
         
         # --- MODIFICARE: REFRESH AUTOMAT ---
         # Fortam reincarcarea listei pentru ca meniul contextual sa vada noul status (Stop)

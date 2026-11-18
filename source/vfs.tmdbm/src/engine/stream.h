@@ -23,6 +23,8 @@ struct StreamStats
   int64_t articles = 0;
   int64_t missing = 0;
   int64_t bytes = 0;
+  int64_t side_bytes = 0;
+  int64_t side_reads = 0;
   double article_seconds = 0;
   std::map<std::string, ProviderStat> providers;
 };
@@ -42,7 +44,7 @@ public:
   void PrimeArticle(int index, std::vector<uint8_t> data);
   void Close();
   int64_t Length() const;
-  int64_t Read(int64_t offset, uint8_t* dest, size_t size);
+  int64_t Read(int64_t offset, uint8_t* dest, size_t size, bool lead = true);
   StreamStats Stats() const;
   std::string LastError() const;
 

@@ -1,3 +1,10 @@
+1.1.350
+- EasyNews Direct: username and password add web search and direct 4K playback; the add-on resolves the signed download address, so the login stays out of the playback URL and seeking works.
+- Source info and the playback OSD show readable names for the provider and the real indexer, not internal IDs such as easynews_direct or usenet_nzb.
+- Custom Usenet search has an Indexers choice: All, Only free or Only paid, and it follows the Parallel or Sequential fetching setting.
+- Custom search sits in its own Usenet section before the indexers; the redundant "Use indexers" switch is gone and the two free indexers are labelled "free indexer".
+- EasyNews "Play Without Seek" sits under the EasyNews Direct options.
+
 1.1.349
 - New EasyNews++ provider in Stremio addons: paste its manifest.json URL under Usenet, and its sources show EN++ in the source list.
 - Search Usenet in the context menu (off by default under Usenet settings): Search Now, a search history you can rename or delete, and playback through your Usenet provider.

@@ -17,7 +17,8 @@ import time
 
 # The player monitor and the local HTTP server live as long as playback does, so
 # waiting for them here would block the script for the whole film.
-SKIP = ('PLAYER-MONITOR', 'UsenetHTTP', 'UsenetRead', 'UsenetAbort')
+SKIP = ('PLAYER-MONITOR', 'UsenetHTTP', 'UsenetRead', 'UsenetAbort',
+        'EasyNewsHTTP', 'EasyNewsStream', 'EasyNewsAbort', 'EasyNewsWarm')
 
 
 def _where(thread):
