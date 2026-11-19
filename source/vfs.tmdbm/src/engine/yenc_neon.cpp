@@ -16,8 +16,12 @@ namespace engine
 
 bool YencNeonAvailable()
 {
+#if defined(__aarch64__)
+  return true;
+#else
   static const bool available = (getauxval(AT_HWCAP) & HWCAP_NEON) != 0;
   return available;
+#endif
 }
 
 // Copies a run of yEnc body bytes while it holds no CR, LF or '='; returns the

@@ -633,6 +633,7 @@ public:
     if (!handle)
       return false;
     engine::Trace("addon close begin");
+    std::shared_ptr<engine::Stream> closing;
     {
       std::lock_guard<std::mutex> lock(g_session_mutex);
       auto found = g_sessions.find(handle->token);
@@ -643,7 +644,19 @@ public:
         if (found->second->refs > 0)
           --found->second->refs;
         found->second->last_used = NowSeconds();
+        if (found->second->refs <= 0)
+        {
+          // The player stopped: free the connections now. Reopening still
+          // starts fast from the plan cache.
+          closing = found->second->stream;
+          g_sessions.erase(found);
+        }
       }
+    }
+    if (closing)
+    {
+      engine::Trace("closing the usenet stream after the last handle");
+      std::thread([closing]() { closing->Close(); }).detach();
     }
     engine::Trace("addon close end");
     delete handle;

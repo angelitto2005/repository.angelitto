@@ -6,12 +6,13 @@ rezolvam aici, evitam ~700ms de importuri (tmdb_api + trakt_sync + providers) pe
 calea critica. De aceea modulul sta la baza si nu aduce nimic greu cu el.
 """
 import re
+from urllib.parse import urlencode
 
 import xbmcgui
 import xbmcplugin
 
 from resources.lib.core import config as _cfg
-from resources.lib.core.utils import apply_air_times_to_cache_items, set_resume_point, log
+from resources.lib.core.utils import apply_air_times_to_cache_items, set_resume_point, log, PLUGIN_URL
 
 NEXT_EPISODES_LABEL_VERSION = "13"
 
@@ -177,6 +178,8 @@ def _patch_resume_flags(items):
 
     Cache-ul pastreaza resume_time de la construire. O oprire sub 85% nu
     invalideaza lista, deci cercul ar lipsi pana la urmatorul rebuild.
+    Meniul contextual a fost construit inainte de oprire, asa ca intrarea
+    Delete Resume se adauga/scoate tot aici.
     """
     try:
         import re
@@ -226,7 +229,44 @@ def _patch_resume_flags(items):
                 total = 0.0
         return total
 
-    def _apply(it, progress):
+    def _set_resume_menu(it, mt, tid, season, episode, wanted):
+        cm = it.get('cm')
+        entries = list(cm) if isinstance(cm, (list, tuple)) else []
+        kept = []
+        removed = False
+        for entry in entries:
+            try:
+                command = str(entry[1])
+            except Exception:
+                command = ''
+            if 'remove_progress' in command:
+                removed = True
+                continue
+            kept.append(entry)
+        changed = removed
+        if wanted and mt in ('movie', 'episode') and tid:
+            params = {'mode': 'remove_progress', 'tmdb_id': str(tid), 'type': mt}
+            if mt == 'episode':
+                params['season'] = str(season)
+                params['episode'] = str(episode)
+            entry = ('[B][COLOR FFFF4444]Delete Resume[/COLOR][/B]',
+                     'RunPlugin(%s?%s)' % (PLUGIN_URL, urlencode(params)))
+            position = len(kept)
+            for index, old in enumerate(kept):
+                try:
+                    command = str(old[1])
+                except Exception:
+                    command = ''
+                if ('youtube_search' in command or 'usenet_search' in command
+                        or 'detonate_search' in command):
+                    position = index
+                    break
+            kept.insert(position, entry)
+            changed = True
+        if changed:
+            it['cm'] = kept
+
+    def _apply(it, progress, mt='', tid='', season=None, episode=None):
         try:
             progress = float(progress or 0)
         except Exception:
@@ -244,11 +284,13 @@ def _patch_resume_flags(items):
             it['resume_time'] = 0
             if total > 0:
                 it['total_time'] = int(total)
+        _set_resume_menu(it, mt, tid, season, episode,
+                         progress >= 1000000 or 0 < progress < 90)
 
     for it, tid in movies:
-        _apply(it, mv.get(tid, 0))
+        _apply(it, mv.get(tid, 0), 'movie', tid)
     for it, tid, s, e in episodes:
-        _apply(it, eps.get((tid, s, e), 0))
+        _apply(it, eps.get((tid, s, e), 0), 'episode', tid, s, e)
 
 
 def _abs_url(u):

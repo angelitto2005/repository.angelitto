@@ -26,7 +26,9 @@ add_library(tmdbusenet_core STATIC
   src/engine/stream.cpp)
 if(ANDROID)
   target_sources(tmdbusenet_core PRIVATE src/engine/yenc_neon.cpp)
-  set_source_files_properties(src/engine/yenc_neon.cpp PROPERTIES COMPILE_OPTIONS "-mfpu=neon")
+  if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set_source_files_properties(src/engine/yenc_neon.cpp PROPERTIES COMPILE_OPTIONS "-mfpu=neon")
+  endif()
 endif()
 target_include_directories(tmdbusenet_core PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src"

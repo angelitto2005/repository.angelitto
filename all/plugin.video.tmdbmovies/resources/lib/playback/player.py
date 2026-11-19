@@ -70,13 +70,6 @@ def _current_handle():
         return -1
 
 
-def _kodi_major():
-    try:
-        return int(xbmc.getInfoLabel('System.BuildVersion')[:2])
-    except:
-        return 21
-
-
 def _duration_seconds(tmdb_id, c_type):
     """Durata in secunde (filme: runtime, seriale: episode_run_time)."""
     duration_secs = 0
@@ -4513,22 +4506,18 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 log("[RESUME] resume nativ: facem noi seek-ul la %ds" % resume_time)
                 threading.Thread(target=_seek_to_resume, args=(player, float(resume_time)), daemon=True).start()
         else:
-            # Playback normal: player.play() pe main thread pentru metadate corecte
-            # Asta asigura ca VideoPlayer.IMDBNumber e populat corect pentru toate addonurile de srt
+            # Un singur PlayFile: player.play separat ar deschide inca o sesiune si codecul o data.
             if p_dialog:
                 try: p_dialog.close()
                 except: pass
                 p_dialog = None
             li.setPath(valid_url)
             _play_handle = _current_handle()
-            if _play_handle >= 0 and _kodi_major() >= 22:
-                log("[PLAYER] Kodi 22+ resolve-only (single PlayFile, fara cursa)")
+            if _play_handle >= 0:
+                log("[PLAYER] resolve-only (single PlayFile, fara cursa)")
                 xbmcplugin.setResolvedUrl(_play_handle, True, li)
             else:
-                if _play_handle >= 0:
-                    xbmcplugin.setResolvedUrl(_play_handle, True, li)
-                else:
-                    log("[PLAYER] RunPlugin handle -1 - play direct")
+                log("[PLAYER] RunPlugin handle -1 - play direct")
                 player.play(valid_url, li)
             
             start_playback_monitor(player, dialog=None)

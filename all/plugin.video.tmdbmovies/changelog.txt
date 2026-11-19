@@ -1,3 +1,8 @@
+1.1.353
+- Playback on Kodi 21 opens a single player session, so the second codec open and the "InstanceGuard locked" error are gone.
+- Delete Resume shows up again in a cached list right after a stop, without waiting for the list to rebuild.
+- Usenet stops release the stream immediately with VFS 0.1.12, instead of holding the provider connections for about a minute.
+
 1.1.352
 - New Statistics screen under Settings > Usenet > Test and diagnostics: 7 days, 30 days, 90 days or all time; compact data-per-day bars, provider share/data/speed/latency/errors, and per-indexer searches, response time, NZBs and played/failed outcomes (Thanks Wilfried).
 - Indexer counters are written for real searches only, so cached answers cost nothing; success means the release could be prepared for playback. No titles, links, keys or account names are stored.
