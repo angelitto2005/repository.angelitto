@@ -29,22 +29,29 @@ namespace
 constexpr int64_t kSeekLogBytes = 16 * 1024 * 1024;
 constexpr int64_t kIndexTailBytes = 8 * 1024 * 1024;
 constexpr int64_t kHardPrefetchBytes = 96 * 1024 * 1024;
-constexpr int64_t kKeepBytes = 4 * 1024 * 1024;
-constexpr int64_t kKeepShare = 8;
+constexpr int64_t kKeepBytes = 16 * 1024 * 1024;
+constexpr int64_t kKeepShare = 4;
 constexpr int64_t kKeepArticles = 64;
 constexpr int64_t kSideQueueDistance = 256 * 1024 * 1024;
 constexpr int kWorkerMargin = 8;
 constexpr double kHedgeSeconds = 4.0;
 constexpr double kHedgeMaxSeconds = 12.0;
 constexpr double kHedgeFactor = 2.5;
-constexpr double kHedgePinnedSeconds = 1.5;
-constexpr double kHedgePinnedMaxSeconds = 6.0;
-constexpr double kHedgePinnedFactor = 1.5;
+constexpr double kHedgePinnedSeconds = 1.0;
+constexpr double kHedgePinnedMaxSeconds = 2.0;
+constexpr double kHedgePinnedFactor = 0.75;
 constexpr int kHedgeMaxActive = 8;
 constexpr int kHedgeMaxSpeculative = 4;
 constexpr int64_t kHedgeWindowMin = 2 * 1024 * 1024;
 constexpr int64_t kHedgeWindowMax = 8 * 1024 * 1024;
 constexpr double kHedgeAcquireSeconds = 2.0;
+// A few connection slots stay free for the articles the player really waits
+// for, so a seek does not queue behind prefetch.
+constexpr int kUrgentReserveMax = 2;
+constexpr int64_t kBackupNearBytes = 16 * 1024 * 1024;
+constexpr double kSeekBoostSeconds = 5.0;
+constexpr double kSeekPinnedSeconds = 0.3;
+constexpr double kSeekPrefetchSeconds = 1.5;
 
 using ChunkPtr = std::shared_ptr<const std::vector<uint8_t>>;
 
@@ -62,6 +69,7 @@ struct Job
   int avoid = -1;
   bool hedge = false;
   bool side = false;
+  bool urgent = false;
 };
 
 struct QueueEntry
@@ -115,7 +123,14 @@ public:
   bool Dead() const { return dead_.load(); }
   int Limit() const { return limit_; }
 
-  bool TryAcquire(std::shared_ptr<NntpConnection>& connection, bool& reserved)
+  void SetReserve(int reserve)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    reserve_ = std::max(0, std::min(reserve, limit_ - 1));
+  }
+
+  bool TryAcquire(std::shared_ptr<NntpConnection>& connection, bool& reserved,
+                  bool may_reserve, bool& at_reserve_limit)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (dead_.load())
@@ -128,13 +143,16 @@ public:
       reserved = false;
       return true;
     }
-    if (count_ < limit_)
+    const int usable = may_reserve ? limit_ : limit_ - reserve_;
+    if (count_ < usable)
     {
       ++count_;
       connection.reset();
       reserved = true;
       return true;
     }
+    if (!may_reserve && count_ >= usable && count_ < limit_)
+      at_reserve_limit = true;
     return false;
   }
 
@@ -238,6 +256,7 @@ private:
   std::vector<std::shared_ptr<NntpConnection>> active_;
   int count_ = 0;
   int limit_;
+  int reserve_ = 0;
   std::atomic<bool> dead_{false};
 };
 
@@ -299,6 +318,13 @@ public:
 
     for (int index = 0; index < static_cast<int>(plan_->servers.size()); ++index)
       pools_.push_back(std::make_unique<Pool>(plan_->servers[index], index));
+    int reserve_left = kUrgentReserveMax;
+    for (const auto& pool : pools_)
+      if (pool->config.backup && reserve_left > 0 && pool->Limit() >= 4)
+      {
+        pool->SetReserve(1);
+        --reserve_left;
+      }
     int connections = 0;
     for (const auto& pool : pools_)
       connections += pool->Limit();
@@ -424,6 +450,10 @@ public:
     {
       Log(LogLevel::Info, "read jump to %.2f GB (%.0f MB from the previous read)",
           offset / 1073741824.0, (offset - previous) / 1048576.0);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        seek_boost_until_ = Now() + kSeekBoostSeconds;
+      }
       CancelFar(offset);
       seek_started_ = Now();
       seek_pending_.store(true);
@@ -583,6 +613,11 @@ public:
     return stats;
   }
 
+  void SetStatsSink(StatsSink sink)
+  {
+    stats_sink_ = std::move(sink);
+  }
+
   std::string LastError() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -604,18 +639,25 @@ private:
       seconds += found->second.seconds;
       articles += found->second.articles;
     }
+    const bool boost = Now() < seek_boost_until_;
     if (pinned)
     {
+      if (boost)
+        return kSeekPinnedSeconds;
       const double base =
           articles >= 8 ? (seconds / articles) * kHedgePinnedFactor : kHedgePinnedSeconds;
       return std::min(kHedgePinnedMaxSeconds,
                       std::max(kHedgePinnedSeconds, base));
     }
-    if (articles < 8)
-      return kHedgeSeconds;
-    const double average = seconds / articles;
-    return std::min(kHedgeMaxSeconds,
-                    std::max(kHedgeSeconds, average * kHedgeFactor));
+    double threshold = kHedgeSeconds;
+    if (articles >= 8)
+    {
+      const double average = seconds / articles;
+      threshold = std::max(kHedgeSeconds, average * kHedgeFactor);
+    }
+    if (boost)
+      threshold = std::min(kSeekPrefetchSeconds, threshold);
+    return std::min(kHedgeMaxSeconds, threshold);
   }
 
   int64_t HedgeWindowBytes() const
@@ -677,9 +719,11 @@ private:
             if (slot.state != Slot::State::Fetching || slot.hedged ||
                 slot.fetch_started <= 0.0)
               continue;
-            const bool pinned = pinned_.count(item.first) != 0;
-            if (slot.side_only && !pinned)
+            // Chapter pictures never borrow a backup connection: only the
+            // player's own read-ahead may hedge.
+            if (slot.side_only)
               continue;
+            const bool pinned = pinned_.count(item.first) != 0;
             const double threshold = pinned ? pinned_threshold : prefetch_threshold;
             if (now - slot.fetch_started < threshold)
               continue;
@@ -718,6 +762,7 @@ private:
             job.article = ArticleOf(candidate.key);
             job.avoid = slot.fetch_pool;
             job.hedge = true;
+            job.urgent = candidate.pinned;
             job.side = slot.side_only;
             hedges_.push_back(job);
             --budget;
@@ -781,6 +826,14 @@ private:
     --active_workers_;
   }
 
+  bool SideFetchingLocked() const
+  {
+    for (const auto& item : slots_)
+      if (item.second.side_only && item.second.state == Slot::State::Fetching)
+        return true;
+    return false;
+  }
+
   std::vector<Job> TakeBatchLocked()
   {
     std::vector<Job> jobs;
@@ -799,6 +852,7 @@ private:
     if (queue_.empty())
       return jobs;
     int avoid = -2;
+    bool side_busy = SideFetchingLocked();
     auto entry = queue_.begin();
     while (entry != queue_.end() && static_cast<int>(jobs.size()) < pipeline_)
     {
@@ -811,7 +865,11 @@ private:
       Slot& slot = found->second;
       if (avoid == -2)
         avoid = slot.avoid_pool;
-      if (slot.avoid_pool != avoid)
+      // Keep picture reads in their own batch and never let more than one
+      // of them hold a connection: the player's stream goes first.
+      if (slot.avoid_pool != avoid ||
+          (!jobs.empty() && slot.side_only != jobs.front().side) ||
+          (slot.side_only && side_busy))
       {
         ++entry;
         continue;
@@ -828,6 +886,9 @@ private:
       job.article = ArticleOf(entry->key);
       job.avoid = avoid;
       job.side = slot.side_only;
+      job.urgent = !job.side && Protected(entry->key);
+      if (job.side)
+        side_busy = true;
       slot.state = Slot::State::Fetching;
       ++slot.attempts;
       slot.fetch_started = Now();
@@ -846,9 +907,11 @@ private:
   }
 
   bool Acquire(int avoid, std::shared_ptr<NntpConnection>& connection, Pool*& pool,
-               std::string& error, double limit_seconds = 0.0)
+               std::string& error, double limit_seconds = 0.0, bool may_reserve = false,
+               bool* deferred = nullptr, bool allow_backup = true)
   {
     const double started = Now();
+    bool at_reserve_limit = false;
     for (;;)
     {
       if (closing_.load())
@@ -863,16 +926,27 @@ private:
       }
       bool any = false;
       bool attempted = false;
+      bool skipped_backup = false;
       for (const auto& owner : pools_)
       {
         Pool* candidate = owner.get();
         if (candidate->index_ == avoid || candidate->Dead())
           continue;
+        if (candidate->config.backup && !allow_backup)
+        {
+          skipped_backup = true;
+          continue;
+        }
         any = true;
         std::shared_ptr<NntpConnection> found;
         bool reserved = false;
-        if (!candidate->TryAcquire(found, reserved))
+        bool reserve_hit = false;
+        if (!candidate->TryAcquire(found, reserved, may_reserve, reserve_hit))
+        {
+          if (reserve_hit)
+            at_reserve_limit = true;
           continue;
+        }
         attempted = true;
         if (found)
         {
@@ -916,8 +990,22 @@ private:
       }
       if (!any)
       {
+        if (skipped_backup && !may_reserve)
+        {
+          if (deferred)
+            *deferred = true;
+          error = "connections are busy";
+          return false;
+        }
         if (error.empty())
           error = "no Usenet provider is available";
+        return false;
+      }
+      if (!attempted && at_reserve_limit && !may_reserve)
+      {
+        if (deferred)
+          *deferred = true;
+        error = "connections are busy";
         return false;
       }
       if (attempted && !error.empty())
@@ -929,6 +1017,7 @@ private:
   void FetchBatch(const std::vector<Job>& jobs)
   {
     const bool hedge = !jobs.empty() && jobs.front().hedge;
+    const bool side_only = !jobs.empty() && jobs.front().side;
     std::vector<std::string> ids;
     ids.reserve(jobs.size());
     for (const Job& job : jobs)
@@ -937,13 +1026,35 @@ private:
     std::shared_ptr<NntpConnection> connection;
     Pool* pool = nullptr;
     std::string error;
+    bool deferred = false;
+    bool may_reserve = false;
+    bool near_read = true;
+    const int64_t read_now = read_offset_.load();
+    for (const Job& job : jobs)
+    {
+      may_reserve = may_reserve || job.urgent;
+      if (near_read)
+      {
+        const int64_t start = SlotStart(job.key);
+        const int64_t distance = start > read_now ? start - read_now : read_now - start;
+        if (distance > kBackupNearBytes)
+          near_read = false;
+      }
+    }
     if (!Acquire(jobs.front().avoid, connection, pool, error,
-                 hedge ? kHedgeAcquireSeconds : 0.0))
+                 hedge ? kHedgeAcquireSeconds : 0.0, may_reserve, &deferred,
+                 !side_only && (near_read || may_reserve)))
     {
       if (hedge)
       {
         Trace("hedge %d:%d skipped: %s", jobs.front().part, jobs.front().article,
               error.c_str());
+        return;
+      }
+      if (deferred)
+      {
+        RequeueJobs(jobs);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         return;
       }
       for (const Job& job : jobs)
@@ -963,9 +1074,10 @@ private:
 
     const double started = Now();
     std::vector<NntpReply> replies;
+    double first_reply = 0.0;
     try
     {
-      replies = connection->BodyMany(ids);
+      replies = connection->BodyMany(ids, &first_reply);
     }
     catch (const NntpTooManyError& exception)
     {
@@ -976,8 +1088,11 @@ private:
       LogWarning("fetch", exception.what());
       const int avoid = pools_.size() > 1 ? pool->index_ : -1;
       if (!hedge)
+      {
+        RecordError(pool);
         for (const Job& job : jobs)
           HandleFailure(job, avoid, false, exception.what());
+      }
       return;
     }
     catch (const NntpAuthError& exception)
@@ -988,8 +1103,11 @@ private:
       pool->MarkDead();
       LogWarning("fetch", exception.what());
       if (!hedge)
+      {
+        RecordError(pool);
         for (const Job& job : jobs)
           HandleFailure(job, -1, false, exception.what());
+      }
       return;
     }
     catch (const std::exception& exception)
@@ -1006,13 +1124,16 @@ private:
       }
       LogWarning("fetch", pool->config.label + ": " + reason);
       if (!hedge)
+      {
+        RecordError(pool);
         for (const Job& job : jobs)
           HandleFailure(job, -1, false, reason);
+      }
       return;
     }
     const double elapsed = Now() - started;
     pool->Release(connection);
-    RecordBatch(pool, elapsed, replies);
+    RecordBatch(pool, elapsed, replies, first_reply);
 
     if (replies.size() != jobs.size())
     {
@@ -1065,24 +1186,40 @@ private:
     }
   }
 
-  void RecordBatch(Pool* pool, double elapsed, const std::vector<NntpReply>& replies)
+  void RecordBatch(Pool* pool, double elapsed, const std::vector<NntpReply>& replies,
+                   double first_reply)
   {
     int64_t delivered = 0;
+    int64_t missing = 0;
     int64_t bytes = 0;
     for (const NntpReply& reply : replies)
     {
-      if (!reply.missing)
+      if (reply.missing)
       {
-        ++delivered;
-        bytes += static_cast<int64_t>(reply.body.size());
+        ++missing;
+        continue;
       }
+      ++delivered;
+      bytes += static_cast<int64_t>(reply.body.size());
     }
     std::lock_guard<std::mutex> lock(mutex_);
     ProviderStat& stat = provider_stats_[pool->config.label];
     stat.articles += delivered;
+    stat.missing += missing;
     stat.bytes += bytes;
     stat.seconds += elapsed;
+    if (first_reply > 0)
+    {
+      ++stat.latency_count;
+      stat.latency_seconds += first_reply;
+    }
     article_seconds_ += elapsed;
+  }
+
+  void RecordError(Pool* pool)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++provider_stats_[pool->config.label].errors;
   }
 
   void LogWarning(const char* where, const std::string& message)
@@ -1114,15 +1251,17 @@ private:
     lru_.push_front(job.key);
     slot.lru = lru_.begin();
     cache_bytes_ += slot.bytes;
-    if (job.article == 0)
+    const int part_index = PartOf(job.key);
+    if (part_sizes_[part_index].load() <= 0)
     {
-      const int part_index = PartOf(job.key);
-      if (part_sizes_[part_index].load() <= 0)
+      const bool last_article =
+          static_cast<size_t>(job.article) + 1 >= plan_->parts[part_index].articles.size();
+      if (job.article == 0 || !last_article)
       {
         part_sizes_[part_index].store(slot.bytes);
         Trace("part %d size learned: %lld bytes", plan_->parts[part_index].id,
               static_cast<long long>(slot.bytes));
-        if (!job.side)
+        if (job.article == 0 && !job.side)
         {
           const int64_t read = read_offset_.load();
           if (plan_->parts[part_index].media_start <= read + plan_->prefetch * 2)
@@ -1423,6 +1562,27 @@ private:
     queue_.insert({distance, key});
   }
 
+  void RequeueJobs(const std::vector<Job>& jobs)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const int64_t read = read_offset_.load();
+    for (const Job& job : jobs)
+    {
+      const auto found = slots_.find(job.key);
+      if (found == slots_.end() || found->second.state != Slot::State::Fetching)
+        continue;
+      Slot& slot = found->second;
+      slot.state = Slot::State::Queued;
+      slot.fetch_started = 0.0;
+      const int64_t start = SlotStart(job.key);
+      const int64_t distance =
+          slot.side_only ? kSideQueueDistance : (start > read ? start - read : read - start);
+      slot.queue_distance = distance;
+      queue_.insert({distance, job.key});
+    }
+    job_cv_.notify_all();
+  }
+
   void ScheduleAhead(int part_index, int start, int count)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1656,7 +1816,7 @@ private:
   void CancelFar(int64_t offset)
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    const int64_t limit = plan_->prefetch * 2;
+    const int64_t limit = std::min<int64_t>(plan_->prefetch, 16 * 1024 * 1024);
     for (auto entry = slots_.begin(); entry != slots_.end();)
     {
       Slot& slot = entry->second;
@@ -1766,6 +1926,8 @@ private:
         static_cast<long long>(hits), decode_average,
         static_cast<long long>(side_reads), side_bytes / 1048576.0,
         CacheLimit() / 1048576.0);
+    if (stats_sink_)
+      stats_sink_(*plan_, stats);
   }
 
   void DoClose()
@@ -1852,9 +2014,11 @@ private:
   int64_t bytes_decoded_ = 0;
   double article_seconds_ = 0;
   std::map<std::string, ProviderStat> provider_stats_;
+  StatsSink stats_sink_;
   int64_t cache_limit_ = 0;
   double started_at_ = 0;
   double seek_started_ = 0;
+  double seek_boost_until_ = 0;
   std::atomic<bool> first_read_logged_{false};
   std::atomic<bool> seek_pending_{false};
   std::atomic<int64_t> first_read_cs_{0};
@@ -1918,6 +2082,12 @@ void Stream::PrimeArticle(int index, std::vector<uint8_t> data)
 {
   if (impl_)
     impl_->PrimeArticle(index, std::move(data));
+}
+
+void Stream::SetStatsSink(StatsSink sink)
+{
+  if (impl_)
+    impl_->SetStatsSink(std::move(sink));
 }
 
 int64_t Stream::Length() const

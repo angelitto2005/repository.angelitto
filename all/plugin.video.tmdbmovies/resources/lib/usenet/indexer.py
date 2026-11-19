@@ -891,6 +891,14 @@ def clear_cache():
     return True
 
 
+def _stat(name, **values):
+    try:
+        from . import stats
+        stats.indexer(name, **values)
+    except Exception:
+        pass
+
+
 def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None,
          all_categories=False):
     """(cache_key, rows, from_cache, note) for one indexer."""
@@ -903,15 +911,19 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
             if logger:
                 logger('[USENET] %s: %d result(s) from cache' % (indexer['name'], len(rows)))
             return key, rows, True, None
+    started = time.time()
     try:
         rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger,
                       year=year, all_categories=all_categories)
+        _stat(indexer['name'], s=1, ss=time.time() - started, r=len(rows))
         if logger:
             logger('[USENET] %s: %d result(s)' % (indexer['name'], len(rows)))
         return key, rows, False, None
     except (LimitReached, KeyRejected) as exc:
+        _stat(indexer['name'], s=1, ss=time.time() - started, se=1)
         return key, [], False, redact(exc)
     except Exception as exc:
+        _stat(indexer['name'], s=1, ss=time.time() - started, se=1)
         return key, [], False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
 
 
@@ -1127,7 +1139,7 @@ def _save_nzb(url, timeout, temp):
     return True
 
 
-def fetch_nzb(url, key=None, timeout=25):
+def fetch_nzb(url, key=None, timeout=25, indexer_name=''):
     """Download the .nzb once and keep it in the profile (without the API key)."""
     key = key or config.nzb_key(url)
     path = config.nzb_path(key)
@@ -1144,6 +1156,7 @@ def fetch_nzb(url, key=None, timeout=25):
         try:
             if _save_nzb(url, timeout, temp):
                 os.replace(temp, path)
+                _stat(indexer_name, g=1)
                 return path
         except Exception as exc:
             _remove_file(temp)

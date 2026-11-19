@@ -11,6 +11,7 @@ forty.
 import socket
 import ssl
 import threading
+import time
 
 OK_GREETING = (200, 201)
 OK_STAT = 223
@@ -255,13 +256,44 @@ class Connection(object):
             raise NntpError('BODY answered %d %s' % (code, text[:60]))
         return self._payload()
 
-    def body_many(self, message_ids):
+    def head_size(self, message_id):
+        """The file size from the =ybegin line, without the article.
+
+        The reply is read only up to that first body line; the connection is
+        left mid-article on purpose and the caller must discard it.
+        """
+        code, text = self._command('BODY ' + self._angle(message_id))
+        if code in MISSING_CODES:
+            raise Missing('article %s is gone' % self._angle(message_id))
+        if code != OK_BODY:
+            raise NntpError('BODY answered %d %s' % (code, text[:60]))
+        seen = 0
+        while seen < 4096:
+            line = self._readline()
+            seen += len(line)
+            if not line.startswith(b'=ybegin'):
+                continue
+            at = line.find(b' size=')
+            if at >= 0:
+                number = 0
+                for ch in line[at + 6:]:
+                    if 48 <= ch <= 57:
+                        number = number * 10 + (ch - 48)
+                    else:
+                        break
+                if number:
+                    return number
+            raise NntpError('no size in =ybegin')
+        raise NntpError('no =ybegin in this article')
+
+    def body_many(self, message_ids, timing=None):
         """Pipelined BODY: [(message_id, code, article or None)] in the order given.
 
         Every command goes out before the first answer is read, so the second
         article waits for its own transfer only, not for another round trip.
         A missing article has no body; any other unexpected answer means the
         stream is out of step and the caller must drop the connection.
+        timing, when given, receives the time the first answer arrived.
         """
         wanted = list(message_ids)
         if not wanted:
@@ -270,8 +302,10 @@ class Connection(object):
                             for mid in wanted)
         self.sock.sendall(commands)
         found = []
-        for mid in wanted:
+        for position, mid in enumerate(wanted):
             code, text = self._reply()
+            if position == 0 and timing is not None:
+                timing.append(time.time())
             if code in MISSING_CODES:
                 found.append((mid, code, None))
                 continue

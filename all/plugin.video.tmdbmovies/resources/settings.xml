@@ -304,7 +304,10 @@
         <setting label="[B][COLOR FFFFEA00]Test and diagnostics[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.test_provider1" type="action" label="[COLOR FFCCCCFF][B]Test Provider 1[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=1)"/>
         <setting id="usenet_nzb.test_provider2" type="action" label="[COLOR FFCCCCFF][B]Test Provider 2[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=2)"/>
+        <setting id="usenet_nzb.tune_provider1" type="action" label="[COLOR FFFFD700][B]Tune Provider 1[/B]   (connections, secure port, speed; uses data)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_tune_provider&amp;index=1)"/>
+        <setting id="usenet_nzb.tune_provider2" type="action" label="[COLOR FFFFD700][B]Tune Provider 2[/B]   (connections, secure port, speed; uses data)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_tune_provider&amp;index=2)"/>
         <setting id="usenet_nzb.test_indexers" type="action" label="[COLOR FFCCCCFF][B]Test indexers[/B]   (search + today's quota)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_indexers)"/>
+        <setting id="usenet_nzb.stats" type="action" label="[COLOR FFCCCCFF][B]Statistics[/B]   (indexers, providers and playback)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_stats)"/>
 
         <setting label="[B][COLOR FFFFEA00]Compatibility[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.client" type="enum" label="[COLOR FFCCCCFF][B]Indexer client identity[/B]   (some indexers block streaming apps; a downloader name is safer)[/COLOR]" values="Addon default|SABnzbd|NZBGet|Sonarr|Radarr|Prowlarr|Chrome|Custom" default="0"/>

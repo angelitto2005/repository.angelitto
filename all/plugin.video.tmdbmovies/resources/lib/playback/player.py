@@ -245,6 +245,14 @@ def _play_attempt_is_current(attempt):
         return attempt == _play_attempt
 
 
+def _record_usenet_outcome(indexer_name, ok):
+    try:
+        from resources.lib.usenet import stats as usenet_stats
+        usenet_stats.indexer(indexer_name, **({'ok': 1} if ok else {'bad': 1}))
+    except Exception:
+        pass
+
+
 def _show_usenet_failover(reason):
     try:
         text = str(reason or '').replace('\n', ' ').strip()
@@ -4015,7 +4023,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             
             # Usenet (NZB): the native VFS add-on reads it, the local server stays as fallback
             if stream.get('usenet') and not url:
-                _usenet_nzb = (stream.get('usenet') or {}).get('nzb_url', '')
+                _usenet_meta = stream.get('usenet') or {}
+                _usenet_nzb = _usenet_meta.get('nzb_url', '')
+                _usenet_indexer = str(_usenet_meta.get('indexer') or stream.get('server') or '').strip()
                 _usenet_url, _usenet_why = '', ''
                 try:
                     from resources.lib.usenet import vfs as _usenet_vfs
@@ -4023,13 +4033,15 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         _usenet_url, _usenet_why, _usenet_retry = _usenet_vfs.prepare_stream(
                             _usenet_nzb, season=season, episode=episode,
                             alt_season=_alt_s, alt_episode=_alt_e,
-                            should_continue=lambda: _play_attempt_is_current(_attempt))
+                            should_continue=lambda: _play_attempt_is_current(_attempt),
+                            indexer_name=_usenet_indexer)
                         if not _play_attempt_is_current(_attempt):
                             log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
                             return
                         if not _usenet_url:
                             log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
                             if not _usenet_retry:
+                                _record_usenet_outcome(_usenet_indexer, False)
                                 if i + 1 < total_streams:
                                     _show_usenet_failover(_usenet_why)
                                 continue
@@ -4042,10 +4054,12 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                         from resources.lib.usenet import server as _usenet_server
                         _usenet_url, _usenet_why = _usenet_server.prepare_stream(
                             _usenet_nzb, season=season, episode=episode,
-                            alt_season=_alt_s, alt_episode=_alt_e)
+                            alt_season=_alt_s, alt_episode=_alt_e,
+                            indexer_name=_usenet_indexer)
                     except Exception as _usenet_error:
                         _usenet_url, _usenet_why = '', str(_usenet_error)[:90]
                 if not _usenet_url:
+                    _record_usenet_outcome(_usenet_indexer, False)
                     log(f"[PLAYER] Usenet release skipped: {_usenet_why}", xbmc.LOGWARNING)
                     if i + 1 < total_streams:
                         _show_usenet_failover(_usenet_why)
@@ -4053,6 +4067,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if not _play_attempt_is_current(_attempt):
                     log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
                     return
+                _record_usenet_outcome(_usenet_indexer, True)
                 url = _usenet_url
                 log(f"[PLAYER] Usenet ready: {url}")
                 try:

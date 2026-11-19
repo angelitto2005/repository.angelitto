@@ -871,6 +871,16 @@ def run_plugin():
         _usenet_test_indexers()
         return
 
+    if mode == 'usenet_tune_provider':
+        from resources.lib.usenet import tune
+        tune.run(params.get('index') or '1')
+        return
+
+    if mode == 'usenet_stats':
+        from resources.lib.usenet import stats_ui
+        stats_ui.run()
+        return
+
     if mode == 'install_vfs':
         _install_vfs_action()
         return
@@ -2702,6 +2712,8 @@ def run_service():
             _usenet_config.cleanup_nzb()
             from resources.lib.usenet import vfs as _usenet_vfs
             _usenet_vfs.cleanup()
+            from resources.lib.usenet import stats as _usenet_stats
+            _usenet_stats.import_vfs()
         except Exception:
             pass
     threading.Thread(target=_usenet_cache_cleanup, daemon=True).start()

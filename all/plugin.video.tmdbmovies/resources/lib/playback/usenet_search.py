@@ -30,6 +30,14 @@ def _log(message):
         pass
 
 
+def _record_outcome(indexer, ok):
+    try:
+        from resources.lib.usenet import stats
+        stats.indexer(indexer, **({'ok': 1} if ok else {'bad': 1}))
+    except Exception:
+        pass
+
+
 def _handle():
     try:
         return int(sys.argv[1])
@@ -490,7 +498,7 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
         from resources.lib.usenet import vfs, server
         try:
             if vfs.enabled() and vfs.available():
-                url, why, retry = vfs.prepare_stream(nzb_url)
+                url, why, retry = vfs.prepare_stream(nzb_url, indexer_name=indexer)
                 if not url and not retry:
                     _log('VFS failed: %s' % why)
             else:
@@ -499,7 +507,7 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
             why = str(exc)[:90]
         if not url:
             try:
-                url, why = server.prepare_stream(nzb_url)
+                url, why = server.prepare_stream(nzb_url, indexer_name=indexer)
             except Exception as exc:
                 url, why = '', str(exc)[:90]
     finally:
@@ -509,6 +517,7 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
         except Exception:
             pass
     if not url:
+        _record_outcome(indexer, False)
         _log('play failed: %s' % why)
         try:
             xbmcgui.Dialog().notification(
@@ -525,4 +534,5 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
         li.setInfo('video', _video_info(title, size, indexer))
     except Exception as exc:
         _log('info tag failed: %s' % exc)
+    _record_outcome(indexer, True)
     xbmcplugin.setResolvedUrl(handle, True, li)

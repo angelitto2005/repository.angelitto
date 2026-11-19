@@ -53,7 +53,8 @@ public:
   NntpConnection(const NntpConnection&) = delete;
   NntpConnection& operator=(const NntpConnection&) = delete;
 
-  std::vector<NntpReply> BodyMany(const std::vector<std::string>& message_ids);
+  std::vector<NntpReply> BodyMany(const std::vector<std::string>& message_ids,
+                                  double* first_reply = nullptr);
   const std::string& Greeting() const { return greeting_; }
   void Abort();
 

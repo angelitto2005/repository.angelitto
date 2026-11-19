@@ -99,7 +99,7 @@ bool Base64Decode(const std::string& text, std::string& out)
 
 uint32_t Crc32(const void* data, size_t size, uint32_t seed)
 {
-  static uint32_t table[256];
+  static uint32_t table[8][256];
   static std::once_flag once;
   std::call_once(once,
                  []()
@@ -109,13 +109,33 @@ uint32_t Crc32(const void* data, size_t size, uint32_t seed)
                      uint32_t value = index;
                      for (int bit = 0; bit < 8; ++bit)
                        value = (value & 1) ? (0xEDB88320u ^ (value >> 1)) : (value >> 1);
-                     table[index] = value;
+                     table[0][index] = value;
                    }
+                   for (int slice = 1; slice < 8; ++slice)
+                     for (uint32_t index = 0; index < 256; ++index)
+                     {
+                       const uint32_t previous = table[slice - 1][index];
+                       table[slice][index] = table[0][previous & 0xFF] ^ (previous >> 8);
+                     }
                  });
   uint32_t crc = seed ^ 0xFFFFFFFFu;
   const auto* bytes = static_cast<const uint8_t*>(data);
-  for (size_t index = 0; index < size; ++index)
-    crc = table[(crc ^ bytes[index]) & 0xFF] ^ (crc >> 8);
+  while (size >= 8)
+  {
+    uint32_t low = 0;
+    uint32_t high = 0;
+    std::memcpy(&low, bytes, 4);
+    std::memcpy(&high, bytes + 4, 4);
+    low ^= crc;
+    crc = table[7][low & 0xFF] ^ table[6][(low >> 8) & 0xFF] ^
+          table[5][(low >> 16) & 0xFF] ^ table[4][(low >> 24) & 0xFF] ^
+          table[3][high & 0xFF] ^ table[2][(high >> 8) & 0xFF] ^
+          table[1][(high >> 16) & 0xFF] ^ table[0][(high >> 24) & 0xFF];
+    bytes += 8;
+    size -= 8;
+  }
+  while (size-- > 0)
+    crc = table[0][(crc ^ *bytes++) & 0xFF] ^ (crc >> 8);
   return crc ^ 0xFFFFFFFFu;
 }
 

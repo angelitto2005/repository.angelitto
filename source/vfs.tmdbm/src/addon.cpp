@@ -11,6 +11,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -316,6 +319,55 @@ double NowSeconds()
       .count();
 }
 
+std::string CleanStatField(const std::string& value)
+{
+  std::string out = value;
+  for (char& ch : out)
+  {
+    if (ch == '\t' || ch == '\n' || ch == '\r')
+      ch = '_';
+  }
+  return out;
+}
+
+void WriteVfsStats(const engine::Plan& plan, const engine::StreamStats& stats)
+{
+  if (stats.providers.empty())
+    return;
+  const std::time_t now = std::time(nullptr);
+  std::tm local = {};
+#ifdef _WIN32
+  localtime_s(&local, &now);
+#else
+  localtime_r(&now, &local);
+#endif
+  char day[16] = {};
+  std::strftime(day, sizeof(day), "%Y-%m-%d", &local);
+  const std::string folder = kodi::vfs::TranslateSpecialProtocol(PLAN_FOLDER);
+  const std::string path = folder + "vfs_stats_" +
+                           std::to_string(static_cast<long long>(NowSeconds() * 1000.0)) +
+                           "_" + plan.token + ".log";
+  const std::string temp = path + ".tmp";
+  std::ofstream out(temp, std::ios::out | std::ios::trunc);
+  if (!out)
+    return;
+  out << "tmdbm-stats 1\n";
+  out << "D\t" << day << "\n";
+  out << std::fixed << std::setprecision(3);
+  for (const auto& item : stats.providers)
+  {
+    const engine::ProviderStat& stat = item.second;
+    out << "P\t" << CleanStatField(item.first) << '\t' << stat.bytes << '\t' << stat.articles
+        << '\t' << stat.missing << '\t' << stat.errors << '\t' << stat.latency_count << '\t'
+        << stat.latency_seconds << '\t' << stat.seconds << '\n';
+  }
+  out.close();
+  if (out)
+    std::rename(temp.c_str(), path.c_str());
+  else
+    std::remove(temp.c_str());
+}
+
 std::shared_ptr<std::mutex> StartLock(const std::string& token)
 {
   std::lock_guard<std::mutex> lock(g_session_mutex);
@@ -408,6 +460,9 @@ std::shared_ptr<engine::Stream> AcquireStream(const std::string& token,
   reused = false;
   CloseOtherSessions(token);
   auto stream = std::make_shared<engine::Stream>(plan);
+  stream->SetStatsSink([](const engine::Plan& plan, const engine::StreamStats& stats) {
+    WriteVfsStats(plan, stats);
+  });
   std::vector<uint8_t> first;
   if (LoadFirstArticle(token, *plan, first))
   {

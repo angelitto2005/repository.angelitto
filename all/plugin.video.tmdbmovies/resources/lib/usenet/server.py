@@ -445,13 +445,14 @@ def stop():
 
 # -- what the plugin calls -----------------------------------------------------
 
-def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None):
+def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None,
+                   indexer_name=''):
     """Download the NZB if needed and return (local_url, error)."""
     if not nzb_url:
         return '', 'this source has no NZB link'
     key = config.nzb_key(nzb_url)
     token = config.episode_token(key, season, episode, alt_season, alt_episode)
-    if not indexer.fetch_nzb(nzb_url, key):
+    if not indexer.fetch_nzb(nzb_url, key, indexer_name=indexer_name):
         return '', 'the NZB could not be downloaded from the indexer'
     active = ensure_running()
     if not active:

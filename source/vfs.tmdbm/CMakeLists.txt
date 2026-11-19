@@ -24,6 +24,10 @@ add_library(tmdbusenet_core STATIC
   src/engine/transport.cpp
   src/engine/nntp.cpp
   src/engine/stream.cpp)
+if(ANDROID)
+  target_sources(tmdbusenet_core PRIVATE src/engine/yenc_neon.cpp)
+  set_source_files_properties(src/engine/yenc_neon.cpp PROPERTIES COMPILE_OPTIONS "-mfpu=neon")
+endif()
 target_include_directories(tmdbusenet_core PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/vendor/mbedtls/include")

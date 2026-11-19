@@ -1,0 +1,1297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Statistics layout adapted from Lucent Video (MIT), used with permission. -->
+<window type="dialog">
+ <defaultcontrol always="true">101</defaultcontrol>
+ <animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
+ <animation effect="fade" end="0" time="150">WindowClose</animation>
+ <controls>
+  <control type="image">
+   <left>0</left>
+   <top>0</top>
+   <width>1920</width>
+   <height>1080</height>
+   <texture>usenet/white.png</texture>
+   <colordiffuse>FF0E1014</colordiffuse>
+  </control>
+  <control type="label">
+   <left>96</left>
+   <top>40</top>
+   <width>600</width>
+   <height>60</height>
+   <font>font32_title</font>
+   <textcolor>FFFFFFFF</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(title)]</label>
+  </control>
+  <control type="button" id="101">
+   <left>556</left>
+   <top>40</top>
+   <width>186</width>
+   <height>60</height>
+   <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+   <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+   <pulseonselect>false</pulseonselect>
+   <label />
+   <onleft>102</onleft>
+   <onright>106</onright>
+   <ondown>200</ondown>
+  </control>
+  <control type="image">
+   <left>556</left>
+   <top>40</top>
+   <width>186</width>
+   <height>60</height>
+   <texture border="30">usenet/pill60.png</texture>
+   <colordiffuse>FFFFFFFF</colordiffuse>
+   <visible>String.IsEqual(Window.Property(period),30) + !Control.HasFocus(101)</visible>
+  </control>
+  <control type="label">
+   <left>556</left>
+   <top>40</top>
+   <width>186</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FF101010</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p30)]</label>
+   <visible>String.IsEqual(Window.Property(period),30) | Control.HasFocus(101)</visible>
+  </control>
+  <control type="label">
+   <left>556</left>
+   <top>40</top>
+   <width>186</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FFFFFFFF</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p30)]</label>
+   <visible>!String.IsEqual(Window.Property(period),30) + !Control.HasFocus(101)</visible>
+  </control>
+  <control type="button" id="102">
+   <left>390</left>
+   <top>40</top>
+   <width>150</width>
+   <height>60</height>
+   <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+   <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+   <pulseonselect>false</pulseonselect>
+   <label />
+   <onleft>102</onleft>
+   <onright>101</onright>
+   <ondown>200</ondown>
+  </control>
+  <control type="image">
+   <left>390</left>
+   <top>40</top>
+   <width>150</width>
+   <height>60</height>
+   <texture border="30">usenet/pill60.png</texture>
+   <colordiffuse>FFFFFFFF</colordiffuse>
+   <visible>String.IsEqual(Window.Property(period),7) + !Control.HasFocus(102)</visible>
+  </control>
+  <control type="label">
+   <left>390</left>
+   <top>40</top>
+   <width>150</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FF101010</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p7)]</label>
+   <visible>String.IsEqual(Window.Property(period),7) | Control.HasFocus(102)</visible>
+  </control>
+  <control type="label">
+   <left>390</left>
+   <top>40</top>
+   <width>150</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FFFFFFFF</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p7)]</label>
+   <visible>!String.IsEqual(Window.Property(period),7) + !Control.HasFocus(102)</visible>
+  </control>
+  <control type="button" id="106">
+   <left>758</left>
+   <top>40</top>
+   <width>160</width>
+   <height>60</height>
+   <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+   <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+   <pulseonselect>false</pulseonselect>
+   <label />
+   <onleft>101</onleft>
+   <onright>103</onright>
+   <ondown>200</ondown>
+  </control>
+  <control type="image">
+   <left>758</left>
+   <top>40</top>
+   <width>160</width>
+   <height>60</height>
+   <texture border="30">usenet/pill60.png</texture>
+   <colordiffuse>FFFFFFFF</colordiffuse>
+   <visible>String.IsEqual(Window.Property(period),90) + !Control.HasFocus(106)</visible>
+  </control>
+  <control type="label">
+   <left>758</left>
+   <top>40</top>
+   <width>160</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FF101010</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p90)]</label>
+   <visible>String.IsEqual(Window.Property(period),90) | Control.HasFocus(106)</visible>
+  </control>
+  <control type="label">
+   <left>758</left>
+   <top>40</top>
+   <width>160</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FFFFFFFF</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(p90)]</label>
+   <visible>!String.IsEqual(Window.Property(period),90) + !Control.HasFocus(106)</visible>
+  </control>
+  <control type="button" id="103">
+   <left>934</left>
+   <top>40</top>
+   <width>126</width>
+   <height>60</height>
+   <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+   <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+   <pulseonselect>false</pulseonselect>
+   <label />
+   <onleft>106</onleft>
+   <onright>104</onright>
+   <ondown>200</ondown>
+  </control>
+  <control type="image">
+   <left>934</left>
+   <top>40</top>
+   <width>126</width>
+   <height>60</height>
+   <texture border="30">usenet/pill60.png</texture>
+   <colordiffuse>FFFFFFFF</colordiffuse>
+   <visible>String.IsEqual(Window.Property(period),0) + !Control.HasFocus(103)</visible>
+  </control>
+  <control type="label">
+   <left>934</left>
+   <top>40</top>
+   <width>126</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FF101010</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(pall)]</label>
+   <visible>String.IsEqual(Window.Property(period),0) | Control.HasFocus(103)</visible>
+  </control>
+  <control type="label">
+   <left>934</left>
+   <top>40</top>
+   <width>126</width>
+   <height>60</height>
+   <font>font25_title</font>
+   <textcolor>FFFFFFFF</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(pall)]</label>
+   <visible>!String.IsEqual(Window.Property(period),0) + !Control.HasFocus(103)</visible>
+  </control>
+  <control type="grouplist" id="9102">
+   <left>1200</left>
+   <top>40</top>
+   <width>624</width>
+   <height>60</height>
+   <orientation>horizontal</orientation>
+   <itemgap>12</itemgap>
+   <align>right</align>
+   <onleft>103</onleft>
+   <ondown>200</ondown>
+   <control type="button" id="104">
+    <width>auto</width>
+    <height>60</height>
+    <font>font25_title</font>
+    <textoffsetx>30</textoffsetx>
+    <align>center</align>
+    <aligny>center</aligny>
+    <textcolor>FFFFFFFF</textcolor>
+    <focusedcolor>FF101010</focusedcolor>
+    <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+    <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+    <pulseonselect>false</pulseonselect>
+    <label>$INFO[Window.Property(wipe)]</label>
+   </control>
+   <control type="button" id="105">
+    <width>auto</width>
+    <height>60</height>
+    <font>font25_title</font>
+    <textoffsetx>30</textoffsetx>
+    <align>center</align>
+    <aligny>center</aligny>
+    <textcolor>FFFFFFFF</textcolor>
+    <focusedcolor>FF101010</focusedcolor>
+    <texturefocus border="30" colordiffuse="FFFFFFFF">usenet/pill60.png</texturefocus>
+    <texturenofocus border="30" colordiffuse="FF2C2E33">usenet/pill60.png</texturenofocus>
+    <pulseonselect>false</pulseonselect>
+    <label>$INFO[Window.Property(close)]</label>
+   </control>
+  </control>
+  <control type="image">
+   <left>96</left>
+   <top>133</top>
+   <width>1728</width>
+   <height>118</height>
+   <texture border="32">usenet/card.png</texture>
+   <colordiffuse>FF1B1E23</colordiffuse>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>148</top>
+   <width>800</width>
+   <height>30</height>
+   <font>font12</font>
+   <textcolor>FF9A9A9A</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_day)]</label>
+  </control>
+  <control type="label">
+   <left>1000</left>
+   <top>148</top>
+   <width>794</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF9A9A9A</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(daysum)]</label>
+  </control>
+  <control type="list" id="400">
+   <left>126</left>
+   <top>188</top>
+   <width>1650</width>
+   <height>40</height>
+   <orientation>horizontal</orientation>
+   <scrolltime>0</scrolltime>
+   <visible>String.IsEqual(Window.Property(bars),30) + String.IsEmpty(Window.Property(nodays))</visible>
+   <itemlayout width="55" height="40">
+    <control type="image">
+     <left>6</left>
+     <top>16</top>
+     <width>43</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+    <control type="image">
+     <left>6</left>
+     <top>16</top>
+     <width>43</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(bar)]</texture>
+     <colordiffuse>FFA99CFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+   </itemlayout>
+   <focusedlayout width="55" height="40">
+    <control type="image">
+     <left>6</left>
+     <top>16</top>
+     <width>43</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+    <control type="image">
+     <left>6</left>
+     <top>16</top>
+     <width>43</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(bar)]</texture>
+     <colordiffuse>FFA99CFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+   </focusedlayout>
+  </control>
+  <control type="list" id="401">
+   <left>126</left>
+   <top>188</top>
+   <width>1666</width>
+   <height>40</height>
+   <orientation>horizontal</orientation>
+   <scrolltime>0</scrolltime>
+   <visible>String.IsEqual(Window.Property(bars),7) + String.IsEmpty(Window.Property(nodays))</visible>
+   <itemlayout width="238" height="40">
+    <control type="image">
+     <left>20</left>
+     <top>16</top>
+     <width>198</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+    <control type="image">
+     <left>20</left>
+     <top>16</top>
+     <width>198</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(bar)]</texture>
+     <colordiffuse>FFA99CFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+   </itemlayout>
+   <focusedlayout width="238" height="40">
+    <control type="image">
+     <left>20</left>
+     <top>16</top>
+     <width>198</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+    <control type="image">
+     <left>20</left>
+     <top>16</top>
+     <width>198</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(bar)]</texture>
+     <colordiffuse>FFA99CFF</colordiffuse>
+     <aspectratio>stretch</aspectratio>
+    </control>
+   </focusedlayout>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>188</top>
+   <width>1668</width>
+   <height>40</height>
+   <font>font12</font>
+   <textcolor>FF777777</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(nodays)]</label>
+  </control>
+  <control type="image">
+   <left>96</left>
+   <top>267</top>
+   <width>1728</width>
+   <height>214</height>
+   <texture border="32">usenet/card.png</texture>
+   <colordiffuse>FF1B1E23</colordiffuse>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>284</top>
+   <width>800</width>
+   <height>36</height>
+   <font>font12</font>
+   <textcolor>FF9A9A9A</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_prov)]</label>
+  </control>
+  <control type="label">
+   <left>144</left>
+   <top>325</top>
+   <width>400</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_name)]</label>
+  </control>
+  <control type="label">
+   <left>432</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_share)]</label>
+  </control>
+  <control type="label">
+   <left>578</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_data)]</label>
+  </control>
+  <control type="label">
+   <left>768</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_speed)]</label>
+  </control>
+  <control type="label">
+   <left>930</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_articles)]</label>
+  </control>
+  <control type="label">
+   <left>1127</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_wait)]</label>
+  </control>
+  <control type="label">
+   <left>1277</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_errors)]</label>
+  </control>
+  <control type="label">
+   <left>1475</left>
+   <top>325</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_missing)]</label>
+  </control>
+  <control type="list" id="200">
+   <left>126</left>
+   <top>361</top>
+   <width>1668</width>
+   <height>96</height>
+   <orientation>vertical</orientation>
+   <onup>101</onup>
+   <ondown>300</ondown>
+   <onright>201</onright>
+   <pagecontrol>201</pagecontrol>
+   <scrolltime>150</scrolltime>
+   <itemlayout width="1668" height="47">
+    <control type="image">
+     <left>0</left>
+     <top>0</top>
+     <width>1668</width>
+     <height>1</height>
+     <texture>usenet/white.png</texture>
+     <colordiffuse>1AFFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>18</left>
+     <top>17</top>
+     <width>13</width>
+     <height>13</height>
+     <texture>usenet/circle.png</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF777777</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>!String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="image">
+     <left>390</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>390</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(sbar)]</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>516</left>
+     <top>0</top>
+     <width>90</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(share)]</label>
+    </control>
+    <control type="label">
+     <left>552</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(data)]</label>
+    </control>
+    <control type="label">
+     <left>742</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(speed)]</label>
+    </control>
+    <control type="label">
+     <left>904</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(articles)]</label>
+    </control>
+    <control type="label">
+     <left>1101</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(wait)]</label>
+    </control>
+    <control type="label">
+     <left>1251</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(errors)]</label>
+    </control>
+    <control type="label">
+     <left>1449</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(missing)]</label>
+    </control>
+   </itemlayout>
+   <focusedlayout width="1668" height="47">
+    <control type="image">
+     <left>-12</left>
+     <top>2</top>
+     <width>1692</width>
+     <height>43</height>
+     <texture border="20">usenet/card.png</texture>
+     <colordiffuse>FF2A2D33</colordiffuse>
+     <visible>Control.HasFocus(200)</visible>
+    </control>
+    <control type="image">
+     <left>0</left>
+     <top>0</top>
+     <width>1668</width>
+     <height>1</height>
+     <texture>usenet/white.png</texture>
+     <colordiffuse>1AFFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>18</left>
+     <top>17</top>
+     <width>13</width>
+     <height>13</height>
+     <texture>usenet/circle.png</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF777777</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>!String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="image">
+     <left>390</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>390</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(sbar)]</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>516</left>
+     <top>0</top>
+     <width>90</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(share)]</label>
+    </control>
+    <control type="label">
+     <left>552</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(data)]</label>
+    </control>
+    <control type="label">
+     <left>742</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(speed)]</label>
+    </control>
+    <control type="label">
+     <left>904</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(articles)]</label>
+    </control>
+    <control type="label">
+     <left>1101</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(wait)]</label>
+    </control>
+    <control type="label">
+     <left>1251</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(errors)]</label>
+    </control>
+    <control type="label">
+     <left>1449</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(missing)]</label>
+    </control>
+   </focusedlayout>
+  </control>
+  <control type="scrollbar" id="201">
+   <left>1804</left>
+   <top>361</top>
+   <width>6</width>
+   <height>94</height>
+   <texturesliderbackground colordiffuse="10FFFFFF">usenet/white.png</texturesliderbackground>
+   <texturesliderbar colordiffuse="66FFFFFF">usenet/white.png</texturesliderbar>
+   <texturesliderbarfocus colordiffuse="CCFFFFFF">usenet/white.png</texturesliderbarfocus>
+   <orientation>vertical</orientation>
+   <showonepage>false</showonepage>
+   <onleft>200</onleft>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>361</top>
+   <width>1668</width>
+   <height>94</height>
+   <font>font12</font>
+   <textcolor>FF777777</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(noprov)]</label>
+  </control>
+  <control type="image">
+   <left>96</left>
+   <top>497</top>
+   <width>1728</width>
+   <height>497</height>
+   <texture border="32">usenet/card.png</texture>
+   <colordiffuse>FF1B1E23</colordiffuse>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>514</top>
+   <width>800</width>
+   <height>36</height>
+   <font>font12</font>
+   <textcolor>FF9A9A9A</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_ix)]</label>
+  </control>
+  <control type="label">
+   <left>144</left>
+   <top>555</top>
+   <width>400</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_iname)]</label>
+  </control>
+  <control type="label">
+   <left>435</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_share)]</label>
+  </control>
+  <control type="label">
+   <left>758</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_searches)]</label>
+  </control>
+  <control type="label">
+   <left>896</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_nzbs)]</label>
+  </control>
+  <control type="label">
+   <left>1060</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_ok)]</label>
+  </control>
+  <control type="label">
+   <left>1240</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_bad)]</label>
+  </control>
+  <control type="label">
+   <left>1475</left>
+   <top>555</top>
+   <width>300</width>
+   <height>30</height>
+   <font>font10</font>
+   <textcolor>FF777777</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(h_resp)]</label>
+  </control>
+  <control type="list" id="300">
+   <left>126</left>
+   <top>591</top>
+   <width>1668</width>
+   <height>379</height>
+   <orientation>vertical</orientation>
+   <onup>200</onup>
+   <ondown>300</ondown>
+   <onright>301</onright>
+   <pagecontrol>301</pagecontrol>
+   <scrolltime>150</scrolltime>
+   <itemlayout width="1668" height="47">
+    <control type="image">
+     <left>0</left>
+     <top>0</top>
+     <width>1668</width>
+     <height>1</height>
+     <texture>usenet/white.png</texture>
+     <colordiffuse>1AFFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>18</left>
+     <top>17</top>
+     <width>13</width>
+     <height>13</height>
+     <texture>usenet/circle.png</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF777777</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>!String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="image">
+     <left>393</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>393</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(sbar)]</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>519</left>
+     <top>0</top>
+     <width>90</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(share)]</label>
+    </control>
+    <control type="label">
+     <left>732</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(searches)]</label>
+    </control>
+    <control type="label">
+     <left>870</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(nzbs)]</label>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF6AFB92</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),g)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFD700</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),a)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFF535AA</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),r)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF9A9A9A</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEmpty(ListItem.Property(okc))</visible>
+    </control>
+    <control type="label">
+     <left>1214</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(bad)]</label>
+    </control>
+    <control type="label">
+     <left>1449</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(resp)]</label>
+    </control>
+   </itemlayout>
+   <focusedlayout width="1668" height="47">
+    <control type="image">
+     <left>-12</left>
+     <top>2</top>
+     <width>1692</width>
+     <height>43</height>
+     <texture border="20">usenet/card.png</texture>
+     <colordiffuse>FF2A2D33</colordiffuse>
+     <visible>Control.HasFocus(300)</visible>
+    </control>
+    <control type="image">
+     <left>0</left>
+     <top>0</top>
+     <width>1668</width>
+     <height>1</height>
+     <texture>usenet/white.png</texture>
+     <colordiffuse>1AFFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>18</left>
+     <top>17</top>
+     <width>13</width>
+     <height>13</height>
+     <texture>usenet/circle.png</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="label">
+     <left>44</left>
+     <top>0</top>
+     <width>340</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF777777</textcolor>
+     <align>left</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Label]</label>
+     <visible>!String.IsEmpty(ListItem.Property(gone))</visible>
+    </control>
+    <control type="image">
+     <left>393</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>usenet/stat/h_100.png</texture>
+     <colordiffuse>26FFFFFF</colordiffuse>
+    </control>
+    <control type="image">
+     <left>393</left>
+     <top>19</top>
+     <width>120</width>
+     <height>8</height>
+     <texture>$INFO[ListItem.Property(sbar)]</texture>
+     <colordiffuse>$INFO[ListItem.Property(color)]</colordiffuse>
+    </control>
+    <control type="label">
+     <left>519</left>
+     <top>0</top>
+     <width>90</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(share)]</label>
+    </control>
+    <control type="label">
+     <left>732</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(searches)]</label>
+    </control>
+    <control type="label">
+     <left>870</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(nzbs)]</label>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF6AFB92</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),g)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFD700</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),a)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFF535AA</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEqual(ListItem.Property(okc),r)</visible>
+    </control>
+    <control type="label">
+     <left>1034</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FF9A9A9A</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(ok)]</label>
+     <visible>String.IsEmpty(ListItem.Property(okc))</visible>
+    </control>
+    <control type="label">
+     <left>1214</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(bad)]</label>
+    </control>
+    <control type="label">
+     <left>1449</left>
+     <top>0</top>
+     <width>200</width>
+     <height>47</height>
+     <font>font12</font>
+     <textcolor>FFFFFFFF</textcolor>
+     <align>right</align>
+     <aligny>center</aligny>
+     <label>$INFO[ListItem.Property(resp)]</label>
+    </control>
+   </focusedlayout>
+  </control>
+  <control type="scrollbar" id="301">
+   <left>1804</left>
+   <top>591</top>
+   <width>6</width>
+   <height>377</height>
+   <texturesliderbackground colordiffuse="10FFFFFF">usenet/white.png</texturesliderbackground>
+   <texturesliderbar colordiffuse="66FFFFFF">usenet/white.png</texturesliderbar>
+   <texturesliderbarfocus colordiffuse="CCFFFFFF">usenet/white.png</texturesliderbarfocus>
+   <orientation>vertical</orientation>
+   <showonepage>false</showonepage>
+   <onleft>300</onleft>
+  </control>
+  <control type="label">
+   <left>126</left>
+   <top>591</top>
+   <width>1668</width>
+   <height>379</height>
+   <font>font12</font>
+   <textcolor>FF777777</textcolor>
+   <align>center</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(noix)]</label>
+  </control>
+  <control type="label">
+   <left>1000</left>
+   <top>514</top>
+   <width>794</width>
+   <height>36</height>
+   <font>font10</font>
+   <textcolor>FF9A9A9A</textcolor>
+   <align>right</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(ixmore)]</label>
+   <visible>!String.IsEmpty(Window.Property(ixmore))</visible>
+  </control>
+  <control type="label">
+   <left>96</left>
+   <top>1012</top>
+   <width>1728</width>
+   <height>40</height>
+   <font>font10</font>
+   <textcolor>FF8A8A8A</textcolor>
+   <align>left</align>
+   <aligny>center</aligny>
+   <label>$INFO[Window.Property(foot)]</label>
+   <wrapmultiline>true</wrapmultiline>
+  </control>
+ </controls>
+</window>

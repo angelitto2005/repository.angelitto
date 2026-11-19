@@ -3,6 +3,7 @@
 #include "common.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace engine
@@ -207,7 +208,8 @@ std::vector<uint8_t> NntpConnection::ReadPayload()
   }
 }
 
-std::vector<NntpReply> NntpConnection::BodyMany(const std::vector<std::string>& message_ids)
+std::vector<NntpReply> NntpConnection::BodyMany(const std::vector<std::string>& message_ids,
+                                               double* first_reply)
 {
   std::vector<NntpReply> replies;
   replies.reserve(message_ids.size());
@@ -226,9 +228,18 @@ std::vector<NntpReply> NntpConnection::BodyMany(const std::vector<std::string>& 
   if (!transport_->SendAll(commands.data(), commands.size(), error))
     throw NntpError("cannot send BODY: " + error);
 
+  const auto started = std::chrono::steady_clock::now();
+  bool first = true;
   for (const std::string& message_id : message_ids)
   {
     auto reply = Reply();
+    if (first)
+    {
+      first = false;
+      if (first_reply)
+        *first_reply =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    }
     NntpReply found;
     if (IsMissing(reply.first))
     {

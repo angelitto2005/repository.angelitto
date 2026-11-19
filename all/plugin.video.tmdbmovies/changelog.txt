@@ -1,3 +1,11 @@
+1.1.352
+- New Statistics screen under Settings > Usenet > Test and diagnostics: 7 days, 30 days, 90 days or all time; compact data-per-day bars, provider share/data/speed/latency/errors, and per-indexer searches, response time, NZBs and played/failed outcomes (Thanks Wilfried).
+- Indexer counters are written for real searches only, so cached answers cost nothing; success means the release could be prepared for playback. No titles, links, keys or account names are stored.
+- Provider statistics now also include VFS playback: vfs.tmdbm reports bytes, articles, missing/errors, latency and speed, and the statistics screen merges them with the built-in reader.
+- Usenet playback seeks and recovers faster: yEnc decoding now uses SSE2 on Windows and NEON on Android, and the backup provider is asked after about a second when the player is waiting, so long stalls are much shorter.
+- The first play of a big multi-volume release is much faster: preparation reads only the yEnc header of each volume instead of its first full article.
+- New Tune Provider 1/2 actions: find the real connection limit, compare the secure ports and measure speed. The test fetches up to about 800 MB and changes nothing until Apply (Thanks Wilfried).
+
 1.1.351
 - EasyNews Direct playback now goes through the add-on's loopback proxy; the login stays out of the playback URL and seeking works.
 - The proxy asks EasyNews for a fresh signed download address while playing, so a long film no longer stops when the old address expires.

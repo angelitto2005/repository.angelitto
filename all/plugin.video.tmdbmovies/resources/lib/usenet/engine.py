@@ -24,7 +24,7 @@ import struct
 from collections import OrderedDict
 from concurrent.futures import CancelledError, Future, as_completed
 
-from . import config, nntp, nzb, yenc
+from . import config, nntp, nzb, stats, yenc
 
 HOLE_WARMUP = 20                # articles read before the percentage is trusted
 DEFAULT_HOLE_PERCENT = 2.0      # of the articles read may be missing
@@ -417,8 +417,10 @@ class Session(object):
                     report.append('%s: %s' % (pool.label, type(exc).__name__))
                     break
                 attempt_started = time.time()
+                first_reply = []
                 try:
-                    replies = connection.body_many([wanted[slot] for slot in left])
+                    replies = connection.body_many([wanted[slot] for slot in left],
+                                                   timing=first_reply)
                 except nntp.AuthError:
                     pool.discard(connection)
                     pool.dead = True
@@ -448,18 +450,28 @@ class Session(object):
                 delivered = [(slot, reply[2]) for slot, reply in zip(left, replies)
                              if reply[2] is not None]
                 if delivered:
+                    delivered_bytes = sum(len(payload) for _slot, payload in delivered)
                     with self.lock:
                         seen = self.served_counts.get(pool.label, 0)
                         self.served_counts[pool.label] = seen + len(delivered)
                         self.served_bytes[pool.label] = (
-                            self.served_bytes.get(pool.label, 0)
-                            + sum(len(payload) for _slot, payload in delivered))
+                            self.served_bytes.get(pool.label, 0) + delivered_bytes)
                         self.served_seconds[pool.label] = (
                             self.served_seconds.get(pool.label, 0.0) + elapsed)
                         clear = (not pool.provider.get('backup')
                                  and not self._primary_cleared)
                         if clear:
                             self._primary_cleared = True
+                    try:
+                        stats.provider(pool.provider.get('host') or pool.label,
+                                       b=delivered_bytes, a=len(delivered),
+                                       m=len(replies) - len(delivered),
+                                       ln=1,
+                                       ls=(first_reply[0] - attempt_started
+                                           if first_reply else elapsed),
+                                       busy=elapsed)
+                    except Exception:
+                        pass
                     if not seen:
                         self._served = pool
                         config.mark_served(pool.provider)
@@ -490,6 +502,43 @@ class Session(object):
             return yenc.decode(article)
         except yenc.YencError as exc:
             raise SessionError('the provider did not send yEnc (%s)' % exc)
+
+    def _split_size(self, part):
+        """The exact file size of one numbered part, from its first article header."""
+        segment = part.segments[0]
+        message_id = segment[2] if isinstance(segment, tuple) else segment
+        for pool in self._pool_order():
+            if pool.dead:
+                continue
+            for attempt in range(TRANSIENT_TRIES):
+                try:
+                    connection = pool.acquire(True)
+                except nntp.TooMany:
+                    self._refused(pool)
+                    break
+                except nntp.AuthError:
+                    pool.dead = True
+                    if not pool.provider.get('backup'):
+                        config.mark_primary_down()
+                    _log('%s refused the login - switching provider' % pool.label,
+                         warning=True)
+                    break
+                except Exception:
+                    break
+                try:
+                    size = connection.head_size(message_id)
+                except nntp.Missing:
+                    pool.discard(connection)
+                    break
+                except Exception:
+                    pool.discard(connection)
+                    if attempt + 1 < TRANSIENT_TRIES:
+                        continue
+                    break
+                pool.discard(connection)
+                if size > 0:
+                    return size
+        raise SessionError('a numbered video part could not be sized')
 
     def _seven_read(self, volume_map, cache, offset, size):
         """Bytes from the concatenated 7z volumes, fetching only what is asked.
@@ -731,27 +780,26 @@ class Session(object):
             raise SessionError('the first numbered video part is not a video')
         sizes = {}
         data = first.get('data') or b''
-        sizes[0] = (int(first.get('size') or 0) or nzb.file_size(parts[0]), len(data))
+        sizes[0] = int(first.get('size') or 0) or nzb.file_size(parts[0])
         if len(parts) > 1:
+            # Only the =ybegin line of each part is read, not the whole first
+            # article: a 162-part remux no longer costs 100 MB before playback.
             workers = self._workers_for_reads()
-            futures = {workers.submit(self._decode_first, part.segments): index
+            futures = {workers.submit(self._split_size, part): index
                        for index, part in enumerate(parts[1:], 1)}
             for future in as_completed(futures):
                 index = futures.pop(future)
-                info = future.result()
-                chunk = info.get('data') or b''
-                sizes[index] = (int(info.get('size') or 0) or nzb.file_size(parts[index]),
-                                len(chunk))
+                sizes[index] = int(future.result() or 0)
         for index, part in enumerate(parts):
-            size, part_size = sizes.get(index, (0, 0))
-            if size <= 0 or part_size <= 0:
+            size = sizes.get(index, 0)
+            if size <= 0:
                 raise SessionError('a numbered video part could not be sized')
             self.parts.append({
                 'id': index,
                 'segments': [item[2] for item in part.segments],
                 'skip': 0,
                 'length': size,
-                'part_size': part_size,
+                'part_size': len(data) if index == 0 else 0,
             })
             self.length += size
             if index == 0:
@@ -807,23 +855,25 @@ class Session(object):
         volume_map = []
         cache = {}
         position = 0
-        firsts = [first_info]
+        sizes = {0: int(first_info.get('size') or 0) or nzb.file_size(volumes[0])}
         if len(volumes) > 1:
+            # Only the =ybegin line of each volume is read. The article stride
+            # is the same across a posted 7z set, so volume 0 gives it once.
             workers = self._workers_for_reads()
-            futures = [workers.submit(self._decode_first, volume.segments)
-                       for volume in volumes[1:]]
-            for future in futures:
-                firsts.append(future.result())
+            futures = {workers.submit(self._split_size, volume): index
+                       for index, volume in enumerate(volumes[1:], 1)}
+            for future in as_completed(futures):
+                index = futures.pop(future)
+                sizes[index] = int(future.result() or 0)
+        stride = len(first_info.get('data') or b'')
         for index, volume in enumerate(volumes):
-            info = firsts[index]
-            size = int(info.get('size') or 0) or nzb.file_size(volume)
-            part_size = len(info.get('data') or b'')
-            if size <= 0 or part_size <= 0:
+            size = sizes.get(index, 0)
+            if size <= 0 or stride <= 0:
                 raise SessionError('a 7z volume could not be sized')
             volume_map.append({'file': volume, 'start': position, 'size': size,
-                               'part_size': part_size})
-            cache[volume.segments[0][2]] = info['data']
+                               'part_size': stride})
             position += size
+        cache[volumes[0].segments[0][2]] = first_info['data']
         try:
             next_offset, next_size = struct.unpack_from('<QQ', head, 12)
             if next_size <= 0:

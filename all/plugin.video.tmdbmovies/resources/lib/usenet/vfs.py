@@ -211,7 +211,7 @@ def _write_warm(path, session):
 
 
 def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None,
-                   should_continue=None):
+                   should_continue=None, indexer_name=''):
     """(url, error, retry_with_server).
 
     retry_with_server is True only when the plan itself could not be produced,
@@ -233,7 +233,7 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
         pass
     key = config.nzb_key(nzb_url)
     token = config.episode_token(key, season, episode, alt_season, alt_episode)
-    if not indexer.fetch_nzb(nzb_url, key):
+    if not indexer.fetch_nzb(nzb_url, key, indexer_name=indexer_name):
         return '', 'the NZB could not be downloaded from the indexer', False
     path = config.nzb_path(key)
     providers = config.primary_providers() + config.backup_providers()

@@ -5,6 +5,21 @@
 #include <algorithm>
 #include <cstring>
 
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#include <emmintrin.h>
+#define YENC_SSE2 1
+#endif
+
+#if defined(__ANDROID__)
+// NEON decode lives in its own translation unit, built with -mfpu=neon and
+// entered only when the CPU reports NEON support.
+namespace engine
+{
+bool YencNeonAvailable();
+size_t YencNeonClean(const uint8_t* source, size_t count, uint8_t* target);
+}
+#endif
+
 namespace engine
 {
 
@@ -168,20 +183,66 @@ YencResult YencDecode(const std::vector<uint8_t>& article)
   }
 
   const size_t body_end = end_at == std::string::npos ? article.size() : end_at;
-  result.data.reserve(body_end > position ? (body_end - position) * 3 / 4 : 0);
-  for (size_t index = position; index < body_end; ++index)
+  if (body_end <= position)
   {
+    result.error = "no payload";
+    return result;
+  }
+  result.data.resize(body_end - position);
+  uint8_t* out = result.data.data();
+  size_t written = 0;
+  size_t index = position;
+#if defined(__ANDROID__)
+  const bool neon = YencNeonAvailable();
+#endif
+  while (index < body_end)
+  {
+#if defined(YENC_SSE2)
+    // SIMD fast path: a 16-byte run without CR, LF or '=' decodes to 16 plain
+    // bytes (value - 42). Idea borrowed from vfs.lucent (GPL), used with permission.
+    while (body_end - index >= 16)
+    {
+      const __m128i chunk = _mm_loadu_si128(
+          reinterpret_cast<const __m128i*>(article.data() + index));
+      const __m128i special = _mm_or_si128(
+          _mm_or_si128(_mm_cmpeq_epi8(chunk, _mm_set1_epi8('\r')),
+                       _mm_cmpeq_epi8(chunk, _mm_set1_epi8('\n'))),
+          _mm_cmpeq_epi8(chunk, _mm_set1_epi8('=')));
+      if (_mm_movemask_epi8(special) != 0)
+        break;
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(out + written),
+                       _mm_sub_epi8(chunk, _mm_set1_epi8(42)));
+      index += 16;
+      written += 16;
+    }
+#elif defined(__ANDROID__)
+    if (neon && body_end - index >= 16)
+    {
+      const size_t used = YencNeonClean(article.data() + index, body_end - index, out + written);
+      if (used)
+      {
+        index += used;
+        written += used;
+        continue;
+      }
+    }
+#endif
     const uint8_t value = article[index];
     if (value == '\r' || value == '\n')
-      continue;
-    if (value == '=')
+      ++index;
+    else if (value == '=')
     {
       if (index + 1 < body_end)
-        result.data.push_back(static_cast<uint8_t>(article[++index] - 106));
-      continue;
+        out[written++] = static_cast<uint8_t>(article[++index] - 106);
+      ++index;
     }
-    result.data.push_back(static_cast<uint8_t>(value - 42));
+    else
+    {
+      out[written++] = static_cast<uint8_t>(value - 42);
+      ++index;
+    }
   }
+  result.data.resize(written);
   if (result.data.empty())
   {
     result.error = "no payload";

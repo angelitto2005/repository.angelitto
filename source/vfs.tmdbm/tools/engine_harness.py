@@ -367,6 +367,37 @@ def test_side_reader():
         server.server_close()
 
 
+def test_side_no_hedge():
+    print('native, side reader never hedges')
+    count = 400
+    primary = FakeNntp(articles_for(count))
+    primary.delay = 3.0
+    backup = FakeNntp(articles_for(count))
+    serve(primary)
+    serve(backup)
+    try:
+        plan = write_plan([(primary.server_address[1], False, 'slow', 2),
+                           (backup.server_address[1], True, 'fast', 2)],
+                          ids_for(count), count, pipeline=1, workers=4)
+        expected = expected_file(count)
+        side_offset = 300 * SEG + 100
+        side_length = 64 * 1024
+        wanted_side = expected[side_offset:side_offset + side_length]
+        result, _found, side = run_plan(plan, offset=0, length=2 * SEG,
+                                        side_offset=side_offset,
+                                        side_length=side_length, want_side=True)
+        backed = set(mid for ids in backup.batch_ids for mid in ids)
+        check('side hedge exit', result.returncode == 0, result.stderr)
+        check('side hedge bytes', side == wanted_side, 'len %d' % len(side))
+        check('side came from the primary', 'a0300@fake' in primary.requests,
+              sorted(backed))
+        check('side never uses the backup', 'a0300@fake' not in backed, sorted(backed))
+    finally:
+        for server in (primary, backup):
+            server.shutdown()
+            server.server_close()
+
+
 def test_keep_cache():
     print('native, head and tail stay cached')
     main_length = 192 * SEG
@@ -386,7 +417,7 @@ def test_keep_cache():
                                            want_side=True, side_both=True)
             output = result.stdout + result.stderr
             check(label + ' exit', result.returncode == 0, result.stderr)
-            check(label + ' pins', 'cache keeps 16 head and 16 tail article(s)' in output,
+            check(label + ' pins', 'cache keeps 32 head and 32 tail article(s)' in output,
                   output[-800:])
             check(label + ' main bytes', found == expected[:main_length],
                   'len %d vs %d' % (len(found), main_length))
@@ -642,6 +673,7 @@ def main():
     test_part_crc()
     test_seek()
     test_side_reader()
+    test_side_no_hedge()
     test_keep_cache()
     test_missing()
     test_backup()
