@@ -1,21 +1,18 @@
-Version 5.1.208 (Aug 30, 2026)
+Version 5.1.213 (Nov 06, 2026)
 - Code Base Changes:
-    - None
+    - None 
 
 - Resolvers Added:
-    - anonstream
-    - vcdnlare
+    - None
 
 - Resolvers Fixed/Updated:
-    - embedojo
-    - flyfile
-    - uperbox
-    - vidsonic
+    - mixdrop
+    - streamix
+    - vidzy
     - voesx
 
 - Resolvers Removed
     - None
-
 
 - Languages Added/Updated
     - None

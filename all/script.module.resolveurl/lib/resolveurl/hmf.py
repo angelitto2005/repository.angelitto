@@ -281,15 +281,15 @@ class HostedMediaFile:
             headers[header] = urllib_parse.unquote_plus(headers[header])
         common.logger.log_debug('Setting Headers on UrlOpen: %s' % headers)
 
+        # Use a local opener for this test only; installing it globally would change
+        # the TLS settings of every later urllib request in this Python process.
         try:
             import ssl
             ssl_context = ssl._create_unverified_context()
-            ssl._create_default_https_context = ssl._create_unverified_context
             ssl_context.set_alpn_protocols(['http/1.1'])
             opener = urllib_request.build_opener(urllib_request.HTTPSHandler(context=ssl_context))
-            urllib_request.install_opener(opener)
         except:
-            pass
+            opener = urllib_request.build_opener()
 
         try:
             msg = ''
@@ -298,18 +298,18 @@ class HostedMediaFile:
                 headers.pop('verifypeer')
 
             headers.update({'Accept-Encoding': 'gzip'})
-            if not any(x in stream_url for x in ['.m3u8', '/hls/', '/playlist/']):
+            if not any(x in stream_url for x in ['.m3u8', '/hls/', '/playlist/', 'hls=']):
                 headers.update({'Range': 'bytes=0-1023'})
 
             request = urllib_request.Request(stream_url.split('|')[0], headers=headers)
             if six.PY3:
                 #  set urlopen timeout to 15 seconds
-                with urllib_request.urlopen(request, timeout=15) as resp:
+                with opener.open(request, timeout=15) as resp:
                     http_code = resp.code
                     mimetype = resp.headers.get('Content-Type')
                     resp.close()
             else:
-                resp = urllib_request.urlopen(request, timeout=15)
+                resp = opener.open(request, timeout=15)
                 http_code = resp.getcode()
                 mimetype = resp.info().get('Content-Type')
                 resp.close()

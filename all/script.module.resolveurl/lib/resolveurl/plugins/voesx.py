@@ -60,7 +60,9 @@ class VoeResolver(ResolveUrl):
         'kinoger.ru', 'johnbeyondnation.com', 'jeanprofessorcentral.com', 'juliewomanwish.com',
         'garylargeavailable.com', 'jennifereconomicgive.com', 'pamelachangemission.com',
         'ellenpoliticalfollow.com', 'caseyimpactstation.com', 'matthewhotelscience.com',
-        'jessicachoosemake.com', 'stevenfamilyedge.com', 'tracylocalschool.com'
+        'jessicachoosemake.com', 'stevenfamilyedge.com', 'tracylocalschool.com', 'eugenemakedraw.com', 'johnfullwonder.com',
+        'katherineschoolphone.com', 'jamesbornmain.com', 'jeremyparticipantanything.com', 'teresapoliticallearn.com', 'megankiddifference.com', 'claireguessthousand.com', 'derricknationtop.com',
+        'jamespatterncamera.com', 'ashleyhardat.com', 'shanelocaldog.com', 'shannoncoldalready.com'
     ]
     domains += ['voeunblock{}.com'.format(x) for x in range(1, 11)]
     pattern = (
@@ -90,7 +92,9 @@ class VoeResolver(ResolveUrl):
         r'charlestoughrace|ianrequireadult|timmaybealready|jessicayeahcatch|kinoger|johnbeyondnation|'
         r'jeanprofessorcentral|juliewomanwish|garylargeavailable|jennifereconomicgive|'
         r'pamelachangemission|ellenpoliticalfollow|caseyimpactstation|matthewhotelscience|'
-        r'jessicachoosemake|stevenfamilyedge|tracylocalschool|'
+        r'jessicachoosemake|stevenfamilyedge|tracylocalschool|eugenemakedraw|johnfullwonder|'
+        r'katherineschoolphone|jamesbornmain|jeremyparticipantanything|teresapoliticallearn|megankiddifference|claireguessthousand|derricknationtop|'
+        r'jamespatterncamera|ashleyhardat|shanelocaldog|shannoncoldalready|'
         r'(?:v-?o-?e)?(?:-?un-?bl[o0]?c?k\d{0,2})?(?:-?voe)?)\.(?:sx|com|net|cc|me|ru))/'
         r'(?:e/)?([0-9A-Za-z]+)'
     )
@@ -104,6 +108,20 @@ class VoeResolver(ResolveUrl):
             if r:
                 web_url = r.group(1)
                 html = self.net.http_GET(web_url, headers=headers).content
+            else:
+                break
+
+        if 'altcha-widget' in html:
+            from resolveurl.lib.captcha_lib import AltchaSolver
+            solver = AltchaSolver()
+            ch_url = re.search(r'altcha-widget\s*challenge="([^"]+)', html)
+            if ch_url:
+                params = helpers.get_hidden(html)
+                challenge = self.net.http_GET(ch_url.group(1), headers=headers).json
+                params.update({'altcha': solver.get_payload(challenge)})
+                html = self.net.http_POST(web_url, form_data=params, headers=headers).content
+            else:
+                raise ResolverError('No video found')
 
         r = re.search(r'json">\["([^"]+)"]</script>\s*<script\s*src="([^"]+)', html)
         if r:
