@@ -412,12 +412,18 @@ def _series_query(indexer, common, digits, season, episode, title, use_cache, lo
 
 
 def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=True, logger=None,
-           year=None):
+           year=None, all_categories=False):
     if indexer.get('builtin') == 'nzbindex':
         return _nzbindex_rows(indexer, title, year, season, episode)
     if indexer.get('builtin') == 'binsearch':
         return _binsearch_rows(indexer, title, year, season, episode)
     digits = re.sub(r'\D', '', str(imdb or ''))
+    if all_categories and season is None:
+        # A user's own words are not a film title: search every category
+        # (sports live under TV > Sport, not under Movies).
+        params = {'extended': 1, 'limit': 100, 't': 'search',
+                  'q': (title or '').strip()}
+        return results(_get(indexer, params), indexer['name'])
     common = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series' if season is not None else 'movie']}
     if season is None:
         params = dict(common, t='movie')
@@ -885,7 +891,8 @@ def clear_cache():
     return True
 
 
-def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None):
+def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None,
+         all_categories=False):
     """(cache_key, rows, from_cache, note) for one indexer."""
     key = _cache_key(kind, imdb, season, episode, indexer, year)
     if season is not None:
@@ -898,7 +905,7 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
             return key, rows, True, None
     try:
         rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger,
-                      year=year)
+                      year=year, all_categories=all_categories)
         if logger:
             logger('[USENET] %s: %d result(s)' % (indexer['name'], len(rows)))
         return key, rows, False, None
@@ -910,7 +917,7 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
 
 def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='',
          logger=None, use_cache=True, mode=None, min_usable=None, min_size=0,
-         episodes_only=False, per_indexer_limit=0, scope=''):
+         episodes_only=False, per_indexer_limit=0, scope='', all_categories=False):
     """Search the configured indexers. Returns (rows, notes).
 
     Sequential asks every enabled free built-in together, because they have no
@@ -921,6 +928,8 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
     scope 'all', 'free' or 'paid' narrows which indexers are asked; the custom
     text search uses it so a free query never spends a keyed indexer's quota.
+    all_categories makes that custom search ask Newznab with t=search and no
+    category, so sports and other non-movie sections are included.
     """
     selection = str(scope or 'all').strip().lower()
     if selection not in ('all', 'free', 'paid'):
@@ -966,7 +975,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
         def one(entry):
             return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
-                        packs=not episodes_only, year=year)
+                        packs=not episodes_only, year=year, all_categories=all_categories)
 
         workers = max(1, min(4, len(entries)))
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetIndexer') as pool:
@@ -992,7 +1001,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
             def free_one(entry):
                 return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
-                            packs=not episodes_only, year=year)
+                            packs=not episodes_only, year=year, all_categories=all_categories)
 
             before = len(rows)
             workers = max(1, min(4, len(free)))
@@ -1011,7 +1020,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
         for position, entry in enumerate(paid, 1):
             key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
                                             use_cache, logger, packs=not episodes_only,
-                                            year=year)
+                                            year=year, all_categories=all_categories)
             if note:
                 notes.append(note)
             elif not cached and use_cache:

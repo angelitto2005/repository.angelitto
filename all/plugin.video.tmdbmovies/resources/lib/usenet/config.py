@@ -610,5 +610,10 @@ def context_search_scope():
     return ('all', 'free', 'paid')[number('usenet_nzb.context_search_scope', 1, 0, 2)]
 
 
+def context_search_easynews():
+    """Include EasyNews Direct rows in the custom text search."""
+    return flag('usenet_nzb.context_search_easynews', True)
+
+
 def ready():
     return bool(enabled() and indexers() and providers() and providers_ready())

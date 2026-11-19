@@ -44,6 +44,18 @@ def configured():
     return bool(user and password)
 
 
+def enabled():
+    try:
+        value = str(ADDON.getSetting("use_easynews_direct") or "").strip().lower()
+        return value in ("true", "1", "yes", "on")
+    except Exception:
+        return False
+
+
+def available():
+    return enabled() and configured()
+
+
 def _max_results():
     try:
         value = int(ADDON.getSetting("easynews_direct_max") or "30")
@@ -236,7 +248,7 @@ def _download_base(answer):
     return base, farm, port
 
 
-def _parse_answer(answer, titles, content_type, year, season, episode, limit):
+def _parse_answer(answer, titles, content_type, year, season, episode, limit, custom=False):
     if not isinstance(answer, dict):
         return []
     rows = answer.get("data") or []
@@ -276,7 +288,7 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit):
         size = item["size"]
         if size and size < MIN_BYTES:
             continue
-        if not _title_matches(stem, titles, content_type, year, season, episode):
+        if not custom and not _title_matches(stem, titles, content_type, year, season, episode):
             continue
         filename = stem + extension
         path = "%s%s/%s" % (item["key"], extension,
@@ -297,32 +309,7 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit):
     return out
 
 
-def search(title, alt_title, year, content_type, season=None, episode=None):
-    if not configured():
-        return []
-    titles = []
-    for value in (title, alt_title):
-        value = str(value or "").strip()
-        if value and value.lower() not in [item.lower() for item in titles]:
-            titles.append(value)
-    if not titles:
-        return []
-    try:
-        year = int(year) if year else 0
-    except (TypeError, ValueError):
-        year = 0
-    try:
-        if content_type == "tv":
-            season = int(season)
-            episode = int(episode)
-    except (TypeError, ValueError):
-        if content_type == "tv":
-            return []
-    query = titles[0]
-    if year and content_type != "tv":
-        query = "%s %d" % (query, year)
-    if content_type == "tv" and season is not None and episode is not None:
-        query = "%s S%02dE%02d" % (query, season, episode)
+def _search_answer(query):
     params = {
         "st": "adv",
         "sb": 1,
@@ -353,9 +340,58 @@ def search(title, alt_title, year, content_type, season=None, episode=None):
         status = response.status_code
         if status != 200:
             _log("search HTTP %d" % status)
-            return []
-        answer = response.json()
+            return None
+        return response.json()
     except Exception as error:
         _log("search failed: %s" % type(error).__name__)
+        return None
+
+
+def search(title, alt_title, year, content_type, season=None, episode=None):
+    if not available():
+        return []
+    titles = []
+    for value in (title, alt_title):
+        value = str(value or "").strip()
+        if value and value.lower() not in [item.lower() for item in titles]:
+            titles.append(value)
+    if not titles:
+        return []
+    try:
+        year = int(year) if year else 0
+    except (TypeError, ValueError):
+        year = 0
+    try:
+        if content_type == "tv":
+            season = int(season)
+            episode = int(episode)
+    except (TypeError, ValueError):
+        if content_type == "tv":
+            return []
+    query = titles[0]
+    if year and content_type != "tv":
+        query = "%s %d" % (query, year)
+    if content_type == "tv" and season is not None and episode is not None:
+        query = "%s S%02dE%02d" % (query, season, episode)
+    answer = _search_answer(query)
+    if answer is None:
         return []
     return _parse_answer(answer, titles, content_type, year, season, episode, _max_results())
+
+
+def search_custom(query, limit=None):
+    """Free-text search for the Usenet custom search; no film-title filter."""
+    if not available():
+        return []
+    query = str(query or "").strip()
+    if not query:
+        return []
+    try:
+        limit = int(limit) if limit else _max_results()
+    except (TypeError, ValueError):
+        limit = _max_results()
+    limit = max(1, min(100, limit))
+    answer = _search_answer(query)
+    if answer is None:
+        return []
+    return _parse_answer(answer, [query], "movie", 0, None, None, limit, custom=True)

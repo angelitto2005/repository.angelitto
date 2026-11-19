@@ -2588,7 +2588,7 @@ def start_playback_monitor(player_instance, dialog=None):
         log("[PLAYER-MONITOR] Monitor thread started")
         # Cata timp ruleaza episodul, lista Up Next nu se goleste (vezi
         # cache._playback_active). Altfel ghost scraper-ul de la 80% si daemonii
-        # de refresh o stergeau intre 85% si stop, iar light path-ul rata la
+        # de refresh o stergeau intre 90% si stop, iar light path-ul rata la
         # revenire -> ~2.8s de import tmdb_api peste lista goala.
         try:
             from resources.lib.core.cache import set_playback_active as _spa
@@ -2707,8 +2707,8 @@ def start_playback_monitor(player_instance, dialog=None):
                                 threading.Thread(target=_silent_scrape_next_episode, args=(player_instance,), daemon=True).start()
                     # ------------------------------------------------------------------------------
 
-                    if not player_instance.watched_marked and progress >= 85:
-                        log(f"[PLAYER-MONITOR] 85% reached. Will mark on stop.")
+                    if not player_instance.watched_marked and progress >= 90:
+                        log(f"[PLAYER-MONITOR] 90% reached. Will mark on stop.")
                         player_instance.watched_marked = True
                         if not getattr(player_instance, 'next_episode_scraped', False):
                             threading.Thread(target=_warmup_next_season, args=(player_instance,), daemon=True).start()
@@ -2887,7 +2887,7 @@ def start_playback_monitor(player_instance, dialog=None):
         try:
             from resources.lib.providers import trakt_sync
 
-            if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
+            if (player_instance.watched_marked or last_known_progress >= 90) and last_known_total >= 900:
                 log(f"[PLAYER-MONITOR] Marking as WATCHED ({last_known_progress:.2f}%)")
                 try:
                     xbmcgui.Window(10000).setProperty('tmdbmovies.stop_change', 'watched')
@@ -2951,7 +2951,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     player_instance.season, player_instance.episode, 
                     100, player_instance.title, player_instance.year
                 )
-                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position, 'watched': True, 'watched_threshold': 0.85}, daemon=True)
+                _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position, 'watched': True, 'watched_threshold': 0.90}, daemon=True)
                 _stop_net_thread.start()
                 stop_net_threads.append(_stop_net_thread)
                 
@@ -3077,7 +3077,7 @@ def start_playback_monitor(player_instance, dialog=None):
             
             # AutoPlayWindow (Binge Watching)
             if is_ep and hasattr(player_instance, 'next_ep_info') and player_instance.next_ep_info:
-                if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 85):
+                if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 90):
                     n_info = player_instance.next_ep_info
                     # NU `Dialog.Close(all,true)`: inchidea si DialogBusy-ul pe
                     # care Kodi il tine in timpul unui `GetDirectory`. In logul cu
@@ -3155,7 +3155,7 @@ def start_playback_monitor(player_instance, dialog=None):
                 xbmcgui.Window(10000).clearProperty('tmdbmovies.binge_open')
             except:
                 pass
-            if (player_instance.watched_marked or last_known_progress >= 85) and last_known_total >= 900:
+            if (player_instance.watched_marked or last_known_progress >= 90) and last_known_total >= 900:
                 try:
                     from resources.lib.providers.trakt_sync import update_kodi_library_watchstatus as _update_lib_watch
                     _lib_title = player_instance.title
@@ -4269,23 +4269,27 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
 
         if str(current_stream.get('provider_id', '')) == 'easynews_direct':
             try:
-                from resources.lib.api.easynews_direct import resolve_playback
-                direct = resolve_playback(valid_url)
-                if direct:
-                    valid_url = direct
+                # Linkul CDN semnat expira dupa ~100 min; proxy-ul reia originalul
+                # la fiecare Range, deci reimprospateaza tokenul si la seek.
+                from resources.lib.api.easynews_proxy import playback_url
+                proxied = playback_url(valid_url)
+                if proxied:
+                    valid_url = proxied
                     if '|seekable=' not in valid_url:
                         valid_url += '|seekable=1'
-                    log("[PLAYER] EasyNews direct CDN link resolved")
+                    log("[PLAYER] EasyNews direct via loopback proxy (token refresh)")
                 else:
-                    from resources.lib.api.easynews_proxy import playback_url
-                    proxied = playback_url(valid_url)
-                    if proxied:
-                        valid_url = proxied
-                        log("[PLAYER] EasyNews direct resolve failed - using loopback proxy")
+                    from resources.lib.api.easynews_direct import resolve_playback
+                    direct = resolve_playback(valid_url)
+                    if direct:
+                        valid_url = direct
+                        if '|seekable=' not in valid_url:
+                            valid_url += '|seekable=1'
+                        log("[PLAYER] EasyNews proxy unavailable - direct CDN link resolved")
                     else:
                         log("[PLAYER] EasyNews direct resolve and proxy unavailable")
             except Exception as e:
-                log("[PLAYER] EasyNews direct resolve error: %s" % e)
+                log("[PLAYER] EasyNews direct playback setup error: %s" % e)
 
         # ==============================================================
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)

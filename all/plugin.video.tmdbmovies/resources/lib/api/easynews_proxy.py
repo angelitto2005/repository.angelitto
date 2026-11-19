@@ -215,9 +215,11 @@ def _prune():
 
 def _register(remote_url):
     token = os.urandom(16).hex()
+    session = requests.Session()
+    session.trust_env = False
     info = {
         'url': remote_url,
-        'session': requests.Session(),
+        'session': session,
         'created': time.time(),
         'last': time.time(),
         'head': None,
@@ -381,7 +383,7 @@ class _Handler(BaseHTTPRequestHandler):
                 attempt_sent = sent
                 body_error = ''
                 try:
-                    for piece in current.iter_content(65536):
+                    for piece in current.iter_content(1024 * 1024):
                         if not piece:
                             continue
                         if expected is not None:

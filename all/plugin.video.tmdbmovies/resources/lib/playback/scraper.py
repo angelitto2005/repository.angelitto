@@ -7980,8 +7980,8 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
     except Exception as exc:
         log(f"[EASYNEWS-DIRECT] module unavailable: {exc}")
         return None
-    if not easynews_direct.configured():
-        log("[EASYNEWS-DIRECT] username/password missing")
+    if not easynews_direct.available():
+        log("[EASYNEWS-DIRECT] disabled or username/password missing")
         return None
     try:
         rows = easynews_direct.search(title_query, alt_title, year_query,

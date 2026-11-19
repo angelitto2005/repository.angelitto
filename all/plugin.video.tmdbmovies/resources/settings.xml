@@ -232,6 +232,7 @@
         <setting label="[B][COLOR FFFFEA00]Custom search[/COLOR][/B]" type="lsep" visible="eq(-8,true)"/>
         <setting id="usenet_nzb.context_search" type="bool" label="[COLOR FFCCCCFF][B]Search Usenet in the context menu[/B]   (asks for your own words)[/COLOR]" default="false" visible="eq(-9,true)"/>
         <setting id="usenet_nzb.context_search_scope" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Indexers for custom search[/B][/COLOR]" values="All indexers|Only free|Only paid" default="1" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.context_search_easynews" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Include EasyNews Direct[/B] in custom search[/COLOR]" default="true" visible="eq(-2,true)"/>
 
         <setting label="[B][COLOR FFFFEA00]Indexers[/COLOR][/B]" type="lsep" />
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]"/>

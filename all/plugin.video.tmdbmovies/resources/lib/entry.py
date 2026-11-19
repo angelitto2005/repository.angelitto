@@ -1062,7 +1062,8 @@ def run_plugin():
     if mode == 'usenet_custom_play':
         from resources.lib.playback.usenet_search import play_result
         play_result(params.get('nzb_url', ''), params.get('title', ''),
-                    params.get('indexer', ''), params.get('size', ''))
+                    params.get('indexer', ''), params.get('size', ''),
+                    params.get('en_url', ''))
         return
 
     if mode == 'detonate_clear_cache':

@@ -1,3 +1,10 @@
+1.1.351
+- EasyNews Direct playback now goes through the add-on's loopback proxy; the login stays out of the playback URL and seeking works.
+- The proxy asks EasyNews for a fresh signed download address while playing, so a long film no longer stops when the old address expires.
+- Custom Usenet search now searches every category, so sports releases under TV > Sport are found, and it mixes in EasyNews Direct results beside the indexers.
+- New "Include EasyNews Direct" switch under Custom search; the EasyNews Direct master switch now also controls the source search and the custom search.
+- Watched is marked at 90% instead of 85%, including the Trakt scrobble.
+
 1.1.350
 - EasyNews Direct: username and password add web search and direct 4K playback; the add-on resolves the signed download address, so the login stays out of the playback URL and seeking works.
 - Source info and the playback OSD show readable names for the provider and the real indexer, not internal IDs such as easynews_direct or usenet_nzb.

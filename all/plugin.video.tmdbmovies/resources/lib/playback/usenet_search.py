@@ -328,6 +328,7 @@ def search_results(params=None):
         return
 
     scope = usenet_config.context_search_scope()
+    per_indexer_limit = usenet_config.max_results()
     progress = xbmcgui.DialogProgressBG()
     try:
         progress.create('Usenet search', {
@@ -341,8 +342,8 @@ def search_results(params=None):
             'movie', '', None, None, title=query, year=None, alt_title='',
             logger=_log, use_cache=False, mode=usenet_config.fetch_mode(),
             min_usable=usenet_config.stop_after(), min_size=usenet_config.min_size_bytes(),
-            episodes_only=False, per_indexer_limit=usenet_config.max_results(),
-            scope=scope)
+            episodes_only=False, per_indexer_limit=per_indexer_limit,
+            scope=scope, all_categories=True)
     except Exception as exc:
         rows, notes = [], [str(exc)[:120]]
     finally:
@@ -351,6 +352,28 @@ def search_results(params=None):
                 progress.close()
         except Exception:
             pass
+
+    en_rows = []
+    try:
+        from resources.lib.api import easynews_direct
+        if easynews_direct.available() and usenet_config.context_search_easynews():
+            found = easynews_direct.search_custom(query, per_indexer_limit)
+            for item in found:
+                name = str(item.get('name') or '').strip()
+                en_url = str(item.get('url') or '').strip()
+                if not name or not en_url:
+                    continue
+                en_rows.append({
+                    'title': name,
+                    'size': item.get('size') or 0,
+                    'indexer': 'EasyNews Direct',
+                    'en_url': en_url,
+                })
+            _log('EasyNews Direct: %d release(s)' % len(en_rows))
+    except Exception as exc:
+        _log('EasyNews Direct search failed: %s' % type(exc).__name__)
+        notes.append('EasyNews Direct: search failed')
+    rows = en_rows + rows
 
     for note in notes:
         _log(note)
@@ -371,8 +394,11 @@ def search_results(params=None):
         size_text = _size_text(row.get('size'))
         indexer = row.get('indexer') or 'Usenet'
         plot = ' | '.join(piece for piece in (size_text, indexer) if piece)
-        params = {'nzb_url': row.get('nzb_url') or '', 'title': title, 'indexer': indexer,
-                  'size': row.get('size') or 0}
+        params = {'title': title, 'indexer': indexer, 'size': row.get('size') or 0}
+        if row.get('en_url'):
+            params['en_url'] = row.get('en_url') or ''
+        else:
+            params['nzb_url'] = row.get('nzb_url') or ''
         li = xbmcgui.ListItem(label=title)
         li.setArt({'icon': _ICON_SEARCH, 'thumb': _ICON_SEARCH})
         try:
@@ -416,9 +442,40 @@ def history_clear(params=None):
     xbmc.executebuiltin('Container.Refresh')
 
 
-def play_result(nzb_url, title='', indexer='', size=0):
+def _play_easynews(handle, remote_url, title='', size=0, indexer='EasyNews Direct'):
+    local = ''
+    try:
+        from resources.lib.api.easynews_proxy import playback_url
+        local = playback_url(remote_url)
+    except Exception as exc:
+        _log('EasyNews proxy failed: %s' % type(exc).__name__)
+    if not local:
+        try:
+            from resources.lib.api.easynews_direct import resolve_playback
+            local = resolve_playback(remote_url)
+        except Exception as exc:
+            _log('EasyNews resolve failed: %s' % type(exc).__name__)
+    if not local:
+        _notify('EasyNews Direct stream is unavailable')
+        xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
+        return
+    if '|seekable=' not in local:
+        local += '|seekable=1'
+    _log('playing EasyNews Direct: %s' % (title or 'stream'))
+    li = xbmcgui.ListItem(label=title or 'EasyNews Direct', path=local)
+    try:
+        li.setInfo('video', _video_info(title, size, indexer))
+    except Exception as exc:
+        _log('info tag failed: %s' % exc)
+    xbmcplugin.setResolvedUrl(handle, True, li)
+
+
+def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
     handle = _handle()
     if handle < 0:
+        return
+    if en_url:
+        _play_easynews(handle, en_url, title, size, indexer)
         return
     if not nzb_url:
         xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
