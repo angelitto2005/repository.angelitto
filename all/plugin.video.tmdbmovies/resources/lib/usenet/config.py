@@ -554,11 +554,18 @@ def parse_indexers(raw):
 
 
 def indexer_slot(number):
-    """One of the six indexer slots, or None when it is off or incomplete."""
+    """One of the six indexer slots, or None when it is off or incomplete.
+
+    'full' marks an unlimited account: it is asked together with the free
+    built-ins instead of the quota-saving Free/Trial loop.
+    """
     if not flag('usenet_nzb.indexer%d.enabled' % number, False):
         return None
-    return _indexer(text('usenet_nzb.indexer%d.url' % number, ''),
+    item = _indexer(text('usenet_nzb.indexer%d.url' % number, ''),
                     text('usenet_nzb.indexer%d.key' % number, ''))
+    if item:
+        item['full'] = flag('usenet_nzb.indexer%d.full' % number, False)
+    return item
 
 
 def nzbindex_enabled():
@@ -597,12 +604,13 @@ def indexers():
 
 
 def fetch_mode():
-    """'sequential' asks one indexer at a time, 'parallel' asks all of them."""
+    """'sequential' asks the free built-ins and the Full keyed indexers together,
+    then the Free/Trial keyed ones one at a time; 'parallel' asks all at once."""
     return 'parallel' if number('usenet_nzb.fetch_mode', 0, 0, 1) == 1 else 'sequential'
 
 
 def stop_after():
-    """In sequential mode the next indexer is asked while fewer are usable."""
+    """In sequential mode the next Free/Trial indexer is asked while fewer keyed results are usable."""
     return number('usenet_nzb.stop_after', 4, 1, 10)
 
 

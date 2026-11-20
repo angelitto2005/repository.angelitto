@@ -236,32 +236,38 @@
 
         <setting label="[B][COLOR FFFFEA00]Indexers[/COLOR][/B]" type="lsep" />
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]"/>
-        <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - free together, paid one by one (saves quota)|Parallel - all at once" default="0"/>
-        <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Ask Next Indexer if Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-1,0)"/>
+        <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - free + Full together, Free/Trial one by one (saves quota)|Parallel - all at once" default="0"/>
+        <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Ask Next Free/Trial if Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-1,0)"/>
 
         <setting id="usenet_nzb.indexer1.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 1[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer1.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer1.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer1.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexer2.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 2[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer2.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer2.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer2.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexer3.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 3[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer3.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer3.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer3.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexer4.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 4[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer4.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer4.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer4.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexer5.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 5[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer5.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer5.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer5.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexer6.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 6[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer6.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>
         <setting id="usenet_nzb.indexer6.key" type="text" label="      [COLOR FFCCCCFF]└─ [B]API key[/B][/COLOR]" default="" option="hidden" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.indexer6.full" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Full account[/B]   (off = Free/Trial; on = unlimited, asked with the free indexers)[/COLOR]" default="false" visible="eq(-3,true)"/>
 
         <setting id="usenet_nzb.indexers" type="text" label="[COLOR FFCCCCFF][B]More indexers[/B]   (optional) address : API key, comma between indexers[/COLOR]" default=""/>
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]e.g.[/B]  https://api.indexer-one.com : KEY1, https://indexer-two.net/api : KEY2[/COLOR]"/>

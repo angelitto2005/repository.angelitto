@@ -747,15 +747,6 @@ def _binsearch_rows(indexer, title, year, season, episode):
     return []
 
 
-def _dedup_rank(indexer):
-    name = str(indexer or '').strip().lower()
-    if 'drunkenslug' in name:
-        return 3
-    if 'althub' in name:
-        return 1
-    return 2
-
-
 def _filter_rows(rows, season, episode, min_size, episodes_only,
                  seen_links, seen_titles, why,
                  query_title='', query_year=None, query_alt=''):
@@ -790,14 +781,9 @@ def _filter_rows(rows, season, episode, min_size, episodes_only,
             continue
         folded = nzb.release_key(title)
         size_key = size // (100 * 1024 * 1024) if size else 0
-        title_key = (folded, size_key)
+        title_key = (folded, size_key, str(row.get('indexer') or '').strip().lower())
         if title_key in seen_titles:
             _why(why, 'same title twice')
-            previous = seen_titles.get(title_key)
-            if (previous is not None
-                    and _dedup_rank(row.get('indexer')) > _dedup_rank(previous.get('indexer'))):
-                previous.clear()
-                previous.update(row)
             continue
         seen_titles[title_key] = row
         kept.append(row)
@@ -946,11 +932,12 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
          episodes_only=False, per_indexer_limit=0, scope='', all_categories=False):
     """Search the configured indexers. Returns (rows, notes).
 
-    Sequential asks every enabled free built-in together, because they have no
-    search quota, then the paid indexers one at a time while their own usable
-    answers stay below 'min_usable': free results never silence a keyed indexer.
-    Parallel asks every selected indexer at once. Answers are cached per indexer,
-    so one partial answer never hides the others.
+    Sequential asks the enabled free built-ins and the Full keyed indexers
+    together, because neither has a search-quota worry, then the Free/Trial
+    indexers one at a time while the keyed usable answers (Full + Free/Trial)
+    stay below 'min_usable': free built-in results never silence a keyed
+    indexer. Parallel asks every selected indexer at once. Answers are cached
+    per indexer, so one partial answer never hides the others.
 
     scope 'all', 'free' or 'paid' narrows which indexers are asked; the custom
     text search uses it so a free query never spends a keyed indexer's quota.
@@ -1014,56 +1001,69 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
             collect(found)
     else:
         free = [entry for entry in entries if entry.get('builtin')]
-        paid = [entry for entry in entries if not entry.get('builtin')]
+        full = [entry for entry in entries
+                if not entry.get('builtin') and entry.get('full')]
+        limited = [entry for entry in entries
+                   if not entry.get('builtin') and not entry.get('full')]
         if logger:
-            logger('[USENET] sequential: %d free together, %d with a key one by one until a key gives %d usable'
-                   % (len(free), len(paid), min_usable))
-        if free:
+            logger('[USENET] sequential: %d free, %d Full together, %d Free/Trial one by one until a key gives %d usable'
+                   % (len(free), len(full), len(limited), min_usable))
+        keyed_kept = 0
+        first = free + full
+        if first:
             from concurrent.futures import ThreadPoolExecutor
 
             if logger:
-                logger('[USENET] free together: %s'
-                       % ', '.join(entry.get('name') or '?' for entry in free))
+                logger('[USENET] free + Full together: %s'
+                       % ', '.join(entry.get('name') or '?' for entry in first))
 
-            def free_one(entry):
+            def first_one(entry):
                 return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
                             packs=not episodes_only, year=year, all_categories=all_categories)
 
-            before = len(rows)
-            workers = max(1, min(4, len(free)))
+            workers = max(1, min(6, len(first)))
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetFree') as pool:
-                answers = list(pool.map(free_one, free))
-            for key, found, cached, note in answers:
+                answers = list(pool.map(first_one, first))
+            free_kept = 0
+            for entry, (key, found, cached, note) in zip(first, answers):
                 if note:
                     notes.append(note)
                 elif not cached and use_cache:
                     _cache_put(key, found)
-                collect(found)
+                here = collect(found)
+                if entry.get('builtin'):
+                    free_kept += here
+                else:
+                    keyed_kept += here
             if logger:
-                logger('[USENET] free: %d usable (total %d of %d)'
-                       % (len(rows) - before, len(rows), min_usable))
-        paid_kept = 0
-        for position, entry in enumerate(paid, 1):
-            key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
-                                            use_cache, logger, packs=not episodes_only,
-                                            year=year, all_categories=all_categories)
-            if note:
-                notes.append(note)
-            elif not cached and use_cache:
-                _cache_put(key, found)
-            here = collect(found)
-            paid_kept += here
-            if logger:
-                logger('[USENET] sequential: %s -> %d usable with a key (%d of %d)'
-                       % (entry['name'], here, paid_kept, min_usable))
-            if paid_kept >= min_usable:
-                if logger and position < len(paid):
-                    logger('[USENET] sequential: enough with a key after %s, %d not asked'
-                           % (entry['name'], len(paid) - position))
-                break
-        if logger and paid and paid_kept < min_usable:
-            logger('[USENET] sequential: only %d usable with a key after all %d'
-                   % (paid_kept, len(paid)))
+                logger('[USENET] free + Full: %d free usable, %d keyed usable (%d of %d)'
+                       % (free_kept, keyed_kept, keyed_kept, min_usable))
+        if keyed_kept >= min_usable:
+            if logger and limited:
+                logger('[USENET] sequential: enough with Full, %d Free/Trial not asked'
+                       % len(limited))
+        else:
+            for position, entry in enumerate(limited, 1):
+                key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
+                                                use_cache, logger, packs=not episodes_only,
+                                                year=year, all_categories=all_categories)
+                if note:
+                    notes.append(note)
+                elif not cached and use_cache:
+                    _cache_put(key, found)
+                here = collect(found)
+                keyed_kept += here
+                if logger:
+                    logger('[USENET] sequential: %s -> %d usable with a key (%d of %d)'
+                           % (entry['name'], here, keyed_kept, min_usable))
+                if keyed_kept >= min_usable:
+                    if logger and position < len(limited):
+                        logger('[USENET] sequential: enough with a key after %s, %d not asked'
+                               % (entry['name'], len(limited) - position))
+                    break
+            if logger and limited and keyed_kept < min_usable:
+                logger('[USENET] sequential: only %d usable with a key after all %d'
+                       % (keyed_kept, len(limited)))
 
     rows = _cap_per_indexer(rows, per_indexer_limit, season, episode, why)
 
