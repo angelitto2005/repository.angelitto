@@ -9,6 +9,17 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
+# Shutdown guard: remembers the sockets this interpreter opens and closes them
+# the moment Kodi is asked to exit, so a background fetch cannot keep the
+# invoker (or the whole application, for the service) waiting for its timeout.
+# Installed here because every path of the add-on imports config before it
+# touches the network.
+try:
+    import guard
+    guard.install()
+except Exception:
+    pass
+
 ADDON_ID = 'tmdbm.trailers'
 ADDON = xbmcaddon.Addon(ADDON_ID)
 ADDON_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('path'))

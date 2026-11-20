@@ -28,10 +28,14 @@ _REFRESHING = set()
 
 def _aborting():
     try:
-        import xbmc
-        return bool(xbmc.Monitor().abortRequested())
+        import guard
+        return guard.aborting()
     except Exception:
-        return False
+        try:
+            import xbmc
+            return bool(xbmc.Monitor().abortRequested())
+        except Exception:
+            return False
 
 
 def _log(msg):
@@ -56,8 +60,17 @@ def _refresh_in_background(cache, func, name, args, kwargs, eff):
             return False
         _REFRESHING.add(key)
 
+    try:
+        import guard
+    except ImportError:
+        guard = None
+
     def _run():
         try:
+            # The shutdown guard also closes the socket this fetch would block
+            # on, so the worker ends in milliseconds when Kodi is stopping.
+            if guard is not None:
+                guard.check()
             if _aborting():
                 return
             payload = func(*args, **kwargs)
@@ -65,11 +78,17 @@ def _refresh_in_background(cache, func, name, args, kwargs, eff):
                 cache._save(name, args, kwargs, payload)
                 _log('{} refreshed in the background'.format(name))
         except Exception as exc:  # SystemExit passes through on purpose
+            if guard is not None and guard.is_abort(exc):
+                # The guard closed the socket of this fetch: not a failure.
+                return
             _log('background refresh of {} failed: {}'.format(name, exc))
         finally:
             with _REFRESH_LOCK:
                 _REFRESHING.discard(key)
 
+    if guard is not None:
+        guard.worker(_run, name='cache-refresh')
+        return True
     thread = threading.Thread(target=_run, name='cache-refresh')
     thread.daemon = True
     thread.start()

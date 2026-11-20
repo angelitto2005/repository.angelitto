@@ -389,6 +389,13 @@ def fill_missing_meta(entries, timeout=5.0, return_healed=False):
     from concurrent.futures import ThreadPoolExecutor, wait
     import store as _store
     entries = list(entries or [])
+    try:
+        # Nothing to fill while Kodi is going away, and every request below
+        # would be one more blocked socket the invoker has to wait for.
+        import guard
+        guard.check()
+    except Exception:
+        return (entries, 0) if return_healed else entries
     pending = [dict(entry or {}) for entry in entries
                if (entry or {}).get('video_id')
                and (not (entry or {}).get('channel')
@@ -489,6 +496,14 @@ def fill_missing_meta(entries, timeout=5.0, return_healed=False):
         try:
             info = future.result() or {}
         except Exception as exc:
+            try:
+                import guard
+                if guard.is_abort(exc):
+                    # Kodi closed under the lookup: not a metadata failure, so
+                    # do not park the row as one for the whole failure TTL.
+                    continue
+            except Exception:
+                pass
             failed += 1
             try:
                 _store.set_yt_meta_failed(

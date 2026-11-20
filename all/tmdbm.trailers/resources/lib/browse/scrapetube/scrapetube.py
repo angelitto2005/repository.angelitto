@@ -357,7 +357,17 @@ def get_videos(
         if not next_data or quit_it:
             break
 
-        time.sleep(sleep)
+        # Abort-aware pause: a plain sleep would keep the thread (and Kodi)
+        # waiting for the rest of it after an exit was requested.
+        try:
+            import guard
+        except ImportError:
+            time.sleep(sleep)
+        else:
+            try:
+                guard.sleep(sleep)
+            except guard.Aborted:
+                break
 
     session.close()
 

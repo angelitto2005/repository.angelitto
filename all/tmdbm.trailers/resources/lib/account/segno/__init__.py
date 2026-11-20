@@ -431,6 +431,9 @@ class QRCode:
         webbrowser.open_new_tab(urljoin('file:', pathname2url(f.name)))
         if delete_after is not None:
             t = threading.Thread(target=delete_file, args=(f.name,))
+            # Kodi waits for every thread of the interpreter on exit, and this
+            # one sleeps for the whole delete_after before it does anything.
+            t.daemon = True
             t.start()
 
     def svg_data_uri(self, xmldecl=False, encode_minimal=False,

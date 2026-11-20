@@ -247,7 +247,20 @@ def _sync_library_bg():
         from account import youtube_sync
         summary = youtube_sync.sync_library()
     except Exception as exc:
+        try:
+            import guard
+            if guard.is_abort(exc):
+                return
+        except Exception:
+            pass
         notify(config.T(32174).format(str(exc)[:120]))
+        return
+    try:
+        # The sync was cut by an exit: do not pop a notification or repaint
+        # the list while Kodi is going away.
+        import guard as _guard
+        _guard.check()
+    except Exception:
         return
     notify(config.T(32191).format(
         summary.get('channels', 0), summary.get('videos', 0)),
@@ -313,12 +326,23 @@ def _periodic_sync_bg(syncing):
         from account import youtube_sync
         summary = youtube_sync.sync_library()
     except Exception as exc:
-        config.log('periodic sync failed: {}'.format(str(exc)[:120]))
         syncing['busy'] = False
+        try:
+            import guard
+            if guard.is_abort(exc):
+                return
+        except Exception:
+            pass
+        config.log('periodic sync failed: {}'.format(str(exc)[:120]))
         return
     syncing['busy'] = False
     config.log('periodic sync done: {0} channels, {1} videos'.format(
         summary.get('channels', 0), summary.get('videos', 0)))
+    try:
+        import guard as _guard
+        _guard.check()
+    except Exception:
+        return
     if _bg_refresh_ok('my_youtube'):
         xbmc.executebuiltin('Container.Refresh')
 
@@ -462,6 +486,13 @@ def _keep_player_in_front(was_fullscreen):
 def _restore_fullscreen(timeout=12.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
+        try:
+            # Up to twelve seconds of polling here would be one more thread the
+            # invoker has to wait for after an exit was requested.
+            if xbmc.Monitor().abortRequested():
+                return
+        except Exception:
+            pass
         try:
             if not xbmc.Player().isPlayingVideo():
                 xbmc.sleep(200)
@@ -1028,9 +1059,20 @@ def _prefetch_lists_bg(delay):
     except Exception:
         pass
     try:
+        import guard
+        guard.check()
+    except Exception:
+        return
+    try:
         import router
         router.warm_first_pages()
     except Exception as exc:
+        try:
+            import guard as _guard
+            if _guard.is_abort(exc):
+                return
+        except Exception:
+            pass
         config.log('prefetch failed: {}'.format(str(exc)[:160]))
         return
     try:
@@ -1433,6 +1475,14 @@ def run():
             config.log('periodic sync check failed: {}'.format(str(exc)[:120]))
         if monitor.waitForAbort(wait):
             break
+    try:
+        # Wake every background worker now: Kodi's five second window starts
+        # at the moment it asked, so do not leave this to the guard thread's
+        # next 250 ms tick.
+        import guard
+        guard.abort_now()
+    except Exception:
+        pass
     del observer
     try:
         import player as _player_module

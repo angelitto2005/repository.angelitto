@@ -346,6 +346,15 @@ def _music_query():
 _RANDOM_MUSIC_FLOOR = 60
 
 
+def _abort_exc(exc):
+    """True when the failure is only Kodi closing under a background worker."""
+    try:
+        import guard
+        return guard.is_abort(exc)
+    except Exception:
+        return False
+
+
 def warm_first_pages():
     """Fetch the first page of the heavy listings up front.
 
@@ -394,10 +403,14 @@ def warm_first_pages():
         name, _mode, query, fetch, limit = target
         mark = time.time()
         try:
+            import guard
+            guard.check()
             fetch(query, limit=limit)
             config.log('prefetch: {} warmed ({} items) in {:.1f}s'.format(
                 name, limit, time.time() - mark), always=True)
         except Exception as exc:
+            if _abort_exc(exc):
+                return
             config.log('prefetch {} failed: {}'.format(name, str(exc)[:120]),
                        xbmc.LOGWARNING, always=True)
 
@@ -505,6 +518,8 @@ def _fill_dates_bg(entries, refresh=False):
 
     def _run():
         try:
+            import guard
+            guard.check()
             import lists
             done, healed = lists.fill_missing_meta(entries, timeout=60.0,
                                                    return_healed=True)
@@ -517,12 +532,18 @@ def _fill_dates_bg(entries, refresh=False):
                 config.log('background meta fill: dates will show on the next '
                            'open of the list')
         except Exception as exc:
+            if _abort_exc(exc):
+                return
             config.log('background meta fill failed: {}'.format(exc))
         finally:
             _FILL_DATES['busy'] = False
 
     _FILL_DATES['busy'] = True
-    _threading.Thread(target=_run, daemon=True).start()
+    try:
+        import guard
+        guard.worker(_run, name='meta-fill')
+    except Exception:
+        _threading.Thread(target=_run, daemon=True).start()
 
 
 def _video_playing():
@@ -787,9 +808,13 @@ def sub_channel(handle, params):
         _notify(config.T(32310).format(named) if named else config.T(32185))
     else:
         store.subscribe(title, _curl)
-        import threading as _threading
-        _threading.Thread(target=_backfill_sub_thumbs, args=([_curl],),
-                          daemon=True).start()
+        try:
+            import guard
+            guard.worker(_backfill_sub_thumbs, ([_curl],), name='sub-thumbs')
+        except Exception:
+            import threading as _threading
+            _threading.Thread(target=_backfill_sub_thumbs, args=([_curl],),
+                              daemon=True).start()
         lists.clear_menu_memo()
         _marked = _channel_markup(title)
         _notify(config.T(32164).format(_marked) if _marked else config.T(32308))
@@ -1105,8 +1130,12 @@ def subscribe(handle, params):
         title = ''
     store.subscribe(title, url, image)
     if store.needs_avatar(image) or not title:
-        threading.Thread(target=_backfill_sub_thumbs, args=([url],),
-                         daemon=True).start()
+        try:
+            import guard
+            guard.worker(_backfill_sub_thumbs, ([url],), name='sub-thumbs')
+        except Exception:
+            threading.Thread(target=_backfill_sub_thumbs, args=([url],),
+                             daemon=True).start()
     import lists
     lists.clear_menu_memo()
     _marked = _channel_markup(title)
@@ -1766,10 +1795,12 @@ def _feed_channel_videos(url, per_channel):
 
 
 def _iter_feed_channels(subs, per_channel, need):
+    import guard
     pool = ThreadPoolExecutor(max_workers=_FEED_WORKERS)
     fetched = 0
     try:
         for start in range(0, len(subs), _FEED_WORKERS):
+            guard.check()
             wave = [sub for sub in subs[start:start + _FEED_WORKERS]
                     if (sub or {}).get('url')]
             if not wave:
@@ -1814,16 +1845,24 @@ def _refresh_feed_in_background(need, per_channel):
 
     def _run():
         try:
-            if xbmc.Monitor().abortRequested():
-                return
+            import guard
+            guard.check()
             collected, _exhausted = _collect_feed(need, per_channel)
             if collected and _bg_refresh_ok('subscription_feed'):
                 xbmc.executeBuiltin('Container.Refresh')
         except Exception as exc:
+            if _abort_exc(exc):
+                return
             config.log('feed background refresh failed: {}'.format(str(exc)[:120]))
         finally:
             _feed_refresh_lock.release()
 
+    try:
+        import guard
+        guard.worker(_run, name='feed-refresh')
+        return
+    except Exception:
+        pass
     thread = threading.Thread(target=_run, name='feed-refresh')
     thread.daemon = True
     thread.start()
@@ -1899,9 +1938,13 @@ def subscribed_channels(handle, params):
                 not in _missing:
             _missing.append(entry['url'])
     if _missing:
-        import threading as _threading
-        _threading.Thread(target=_backfill_sub_thumbs, args=(_missing,),
-                          daemon=True).start()
+        try:
+            import guard
+            guard.worker(_backfill_sub_thumbs, (_missing,), name='sub-thumbs')
+        except Exception:
+            import threading as _threading
+            _threading.Thread(target=_backfill_sub_thumbs, args=(_missing,),
+                              daemon=True).start()
     page = _page(params)
     per_page = results_per_page()
     start = (page - 1) * per_page
@@ -2078,9 +2121,15 @@ def login(handle, params):
             except Exception:
                 left = 0
             dialog.update(max(0, int(left * 100 / _span)), content)
-            time.sleep(2)
+            # Abort-aware pause: a plain sleep would hold this thread (and the
+            # invocation) for the rest of it after Kodi was asked to stop.
+            _mon.waitForAbort(2)
 
-    threading.Thread(target=_poll, daemon=True).start()
+    try:
+        import guard
+        guard.worker(_poll, name='login-poll')
+    except Exception:
+        threading.Thread(target=_poll, daemon=True).start()
     run_modal_main_thread(dialog)
     dialog.close()
     try:
@@ -2090,7 +2139,11 @@ def login(handle, params):
     if _result.get('ok'):
         _notify(config.T(32179))
         _back_to_account(handle)
-        threading.Thread(target=_sync_after_login, daemon=True).start()
+        try:
+            import guard
+            guard.worker(_sync_after_login, name='login-sync')
+        except Exception:
+            threading.Thread(target=_sync_after_login, daemon=True).start()
         return
     if _result.get('expired'):
         _notify(config.T(32169))
