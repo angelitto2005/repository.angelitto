@@ -308,6 +308,17 @@ def _pack_title(title, season=None):
     return bool(re.match(r'\s*[-\u2013]\s*e?\d{1,3}\b', text[mark.end():], re.I))
 
 
+def _imdb_number(value):
+    """The numeric IMDb id only: 'tmdb:234373' is a TMDb id, not an IMDb one."""
+    text = str(value or '').strip()
+    if ':' in text:
+        kind, _, rest = text.partition(':')
+        if kind.strip().lower() not in ('imdb', 'imdbid'):
+            return ''
+        text = rest
+    return re.sub(r'\D', '', text)
+
+
 def _episode_query(indexer, common, digits, season, episode, title):
     params = dict(common, t='tvsearch', season=int(season), ep=int(episode or 0))
     if digits:
@@ -315,11 +326,14 @@ def _episode_query(indexer, common, digits, season, episode, title):
     else:
         params['q'] = _query_title(title)
     rows = results(_get(indexer, params), indexer['name'])
-    if rows or not title:
+    if not digits:
         return rows
-    # Some indexers ignore the IMDb id for series: ask by name instead.
-    return results(_get(indexer, dict(common, t='tvsearch', season=int(season),
-                                      ep=int(episode or 0), q=_query_title(title))), indexer['name'])
+    if not title or _any_title(rows, title):
+        return rows
+    # The indexer ignored the IMDb id and answered with other titles: ask by name.
+    by_name = results(_get(indexer, dict(common, t='tvsearch', season=int(season),
+                                        ep=int(episode or 0), q=_query_title(title))), indexer['name'])
+    return by_name + rows if by_name else rows
 
 
 def _pack_tier(title):
@@ -377,10 +391,12 @@ def _season_packs(indexer, digits, season, title, use_cache, logger):
     for _page in range(pages):
         try:
             found = ask(offset, by_title=by_title)
-            if not found and offset == 0 and not by_title and title:
-                # Some indexers ignore the IMDb id for a season ask.
-                by_title = True
-                found = ask(0, by_title=True)
+            if offset == 0 and not by_title and title:
+                # Some indexers ignore the IMDb id for a season ask and answer
+                # with a general list: ask by name when nothing matches.
+                if not found or not _any_title(found, title):
+                    by_title = True
+                    found = ask(0, by_title=True)
         except Exception:
             break
         answered = True
@@ -417,7 +433,7 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         return _nzbindex_rows(indexer, title, year, season, episode)
     if indexer.get('builtin') == 'binsearch':
         return _binsearch_rows(indexer, title, year, season, episode)
-    digits = re.sub(r'\D', '', str(imdb or ''))
+    digits = _imdb_number(imdb)
     if all_categories and season is None:
         # A user's own words are not a film title: search every category
         # (sports live under TV > Sport, not under Movies).
@@ -432,10 +448,14 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         else:
             params['q'] = _query_title(title)
         rows = results(_get(indexer, params), indexer['name'])
-        if rows or not title:
+        if not digits:
             return rows
-        # Some indexers have nothing under the IMDb id: ask by name instead.
-        return results(_get(indexer, dict(common, t='movie', q=_query_title(title))), indexer['name'])
+        if not title or _any_title(rows, title, True):
+            return rows
+        # Some indexers have nothing under the IMDb id (or answer with other
+        # titles): ask by name instead and keep both sets for the filter.
+        by_name = results(_get(indexer, dict(common, t='movie', q=_query_title(title))), indexer['name'])
+        return by_name + rows if by_name else rows
     if packs:
         return _series_query(indexer, common, digits, season, episode, title, use_cache, logger)
     return _episode_query(indexer, common, digits, season, episode, title)
@@ -552,6 +572,13 @@ def _title_matches(candidate, query, year, is_movie, alt_query=''):
         if found and wanted not in [int(item) for item in found]:
             return False
     return True
+
+
+def _any_title(rows, title, is_movie=False):
+    """At least one row looks like the requested title."""
+    if not title:
+        return True
+    return any(_title_matches(row.get('title'), title, None, is_movie) for row in rows)
 
 
 def _series_name_part(candidate):

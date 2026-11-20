@@ -1,5 +1,6 @@
 """Custom text search over the Usenet indexers picked in Settings, played through the NNTP engine."""
 
+import hashlib
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import xbmcgui
 import xbmcplugin
 
 from resources.lib.core.config import ADDON_DATA_DIR, ADDON_PATH, PLUGIN_URL
+from resources.lib.core.log_safe import redact_text as _redact_log
 
 _ART = ADDON_PATH.replace('\\', '/') + '/resources/media/'
 _ICON_SEARCH = _ART + 'search_movie.png'
@@ -28,6 +30,34 @@ def _log(message):
         xbmc.log('[TMDb Movies] [USENET-SEARCH] %s' % message, xbmc.LOGINFO)
     except Exception:
         pass
+
+
+_LINK_PREFIX = 'tmdbmovies_usenet_link_%s_'
+
+
+def _remember_link(kind, url):
+    url = str(url or '')
+    key = hashlib.md5(url.encode('utf-8')).hexdigest() if url else ''
+    if key:
+        xbmcgui.Window(10000).setProperty((_LINK_PREFIX % kind) + key, url)
+    return key
+
+
+def resolve_links(params):
+    """The playback links for a custom-search row; new rows keep them in window properties."""
+    params = params or {}
+    nzb = str(params.get('nzb_url') or '')
+    en = str(params.get('en_url') or '')
+    window = xbmcgui.Window(10000)
+    if not nzb:
+        key = str(params.get('nzb_key') or '')
+        if key:
+            nzb = window.getProperty((_LINK_PREFIX % 'nzb') + key) or ''
+    if not en:
+        key = str(params.get('en_key') or '')
+        if key:
+            en = window.getProperty((_LINK_PREFIX % 'en') + key) or ''
+    return nzb, en
 
 
 def _record_outcome(indexer, ok):
@@ -423,9 +453,9 @@ def search_results(params=None):
         plot = ' | '.join(piece for piece in (size_text, indexer) if piece)
         params = {'title': title, 'indexer': indexer, 'size': row.get('size') or 0}
         if row.get('en_url'):
-            params['en_url'] = row.get('en_url') or ''
+            params['en_key'] = _remember_link('en', row.get('en_url'))
         else:
-            params['nzb_url'] = row.get('nzb_url') or ''
+            params['nzb_key'] = _remember_link('nzb', row.get('nzb_url'))
         _nested = False
         _nzb_link = row.get('nzb_url') or ''
         if _nzb_link and _release_records:
@@ -532,7 +562,7 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
             if vfs.enabled() and vfs.available():
                 url, why, retry = vfs.prepare_stream(nzb_url, indexer_name=indexer)
                 if not url and not retry:
-                    _log('VFS failed: %s' % why)
+                    _log('VFS failed: %s' % _redact_log(why))
             else:
                 why = 'the VFS add-on is off'
         except Exception as exc:
@@ -549,6 +579,7 @@ def play_result(nzb_url, title='', indexer='', size=0, en_url=''):
         except Exception:
             pass
     if not url:
+        why = _redact_log(why)
         _record_outcome(indexer, False)
         _log('play failed: %s' % why)
         try:

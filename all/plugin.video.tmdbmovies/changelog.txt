@@ -1,3 +1,8 @@
+1.1.358
+- A TMDb id is no longer sent to the indexers as an IMDb id, and an answer that contains other titles now falls back to a name search, so NZB.Life results are not lost.
+- Indexer API keys are masked in the debug log, and custom search playback no longer puts the NZB link in the visible plugin URL.
+- A separately posted sample is no longer chosen over the episode inside the RAR, and old prepared plans are rebuilt so the fix applies immediately.
+
 1.1.357
 - Titles with apostrophes now match releases that drop them, so "James Martin's Spanish Adventure" finds the "James Martins" sources.
 

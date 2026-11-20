@@ -24,7 +24,7 @@ _SEVEN_VOLUME = re.compile(r'\.7z\.(\d+)$', re.I)
 _YENC_SIZE = re.compile(r'yEnc\s+(\d+)\s+\((\d+)\s*/\s*(\d+)\)', re.I)
 _NAMED = re.compile(r'[\[(](\d{1,5})\s*(?:/|of)\s*\d{1,5}[\])]')
 _SAMPLE_FILE = re.compile(
-    r'(^|[.\s_\-])(?:sampl(?:e)?|trailer|teaser|featurette|preview)([.\s_\-]|$)', re.I)
+    r'\b(?:sampl(?:e)?|trailer|teaser|featurette|preview)\b', re.I)
 _QUOTED = re.compile(r'"([^"]+)"')
 _FILE_TAG = re.compile(rb'<file(?=[\s>])')
 _SUBJECT = re.compile(rb'\bsubject\s*=\s*(["\'])(.*?)\1', re.S)

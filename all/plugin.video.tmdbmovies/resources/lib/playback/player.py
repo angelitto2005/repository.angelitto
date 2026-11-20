@@ -201,6 +201,7 @@ except: resolveurl = None
 
 _IS_ANDROID = xbmc.getCondVisibility('System.Platform.Android')
 import pprint
+from resources.lib.core.log_safe import clean as _log_clean
 
 LANG = get_language()
 
@@ -4385,14 +4386,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         # --- LOGARE STREAM DATA (sanitizat) ---
         try:
-            _sd = dict(current_stream)
-            _su = _sd.get('url', '')
-            if 'passkey=' in _su:
-                _sd['url'] = re.sub(r'(passkey=)[^&]+', r'\1***', _su)
-            # _torrent_b64 = tot .torrentul in base64 (~44KB/sursa) - nu-l loga
-            if '_torrent_b64' in _sd:
-                _tb = _sd['_torrent_b64']
-                _sd['_torrent_b64'] = '<%d chars>' % len(_tb) if isinstance(_tb, str) else '<bytes>'
+            _sd = _log_clean(dict(current_stream))
             xbmc.log(f"[TMDb Movies] 🧲 STREAM DATA 🧲:\n{pprint.pformat(_sd, indent=2, width=120)}", xbmc.LOGINFO)
         except:
             pass
