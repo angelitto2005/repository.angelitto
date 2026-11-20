@@ -364,7 +364,22 @@ def search_results(params=None):
     en_rows = []
     try:
         from resources.lib.api import easynews_direct
-        if easynews_direct.available() and usenet_config.context_search_easynews():
+        include_en = usenet_config.context_search_easynews()
+        if include_en and not easynews_direct.available():
+            if not easynews_direct.enabled():
+                _log('EasyNews Direct search skipped: the switch is off')
+                _reason = 'EasyNews Direct is off - turn it on in Settings'
+            else:
+                _log('EasyNews Direct search skipped: set user/password or an EasyNews provider')
+                _reason = 'EasyNews Direct needs user/password (or an EasyNews provider)'
+            try:
+                _win = xbmcgui.Window(10000)
+                if not _win.getProperty('tmdbmovies.easynews_direct_hint'):
+                    _win.setProperty('tmdbmovies.easynews_direct_hint', '1')
+                    _notify('[B][COLOR FFCCCCFF]%s[/COLOR][/B]' % _reason)
+            except Exception:
+                pass
+        if include_en and easynews_direct.available():
             found = easynews_direct.search_custom(query, per_indexer_limit)
             for item in found:
                 name = str(item.get('name') or '').strip()
@@ -382,6 +397,10 @@ def search_results(params=None):
         _log('EasyNews Direct search failed: %s' % type(exc).__name__)
         notes.append('EasyNews Direct: search failed')
     rows = en_rows + rows
+    try:
+        _release_records = usenet_config.release_records()
+    except Exception:
+        _release_records = {}
 
     for note in notes:
         _log(note)
@@ -407,7 +426,20 @@ def search_results(params=None):
             params['en_url'] = row.get('en_url') or ''
         else:
             params['nzb_url'] = row.get('nzb_url') or ''
-        li = xbmcgui.ListItem(label=title)
+        _nested = False
+        _nzb_link = row.get('nzb_url') or ''
+        if _nzb_link and _release_records:
+            try:
+                _nested = bool((_release_records.get(usenet_config.nzb_key(_nzb_link))
+                                or {}).get('nested'))
+            except Exception:
+                _nested = False
+        if _nested:
+            plot = ' | '.join(piece for piece in (plot, 'Nested RAR, not streamable') if piece)
+        _label = title
+        if _nested:
+            _label = '%s  [COLOR FFFF5555][B]NESTED RAR[/B][/COLOR]' % title
+        li = xbmcgui.ListItem(label=_label)
         li.setArt({'icon': _ICON_SEARCH, 'thumb': _ICON_SEARCH})
         try:
             li.setInfo('video', {'title': title, 'plot': plot, 'mediatype': 'video'})

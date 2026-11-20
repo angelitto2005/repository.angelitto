@@ -1,3 +1,9 @@
+1.1.355
+- A stale AIOStreams rollover attempt can no longer replace the Usenet source that is already playing, and the AIOStreams "download failed" placeholder is rejected instead of being played.
+- Duplicate releases keep the DrunkenSlug copy instead of the altHUB one, and releases with a RAR inside a RAR show NESTED RAR in the source list and custom search.
+- EasyNews Direct uses the EasyNews NNTP login when its own user and password are empty, and the custom search warns once when EasyNews Direct is still not configured.
+- The Usenet VFS add-on is now also published for Android arm64 (64-bit devices).
+
 1.1.354
 - Provider statistics and source info show Thundernews by name for hosts such as secure.nl.thundernews.com, instead of "NL".
 

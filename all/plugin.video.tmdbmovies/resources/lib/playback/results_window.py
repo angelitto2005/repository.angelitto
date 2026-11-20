@@ -640,6 +640,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                     parts.append("[COLOR FFFF8C00][B]SHOW PACK[/B][/COLOR]")
             if _release.get('played'):
                 parts.append("[COLOR lime][B]AVAILABLE[/B][/COLOR]")
+            if _release.get('nested'):
+                parts.append("[COLOR FFFF5555][B]NESTED RAR[/B][/COLOR]")
 
             if is_nzb:
                 _nzb_provider = (_nzb_meta.get('provider_name')

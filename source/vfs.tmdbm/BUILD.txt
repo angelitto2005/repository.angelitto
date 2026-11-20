@@ -1,10 +1,10 @@
 TMDb Movies VFS (vfs.tmdbm) 0.1.12 - source package
 
-This archive contains the complete source used to build both release
+This archive contains the complete source used to build all three release
 binaries: vfs.tmdbm.dll for Windows x86_64 and libvfs.tmdbm.so for Android
-armeabi-v7a. The source is identical for both platforms; only the toolchain
-and the output file differ. The repository publishes them as separate
-per-platform zips (see Packaging below).
+armeabi-v7a and arm64-v8a. The source is identical for all three builds; only
+the toolchain, ABI and output file differ. The repository publishes them as
+separate per-platform zips (see Packaging below).
 
 Contents
 - src/                     add-on entry point and Usenet engine (C++17)
@@ -12,9 +12,9 @@ Contents
 - vendor/xbmc/             Kodi 21.3-Omega source snapshot (GPL-2.0-or-later)
 - tools/                   test harnesses and diagnostics
 - licenses/                full license texts
-- CMakeLists.txt           build definition for both platforms
+- CMakeLists.txt           build definition for all three builds
 - build.cmd                Windows configure and build with the bundled layout
-- addon.xml                add-on metadata (both platform libraries)
+- addon.xml                add-on metadata (platform libraries)
 - BUILD.txt                this file
 
 Windows build (x86_64)
@@ -61,21 +61,39 @@ Configure and build (cmd.exe, from this folder)
 Output
   build-android-r21e/dist/vfs.tmdbm/libvfs.tmdbm.so
 
+Android 64-bit build (arm64-v8a)
+--------------------------------
+Requirements: the same NDK r21e, CMake and Ninja as above.
+  set NDK=toolchain\android-ndk-r21e
+  cmake -S . -B build-arm64-android -G Ninja ^
+    -DCMAKE_MAKE_PROGRAM=toolchain\mingw64\bin\ninja.exe ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_TOOLCHAIN_FILE=%NDK%\build\cmake\android.toolchain.cmake ^
+    -DANDROID_ABI=arm64-v8a ^
+    -DANDROID_PLATFORM=android-21 ^
+    -DANDROID_STL=c++_shared
+  cmake --build build-arm64-android --config Release
+
+Output
+  build-arm64-android/dist/vfs.tmdbm/libvfs.tmdbm.so
+
 Packaging per platform
 ----------------------
 The repository publishes one zip per platform under
-zips/vfs.tmdbm+<platform>/ (vfs.tmdbm+windows-x86_64 and
-vfs.tmdbm+android-armv7). Each zip contains a manifest with only the matching
-library_* attribute and only that platform's binary:
+zips/vfs.tmdbm+<platform>/ (vfs.tmdbm+windows-x86_64,
+vfs.tmdbm+android-armv7 and vfs.tmdbm+android-aarch64). Each zip contains a
+manifest with only the matching library_* attribute and only that platform's
+binary:
   vfs.tmdbm/addon.xml
   vfs.tmdbm/vfs.tmdbm.dll          (Windows zip only)
-  vfs.tmdbm/libvfs.tmdbm.so        (Android zip only)
+  vfs.tmdbm/libvfs.tmdbm.so        (Android zips only)
   vfs.tmdbm/LICENSE.txt
   vfs.tmdbm/THIRD-PARTY-NOTICES.txt
   vfs.tmdbm/licenses/
 and zip the folder itself (the archive must contain vfs.tmdbm/addon.xml). The
 same manifest copied next to the zip provides the metadata and assets. Do not
-put both binaries in one zip: Kodi would install both on every platform.
+put more than one binary in one zip: Kodi would install all of them on every
+platform.
 
 Tests
   python tools/engine_harness.py   (local, no provider; uses build stream_test)

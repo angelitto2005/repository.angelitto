@@ -30,11 +30,29 @@ def _log(message):
         pass
 
 
+def _provider_credentials():
+    """The EasyNews NNTP login, used when the Direct fields are empty."""
+    try:
+        from resources.lib.usenet import config as usenet_config
+        for provider in usenet_config.providers():
+            host = str(provider.get("host") or "").lower()
+            if host == "easynews.com" or host.endswith(".easynews.com"):
+                user = str(provider.get("user") or "").strip()
+                password = str(provider.get("password") or "")
+                if user and password:
+                    return user, password
+    except Exception:
+        pass
+    return "", ""
+
+
 def credentials():
     try:
         user = (ADDON.getSetting("easynews_direct_user") or "").strip()
         password = ADDON.getSetting("easynews_direct_pass") or ""
-        return user, password
+        if user and password:
+            return user, password
+        return _provider_credentials()
     except Exception:
         return "", ""
 

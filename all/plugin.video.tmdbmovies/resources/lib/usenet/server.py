@@ -130,6 +130,11 @@ def open_session(token, nzb_key=None, season=None, episode=None,
             except Exception:
                 pass
     except engine.SessionError as exc:
+        if 'rar inside a rar' in str(exc).lower() and nzb_key:
+            try:
+                config.remember_release(nzb_key, {'nested': 1}, played=False)
+            except Exception:
+                pass
         if getattr(exc, 'bad_nzb', False):
             try:
                 os.remove(path)

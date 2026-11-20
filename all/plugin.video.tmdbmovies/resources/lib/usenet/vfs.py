@@ -265,6 +265,11 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
         try:
             info = session.prepare()
         except engine.SessionError as exc:
+            if 'rar inside a rar' in str(exc).lower():
+                try:
+                    config.remember_release(key, {'nested': 1}, played=False)
+                except Exception:
+                    pass
             if getattr(exc, 'bad_nzb', False):
                 try:
                     os.remove(path)

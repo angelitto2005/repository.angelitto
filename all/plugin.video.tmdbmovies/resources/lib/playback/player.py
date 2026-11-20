@@ -219,13 +219,19 @@ _active_player = None
 # A slow preparation must not start playback after the user picked another source.
 _play_attempt = 0
 _play_attempt_lock = threading.Lock()
+_PLAY_ATTEMPT_PROPERTY = 'tmdbmovies.play_attempt'
 
 
 def begin_play_attempt():
     global _play_attempt
     with _play_attempt_lock:
         _play_attempt += 1
-        return _play_attempt
+        attempt = _play_attempt
+    try:
+        xbmcgui.Window(10000).setProperty(_PLAY_ATTEMPT_PROPERTY, str(attempt))
+    except Exception:
+        pass
+    return attempt
 
 
 def invalidate_play_attempts():
@@ -235,7 +241,14 @@ def invalidate_play_attempts():
 
 def _play_attempt_is_current(attempt):
     with _play_attempt_lock:
-        return attempt == _play_attempt
+        current = _play_attempt
+    try:
+        stored = (xbmcgui.Window(10000).getProperty(_PLAY_ATTEMPT_PROPERTY) or '').strip()
+        if stored:
+            current = max(current, int(stored))
+    except Exception:
+        pass
+    return attempt == current
 
 
 def _record_usenet_outcome(indexer_name, ok):
@@ -276,8 +289,8 @@ def _provider_ready(pid):
     if pid != 'easynews_direct':
         return True
     try:
-        return bool((ADDON.getSetting('easynews_direct_user') or '').strip()
-                    and ADDON.getSetting('easynews_direct_pass'))
+        from resources.lib.api import easynews_direct
+        return easynews_direct.configured()
     except Exception:
         return False
 
@@ -895,6 +908,11 @@ def _fast_aio_resolve_link(url, timeout=25):
         r.close()
         if code >= 400:
             log(f"[PLAYER-AIOCHECK] FAIL ({code}): {clean_url[:60]}...")
+            return None
+        final_path = final.split('|', 1)[0].lower()
+        if ('download_failed' in final_path or 'download-failed' in final_path
+                or final_path.split('?', 1)[0].endswith('/failed.mp4')):
+            log(f"[PLAYER-AIOCHECK] FAIL placeholder: {final[:60]}...")
             return None
         if headers and '|' not in final:
             final = f"{final}|" + urllib.parse.urlencode(headers)
@@ -3871,6 +3889,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         _allow_iso = False
 
     for i in range(start_index, total_streams):
+        if not _play_attempt_is_current(_attempt):
+            log("[PLAYER] Stale rollover attempt cancelled")
+            return
         try:
             stream = streams[i]
             url = stream.get('url', '')
@@ -4008,6 +4029,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     if not resolved:
                         log(f"[PLAYER] AIO source {i+1} resolve check failed, trying next")
                         continue
+                    if not _play_attempt_is_current(_attempt):
+                        log("[PLAYER] Stale rollover attempt cancelled")
+                        return
                     url = resolved
                 valid_url = url
                 valid_index = i

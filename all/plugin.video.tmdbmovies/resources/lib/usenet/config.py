@@ -120,7 +120,7 @@ _RELEASE_LOCK = threading.Lock()
 
 
 def release_records():
-    """Every release the engine has opened: {nzb key: {'pack', 'episodes', 'played'}}."""
+    """Every release the engine has opened: {nzb key: {'pack', 'episodes', 'played', 'nested'}}."""
     path = data_file('usenet_packs.json')
     if not path:
         return {}
@@ -143,7 +143,7 @@ def remember_release(key, info, played=True):
     with _RELEASE_LOCK:
         records = release_records()
         record = dict(records.get(key) or {})
-        for name in ('pack', 'episodes', 'per_episode'):
+        for name in ('pack', 'episodes', 'per_episode', 'nested'):
             if name in info:
                 record[name] = info[name]
         record['at'] = now

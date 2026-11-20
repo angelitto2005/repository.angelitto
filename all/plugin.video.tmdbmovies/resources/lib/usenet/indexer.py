@@ -747,6 +747,15 @@ def _binsearch_rows(indexer, title, year, season, episode):
     return []
 
 
+def _dedup_rank(indexer):
+    name = str(indexer or '').strip().lower()
+    if 'drunkenslug' in name:
+        return 3
+    if 'althub' in name:
+        return 1
+    return 2
+
+
 def _filter_rows(rows, season, episode, min_size, episodes_only,
                  seen_links, seen_titles, why,
                  query_title='', query_year=None, query_alt=''):
@@ -784,8 +793,13 @@ def _filter_rows(rows, season, episode, min_size, episodes_only,
         title_key = (folded, size_key)
         if title_key in seen_titles:
             _why(why, 'same title twice')
+            previous = seen_titles.get(title_key)
+            if (previous is not None
+                    and _dedup_rank(row.get('indexer')) > _dedup_rank(previous.get('indexer'))):
+                previous.clear()
+                previous.update(row)
             continue
-        seen_titles.add(title_key)
+        seen_titles[title_key] = row
         kept.append(row)
     return kept
 
@@ -967,7 +981,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
 
     notes = []
     rows = []
-    seen_links, seen_titles, why = set(), set(), {}
+    seen_links, seen_titles, why = set(), {}, {}
     raw_count = 0
 
     def collect(found):
