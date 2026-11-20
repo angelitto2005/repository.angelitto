@@ -1,3 +1,6 @@
+1.1.354
+- Provider statistics and source info show Thundernews by name for hosts such as secure.nl.thundernews.com, instead of "NL".
+
 1.1.353
 - Playback on Kodi 21 opens a single player session, so the second codec open and the "InstanceGuard locked" error are gone.
 - Delete Resume shows up again in a cached list right after a stop, without waiting for the list to rebuild.

@@ -357,6 +357,7 @@ _PROVIDER_NAMES = {
     'newshosting.com': 'Newshosting',
     'tweaknews.eu': 'TweakNews',
     'tweak-news.eu': 'TweakNews',
+    'thundernews.com': 'Thundernews',
     'eweka.nl': 'Eweka',
     'usenetserver.com': 'UsenetServer',
     'frugalusenet.com': 'Frugal Usenet',
