@@ -1,3 +1,6 @@
+1.1.357
+- Titles with apostrophes now match releases that drop them, so "James Martin's Spanish Adventure" finds the "James Martins" sources.
+
 1.1.356
 - Each keyed indexer can be marked as a Full account, so unlimited indexers are asked together with the free built-ins instead of the quota-saving one-by-one loop.
 

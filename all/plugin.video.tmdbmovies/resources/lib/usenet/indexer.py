@@ -313,13 +313,13 @@ def _episode_query(indexer, common, digits, season, episode, title):
     if digits:
         params['imdbid'] = digits
     else:
-        params['q'] = title or ''
+        params['q'] = _query_title(title)
     rows = results(_get(indexer, params), indexer['name'])
     if rows or not title:
         return rows
     # Some indexers ignore the IMDb id for series: ask by name instead.
     return results(_get(indexer, dict(common, t='tvsearch', season=int(season),
-                                      ep=int(episode or 0), q=title.strip())), indexer['name'])
+                                      ep=int(episode or 0), q=_query_title(title))), indexer['name'])
 
 
 def _pack_tier(title):
@@ -356,7 +356,7 @@ def _season_packs(indexer, digits, season, title, use_cache, logger):
         if digits and not by_title:
             params['imdbid'] = digits
         else:
-            params['q'] = (title or '').strip()
+            params['q'] = _query_title(title)
         return results(_get(indexer, params), indexer['name'])
 
     def take(found):
@@ -422,7 +422,7 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         # A user's own words are not a film title: search every category
         # (sports live under TV > Sport, not under Movies).
         params = {'extended': 1, 'limit': 100, 't': 'search',
-                  'q': (title or '').strip()}
+                  'q': _query_title(title)}
         return results(_get(indexer, params), indexer['name'])
     common = {'extended': 1, 'limit': 100, 'cat': CATEGORY['series' if season is not None else 'movie']}
     if season is None:
@@ -430,12 +430,12 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         if digits:
             params['imdbid'] = digits
         else:
-            params['q'] = (title or '').strip()
+            params['q'] = _query_title(title)
         rows = results(_get(indexer, params), indexer['name'])
         if rows or not title:
             return rows
         # Some indexers have nothing under the IMDb id: ask by name instead.
-        return results(_get(indexer, dict(common, t='movie', q=title.strip())), indexer['name'])
+        return results(_get(indexer, dict(common, t='movie', q=_query_title(title))), indexer['name'])
     if packs:
         return _series_query(indexer, common, digits, season, episode, title, use_cache, logger)
     return _episode_query(indexer, common, digits, season, episode, title)
@@ -474,8 +474,17 @@ _TITLE_STOP = {
 _TITLE_GLUE = {'the', 'a', 'an', 'and', 'of', 'for', 'with', 'from', 'part'}
 
 
+_APOSTROPHE_RE = re.compile(r"['\u2018\u2019`]")
+
+
+def _query_title(title):
+    """The title as the indexers index it: apostrophes are dropped."""
+    return _APOSTROPHE_RE.sub('', str(title or '')).strip()
+
+
 def _title_tokens(text):
-    text = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', str(text or ''))
+    text = _APOSTROPHE_RE.sub('', str(text or ''))
+    text = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', text)
     words = re.findall(r'[0-9a-z]+', text.lower())
     return [word for word in words if len(word) >= 4 and word not in _TITLE_STOP
             and not re.fullmatch(r'(?:19|20)\d{2}', word)]
@@ -483,7 +492,8 @@ def _title_tokens(text):
 
 def _name_words(text):
     """The name words only: stop at the first release tag or year, keep glue."""
-    clean = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', str(text or ''))
+    clean = _APOSTROPHE_RE.sub('', str(text or ''))
+    clean = re.sub(r'\[[^\]]*\]|\([^)]*\)', ' ', clean)
     words = []
     for word in re.findall(r'[0-9a-z]+', clean.lower()):
         if re.fullmatch(r'(?:19|20)\d{2}', word):
@@ -511,7 +521,8 @@ def _title_matches(candidate, query, year, is_movie, alt_query=''):
     tokens = _title_tokens(query) + _title_tokens(alt_query)
     if not tokens:
         return True
-    folded = re.sub(r'[^0-9a-z]+', ' ', str(candidate or '').lower())
+    folded = _APOSTROPHE_RE.sub('', str(candidate or '')).lower()
+    folded = re.sub(r'[^0-9a-z]+', ' ', folded)
     if not any(token in folded for token in tokens):
         return False
     wanted = 0
@@ -579,8 +590,7 @@ def _nzbindex_get(indexer, params, timeout=None):
 
 def _free_query_title(title):
     """A query of name words only: the site tokenises on punctuation."""
-    text = str(title or '').replace('&', ' and ')
-    text = re.sub(r"['\u2018\u2019`]", '', text)
+    text = _APOSTROPHE_RE.sub('', str(title or '').replace('&', ' and '))
     text = re.sub(r'[^0-9A-Za-z]+', ' ', text)
     return ' '.join(text.split())
 

@@ -44,7 +44,7 @@ _RELEASE_EXT = re.compile(
 
 def release_key(title):
     """The same release can arrive from two indexers with a different ending."""
-    text = (title or '').strip().lower()
+    text = re.sub(r"['\u2018\u2019`]", '', (title or '').strip().lower())
     text = re.sub(r'[\s_]+', '.', text)
     text = _RELEASE_EXT.sub('', text)
     text = re.sub(r'\.{2,}', '.', text)
