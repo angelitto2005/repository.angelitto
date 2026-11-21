@@ -30,6 +30,7 @@ NZB_MAX_BYTES = 256 * 1024 * 1024
 INDEXER_SLOTS = 6
 NZBINDEX_URL = 'https://www.nzbindex.com'
 BINSEARCH_URL = 'https://www.binsearch.info'
+NZBKING_URL = 'https://www.nzbking.com'
 
 
 def addon():
@@ -578,6 +579,11 @@ def binsearch_enabled():
     return flag('usenet_nzb.binsearch', False)
 
 
+def nzbking_enabled():
+    """The third free search; its HTML search is opt-in and rate-limited."""
+    return flag('usenet_nzb.nzbking', False)
+
+
 def indexers():
     """The slots in order, then the extra comma list; one entry per address."""
     found = []
@@ -591,6 +597,10 @@ def indexers():
         found.append({'name': 'Binsearch', 'url': BINSEARCH_URL, 'key': 'free',
                       'builtin': 'binsearch'})
         seen.add(BINSEARCH_URL)
+    if nzbking_enabled():
+        found.append({'name': 'NZBKing', 'url': NZBKING_URL, 'key': 'free',
+                      'builtin': 'nzbking'})
+        seen.add(NZBKING_URL)
     for number in range(1, INDEXER_SLOTS + 1):
         item = indexer_slot(number)
         if item and item['url'] not in seen:

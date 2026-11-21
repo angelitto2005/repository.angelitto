@@ -273,6 +273,7 @@
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]e.g.[/B]  https://api.indexer-one.com : KEY1, https://indexer-two.net/api : KEY2[/COLOR]"/>
         <setting id="usenet_nzb.nzbindex" type="bool" label="[COLOR FF00CED1][B]NZBIndex[/B][/COLOR][COLOR FFCCCCFF]   (free indexer)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.binsearch" type="bool" label="[COLOR FF00CED1][B]Binsearch[/B][/COLOR][COLOR FFCCCCFF]   (free indexer)[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.nzbking" type="bool" label="[COLOR FF00CED1][B]NZBKing[/B][/COLOR][COLOR FFCCCCFF]   (free indexer, opt-in)[/COLOR]" default="false"/>
 
         <setting label="[B][COLOR FFFFEA00]Providers[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.provider1.enabled" type="bool" label="[COLOR FF00CED1][B]Provider 1[/B][/COLOR][COLOR FFCCCCFF]   use this NNTP provider[/COLOR]" default="true"/>

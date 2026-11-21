@@ -226,7 +226,7 @@ _EPISODE_RANGE = re.compile(r'\s*[-\u2013]\s*(?:e(\d{1,3})|(\d{1,2})(?!\d))', re
 
 
 def episode_pairs(title):
-    """Every (season, episode) a release name declares: S01E01E02, S01E01-E02, 1x01-02."""
+    """Every (season, episode) a release name declares: S01E01E02, S01E01-E08, 1x01-08."""
     text = str(title or '').lower()
     pairs = set()
     for pattern in (_EPISODE_S, _EPISODE_X):
@@ -235,15 +235,38 @@ def episode_pairs(title):
             pairs.add((season, int(match.group(2))))
             position = match.end()
             while True:
+                span = _EPISODE_RANGE.match(text, position)
+                if span:
+                    first = int(match.group(2))
+                    last = int(span.group(1) or span.group(2))
+                    if first > last:
+                        first, last = last, first
+                    for number in range(first, last + 1):
+                        pairs.add((season, number))
+                    position = span.end()
+                    continue
                 more = _EPISODE_NEXT.match(text, position)
                 if not more:
                     break
                 pairs.add((season, int(more.group(1))))
                 position = more.end()
-            span = _EPISODE_RANGE.match(text, position)
-            if span:
-                pairs.add((season, int(span.group(1) or span.group(2))))
     return pairs
+
+
+def episode_mismatch(name, season=None, episode=None, alt_season=None, alt_episode=None):
+    """The first declared episode when the name cannot serve the wanted one."""
+    pairs = episode_pairs(name)
+    if not pairs:
+        return None
+    wanted = set()
+    for one_season, one_episode in ((season, episode), (alt_season, alt_episode)):
+        try:
+            wanted.add((int(one_season), int(one_episode)))
+        except (TypeError, ValueError):
+            continue
+    if not wanted or pairs & wanted:
+        return None
+    return sorted(pairs)[0]
 
 
 def select_media(files, season=None, episode=None, alt_season=None, alt_episode=None):

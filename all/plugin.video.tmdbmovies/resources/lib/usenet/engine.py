@@ -620,6 +620,21 @@ class Session(object):
             self.warm.append((index, message_id, info['data']))
             self._remember((0, index), info['data'])
 
+    def _episode_guard(self, name):
+        """A source that names another episode must not play the wrong one."""
+        wrong = nzb.episode_mismatch(
+            name, self.options.get('season'), self.options.get('episode'),
+            self.options.get('alt_season'), self.options.get('alt_episode'))
+        if not wrong:
+            return
+        try:
+            wanted = 'S%02dE%02d' % (int(self.options.get('season')),
+                                    int(self.options.get('episode')))
+        except (TypeError, ValueError):
+            wanted = 'the requested episode'
+        raise SessionError('this release holds S%02dE%02d, not %s'
+                           % (wrong[0], wrong[1], wanted))
+
     def prepare(self):
         _log('engine: %d worker(s) x %d pipelined on %d core(s), %s, prefetch %.0f MB, '
              'cache %.0f MB, timeout %ds, profile %s'
@@ -650,6 +665,7 @@ class Session(object):
         if kind == '7z':
             return self._prepare_seven(files, media)
         if kind == 'video':
+            self._episode_guard(media.name or '')
             info = self._decode_first(media.segments)
             self.first_crc_ok = bool(info.get('crc_ok', True))
             self.inner_name = media.name or ''
@@ -707,6 +723,7 @@ class Session(object):
         if not layout.get('unp_size'):
             raise SessionError('the RAR header does not say how big the film is')
         self.inner_name = (layout.get('name') or '').strip()
+        self._episode_guard(self.inner_name)
         # Unele repack-uri pun un set RAR/7z in interiorul altui RAR. Primul
         # fisier din volumul exterior e atunci un volum intern (.r08 etc.),
         # nu filmul; fara garda, Kodi primeste 400 MB din mijlocul arhivei si

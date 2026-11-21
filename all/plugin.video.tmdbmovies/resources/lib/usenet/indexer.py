@@ -33,6 +33,7 @@ DEFAULT_API_MAX = 200
 RETRY_AFTER = 3600
 NZBINDEX_PAUSE = 900
 BINSEARCH_PAUSE = 900
+NZBKING_PAUSE = 900
 USER_AGENT = 'plugin.video.tmdbmovies usenet'
 
 
@@ -433,6 +434,8 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         return _nzbindex_rows(indexer, title, year, season, episode)
     if indexer.get('builtin') == 'binsearch':
         return _binsearch_rows(indexer, title, year, season, episode)
+    if indexer.get('builtin') == 'nzbking':
+        return _nzbking_rows(indexer, title, year, season, episode)
     digits = _imdb_number(imdb)
     if all_categories and season is None:
         # A user's own words are not a film title: search every category
@@ -469,8 +472,9 @@ def is_single_episode(title, season, episode):
         return True
     text = str(title or '')
     low = re.sub(r'[\._-]+', ' ', text.lower())
-    if (int(season), int(episode or 0)) in nzb.episode_pairs(text):
-        return True
+    pairs = nzb.episode_pairs(text)
+    if pairs:
+        return (int(season), int(episode or 0)) in pairs
     looks_like_pack = (re.search(r'\bs\d{1,2}\s*e\d{1,3}\s*[-]\s*e?\d{1,3}\b', low)
                        or re.search(r'\bs\d{2}\b(?![\s]*e\d)', low)
                        or re.search(r'\b(complete|boxset|season|seasons)\b', low))
@@ -782,6 +786,111 @@ def _binsearch_rows(indexer, title, year, season, episode):
         if page_rows and useful:
             return page_rows
     return []
+
+
+_NZBKING_AGE = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400,
+                'w': 7 * 86400, 'M': 30 * 86400, 'y': 365 * 86400}
+
+
+def _nzbking_posted(text, now=None):
+    value = str(text or '').strip()
+    match = re.search(r'(\d+)\s*([smhdwMy])\b', value)
+    if match:
+        return int((now or _now()) - int(match.group(1)) * _NZBKING_AGE[match.group(2)])
+    return _binsearch_posted(value, now)
+
+
+def _nzbking_title(text):
+    name = _free_clean(text)
+    name = re.sub(r'\.(?:part\d+\.rar|r\d{2}|0\d{2})$', '', name, flags=re.I)
+    return name.strip()
+
+
+def _nzbking_get(indexer, params, timeout=None):
+    """The site's HTML search: no account, no key; it is opt-in and throttled."""
+    url = indexer['url'].rstrip('/') + '/search/?' + urlencode(params)
+    if not _allowed(indexer['url'], 'api'):
+        raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
+    request = Request(url, headers={'User-Agent': _agent(), 'Accept': 'text/html'})
+    try:
+        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+            body = response.read(MAX_BYTES + 1)
+    except Exception as exc:
+        code = getattr(exc, 'code', None)
+        if code == 429:
+            _pause(indexer['url'], _now() + NZBKING_PAUSE, ('api',))
+            raise LimitReached('%s asked to wait - it is asked again in a few minutes'
+                               % indexer['name'])
+        if code == 403:
+            raise LimitReached('%s asked for a browser check - try again later'
+                               % indexer['name'])
+        raise LimitReached('%s did not answer (%s)'
+                           % (indexer['name'], code or type(exc).__name__))
+    _note(indexer['url'], 'api', body)
+    if len(body) > MAX_BYTES:
+        raise LimitReached('%s sent an answer that is too large' % indexer['name'])
+    head = body[:4096].lower()
+    if (b'just a moment' in head or b'cf-chl' in head or b'attention required' in head
+            or b'captcha' in head or b'verify you are human' in head):
+        raise LimitReached('%s asked for a browser check - try again later' % indexer['name'])
+    return body
+
+
+def _nzbking_rows(indexer, title, year, season, episode):
+    """The HTML result rows; the site's matches are noisy, so only a page with
+    at least one matching title is returned."""
+    queries = _free_queries(title, year, season, episode)
+    base = _free_query_title(title)
+    if base and base not in queries:
+        queries.append(base)
+    merged, links = [], set()
+    useful = False
+    strong = False
+    for query in queries:
+        body = _nzbking_get(indexer, {'q': query}).decode('utf-8', 'replace')
+        page_rows, seen = [], set()
+        for raw in re.split(r"class=['\"]search-result['\"]", body)[1:]:
+            token = re.search(r'<input[^>]*type="checkbox"[^>]*>', raw)
+            subject = re.search(r"<div class=['\"]search-subject['\"]>(.*?)</div>", raw, re.S)
+            if not token or not subject:
+                continue
+            guid = re.search(r'value="([0-9A-Za-z]+)"', token.group(0))
+            if not guid:
+                continue
+            subject_html = subject.group(1)
+            name_html = subject_html.split('<br', 1)[0]
+            subject_text = ' '.join(html.unescape(re.sub(r'<[^>]+>', ' ', subject_html)).split())
+            name = _nzbking_title(
+                ' '.join(html.unescape(re.sub(r'<[^>]+>', ' ', name_html)).split()))
+            if not name:
+                continue
+            link = '%s/nzb:%s/' % (indexer['url'].rstrip('/'), guid.group(1))
+            if link in seen:
+                continue
+            size_match = re.search(r'\bsize:\s*([\d.]+\s*(?:tb|gb|mb|kb|b))\b',
+                                   subject_text, re.I)
+            size = _binsearch_size(size_match.group(1) if size_match else '')
+            if size <= 0:
+                continue
+            age = re.search(r"class=['\"]search-age['\"]>\s*([^<]+)", raw)
+            seen.add(link)
+            page_rows.append({
+                'indexer': indexer['name'], 'title': name, 'nzb_url': link,
+                'size': size, 'grabs': 0,
+                'password': bool(re.search(r'password\s*protect|passworded', raw, re.I)),
+                'posted': _nzbking_posted(age.group(1) if age else ''),
+            })
+            if _title_matches(name, title, year, season is None):
+                useful = True
+                if size >= 50 * 1024 * 1024:
+                    strong = True
+        for row in page_rows:
+            if row['nzb_url'] not in links:
+                links.add(row['nzb_url'])
+                merged.append(row)
+        if strong:
+            return merged
+    return merged if useful else []
 
 
 def _filter_rows(rows, season, episode, min_size, episodes_only,
@@ -1237,6 +1346,16 @@ def test(indexer):
         try:
             body = _binsearch_get(indexer, {'q': 'the matrix 1999'}, timeout=12)
             if b'type="checkbox"' in body:
+                return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
+            return False, '%s answered something unexpected' % indexer['name']
+        except (KeyRejected, LimitReached) as exc:
+            return False, redact(exc)
+        except Exception as exc:
+            return False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
+    if indexer.get('builtin') == 'nzbking':
+        try:
+            body = _nzbking_get(indexer, {'q': 'the matrix 1999'}, timeout=12)
+            if b'search-result' in body or b'did not match any documents' in body:
                 return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
             return False, '%s answered something unexpected' % indexer['name']
         except (KeyRejected, LimitReached) as exc:

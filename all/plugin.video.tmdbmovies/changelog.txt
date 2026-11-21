@@ -1,3 +1,8 @@
+1.1.360
+- NZBKing can be enabled as a free indexer (no API key): it reads the public search page, keeps only matching titles and downloads the NZB directly.
+- It is off by default and rate-limited, so the site is not hammered.
+- A season pack that starts with a different episode inside its RAR is skipped with a clear message instead of playing the wrong one.
+
 1.1.359
 - Upload Kodi Log ends with a QR code of the paste link, so the log can be opened on a phone without typing the link.
 - The addon keeps a single log QR picture: every older one is deleted from the addon data folder, so pictures no longer pile up.
