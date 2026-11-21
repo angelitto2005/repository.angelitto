@@ -1,3 +1,7 @@
+1.1.359
+- Upload Kodi Log ends with a QR code of the paste link, so the log can be opened on a phone without typing the link.
+- The addon keeps a single log QR picture: every older one is deleted from the addon data folder, so pictures no longer pile up.
+
 1.1.358
 - A TMDb id is no longer sent to the indexers as an IMDb id, and an answer that contains other titles now falls back to a name search, so NZB.Life results are not lost.
 - Indexer API keys are masked in the debug log, and custom search playback no longer puts the NZB link in the visible plugin URL.

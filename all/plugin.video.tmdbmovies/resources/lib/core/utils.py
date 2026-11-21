@@ -1690,8 +1690,70 @@ def check_addon_update():
 # SUPPORT & TROUBLESHOOTING (LOG & DONATIONS)
 # =============================================================================
 
+LOG_PASTE_URL = 'https://paste.kodi.tv/'
+LOG_QR_BASE = 'kodi_log_qr'
+
+
+def _clean_log_qr_files(keep=None):
+    """Keeps a single QR picture for the log upload: every older one is deleted,
+    so the addon data folder does not fill up with pictures over time."""
+    removed = 0
+    try:
+        ensure_addon_dir()
+        stale = glob.glob(os.path.join(ADDON_DATA_DIR, LOG_QR_BASE + '_*.png'))
+        stale += glob.glob(os.path.join(ADDON_DATA_DIR, LOG_QR_BASE + '.png'))
+        keep_norm = os.path.normcase(keep) if keep else None
+        for old in stale:
+            if keep_norm and os.path.normcase(old) == keep_norm:
+                continue
+            try:
+                if xbmcvfs.delete(old):
+                    removed += 1
+            except Exception:
+                pass
+        if removed:
+            log(f"[UTILS] Log QR cleanup: removed {removed} old picture(s).")
+    except Exception as e:
+        log(f"[UTILS] Log QR cleanup error: {e}", xbmc.LOGWARNING)
+    return removed
+
+
+def _show_log_upload_result(link, log_filename, trimmed=False, code=''):
+    """Shows the paste link together with a scannable QR code."""
+    qr_path = make_qr(link, LOG_QR_BASE + '.png')
+    # Un singur QR ramane pe disc: cel curent; restul se sterg.
+    _clean_log_qr_files(keep=qr_path)
+
+    lines = [
+        '[B][COLOR FF6AFB92]%s uploaded[/COLOR][/B]' % log_filename,
+        '',
+        'Link:',
+        '[B][COLOR FFFFD700]%s[/COLOR][/B]' % link,
+    ]
+    if trimmed:
+        lines += ['', '[COLOR 99FFFFFF](last ~350KB kept, paste limit)[/COLOR]']
+    content = '\n'.join(lines)
+
+    try:
+        from resources.lib.core.auth_dialog import QRProgressDialog, run_modal_main_thread
+        pdialog = QRProgressDialog(
+            'log_upload_qr.xml', ADDON_PATH, 'Default', '1080i',
+            heading='[B][COLOR FF6AFB92]Upload Successful[/COLOR][/B]',
+            qr_image=qr_path or '',
+            icon='',
+            addon_icon=TMDbmovies_ICON,
+            content=content,
+            code=code,
+            percent=0,
+        )
+        run_modal_main_thread(pdialog)
+    except Exception as e:
+        log(f"[UTILS] Log QR window error: {e}", xbmc.LOGERROR)
+        xbmcgui.Dialog().ok("Upload Successful", content)
+
+
 def upload_logfile():
-    """Reads kodi.log file and uploads it to paste.kodi.tv"""
+    """Uploads kodi.log to paste.kodi.tv and shows the link with a QR code."""
     import requests
     dialog = xbmcgui.Dialog()
 
@@ -1701,7 +1763,7 @@ def upload_logfile():
 
     log_filename = 'kodi.log' if log_idx == 0 else 'kodi.old.log'
     log_file = xbmcvfs.translatePath(f'special://logpath/{log_filename}')
-    url = 'https://paste.kodi.tv/'
+    url = LOG_PASTE_URL
 
     if not xbmcvfs.exists(log_file):
         dialog.ok("Error", f"File {log_filename} not found.")
@@ -1742,10 +1804,7 @@ def upload_logfile():
             return
 
         if 'key' in data:
-            link = f"{url}{data['key']}"
-            colored_link = f"[B][COLOR FF6AFB92]{link}[/COLOR][/B]"
-            extra = "\n(Log trimmed to last ~350KB, paste limit.)" if trimmed else ""
-            dialog.ok("Upload Successful", f"The log was uploaded successfully!{extra}\n\nLink: {colored_link}")
+            _show_log_upload_result(f"{url}{data['key']}", log_filename, trimmed, code=data['key'])
         else:
             dialog.ok("Error", "Upload failed. Check the Kodi log.")
             

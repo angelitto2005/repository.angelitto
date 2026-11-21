@@ -28,6 +28,7 @@ class QRProgressDialog(xbmcgui.WindowXMLDialog):
         self.icon = kwargs.get('icon') or ''
         self.addon_icon = kwargs.get('addon_icon') or ''
         self.content = kwargs.get('content', '')
+        self.code = kwargs.get('code') or ''
         self.percent = kwargs.get('percent', 100)
 
     def onInit(self):
@@ -37,6 +38,7 @@ class QRProgressDialog(xbmcgui.WindowXMLDialog):
             self.setProperty('tmdbmovies.auth_icon', self.icon)
             self.setProperty('tmdbmovies.auth_addon_icon', self.addon_icon)
             self.setProperty('tmdbmovies.auth_qr', self.qr_image)
+            self.setProperty('tmdbmovies.auth_code', self.code)
             self.setProperty('tmdbmovies.auth_percent', str(self.percent))
             if self.content:
                 self.update(self.percent, self.content)
