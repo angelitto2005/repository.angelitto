@@ -1251,7 +1251,7 @@ def run_plugin():
                         pass
             finally:
                 try:
-                    _yt_ex.shutdown(wait=False, cancel_futures=True)
+                    _yt_ex.shutdown(wait=False)
                 except:
                     pass
         except:
@@ -1351,7 +1351,7 @@ def run_plugin():
                         _yp_dn, _ = wait(set(_yp_fm), timeout=15)
                     finally:
                         try:
-                            _yp_ex.shutdown(wait=False, cancel_futures=True)
+                            _yp_ex.shutdown(wait=False)
                         except:
                             pass
                 except:

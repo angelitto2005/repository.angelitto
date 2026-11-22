@@ -17,11 +17,17 @@ import time
 import xml.etree.ElementTree as ET
 import zlib
 from urllib.parse import urlencode
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from . import config, nzb
 
 TIMEOUT = 15
+BUILTIN_TIMEOUT = 10
+BINSEARCH_TIMEOUT = 8
+SEARCH_BUDGET = 15
+GROUP_BUDGET = 10
+STALL_PAUSE = 900
 MAX_BYTES = 4 * 1024 * 1024
 CHUNK = 256 * 1024
 MAX_NZB_BYTES = 128 * 1024 * 1024
@@ -603,7 +609,7 @@ def _nzbindex_get(indexer, params, timeout=None):
     request = Request(url, headers={'User-Agent': _agent(),
                                     'Accept': 'application/rss+xml, application/xml'})
     try:
-        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+        with urlopen(request, timeout=timeout or BUILTIN_TIMEOUT) as response:
             body = response.read(MAX_BYTES + 1)
     except Exception as exc:
         code = getattr(exc, 'code', None)
@@ -727,7 +733,7 @@ def _binsearch_get(indexer, params, timeout=None):
         raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
     request = Request(url, headers={'User-Agent': _agent(), 'Accept': 'text/html'})
     try:
-        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+        with urlopen(request, timeout=timeout or BINSEARCH_TIMEOUT) as response:
             body = response.read(MAX_BYTES + 1)
     except Exception as exc:
         code = getattr(exc, 'code', None)
@@ -736,8 +742,11 @@ def _binsearch_get(indexer, params, timeout=None):
             raise LimitReached('%s asked to wait - it is asked again in a few minutes'
                                % indexer['name'])
         if code == 403:
+            _pause(indexer['url'], _now() + BINSEARCH_PAUSE, ('api',))
             raise LimitReached('%s asked for a browser check - try again later'
                                % indexer['name'])
+        if isinstance(exc, URLError) and code is None:
+            _pause(indexer['url'], _now() + BINSEARCH_PAUSE, ('api',))
         raise LimitReached('%s did not answer (%s)'
                            % (indexer['name'], code or type(exc).__name__))
     _note(indexer['url'], 'api', body)
@@ -813,7 +822,7 @@ def _nzbking_get(indexer, params, timeout=None):
         raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
     request = Request(url, headers={'User-Agent': _agent(), 'Accept': 'text/html'})
     try:
-        with urlopen(request, timeout=timeout or TIMEOUT) as response:
+        with urlopen(request, timeout=timeout or BUILTIN_TIMEOUT) as response:
             body = response.read(MAX_BYTES + 1)
     except Exception as exc:
         code = getattr(exc, 'code', None)
@@ -1045,6 +1054,61 @@ def _stat(name, **values):
         pass
 
 
+def _ask_group(entries, ask_one, budget, notes, workers):
+    """Collect the answers that arrive in budget; abandon the rest."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import TimeoutError as FuturesTimeout
+    if not entries:
+        return []
+    budget = max(1.0, float(budget))
+    pool = ThreadPoolExecutor(max_workers=max(1, min(workers, len(entries))),
+                              thread_name_prefix='UsenetIndexer')
+    futures = {pool.submit(ask_one, entry): position
+               for position, entry in enumerate(entries)}
+    answers = {}
+
+    def failed(position, exc):
+        entry = entries[position]
+        answers[position] = (None, [], False,
+                             '%s: %s' % (entry.get('name') or '?',
+                                         redact(str(exc)[:90])))
+
+    try:
+        for future in as_completed(futures, timeout=budget):
+            position = futures[future]
+            try:
+                answers[position] = future.result()
+            except Exception as exc:
+                failed(position, exc)
+    except FuturesTimeout:
+        for future, position in futures.items():
+            entry = entries[position]
+            if future.done():
+                try:
+                    answers[position] = future.result()
+                except Exception as exc:
+                    failed(position, exc)
+            else:
+                future.cancel()
+                if entry.get('builtin'):
+                    try:
+                        _pause(entry['url'], _now() + STALL_PAUSE, ('api',))
+                    except Exception:
+                        pass
+                message = '%s skipped after %.0fs%s' % (
+                    entry.get('name') or '?', budget,
+                    ' (paused 15 min)' if entry.get('builtin') else '')
+                notes.append(message)
+    finally:
+        for future in futures:
+            if not future.done():
+                future.cancel()
+        pool.shutdown(wait=False)
+    return [(entry, answers[position])
+            for position, entry in enumerate(entries)
+            if position in answers]
+
+
 def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None,
          all_categories=False):
     """(cache_key, rows, from_cache, note) for one indexer."""
@@ -1130,16 +1194,14 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
     if mode == 'parallel':
         if logger:
             logger('[USENET] parallel: asking %d indexer(s)' % len(entries))
-        from concurrent.futures import ThreadPoolExecutor
 
         def one(entry):
             return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
                         packs=not episodes_only, year=year, all_categories=all_categories)
 
         workers = max(1, min(4, len(entries)))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetIndexer') as pool:
-            answers = list(pool.map(one, entries))
-        for key, found, cached, note in answers:
+        answers = _ask_group(entries, one, GROUP_BUDGET, notes, workers)
+        for _entry, (key, found, cached, note) in answers:
             if note:
                 notes.append(note)
             elif not cached and use_cache:
@@ -1151,14 +1213,13 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                 if not entry.get('builtin') and entry.get('full')]
         limited = [entry for entry in entries
                    if not entry.get('builtin') and not entry.get('full')]
+        deadline = _now() + SEARCH_BUDGET
         if logger:
             logger('[USENET] sequential: %d free, %d Full together, %d Free/Trial one by one until a key gives %d usable'
                    % (len(free), len(full), len(limited), min_usable))
         keyed_kept = 0
         first = free + full
         if first:
-            from concurrent.futures import ThreadPoolExecutor
-
             if logger:
                 logger('[USENET] free + Full together: %s'
                        % ', '.join(entry.get('name') or '?' for entry in first))
@@ -1168,10 +1229,10 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                             packs=not episodes_only, year=year, all_categories=all_categories)
 
             workers = max(1, min(6, len(first)))
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='UsenetFree') as pool:
-                answers = list(pool.map(first_one, first))
+            budget = min(GROUP_BUDGET, max(1.0, deadline - _now()))
+            answers = _ask_group(first, first_one, budget, notes, workers)
             free_kept = 0
-            for entry, (key, found, cached, note) in zip(first, answers):
+            for entry, (key, found, cached, note) in answers:
                 if note:
                     notes.append(note)
                 elif not cached and use_cache:
@@ -1190,9 +1251,24 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                        % len(limited))
         else:
             for position, entry in enumerate(limited, 1):
-                key, found, cached, note = _ask(entry, kind, imdb, season, episode, title,
-                                                use_cache, logger, packs=not episodes_only,
-                                                year=year, all_categories=all_categories)
+                remaining = deadline - _now()
+                if remaining <= 0:
+                    message = 'search budget reached before %s' % entry['name']
+                    notes.append(message)
+                    if logger:
+                        logger('[USENET] %s' % message)
+                    break
+                answers = _ask_group(
+                    [entry],
+                    lambda candidate: _ask(candidate, kind, imdb, season, episode, title,
+                                           use_cache, logger, packs=not episodes_only,
+                                           year=year, all_categories=all_categories),
+                    min(GROUP_BUDGET, remaining), notes, 1)
+                if not answers:
+                    if logger:
+                        logger('[USENET] sequential: %s skipped, continuing' % entry['name'])
+                    continue
+                _entry, (key, found, cached, note) = answers[0]
                 if note:
                     notes.append(note)
                 elif not cached and use_cache:

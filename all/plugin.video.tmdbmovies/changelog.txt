@@ -1,3 +1,7 @@
+1.1.362
+- Usenet searches use a 15-second budget on all Kodi Python versions: answers that arrive are kept, a hung indexer is skipped and a stalled free indexer is paused for 15 minutes.
+- Binsearch gets an 8-second request timeout, so a failed connection no longer holds up NZBIndex, NZBKing or the keyed indexers behind the global scraper timeout.
+
 1.1.361
 - EasyNews Direct and EasyNews++ warm the signed CDN before Kodi opens it, so seeking stays enabled from the first start instead of needing a Play Without Seek run.
 - EasyNews Direct now searches through the current 3.0 API, with the 2.0 API kept as an automatic fallback.
