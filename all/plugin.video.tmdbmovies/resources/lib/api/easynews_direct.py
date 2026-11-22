@@ -7,7 +7,10 @@ playback resolves the signed CDN address so Kodi never receives the login.
 """
 
 import base64
+import hashlib
 import re
+import threading
+import time
 import urllib.parse
 
 import requests
@@ -17,15 +20,28 @@ from resources.lib.core.config import ADDON
 
 EASYNEWS = "https://members.easynews.com"
 SEARCH_URL = EASYNEWS + "/2.0/search/solr-search/advanced"
+SEARCH_V3_URL = EASYNEWS + "/3.0/api/search"
 USER_AGENT = "TMDbMovies"
 VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".ts", ".m2ts", ".mov", ".wmv", ".webm", ".m4v")
 MIN_DURATION = 10 * 60
 MIN_BYTES = 50 * 1024 * 1024
+PREWARM_BYTES = 256 * 1024
+PREWARM_TTL = 300
+
+_PREWARMED = {}
+_PREWARM_LOCK = threading.Lock()
 
 
 def _log(message):
     try:
         xbmc.log("[TMDb Movies] [EASYNEWS-DIRECT] %s" % str(message), xbmc.LOGINFO)
+    except Exception:
+        pass
+
+
+def _warm_log(message):
+    try:
+        xbmc.log("[TMDb Movies] [EASYNEWS-WARM] %s" % str(message), xbmc.LOGINFO)
     except Exception:
         pass
 
@@ -198,6 +214,94 @@ def _words(value):
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower().replace("&", " and ")).split()
 
 
+def _prewarm_target(url):
+    base, separator, tail = str(url or "").partition("|")
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "*/*",
+        "Accept-Encoding": "identity",
+    }
+    if separator:
+        for key, value in urllib.parse.parse_qsl(tail, keep_blank_values=True):
+            if key.lower() == "user-agent":
+                headers["User-Agent"] = value
+            elif key.lower() == "referer":
+                headers["Referer"] = value
+    return base, headers
+
+
+def _prewarm_total(response):
+    match = re.match(r"bytes\s+\d+-\d+/(\d+)", response.headers.get("Content-Range") or "")
+    if match:
+        return int(match.group(1))
+    length = response.headers.get("Content-Length") or ""
+    if response.status_code == 200 and length.isdigit():
+        return int(length)
+    return None
+
+
+def _prewarm_range(session, base, headers, start, end, timeout):
+    request_headers = dict(headers)
+    request_headers["Range"] = "bytes=%d-%s" % (start, "" if end is None else end)
+    try:
+        response = session.get(base, headers=request_headers, stream=True,
+                               allow_redirects=True, timeout=(5, timeout),
+                               verify=True)
+        try:
+            if response.status_code not in (200, 206):
+                _warm_log("prewarm HTTP %d" % response.status_code)
+                return None, 0
+            total = _prewarm_total(response)
+            received = 0
+            for piece in response.iter_content(64 * 1024):
+                if not piece:
+                    continue
+                received += len(piece)
+                if received >= PREWARM_BYTES:
+                    break
+            return total, received
+        finally:
+            response.close()
+    except Exception as error:
+        _warm_log("prewarm failed: %s" % type(error).__name__)
+        return None, 0
+
+
+def prewarm(url, timeout=8):
+    """Fetch small head and tail ranges so the CDN is warm before Kodi opens it."""
+    base, headers = _prewarm_target(url)
+    if not base.startswith(("http://", "https://")):
+        return False
+    key = hashlib.sha1(base.encode("utf-8")).hexdigest()
+    now = time.time()
+    with _PREWARM_LOCK:
+        stamp = _PREWARMED.get(key)
+        if stamp and now - stamp < PREWARM_TTL:
+            return True
+    started = time.time()
+    session = requests.Session()
+    session.trust_env = False
+    try:
+        total, received = _prewarm_range(
+            session, base, headers, 0, PREWARM_BYTES - 1, timeout)
+        if not received:
+            return False
+        if total and total > PREWARM_BYTES * 2:
+            _prewarm_range(session, base, headers,
+                           total - PREWARM_BYTES, None, timeout)
+        with _PREWARM_LOCK:
+            _PREWARMED[key] = time.time()
+            if len(_PREWARMED) > 16:
+                oldest = sorted(_PREWARMED, key=_PREWARMED.get)[
+                    :len(_PREWARMED) - 16]
+                for stale in oldest:
+                    _PREWARMED.pop(stale, None)
+        _warm_log("prewarm ready in %.1fs" % (time.time() - started))
+        return True
+    finally:
+        session.close()
+
+
 def _title_matches(name, titles, content_type, year, season, episode):
     words = _words(name)
     for title in titles:
@@ -237,6 +341,7 @@ def _item(raw):
             return None
         return {
             "key": str(raw[0] or ""),
+            "id": "",
             "name": str(raw[10] or ""),
             "extension": str(raw[11] or ""),
             "size": _number(raw[4] if len(raw) > 4 else 0),
@@ -250,11 +355,12 @@ def _item(raw):
         return None
     return {
         "key": str(_field(raw, ("hash", "0")) or ""),
-        "name": str(_field(raw, ("fn", "10")) or ""),
+        "id": str(_field(raw, ("id",)) or ""),
+        "name": str(_field(raw, ("prettyFn", "fn", "10")) or ""),
         "extension": str(_field(raw, ("extension", "ext", "11")) or ""),
         "size": _number(_field(raw, ("rawSize", "size", "4"))),
         "seconds": _seconds(_field(raw, ("runtime", "14"))),
-        "bad": bool(raw.get("passwd") or raw.get("virus")),
+        "bad": bool(raw.get("passwd") or raw.get("password") or raw.get("virus")),
         "type": str(raw.get("type") or ""),
     }
 
@@ -275,6 +381,7 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit, cu
     if not isinstance(rows, list):
         return []
     base, farm, port = _download_base(answer)
+    v3 = bool(answer.get("_v3"))
     out = []
     seen = set()
     for raw in rows:
@@ -309,8 +416,8 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit, cu
         if not custom and not _title_matches(stem, titles, content_type, year, season, episode):
             continue
         filename = stem + extension
-        path = "%s%s/%s" % (item["key"], extension,
-                            urllib.parse.quote(filename, safe=""))
+        token = item["key"] + ((item["id"] or "") if v3 else "") + extension
+        path = "%s/%s" % (token, urllib.parse.quote(filename, safe=""))
         url = "%s/%s/%s/%s" % (base, urllib.parse.quote(farm, safe=""),
                                urllib.parse.quote(port, safe=""), path)
         if url in seen:
@@ -327,8 +434,8 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit, cu
     return out
 
 
-def _search_answer(query):
-    params = {
+def _search_params(query):
+    return {
         "st": "adv",
         "sb": 1,
         "fex": ",".join(item.lstrip(".") for item in VIDEO_EXTENSIONS),
@@ -348,21 +455,56 @@ def _search_answer(query):
         "pby": 100,
         "safeO": 1,
     }
+
+
+def _search_v3(query):
+    headers = auth_headers()
+    headers["Accept"] = "application/json"
+    try:
+        response = requests.get(
+            SEARCH_V3_URL,
+            params=_search_params(query),
+            headers=headers,
+            timeout=20,
+        )
+        status = response.status_code
+        if status != 200:
+            _log("v3 search HTTP %d" % status)
+            return None
+        answer = response.json()
+        if not isinstance(answer, dict):
+            _log("v3 search returned no answer")
+            return None
+        answer["_v3"] = True
+        return answer
+    except Exception as error:
+        _log("v3 search failed: %s" % type(error).__name__)
+        return None
+
+
+def _search_v2(query):
     try:
         response = requests.get(
             SEARCH_URL,
-            params=params,
+            params=_search_params(query),
             headers=auth_headers(),
             timeout=20,
         )
         status = response.status_code
         if status != 200:
-            _log("search HTTP %d" % status)
+            _log("v2 search HTTP %d" % status)
             return None
         return response.json()
     except Exception as error:
-        _log("search failed: %s" % type(error).__name__)
+        _log("v2 search failed: %s" % type(error).__name__)
         return None
+
+
+def _search_answer(query):
+    answer = _search_v3(query)
+    if answer is not None:
+        return answer
+    return _search_v2(query)
 
 
 def search(title, alt_title, year, content_type, season=None, episode=None):

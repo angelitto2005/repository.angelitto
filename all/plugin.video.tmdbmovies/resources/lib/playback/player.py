@@ -4300,6 +4300,20 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         
         current_stream = streams[valid_index]
 
+        easynews_source = False
+        try:
+            info_dict = current_stream.get('info', {})
+            if isinstance(info_dict, dict):
+                if ('easynews' in str(info_dict.get('addon', '')).lower()
+                        or 'easynews' in str(info_dict.get('debrid_service', '')).lower()):
+                    easynews_source = True
+            if not easynews_source and (
+                    'easynews' in str(current_stream.get('name', '')).lower()
+                    or 'easynews' in str(valid_url).lower()):
+                easynews_source = True
+        except Exception:
+            pass
+
         if str(current_stream.get('provider_id', '')) == 'easynews_direct':
             try:
                 # Linkul CDN semnat expira dupa ~100 min; proxy-ul reia originalul
@@ -4328,25 +4342,23 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
         try:
-            if current_stream.get('provider_id') != 'usenet' and ADDON.getSetting('easynews_noseek') != 'false':
-                info_dict = current_stream.get('info', {})
-                is_en = False
-                if isinstance(info_dict, dict):
-                    if 'easynews' in str(info_dict.get('addon', '')).lower() or 'easynews' in str(info_dict.get('debrid_service', '')).lower():
-                        is_en = True
-                if not is_en and ('easynews' in current_stream.get('name', '').lower() or 'easynews' in valid_url.lower()):
-                    is_en = True
-                    
-                if is_en:
-                    if 'seekable=1' in valid_url:
-                        valid_url = valid_url.replace('seekable=1', 'seekable=0')
-                    elif '|' in valid_url:
-                        valid_url += '&seekable=0'
-                    else:
-                        valid_url += '|seekable=0'
-                    log(f"[PLAYER] EasyNews detectat -> Adaugat seekable=0 la URL pentru a preveni erorile.")
+            if easynews_source and current_stream.get('provider_id') != 'usenet' and ADDON.getSetting('easynews_noseek') != 'false':
+                if 'seekable=1' in valid_url:
+                    valid_url = valid_url.replace('seekable=1', 'seekable=0')
+                elif '|' in valid_url:
+                    valid_url += '&seekable=0'
+                else:
+                    valid_url += '|seekable=0'
+                log(f"[PLAYER] EasyNews detectat -> Adaugat seekable=0 la URL pentru a preveni erorile.")
         except: pass
         # ==============================================================
+
+        if easynews_source and 'seekable=0' not in valid_url:
+            try:
+                from resources.lib.api.easynews_direct import prewarm
+                prewarm(valid_url)
+            except Exception as e:
+                log("[PLAYER] EasyNews prewarm error: %s" % e)
         
         # --- SALVARE METADATE PENTRU NEXT EPISODE ---
         info_extr = extract_stream_info(current_stream)

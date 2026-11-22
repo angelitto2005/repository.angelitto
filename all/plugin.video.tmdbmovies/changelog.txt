@@ -1,3 +1,7 @@
+1.1.361
+- EasyNews Direct and EasyNews++ warm the signed CDN before Kodi opens it, so seeking stays enabled from the first start instead of needing a Play Without Seek run.
+- EasyNews Direct now searches through the current 3.0 API, with the 2.0 API kept as an automatic fallback.
+
 1.1.360
 - NZBKing can be enabled as a free indexer (no API key): it reads the public search page, keeps only matching titles and downloads the NZB directly.
 - It is off by default and rate-limited, so the site is not hammered.
