@@ -213,6 +213,7 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 # =============================================================================
 PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursa (mareste daca surse mari)
 PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifica audio-only doar pe SD/720p, False = verifica toate
+EASYNEWS_STALL_SECONDS = 20.0  # no position progress -> try the next source
 # PLAYER_KEEP_DUPLICATES = True  # True = pastreaza surse duplicate, False = elimina duplicate
 # =============================================================================
 _active_player = None
@@ -2655,6 +2656,9 @@ def start_playback_monitor(player_instance, dialog=None):
             try: dialog.close()
             except: pass
         player_instance.playback_start_time = time.time()
+        _easynews_source = bool(getattr(player_instance, 'easynews_source', False))
+        _easynews_stall_pos = -1.0
+        _easynews_stall_since = time.time()
 
         # Offset in kodi.log la pornirea acestei surse; la oprire citim doar
         # ce s-a scris de aici incolo (vezi _nzb_damage_since).
@@ -2707,6 +2711,38 @@ def start_playback_monitor(player_instance, dialog=None):
             try:
                 curr = player_instance.getTime()
                 total = player_instance.getTotalTime()
+                
+                if _easynews_source:
+                    try:
+                        _paused = xbmc.getCondVisibility('Player.Paused')
+                    except Exception:
+                        _paused = False
+                    if _paused:
+                        _easynews_stall_since = time.time()
+                        _easynews_stall_pos = curr
+                    elif curr > _easynews_stall_pos + 0.5:
+                        _easynews_stall_pos = curr
+                        _easynews_stall_since = time.time()
+                    elif time.time() - _easynews_stall_since >= EASYNEWS_STALL_SECONDS:
+                        player_instance.easynews_stalled = True
+                        log("[PLAYER-MONITOR] EasyNews source stalled at %ss - trying next"
+                            % int(curr))
+                        try:
+                            _retry_text = ("Trying next..." if getattr(
+                                player_instance, 'easynews_retried', False)
+                                else "Retrying source...")
+                            xbmcgui.Dialog().notification(
+                                "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
+                                "[B][COLOR FFCCCCFF]EasyNews stalled. %s[/COLOR][/B]"
+                                % _retry_text,
+                                TMDbmovies_ICON, 3000)
+                        except Exception:
+                            pass
+                        try:
+                            player_instance.stop()
+                        except Exception:
+                            pass
+                        break
                 
                 if curr > 0 and total > 0:
                     last_known_position = curr
@@ -2784,6 +2820,36 @@ def start_playback_monitor(player_instance, dialog=None):
             watched_duration = time.time() - player_instance.playback_start_time
         
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
+        
+        if getattr(player_instance, 'easynews_stalled', False):
+            try:
+                wipe_plugin_bookmarks()
+            except Exception:
+                pass
+            _monitor_release(_claim_token)
+            if (not getattr(player_instance, 'easynews_retried', False)
+                    and player_instance.rollover_args and player_instance.streams):
+                log("[PLAYER-MONITOR] EasyNews stalled - retrying the same source")
+                _info, _ids, _art, _props, _resume = player_instance.rollover_args
+                def _easynews_retry():
+                    xbmc.sleep(800)
+                    if not _play_attempt_is_current(
+                            getattr(player_instance, 'play_attempt', -1)):
+                        log("[PLAYER-MONITOR] EasyNews retry cancelled (newer playback)")
+                        return
+                    play_with_rollover(
+                        player_instance.streams, player_instance.start_index,
+                        player_instance.tmdb_id, player_instance.content_type,
+                        player_instance.season, player_instance.episode,
+                        _info, _ids, _art, _props, _resume,
+                        from_resolve=True, easynews_retried=True)
+                threading.Thread(target=_easynews_retry, daemon=True,
+                                 name='EASYNEWS-RETRY').start()
+                return
+            log("[PLAYER-MONITOR] EasyNews stalled again - switching to next source")
+            player_instance.user_stopped = False
+            player_instance.trigger_rollover(allow_started=True)
+            return
         
         # Inchidem dialogurile busy ca sa nu mai apara rotita
         xbmc.executebuiltin('Dialog.Close(busydialog,true)')
@@ -3764,7 +3830,7 @@ def format_for_results_window(streams, poster_url, meta=None):
 # =============================================================================
 # PLAY WITH ROLLOVER - VERSIUNE FINALA (FARA BUFFERING DUPLICAT)
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False):
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False, easynews_retried=False):
 
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
     _attempt = begin_play_attempt()
@@ -4289,6 +4355,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         show_title_extracted = info_tag.get('tvshowtitle', '')
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year), tvshowtitle=show_title_extracted)
         player = _active_player
+        player.play_attempt = _attempt
+        player.easynews_retried = bool(easynews_retried)
         # imdb_id pentru Skip Intro (SegmentScraper cere imdb_id)
         player.imdb_id = (unique_ids or {}).get('imdb') or None
         
@@ -4313,6 +4381,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 easynews_source = True
         except Exception:
             pass
+        player.easynews_source = easynews_source
 
         if str(current_stream.get('provider_id', '')) == 'easynews_direct':
             try:
@@ -4342,7 +4411,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
         try:
-            if easynews_source and current_stream.get('provider_id') != 'usenet' and ADDON.getSetting('easynews_noseek') != 'false':
+            easynews_noseek = ADDON.getSetting('easynews_noseek')
+            if (easynews_source and current_stream.get('provider_id') != 'usenet'
+                    and easynews_noseek != 'false'):
                 if 'seekable=1' in valid_url:
                     valid_url = valid_url.replace('seekable=1', 'seekable=0')
                 elif '|' in valid_url:
@@ -4350,15 +4421,9 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 else:
                     valid_url += '|seekable=0'
                 log(f"[PLAYER] EasyNews detectat -> Adaugat seekable=0 la URL pentru a preveni erorile.")
-        except: pass
+        except Exception as e:
+            log("[PLAYER] EasyNews URL setup error: %s" % e)
         # ==============================================================
-
-        if easynews_source and 'seekable=0' not in valid_url:
-            try:
-                from resources.lib.api.easynews_direct import prewarm
-                prewarm(valid_url)
-            except Exception as e:
-                log("[PLAYER] EasyNews prewarm error: %s" % e)
         
         # --- SALVARE METADATE PENTRU NEXT EPISODE ---
         info_extr = extract_stream_info(current_stream)

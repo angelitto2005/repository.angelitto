@@ -302,6 +302,19 @@ def prewarm(url, timeout=8):
         session.close()
 
 
+def _one_word_movie_ok(name, title):
+    """A one-word film name must not be just the prefix of another title."""
+    try:
+        from resources.lib.usenet.indexer import _name_words, _title_tokens
+    except Exception:
+        return True
+    tokens = _title_tokens(title)
+    if len(set(tokens)) != 1:
+        return True
+    words = _name_words(name)
+    return not words or set(words) <= set(tokens)
+
+
 def _title_matches(name, titles, content_type, year, season, episode):
     words = _words(name)
     for title in titles:
@@ -319,6 +332,8 @@ def _title_matches(name, titles, content_type, year, season, episode):
             continue
         if re.search(r"\bs\d{1,2}[ ._-]?e\d{1,3}\b", rest):
             continue
+        if not _one_word_movie_ok(name, title):
+            continue
         if not year:
             return True
         if re.search(r"\b(?:%d|%d|%d)\b" % (year - 1, year, year + 1), rest):
@@ -326,6 +341,35 @@ def _title_matches(name, titles, content_type, year, season, episode):
         if not re.search(r"\b(?:19|20)\d{2}\b", rest):
             return True
     return False
+
+
+def _identity_filter_rows(rows, original_language, episode_title, season, episode):
+    """Same conflict-only identity rules as the Usenet indexers.
+
+    EasyNews has no IMDb/language fields in its answer, so only the filename
+    can prove a conflict: a foreign multi-language tag or a wrong episode
+    title. Rows without that evidence are kept.
+    """
+    if not rows or not (original_language or episode_title):
+        return rows
+    try:
+        from resources.lib.usenet import indexer as usenet_indexer
+        why = {}
+        for row in rows:
+            row['title'] = row.get('name') or ''
+            row['indexer'] = 'EasyNews Direct'
+            row['language'] = ''
+            row['imdb'] = ''
+        kept = usenet_indexer._identity_filter(
+            rows, '', original_language or '', episode_title or '', why,
+            season=season, episode=episode)
+        if why:
+            _log("identity filter: " + ", ".join(
+                "%s=%d" % (reason, count) for reason, count in sorted(why.items())))
+        return kept
+    except Exception as error:
+        _log("identity filter unavailable: %s" % type(error).__name__)
+        return rows
 
 
 def _field(raw, names):
@@ -507,7 +551,8 @@ def _search_answer(query):
     return _search_v2(query)
 
 
-def search(title, alt_title, year, content_type, season=None, episode=None):
+def search(title, alt_title, year, content_type, season=None, episode=None,
+           original_language=None, episode_title=None):
     if not available():
         return []
     titles = []
@@ -536,7 +581,8 @@ def search(title, alt_title, year, content_type, season=None, episode=None):
     answer = _search_answer(query)
     if answer is None:
         return []
-    return _parse_answer(answer, titles, content_type, year, season, episode, _max_results())
+    rows = _parse_answer(answer, titles, content_type, year, season, episode, _max_results())
+    return _identity_filter_rows(rows, original_language, episode_title, season, episode)
 
 
 def search_custom(query, limit=None):

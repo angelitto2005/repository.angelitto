@@ -8,7 +8,7 @@ from resources.lib.core.database import connect
 from resources.lib.core.config import ADDON, ADDON_DATA_DIR
 
 class MainCache:
-    SOURCES_REV = 5
+    SOURCES_REV = 8
 
     @staticmethod
     def _scan_rev():

@@ -1,3 +1,11 @@
+1.1.364
+- EasyNews cold starts no longer stop and need a second click: the source is prepared, the signed CDN link is reused and the last 512 KB is fetched before Kodi opens it, so the tail does not fight the main download.
+- If that tail cannot be fetched, the source starts without seeking instead of stalling; a source that still stalls is retried once before the next one is chosen.
+- EasyNews Direct filenames use the same collision filter as Usenet, so an episode from another show with the same name is not listed.
+- Usenet TV searches now use the TVDB id when TMDb has one, so DrunkenSlug and similar indexers no longer mix The Perfect Lie with another 2026 show of the same name; season packs no longer fall back to an ambiguous name search.
+- A release posted more than a week before the episode aired is dropped, so the older season of a same-name show cannot appear when an indexer ignores the TVDB id.
+- Existing source lists and searches are rebuilt once after the update so the new rules apply immediately.
+
 1.1.363
 - New Search mode under Usenet > Fetching strategy: Auto asks by IMDb first and falls back to the name, ID + Name asks both (more results, more quota).
 - Same-title, same-year collisions no longer mix two shows: a different IMDb id, declared language, episode title or foreign language tag drops that row, while rows without metadata stay.

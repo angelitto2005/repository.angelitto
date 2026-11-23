@@ -34,8 +34,9 @@ MAX_NZB_BYTES = 128 * 1024 * 1024
 CATEGORY = {'movie': '2000', 'series': '5000'}
 CACHE_TTL = 6 * 3600
 CACHE_KEEP = 60
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 TITLELESS_LIMIT = 12  # only a tiny mixed source loses its episode-title-less rows
+AIR_GRACE = 7 * 86400  # a release cannot exist this long before the episode aired
 DAY_SHARE = 0.9
 DEFAULT_API_MAX = 200
 RETRY_AFTER = 3600
@@ -228,6 +229,7 @@ def results(body, indexer_name):
         posted = 0
         password = False
         imdb = ''
+        tvdb = ''
         language = ''
         for child in item:
             tag = _localname(child.tag)
@@ -266,13 +268,15 @@ def results(body, indexer_name):
                     password = value.strip() not in ('', '0')
                 elif name in ('imdb', 'imdbid'):
                     imdb = value.strip()
+                elif name in ('tvdb', 'tvdbid'):
+                    tvdb = value.strip()
                 elif name in ('language', 'lang'):
                     language = value.strip()
         if not title or not link:
             continue
         rows.append({'indexer': indexer_name, 'title': title, 'nzb_url': link, 'size': size,
                      'grabs': grabs, 'posted': posted, 'password': password,
-                     'imdb': imdb, 'language': language})
+                     'imdb': imdb, 'tvdb': tvdb, 'language': language})
     return rows
 
 
@@ -335,14 +339,16 @@ def _imdb_number(value):
     return re.sub(r'\D', '', text)
 
 
-def _episode_query(indexer, common, digits, season, episode, title, search_mode='auto'):
+def _episode_query(indexer, common, digits, season, episode, title, search_mode='auto', tvdb=''):
     params = dict(common, t='tvsearch', season=int(season), ep=int(episode or 0))
-    if digits:
+    if tvdb:
+        params['tvdbid'] = tvdb
+    elif digits:
         params['imdbid'] = digits
     else:
         params['q'] = _query_title(title)
     rows = results(_get(indexer, params), indexer['name'])
-    if not digits:
+    if not digits and not tvdb:
         return rows
     by_name_params = dict(common, t='tvsearch', season=int(season),
                           ep=int(episode or 0), q=_query_title(title))
@@ -367,13 +373,14 @@ def _pack_tier(title):
     return ''
 
 
-def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode='auto'):
+def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode='auto', tvdb=''):
     """Season packs, cached per season: the whole TV tree is asked once, and a
     100-row page is mostly episodes, so another page is read only while the usual
     1080p/720p pack tiers are still missing."""
     pages = config.pack_pages()
+    identity = ('tvdb' + tvdb) if tvdb else digits
     key = 'series|%s|%s|packs5p%d|sm%s|v%d|%s|%s' % (
-        digits, season, pages, search_mode, CACHE_VERSION,
+        identity, season, pages, search_mode, CACHE_VERSION,
         indexer.get('url', ''), indexer.get('name', ''))
     if use_cache:
         hit, rows = _cache_get(key)
@@ -388,8 +395,11 @@ def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode
                   't': 'tvsearch', 'season': int(season)}
         if offset:
             params['offset'] = offset
-        if digits and not by_title:
-            params['imdbid'] = digits
+        if (tvdb or digits) and not by_title:
+            if tvdb:
+                params['tvdbid'] = tvdb
+            else:
+                params['imdbid'] = digits
         else:
             params['q'] = _query_title(title)
         return results(_get(indexer, params), indexer['name'])
@@ -407,11 +417,11 @@ def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode
                     tiers.add(tier)
 
     offset = 0
-    by_title = not digits
+    by_title = not (tvdb or digits)
     previous_first = ''
     for _page in range(pages):
         try:
-            if digits and title and search_mode == 'both':
+            if (tvdb or digits) and title and search_mode == 'both':
                 by_id = ask(offset, by_title=False)
                 by_name = ask(offset, by_title=True)
                 found = []
@@ -425,7 +435,7 @@ def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode
                     found.append(row)
             else:
                 found = ask(offset, by_title=by_title)
-                if offset == 0 and not by_title and title:
+                if offset == 0 and not by_title and title and not tvdb:
                     # Some indexers ignore the IMDb id for a season ask and answer
                     # with a general list: ask by name when nothing matches.
                     if not found or not _any_title(found, title):
@@ -451,11 +461,11 @@ def _season_packs(indexer, digits, season, title, use_cache, logger, search_mode
 
 
 def _series_query(indexer, common, digits, season, episode, title, use_cache, logger,
-                  search_mode='auto'):
+                  search_mode='auto', tvdb=''):
     """Episode sources plus the season packs, the packs cached for the whole season."""
-    rows = _episode_query(indexer, common, digits, season, episode, title, search_mode)
+    rows = _episode_query(indexer, common, digits, season, episode, title, search_mode, tvdb)
     try:
-        packs = _season_packs(indexer, digits, season, title, use_cache, logger, search_mode)
+        packs = _season_packs(indexer, digits, season, title, use_cache, logger, search_mode, tvdb)
     except Exception:
         packs = []
     known = set(row.get('nzb_url') for row in rows)
@@ -463,7 +473,7 @@ def _series_query(indexer, common, digits, season, episode, title, use_cache, lo
 
 
 def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=True, logger=None,
-           year=None, all_categories=False, search_mode='auto'):
+           year=None, all_categories=False, search_mode='auto', tvdb=''):
     if indexer.get('builtin') == 'nzbindex':
         return _nzbindex_rows(indexer, title, year, season, episode)
     if indexer.get('builtin') == 'binsearch':
@@ -499,8 +509,8 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         return by_name + rows if by_name else rows
     if packs:
         return _series_query(indexer, common, digits, season, episode, title, use_cache, logger,
-                             search_mode)
-    return _episode_query(indexer, common, digits, season, episode, title, search_mode)
+                             search_mode, tvdb)
+    return _episode_query(indexer, common, digits, season, episode, title, search_mode, tvdb)
 
 
 def is_single_episode(title, season, episode):
@@ -1092,9 +1102,17 @@ def _episode_title_matches(candidate, wanted):
     return bool(have and want and want.issubset(have))
 
 
-def _identity_filter(rows, imdb, original_language, episode_title, why, season=None, episode=None):
+def _identity_filter(rows, imdb, original_language, episode_title, why, season=None, episode=None,
+                     tvdb='', episode_air_date=''):
     """Drop explicit conflicts; a small mixed source's titleless episode goes too."""
     wanted_imdb = _imdb_number(imdb)
+    wanted_tvdb = _imdb_number(tvdb)
+    air = 0
+    if episode_air_date and season is not None:
+        try:
+            air = int(time.mktime(time.strptime(str(episode_air_date)[:10], '%Y-%m-%d')))
+        except (TypeError, ValueError, OverflowError):
+            air = 0
     language = str(original_language or '').strip().lower()
     wanted_languages = _language_codes(language)
     if not wanted_languages and len(language) in (2, 3):
@@ -1116,6 +1134,17 @@ def _identity_filter(rows, imdb, original_language, episode_title, why, season=N
         row_imdb = re.sub(r'\D', '', str(row.get('imdb') or ''))
         if wanted_imdb and row_imdb and row_imdb != wanted_imdb:
             return 'wrong IMDb'
+        if wanted_tvdb:
+            row_tvdb = re.sub(r'\D', '', str(row.get('tvdb') or ''))
+            if row_tvdb and row_tvdb != wanted_tvdb:
+                return 'wrong TVDB'
+        if air:
+            try:
+                posted = int(row.get('posted') or 0)
+            except (TypeError, ValueError):
+                posted = 0
+            if posted and posted < air - AIR_GRACE:
+                return 'before air date'
         if wanted_languages:
             row_languages = _language_codes(row.get('language'))
             if row_languages and not (row_languages & wanted_languages):
@@ -1224,11 +1253,11 @@ def _cap_per_indexer(rows, limit, season, episode, why):
     return [row for row in rows if id(row) in keep]
 
 
-def _cache_key(kind, imdb, season, episode, indexer, year=''):
+def _cache_key(kind, imdb, season, episode, indexer, year='', tvdb=''):
     """One answer per indexer: a partial sequential answer must never hide the others."""
-    return '%s|%s|%s|%s|%s|%s|%s|v%d' % (kind, imdb, season, episode, year or '',
-                                        indexer.get('url', ''), indexer.get('name', ''),
-                                        CACHE_VERSION)
+    return '%s|%s|%s|%s|%s|%s|%s|%s|v%d' % (kind, imdb, season, episode, year or '', tvdb or '',
+                                            indexer.get('url', ''), indexer.get('name', ''),
+                                            CACHE_VERSION)
 
 
 def _cache_get(key):
@@ -1321,9 +1350,9 @@ def _ask_group(entries, ask_one, budget, notes, workers):
 
 
 def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=True, year=None,
-         all_categories=False, search_mode='auto'):
+         all_categories=False, search_mode='auto', tvdb=''):
     """(cache_key, rows, from_cache, note) for one indexer."""
-    key = _cache_key(kind, imdb, season, episode, indexer, year)
+    key = _cache_key(kind, imdb, season, episode, indexer, year, tvdb)
     if season is not None:
         key += ('|packs5p%d' % config.pack_pages()) if packs else '|ep2'
     if search_mode == 'both':
@@ -1337,7 +1366,8 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
     started = time.time()
     try:
         rows = _query(indexer, kind, imdb, season, episode, title, packs, use_cache, logger,
-                      year=year, all_categories=all_categories, search_mode=search_mode)
+                      year=year, all_categories=all_categories, search_mode=search_mode,
+                      tvdb=tvdb)
         _stat(indexer['name'], s=1, ss=time.time() - started, r=len(rows))
         if logger:
             logger('[USENET] %s: %d result(s)' % (indexer['name'], len(rows)))
@@ -1353,7 +1383,8 @@ def _ask(indexer, kind, imdb, season, episode, title, use_cache, logger, packs=T
 def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='',
          logger=None, use_cache=True, mode=None, min_usable=None, min_size=0,
          episodes_only=False, per_indexer_limit=0, scope='', all_categories=False,
-         original_language='', episode_title='', search_mode=None):
+         original_language='', episode_title='', search_mode=None, tvdb_id='',
+         episode_air_date=''):
     """Search the configured indexers. Returns (rows, notes).
 
     Sequential asks the enabled free built-ins and the Full keyed indexers
@@ -1389,6 +1420,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
     search_mode = str(search_mode or config.search_mode()).strip().lower()
     if search_mode != 'both':
         search_mode = 'auto'
+    tvdb = _imdb_number(tvdb_id) if kind == 'series' else ''
     min_size = max(0, int(min_size or 0))
     per_indexer_limit = max(0, int(per_indexer_limit or 0))
     episodes_only = bool(episodes_only) and season is not None
@@ -1405,7 +1437,8 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                             seen_links, seen_titles, why,
                             query_title=title, query_year=year,
                             query_alt=alt_title)
-        kept = _identity_filter(kept, imdb, original_language, episode_title, why, season, episode)
+        kept = _identity_filter(kept, imdb, original_language, episode_title, why, season, episode,
+                                tvdb=tvdb, episode_air_date=episode_air_date)
         rows.extend(kept)
         return len(kept)
 
@@ -1416,7 +1449,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
         def one(entry):
             return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
                         packs=not episodes_only, year=year, all_categories=all_categories,
-                        search_mode=search_mode)
+                        search_mode=search_mode, tvdb=tvdb)
 
         workers = max(1, min(4, len(entries)))
         answers = _ask_group(entries, one, GROUP_BUDGET, notes, workers)
@@ -1446,7 +1479,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
             def first_one(entry):
                 return _ask(entry, kind, imdb, season, episode, title, use_cache, logger,
                             packs=not episodes_only, year=year, all_categories=all_categories,
-                            search_mode=search_mode)
+                            search_mode=search_mode, tvdb=tvdb)
 
             workers = max(1, min(6, len(first)))
             budget = min(GROUP_BUDGET, max(1.0, deadline - _now()))
@@ -1483,7 +1516,7 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                     lambda candidate: _ask(candidate, kind, imdb, season, episode, title,
                                            use_cache, logger, packs=not episodes_only,
                                            year=year, all_categories=all_categories,
-                                           search_mode=search_mode),
+                                           search_mode=search_mode, tvdb=tvdb),
                     min(GROUP_BUDGET, remaining), notes, 1)
                 if not answers:
                     if logger:
@@ -1508,7 +1541,8 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                 logger('[USENET] sequential: only %d usable with a key after all %d'
                        % (keyed_kept, len(limited)))
 
-    rows = _identity_filter(rows, imdb, original_language, episode_title, why, season, episode)
+    rows = _identity_filter(rows, imdb, original_language, episode_title, why, season, episode,
+                            tvdb=tvdb, episode_air_date=episode_air_date)
     rows = _cap_per_indexer(rows, per_indexer_limit, season, episode, why)
 
     if logger:

@@ -6,6 +6,7 @@ Basic authorization on the upstream request.
 """
 
 import atexit
+import hashlib
 import json
 import os
 import re
@@ -22,6 +23,8 @@ PORT_RANGE = tuple(range(47341, 47351))
 TOKEN_RE = re.compile(r'^[0-9a-f]{32}$')
 MAX_SESSIONS = 8
 SESSION_TTL = 6 * 3600
+RESOLVED_TTL = 600
+TAIL_BYTES = 512 * 1024
 USER_AGENT = 'TMDbMovies'
 CONTENT_TYPES = ('.mkv', '.mp4', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.webm', '.m4v')
 UPSTREAM_HEADERS = ('Content-Type', 'Content-Length', 'Content-Range',
@@ -29,6 +32,7 @@ UPSTREAM_HEADERS = ('Content-Type', 'Content-Length', 'Content-Range',
 
 _LOCK = threading.Lock()
 _SESSIONS = {}
+_RESOLVED = {}
 _SERVER = None
 _PORT = 0
 _CLEANED = [False]
@@ -141,7 +145,7 @@ def _request_headers(range_value=''):
     return headers
 
 
-def _follow(session, method, url, headers):
+def _follow(session, method, url, headers, timeout=(10, 12), on_resolved=None):
     """Open the upstream response, following only EasyNews redirects."""
     current = url
     for _hop in range(6):
@@ -156,7 +160,7 @@ def _follow(session, method, url, headers):
         try:
             response = session.request(
                 method, current, headers=outgoing, stream=True,
-                allow_redirects=False, timeout=(10, 30), verify=True)
+                allow_redirects=False, timeout=timeout, verify=True)
         except Exception as error:
             _log('upstream %s %s failed: %s after %.1fs'
                  % (method, host, type(error).__name__, time.time() - started),
@@ -176,6 +180,11 @@ def _follow(session, method, url, headers):
             if response.status_code == 303:
                 method = 'GET'
             continue
+        if on_resolved is not None:
+            try:
+                on_resolved(current)
+            except Exception:
+                pass
         return response
     return None
 
@@ -223,11 +232,197 @@ def _register(remote_url):
         'created': time.time(),
         'last': time.time(),
         'head': None,
+        'resolved': None,
     }
     with _LOCK:
         _SESSIONS[token] = info
     _prune()
     return token
+
+
+def _resolved_key(info):
+    return hashlib.sha1(str(info.get('url') or '').encode('utf-8')).hexdigest()
+
+
+def _remember_resolved(info, url):
+    now = time.time()
+    key = _resolved_key(info)
+    with _LOCK:
+        info['resolved'] = (url, now)
+        _RESOLVED[key] = (url, now)
+        if len(_RESOLVED) > 32:
+            oldest = sorted(_RESOLVED, key=_RESOLVED.get)[:len(_RESOLVED) - 32]
+            for stale in oldest:
+                _RESOLVED.pop(stale, None)
+
+
+def _resolved_url(info):
+    key = _resolved_key(info)
+    with _LOCK:
+        resolved = info.get('resolved')
+        if not resolved or time.time() - resolved[1] >= RESOLVED_TTL:
+            resolved = _RESOLVED.get(key)
+            if resolved and time.time() - resolved[1] < RESOLVED_TTL:
+                info['resolved'] = resolved
+            else:
+                resolved = None
+    return resolved[0] if resolved else ''
+
+
+def _forget_resolved(info):
+    key = _resolved_key(info)
+    with _LOCK:
+        info['resolved'] = None
+        _RESOLVED.pop(key, None)
+
+
+def _fetch_tail(info, total):
+    """Read the last MB before Kodi opens the file.
+
+    Kodi always asks for a tail range when seekable=1. EasyNews often stalls
+    when that tail request runs at the same time as the full GET. Fetch it once
+    here, on a closed connection, and later serve it from memory.
+    """
+    if total <= TAIL_BYTES * 2:
+        return False
+    start = total - TAIL_BYTES
+    headers = _request_headers('bytes=%d-%d' % (start, total - 1))
+    session = requests.Session()
+    session.trust_env = False
+    started = time.time()
+    response = None
+    try:
+        response = _follow(session, 'GET', _resolved_url(info) or info['url'],
+                           headers, timeout=(4, 5),
+                           on_resolved=lambda final: _remember_resolved(info, final))
+        if response is None or response.status_code != 206:
+            return False
+        content_range = response.headers.get('Content-Range') or ''
+        if not content_range.startswith('bytes %d-' % start):
+            return False
+        values = {name: response.headers.get(name) for name in UPSTREAM_HEADERS}
+        pieces = []
+        received = 0
+        for piece in response.iter_content(128 * 1024):
+            if not piece:
+                continue
+            pieces.append(piece)
+            received += len(piece)
+            if received >= TAIL_BYTES:
+                break
+        body = b''.join(pieces)[:TAIL_BYTES]
+        if len(body) < 128 * 1024:
+            return False
+        with _LOCK:
+            info['tail'] = (start, total, body, values)
+        _log('tail prefetch %d bytes in %.1fs' % (len(body), time.time() - started))
+        return True
+    except Exception as error:
+        _log('tail prefetch failed: %s' % type(error).__name__)
+        return False
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        session.close()
+
+
+def _cached_tail(info, start, end):
+    with _LOCK:
+        cached = info.get('tail')
+    if not cached:
+        return None
+    tail_start, total, body, values = cached
+    if start < tail_start or start >= total:
+        return None
+    if end is None:
+        end = total - 1
+    if end < start or end >= total:
+        return None
+    offset = start - tail_start
+    data = body[offset:offset + (end - start + 1)]
+    if len(data) != end - start + 1:
+        return None
+    headers = dict(values)
+    headers['Content-Length'] = str(len(data))
+    headers['Content-Range'] = 'bytes %d-%d/%d' % (start, end, total)
+    return headers, data
+
+
+def _prepare_stream(info):
+    """Resolve the CDN URL, HEAD metadata and tail before Kodi opens the file.
+
+    members.easynews.com can take 10-20s to answer. Kodi's Stat/HEAD gives up
+    at 20s, then opens the full GET; that is when the concurrent tail request
+    used to stall both. Preparing here happens before the local URL is returned,
+    so Kodi never times out and all later requests use the resolved CDN.
+    """
+    if info.get('prepared'):
+        return
+    info['prepared'] = True
+    session = requests.Session()
+    session.trust_env = False
+    response = None
+    started = time.time()
+    try:
+        upstream = _resolved_url(info) or info['url']
+        response = _follow(session, 'HEAD', upstream, _request_headers(),
+                           timeout=(8, 20),
+                           on_resolved=lambda final: _remember_resolved(info, final))
+        if response is None and upstream != info['url']:
+            _forget_resolved(info)
+            response = _follow(session, 'HEAD', info['url'], _request_headers(),
+                               timeout=(8, 10),
+                               on_resolved=lambda final: _remember_resolved(info, final))
+        if response is None and upstream == info['url']:
+            response = _follow(session, 'HEAD', info['url'], _request_headers(),
+                               timeout=(8, 10),
+                               on_resolved=lambda final: _remember_resolved(info, final))
+        if response is not None and response.status_code in (401, 403, 410) \
+                and upstream != info['url']:
+            try:
+                response.close()
+            except Exception:
+                pass
+            _forget_resolved(info)
+            upstream = info['url']
+            response = _follow(session, 'HEAD', upstream, _request_headers(),
+                               timeout=(8, 10),
+                               on_resolved=lambda final: _remember_resolved(info, final))
+        if response is None:
+            return
+        status = response.status_code
+        if status not in (200, 206):
+            _log('prepare HEAD HTTP %d' % status, 'warning')
+            return
+        values = {name: response.headers.get(name) for name in UPSTREAM_HEADERS}
+        total = _content_range_total(values.get('Content-Range'))
+        length = values.get('Content-Length') or ''
+        if total is None and length.isdigit():
+            total = int(length)
+        with _LOCK:
+            info['head'] = (status, values)
+        try:
+            response.close()
+        except Exception:
+            pass
+        if total and total > TAIL_BYTES * 2:
+            if not _fetch_tail(info, total):
+                time.sleep(1.0)
+                if not _fetch_tail(info, total):
+                    _log('tail prefetch still unavailable - Kodi will retry live')
+        _log('prepared in %.1fs (head, tail, CDN cache)' % (time.time() - started))
+    except Exception as error:
+        _log('prepare failed: %s' % type(error).__name__)
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        session.close()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -306,7 +501,13 @@ class _Handler(BaseHTTPRequestHandler):
         if not _authorization():
             return self._json({'ok': False, 'reason': 'EasyNews login is not configured'})
         token = _register(remote_url)
-        return self._json({'ok': True, 'url': _local_url(_PORT, token, remote_url)})
+        with _LOCK:
+            info = _SESSIONS.get(token)
+        if info:
+            _prepare_stream(info)
+        tail_ok = bool(info and info.get('tail'))
+        return self._json({'ok': True, 'url': _local_url(_PORT, token, remote_url),
+                           'tail_ok': tail_ok})
 
     def _send_headers(self, status, values):
         self.send_response(status)
@@ -334,22 +535,68 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = _parse_range(range_value)
         client_start = parsed[0] if parsed else 0
         client_end = parsed[1] if parsed else None
+        # Kodi asks for the tail while the full GET is still open. EasyNews
+        # occasionally hangs the second connection for 30s; a short timeout
+        # and a fresh redirect find a healthy CDN node before Kodi gives up.
+        small_range = bool(parsed and (parsed[0] > 0 or parsed[1] is not None))
+        upstream_timeout = (8, 10) if small_range else (10, 12)
         if head and not range_value and not if_range:
             cached = info.get('head')
             if cached:
                 self._send_headers(cached[0], cached[1])
+                return
+        if not head:
+            cached_tail = _cached_tail(info, client_start, client_end)
+            if cached_tail:
+                values, data = cached_tail
+                self._send_headers(206, values)
+                try:
+                    self.wfile.write(data)
+                    _log('served %d bytes from tail cache range=%r'
+                         % (len(data), range_value))
+                except Exception:
+                    pass
                 return
         headers = _request_headers(range_value)
         if if_range:
             headers['If-Range'] = if_range
         _log('request %s range=%r if_range=%r'
              % ('HEAD' if head else 'GET', headers.get('Range'), if_range))
-        response = _follow(info['session'], 'HEAD' if head else 'GET',
-                           info['url'], headers)
+        upstream_url = _resolved_url(info) or info['url']
+        remember = lambda final: _remember_resolved(info, final)
+        response = None
+        for attempt in range(2):
+            response = _follow(info['session'], 'HEAD' if head else 'GET',
+                               upstream_url, headers, timeout=upstream_timeout,
+                               on_resolved=remember)
+            if response is not None:
+                break
+            if attempt == 0:
+                if upstream_url != info['url']:
+                    _forget_resolved(info)
+                    upstream_url = info['url']
+                    _log('resolved CDN URL failed, retry original range=%r'
+                         % headers.get('Range'))
+                else:
+                    _log('upstream retry range=%r' % headers.get('Range'))
         if response is None:
             return self._text(502, 'upstream unavailable')
         try:
             status = response.status_code
+            if status in (401, 403, 410) and upstream_url != info['url']:
+                try:
+                    response.close()
+                except Exception:
+                    pass
+                _forget_resolved(info)
+                upstream_url = info['url']
+                response = _follow(info['session'], 'HEAD' if head else 'GET',
+                                   upstream_url, headers,
+                                   timeout=upstream_timeout,
+                                   on_resolved=remember)
+                if response is None:
+                    return self._text(502, 'upstream unavailable')
+                status = response.status_code
             if status not in (200, 206, 416):
                 _log('upstream answered HTTP %d' % status, 'warning')
                 return self._text(502, 'upstream HTTP %d' % status)
@@ -421,14 +668,17 @@ class _Handler(BaseHTTPRequestHandler):
                     failures = 0
                 else:
                     failures += 1
-                if failures >= 4:
+                if failures >= (2 if small_range else 4):
                     break
                 next_offset = client_start + sent
                 resume_range = 'bytes=%d-' % next_offset
                 if client_end is not None:
                     resume_range = 'bytes=%d-%d' % (next_offset, client_end)
-                current = _follow(info['session'], 'GET', info['url'],
-                                  _request_headers(resume_range))
+                current = _follow(info['session'], 'GET',
+                                  _resolved_url(info) or info['url'],
+                                  _request_headers(resume_range),
+                                  timeout=upstream_timeout,
+                                  on_resolved=remember)
                 if current is None:
                     _log('resume unavailable at %d' % next_offset, 'warning')
                     break
@@ -568,7 +818,7 @@ def playback_url(remote_url):
         return ''
     try:
         response = _LOCAL.post('http://127.0.0.1:%d/open' % port,
-                               json={'url': base}, timeout=8)
+                               json={'url': base}, timeout=55)
         answer = response.json()
     except Exception as error:
         _log('register failed: %s' % type(error).__name__, 'error')
@@ -576,7 +826,16 @@ def playback_url(remote_url):
     if not answer.get('ok') or not answer.get('url'):
         _log('register refused: %s' % (answer.get('reason') or 'unknown'), 'error')
         return ''
-    return answer['url'] + (separator + tail if separator else '')
+    local = answer['url'] + (separator + tail if separator else '')
+    if answer.get('tail_ok') is False and 'seekable=0' not in local:
+        if 'seekable=1' in local:
+            local = local.replace('seekable=1', 'seekable=0')
+        elif '|' in local:
+            local += '&seekable=0'
+        else:
+            local += '|seekable=0'
+        _log('tail cache unavailable - this attempt uses no-seek')
+    return local
 
 
 def close_all():

@@ -7970,7 +7970,8 @@ def _usenet_stream_key(item):
 
 
 def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
-                           title_query=None, year_query=None, alt_title=None):
+                           title_query=None, year_query=None, alt_title=None,
+                           original_language=None, episode_title=None):
     '''EasyNews username/password: web search and a direct download stream, no NNTP.'''
     if not title_query:
         log("[EASYNEWS-DIRECT] no title")
@@ -7985,7 +7986,9 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
         return None
     try:
         rows = easynews_direct.search(title_query, alt_title, year_query,
-                                      content_type, season, episode)
+                                      content_type, season, episode,
+                                      original_language=original_language,
+                                      episode_title=episode_title)
     except Exception as exc:
         log(f"[EASYNEWS-DIRECT] search failed: {type(exc).__name__}")
         return None
@@ -8033,7 +8036,7 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
 
 
 def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None, alt_title=None,
-                      original_language=None, episode_title=None):
+                      original_language=None, episode_title=None, episode_air_date=None, tvdb_id=None):
     '''Our own Newznab indexers, played by our own NNTP provider (no debrid).'''
     try:
         from resources.lib.usenet import config as usenet_config
@@ -8052,9 +8055,10 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
         return None
     kind = 'series' if (content_type == 'tv' and season is not None) else 'movie'
     episodes_only = usenet_config.episodes_only() and kind == 'series'
-    log("[USENET] starting: %d indexer(s), %d provider(s), kind=%s, imdb=%s, mode=%s, search=%s, lang=%s"
+    log("[USENET] starting: %d indexer(s), %d provider(s), kind=%s, imdb=%s, tvdb=%s, mode=%s, search=%s, lang=%s"
         % (len(usenet_config.indexers()), len(usenet_config.providers()), kind, imdb_id,
-           usenet_config.fetch_mode(), usenet_config.search_mode(), original_language or '?'))
+           tvdb_id or '?', usenet_config.fetch_mode(), usenet_config.search_mode(),
+           original_language or '?'))
     try:
         rows, _notes = usenet_indexer.find(
             kind, imdb_id, season, episode, title_query or '', year=year_query,
@@ -8063,7 +8067,8 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
             min_size=usenet_config.min_size_bytes(),
             episodes_only=episodes_only, per_indexer_limit=usenet_config.max_results(),
             original_language=original_language or '', episode_title=episode_title or '',
-            search_mode=usenet_config.search_mode())
+            episode_air_date=episode_air_date or '', search_mode=usenet_config.search_mode(),
+            tvdb_id=tvdb_id or '')
     except Exception as exc:
         log(f"[USENET] search failed: {exc}")
         return None
@@ -8166,6 +8171,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_alt_title = ""
     extra_language = ""
     extra_episode_title = ""
+    extra_episode_air_date = ""
+    extra_tvdb = ""
     
     # Daca avem override (Custom Values), le folosim direct
     if override_title:
@@ -8173,7 +8180,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         extra_year = override_year or ""
         log(f"[SCRAPER] Custom Values: '{extra_title}' ({extra_year})")
     else:
-        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'usenet_nzb']
+        title_based_scrapers = ['fshdnet', 'hdhub4u', 'mkvcinemas', 'moviesdrive', 'vidlink', 'vsembed', 'hdhub', 'streamvix', 'videasy', 'netmirror', 'vidmody', 'movieblast', 'moviebox', 'onlykdrama', 'primesrcme', 'vaplayer', 'flixer', 'cineby', 'cinefreak', 'usenet_nzb', 'easynews_direct']
         needs_title = any(
             ADDON.getSetting(f'use_{scraper}') == 'true' 
             for scraper in title_based_scrapers
@@ -8215,13 +8222,22 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                 log(f"[SCRAPER] Title resolved safely: '{extra_title}' ({extra_year})")
             except Exception as e:
                 log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
+            if (content_type == 'tv' and tmdb_show_id
+                    and ADDON.getSetting('use_usenet_nzb') == 'true'):
+                try:
+                    ext_ids = get_external_ids('tv', tmdb_show_id) or {}
+                    extra_tvdb = str(ext_ids.get('tvdb_id') or '')
+                except Exception as e:
+                    log(f"[SCRAPER] Could not resolve TVDB id from TMDB: {e}")
             if (content_type == 'tv' and season is not None and episode is not None
-                    and tmdb_show_id and ADDON.getSetting('use_usenet_nzb') == 'true'):
+                    and tmdb_show_id and (ADDON.getSetting('use_usenet_nzb') == 'true'
+                                          or ADDON.getSetting('use_easynews_direct') == 'true')):
                 try:
                     url = (f"{BASE_URL}/tv/{tmdb_show_id}/season/{int(season)}"
                            f"/episode/{int(episode)}?api_key={API_KEY}")
                     data = get_json(url)
                     extra_episode_title = (data or {}).get('name') or ""
+                    extra_episode_air_date = (data or {}).get('air_date') or ""
                 except Exception as e:
                     log(f"[SCRAPER] Could not resolve episode title from TMDB: {e}")
 
@@ -8266,8 +8282,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
         'easynewspp': ('EasyNews++', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'easynewspp', 'EasyNews++')),
-        'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
-        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title)),
+        'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title)),
+        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title, episode_air_date=extra_episode_air_date, tvdb_id=extra_tvdb)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
         'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),
