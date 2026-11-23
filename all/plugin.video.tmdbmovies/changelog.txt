@@ -1,3 +1,8 @@
+1.1.365
+- EasyNews Direct now reads language words such as POLISH, ITALIAN and FRENCH from the filename, so the Dutch The Perfect Lie no longer appears next to the Korean one.
+- Usenet and EasyNews Direct now follow the Search mode: Auto hides same-name collisions, while ID + Name shows every matching release, including other shows with the same name.
+- Existing source lists are rebuilt once after the update so the new rule applies immediately.
+
 1.1.364
 - EasyNews cold starts no longer stop and need a second click: the source is prepared, the signed CDN link is reused and the last 512 KB is fetched before Kodi opens it, so the tail does not fight the main download.
 - If that tail cannot be fetched, the source starts without seeking instead of stalling; a source that still stalls is retried once before the next one is chosen.

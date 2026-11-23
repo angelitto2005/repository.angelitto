@@ -1420,6 +1420,9 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
     search_mode = str(search_mode or config.search_mode()).strip().lower()
     if search_mode != 'both':
         search_mode = 'auto'
+    identity_filter = search_mode != 'both'
+    if logger and not identity_filter:
+        logger('[USENET] ID + Name: identity filter off')
     tvdb = _imdb_number(tvdb_id) if kind == 'series' else ''
     min_size = max(0, int(min_size or 0))
     per_indexer_limit = max(0, int(per_indexer_limit or 0))
@@ -1437,8 +1440,10 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                             seen_links, seen_titles, why,
                             query_title=title, query_year=year,
                             query_alt=alt_title)
-        kept = _identity_filter(kept, imdb, original_language, episode_title, why, season, episode,
-                                tvdb=tvdb, episode_air_date=episode_air_date)
+        if identity_filter:
+            kept = _identity_filter(kept, imdb, original_language, episode_title, why,
+                                    season, episode, tvdb=tvdb,
+                                    episode_air_date=episode_air_date)
         rows.extend(kept)
         return len(kept)
 
@@ -1541,8 +1546,10 @@ def find(kind, imdb, season=None, episode=None, title='', year=None, alt_title='
                 logger('[USENET] sequential: only %d usable with a key after all %d'
                        % (keyed_kept, len(limited)))
 
-    rows = _identity_filter(rows, imdb, original_language, episode_title, why, season, episode,
-                            tvdb=tvdb, episode_air_date=episode_air_date)
+    if identity_filter:
+        rows = _identity_filter(rows, imdb, original_language, episode_title, why,
+                                season, episode, tvdb=tvdb,
+                                episode_air_date=episode_air_date)
     rows = _cap_per_indexer(rows, per_indexer_limit, season, episode, why)
 
     if logger:

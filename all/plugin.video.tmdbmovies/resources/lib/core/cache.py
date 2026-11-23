@@ -8,14 +8,15 @@ from resources.lib.core.database import connect
 from resources.lib.core.config import ADDON, ADDON_DATA_DIR
 
 class MainCache:
-    SOURCES_REV = 8
+    SOURCES_REV = 10
 
     @staticmethod
     def _scan_rev():
         """The source list depends on the Usenet pack settings: toggling one
         must not keep the old list for hours."""
         try:
-            if ADDON.getSetting('use_usenet_nzb') != 'true':
+            if (ADDON.getSetting('use_usenet_nzb') != 'true'
+                    and ADDON.getSetting('use_easynews_direct') != 'true'):
                 return 0
             only = 1 if ADDON.getSetting('usenet_nzb.episodes_only') == 'true' else 0
             both = 1 if ADDON.getSetting('usenet_nzb.search_mode') == '1' else 0

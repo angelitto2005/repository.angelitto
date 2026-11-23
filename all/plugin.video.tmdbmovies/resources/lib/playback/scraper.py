@@ -7984,11 +7984,20 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
     if not easynews_direct.available():
         log("[EASYNEWS-DIRECT] disabled or username/password missing")
         return None
+    show_all = False
+    try:
+        from resources.lib.usenet import config as usenet_config
+        show_all = usenet_config.search_mode() == 'both'
+    except Exception:
+        pass
+    if show_all:
+        log("[EASYNEWS-DIRECT] ID + Name: identity filter off")
     try:
         rows = easynews_direct.search(title_query, alt_title, year_query,
                                       content_type, season, episode,
                                       original_language=original_language,
-                                      episode_title=episode_title)
+                                      episode_title=episode_title,
+                                      show_all=show_all)
     except Exception as exc:
         log(f"[EASYNEWS-DIRECT] search failed: {type(exc).__name__}")
         return None

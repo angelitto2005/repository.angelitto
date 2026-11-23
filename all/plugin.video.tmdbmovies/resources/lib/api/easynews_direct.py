@@ -343,25 +343,57 @@ def _title_matches(name, titles, content_type, year, season, episode):
     return False
 
 
+def _explicit_language_codes(name):
+    """Language words in an EasyNews filename, e.g. POLISH or italian."""
+    text = str(name or '')
+    text = re.sub(r'\.(?:mkv|mp4|avi|ts|m2ts|mov|wmv|webm|m4v)$', '', text, flags=re.I)
+    text = re.sub(r'-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*$', '', text)
+    marker = re.search(r'\b(?:s\d{1,2}[ ._-]?e\d{1,3}|(?:19|20)\d{2})\b', text, re.I)
+    if not marker:
+        return set()
+    try:
+        from resources.lib.usenet.indexer import _LANGUAGE_CODES
+    except Exception:
+        return set()
+    codes = set()
+    for word in re.findall(r'[A-Za-z]{2,}', text[marker.end():]):
+        code = _LANGUAGE_CODES.get(word.lower())
+        if code and (len(word) >= 4 or word.isupper()):
+            codes.add(code)
+    return codes
+
+
 def _identity_filter_rows(rows, original_language, episode_title, season, episode):
     """Same conflict-only identity rules as the Usenet indexers.
 
     EasyNews has no IMDb/language fields in its answer, so only the filename
-    can prove a conflict: a foreign multi-language tag or a wrong episode
-    title. Rows without that evidence are kept.
+    can prove a conflict: a foreign language word or a wrong episode title.
+    Rows without that evidence are kept.
     """
     if not rows or not (original_language or episode_title):
         return rows
     try:
         from resources.lib.usenet import indexer as usenet_indexer
+        language = str(original_language or '').strip().lower()
+        wanted_languages = usenet_indexer._language_codes(language)
+        if not wanted_languages and len(language) in (2, 3):
+            wanted_languages = {language}
         why = {}
+        candidates = []
         for row in rows:
             row['title'] = row.get('name') or ''
             row['indexer'] = 'EasyNews Direct'
             row['language'] = ''
             row['imdb'] = ''
+            codes = _explicit_language_codes(row['title'])
+            if codes and wanted_languages and not (codes & wanted_languages):
+                why['wrong language'] = why.get('wrong language', 0) + 1
+                continue
+            if codes:
+                row['language'] = ','.join(sorted(codes))
+            candidates.append(row)
         kept = usenet_indexer._identity_filter(
-            rows, '', original_language or '', episode_title or '', why,
+            candidates, '', original_language or '', episode_title or '', why,
             season=season, episode=episode)
         if why:
             _log("identity filter: " + ", ".join(
@@ -552,7 +584,7 @@ def _search_answer(query):
 
 
 def search(title, alt_title, year, content_type, season=None, episode=None,
-           original_language=None, episode_title=None):
+           original_language=None, episode_title=None, show_all=False):
     if not available():
         return []
     titles = []
@@ -582,6 +614,8 @@ def search(title, alt_title, year, content_type, season=None, episode=None,
     if answer is None:
         return []
     rows = _parse_answer(answer, titles, content_type, year, season, episode, _max_results())
+    if show_all:
+        return rows
     return _identity_filter_rows(rows, original_language, episode_title, season, episode)
 
 
