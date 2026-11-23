@@ -8,7 +8,7 @@ from resources.lib.core.database import connect
 from resources.lib.core.config import ADDON, ADDON_DATA_DIR
 
 class MainCache:
-    SOURCES_REV = 2
+    SOURCES_REV = 5
 
     @staticmethod
     def _scan_rev():
@@ -18,11 +18,12 @@ class MainCache:
             if ADDON.getSetting('use_usenet_nzb') != 'true':
                 return 0
             only = 1 if ADDON.getSetting('usenet_nzb.episodes_only') == 'true' else 0
+            both = 1 if ADDON.getSetting('usenet_nzb.search_mode') == '1' else 0
             try:
                 pages = int(ADDON.getSetting('usenet_nzb.pack_pages') or '1')
             except (TypeError, ValueError):
                 pages = 1
-            return 1 + only * 4 + max(1, min(3, pages))
+            return 1 + only * 4 + both * 8 + max(1, min(3, pages))
         except Exception:
             return 0
 

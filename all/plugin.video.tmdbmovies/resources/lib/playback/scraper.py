@@ -8032,7 +8032,8 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
     return streams or None
 
 
-def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None, alt_title=None):
+def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_query=None, year_query=None, alt_title=None,
+                      original_language=None, episode_title=None):
     '''Our own Newznab indexers, played by our own NNTP provider (no debrid).'''
     try:
         from resources.lib.usenet import config as usenet_config
@@ -8051,16 +8052,18 @@ def scrape_usenet_nzb(imdb_id, content_type, season=None, episode=None, title_qu
         return None
     kind = 'series' if (content_type == 'tv' and season is not None) else 'movie'
     episodes_only = usenet_config.episodes_only() and kind == 'series'
-    log("[USENET] starting: %d indexer(s), %d provider(s), kind=%s, imdb=%s, mode=%s"
+    log("[USENET] starting: %d indexer(s), %d provider(s), kind=%s, imdb=%s, mode=%s, search=%s, lang=%s"
         % (len(usenet_config.indexers()), len(usenet_config.providers()), kind, imdb_id,
-           usenet_config.fetch_mode()))
+           usenet_config.fetch_mode(), usenet_config.search_mode(), original_language or '?'))
     try:
         rows, _notes = usenet_indexer.find(
             kind, imdb_id, season, episode, title_query or '', year=year_query,
             alt_title=alt_title or '', logger=log,
             mode=usenet_config.fetch_mode(), min_usable=usenet_config.stop_after(),
             min_size=usenet_config.min_size_bytes(),
-            episodes_only=episodes_only, per_indexer_limit=usenet_config.max_results())
+            episodes_only=episodes_only, per_indexer_limit=usenet_config.max_results(),
+            original_language=original_language or '', episode_title=episode_title or '',
+            search_mode=usenet_config.search_mode())
     except Exception as exc:
         log(f"[USENET] search failed: {exc}")
         return None
@@ -8161,6 +8164,8 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
     extra_title = ""
     extra_year = ""
     extra_alt_title = ""
+    extra_language = ""
+    extra_episode_title = ""
     
     # Daca avem override (Custom Values), le folosim direct
     if override_title:
@@ -8175,6 +8180,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         ) or ADDON.getSetting('use_p2p_yts') == 'true' or ADDON.getSetting('use_p2p_filelist') == 'true' or ADDON.getSetting('use_p2p_speedapp') == 'true' or ADDON.getSetting('use_p2p_seedpool') == 'true' or ADDON.getSetting('use_p2p_torrentio') == 'true' or ADDON.getSetting('use_p2p_comet') == 'true' or ADDON.getSetting('use_p2p_mediafusion') == 'true' or ADDON.getSetting('use_p2p_knaben') == 'true' or ADDON.getSetting('use_p2p_thepiratebay') == 'true'
         
         if needs_title:
+            tmdb_show_id = ''
             try:
                 imdb_str = str(imdb_id)
                 if imdb_str.startswith('tt'):
@@ -8185,6 +8191,9 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         extra_title = res[0].get('title') or res[0].get('name')
                         extra_alt_title = (res[0].get('original_title')
                                            or res[0].get('original_name') or "")
+                        extra_language = res[0].get('original_language') or ""
+                        if content_type == 'tv':
+                            tmdb_show_id = res[0].get('id') or ''
                         dt = res[0].get('release_date') or res[0].get('first_air_date')
                         extra_year = dt[:4] if dt else ""
                 
@@ -8197,12 +8206,24 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
                         extra_title = data.get('title') or data.get('name')
                         extra_alt_title = (data.get('original_title')
                                            or data.get('original_name') or "")
+                        extra_language = data.get('original_language') or extra_language
+                        if content_type == 'tv':
+                            tmdb_show_id = clean_id
                         dt = data.get('release_date') or data.get('first_air_date')
                         extra_year = dt[:4] if dt else ""
                         
                 log(f"[SCRAPER] Title resolved safely: '{extra_title}' ({extra_year})")
             except Exception as e:
                 log(f"[SCRAPER] Could not resolve title from TMDB: {e}")
+            if (content_type == 'tv' and season is not None and episode is not None
+                    and tmdb_show_id and ADDON.getSetting('use_usenet_nzb') == 'true'):
+                try:
+                    url = (f"{BASE_URL}/tv/{tmdb_show_id}/season/{int(season)}"
+                           f"/episode/{int(episode)}?api_key={API_KEY}")
+                    data = get_json(url)
+                    extra_episode_title = (data or {}).get('name') or ""
+                except Exception as e:
+                    log(f"[SCRAPER] Could not resolve episode title from TMDB: {e}")
 
     # 2. DEFINIRE PROVIDERI (ORDINEA CERUTA)
     providers_map = {
@@ -8246,7 +8267,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
         'easynewspp': ('EasyNews++', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'easynewspp', 'EasyNews++')),
         'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
-        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title)),
+        'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)
         'p2p_yts': ('YTS', lambda: scrape_yts(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year)),

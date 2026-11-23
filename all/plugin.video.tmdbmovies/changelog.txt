@@ -1,3 +1,10 @@
+1.1.363
+- New Search mode under Usenet > Fetching strategy: Auto asks by IMDb first and falls back to the name, ID + Name asks both (more results, more quota).
+- Same-title, same-year collisions no longer mix two shows: a different IMDb id, declared language, episode title or foreign language tag drops that row, while rows without metadata stay.
+- One-word film titles now match the film itself, so The Beast no longer brings Heart of the Beast or Shaun the Sheep.
+- Season packs and large indexer answers keep their titleless episodes; only a small indexer that mixes episode titles loses its single episode without an episode name.
+- Existing source lists are rebuilt once after the update so the new rules apply immediately.
+
 1.1.362
 - Usenet searches use a 15-second budget on all Kodi Python versions: answers that arrive are kept, a hung indexer is skipped and a stalled free indexer is paused for 15 minutes.
 - Binsearch gets an 8-second request timeout, so a failed connection no longer holds up NZBIndex, NZBKing or the keyed indexers behind the global scraper timeout.

@@ -238,6 +238,7 @@
         <setting type="lsep" label="      [COLOR FFCCCCFF][B]Fetching strategy[/B][/COLOR]"/>
         <setting id="usenet_nzb.fetch_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Ask indexers[/B][/COLOR]" values="Sequential - free + Full together, Free/Trial one by one (saves quota)|Parallel - all at once" default="0"/>
         <setting id="usenet_nzb.stop_after" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Ask Next Free/Trial if Sources are Below...[/B][/COLOR]" default="4" range="1,1,10" option="int" visible="eq(-1,0)"/>
+        <setting id="usenet_nzb.search_mode" type="enum" label="      [COLOR FFCCCCFF]└─ [B]Search mode[/B]   (ID first, or ID and name together)[/COLOR]" values="Auto - ID first, name fallback|ID + Name - ask both (more results, more quota)" default="0"/>
 
         <setting id="usenet_nzb.indexer1.enabled" type="bool" label="[COLOR FF00CED1][B]Indexer 1[/B][/COLOR][COLOR FFCCCCFF]   use this indexer[/COLOR]" default="false"/>
         <setting id="usenet_nzb.indexer1.url" type="text" label="      [COLOR FFCCCCFF]└─ [B]address[/B]   (e.g. https://api.indexer.com)[/COLOR]" default="" visible="eq(-1,true)"/>

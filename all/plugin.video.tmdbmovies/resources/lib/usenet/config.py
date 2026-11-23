@@ -624,6 +624,11 @@ def stop_after():
     return number('usenet_nzb.stop_after', 4, 1, 10)
 
 
+def search_mode():
+    """'auto' asks by IMDb and falls back to the name; 'both' always asks both."""
+    return 'both' if number('usenet_nzb.search_mode', 0, 0, 1) == 1 else 'auto'
+
+
 def context_search_scope():
     """'all', 'free' or 'paid' for the custom text search."""
     return ('all', 'free', 'paid')[number('usenet_nzb.context_search_scope', 1, 0, 2)]
