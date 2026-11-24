@@ -7971,7 +7971,8 @@ def _usenet_stream_key(item):
 
 def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
                            title_query=None, year_query=None, alt_title=None,
-                           original_language=None, episode_title=None):
+                           original_language=None, episode_title=None,
+                           episode_air_date=None):
     '''EasyNews username/password: web search and a direct download stream, no NNTP.'''
     if not title_query:
         log("[EASYNEWS-DIRECT] no title")
@@ -7997,6 +7998,7 @@ def scrape_easynews_direct(imdb_id, content_type, season=None, episode=None,
                                       content_type, season, episode,
                                       original_language=original_language,
                                       episode_title=episode_title,
+                                      episode_air_date=episode_air_date,
                                       show_all=show_all)
     except Exception as exc:
         log(f"[EASYNEWS-DIRECT] search failed: {type(exc).__name__}")
@@ -8291,7 +8293,7 @@ def get_stream_data(imdb_id, content_type, season=None, episode=None, progress_c
         'custom5': ('Custom 5', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'custom5', ADDON.getSetting('custom5_name') or 'Custom 5')),
         'usenet': ('Usenet', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'usenet', 'Usenet')),
         'easynewspp': ('EasyNews++', lambda: scrape_stremio_addon(imdb_id, content_type, season, episode, 'easynewspp', 'EasyNews++')),
-        'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title)),
+        'easynews_direct': ('EasyNews Direct', lambda: scrape_easynews_direct(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title, episode_air_date=extra_episode_air_date)),
         'usenet_nzb': ('Usenet (NZB)', lambda: scrape_usenet_nzb(imdb_id, content_type, season, episode, title_query=extra_title, year_query=extra_year, alt_title=extra_alt_title, original_language=extra_language, episode_title=extra_episode_title, episode_air_date=extra_episode_air_date, tvdb_id=extra_tvdb)),
 
         # PROVIDERI P2P (IGNORA SWITCH-UL GLOBAL HTTP, RESPECTA P2P MASTER SWITCH)

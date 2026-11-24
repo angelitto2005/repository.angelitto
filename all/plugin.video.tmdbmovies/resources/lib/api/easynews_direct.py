@@ -343,6 +343,11 @@ def _title_matches(name, titles, content_type, year, season, episode):
     return False
 
 
+def _query_text(title):
+    """EasyNews returns nothing when the query contains a colon."""
+    return re.sub(r'\s+', ' ', str(title or '').replace(':', ' ')).strip()
+
+
 def _explicit_language_codes(name):
     """Language words in an EasyNews filename, e.g. POLISH or italian."""
     text = str(name or '')
@@ -363,45 +368,50 @@ def _explicit_language_codes(name):
     return codes
 
 
-def _identity_filter_rows(rows, original_language, episode_title, season, episode):
-    """Same conflict-only identity rules as the Usenet indexers.
-
-    EasyNews has no IMDb/language fields in its answer, so only the filename
-    can prove a conflict: a foreign language word or a wrong episode title.
-    Rows without that evidence are kept.
-    """
-    if not rows or not (original_language or episode_title):
+def _identity_filter_rows(rows, original_language, episode_title, season, episode,
+                          episode_air_date=None):
+    """Drop rows whose audio tracks or posting date prove a different show."""
+    if not rows or not (original_language or episode_air_date):
         return rows
     try:
         from resources.lib.usenet import indexer as usenet_indexer
-        language = str(original_language or '').strip().lower()
-        wanted_languages = usenet_indexer._language_codes(language)
-        if not wanted_languages and len(language) in (2, 3):
-            wanted_languages = {language}
-        why = {}
-        candidates = []
-        for row in rows:
-            row['title'] = row.get('name') or ''
-            row['indexer'] = 'EasyNews Direct'
-            row['language'] = ''
-            row['imdb'] = ''
-            codes = _explicit_language_codes(row['title'])
-            if codes and wanted_languages and not (codes & wanted_languages):
-                why['wrong language'] = why.get('wrong language', 0) + 1
-                continue
-            if codes:
-                row['language'] = ','.join(sorted(codes))
-            candidates.append(row)
-        kept = usenet_indexer._identity_filter(
-            candidates, '', original_language or '', episode_title or '', why,
-            season=season, episode=episode)
-        if why:
-            _log("identity filter: " + ", ".join(
-                "%s=%d" % (reason, count) for reason, count in sorted(why.items())))
-        return kept
     except Exception as error:
         _log("identity filter unavailable: %s" % type(error).__name__)
         return rows
+    language = str(original_language or '').strip().lower()
+    wanted_languages = usenet_indexer._language_codes(language)
+    if not wanted_languages and len(language) in (2, 3):
+        wanted_languages = {language}
+    air = 0
+    if episode_air_date:
+        try:
+            air = int(time.mktime(time.strptime(str(episode_air_date)[:10], '%Y-%m-%d')))
+        except (TypeError, ValueError, OverflowError):
+            air = 0
+    why = {}
+    kept = []
+    for row in rows:
+        row['title'] = row.get('name') or ''
+        row['indexer'] = 'EasyNews Direct'
+        row['imdb'] = ''
+        audio_codes = usenet_indexer._language_codes(' '.join(row.get('audio') or []))
+        codes = audio_codes or _explicit_language_codes(row['title'])
+        if wanted_languages and codes and not (codes & wanted_languages):
+            why['wrong language'] = why.get('wrong language', 0) + 1
+            continue
+        row['language'] = ','.join(sorted(codes)) if codes else ''
+        try:
+            posted = int(row.get('posted') or 0)
+        except (TypeError, ValueError):
+            posted = 0
+        if air and posted and posted < air - usenet_indexer.AIR_GRACE:
+            why['before air date'] = why.get('before air date', 0) + 1
+            continue
+        kept.append(row)
+    if why:
+        _log("identity filter: " + ", ".join(
+            "%s=%d" % (reason, count) for reason, count in sorted(why.items())))
+    return kept
 
 
 def _field(raw, names):
@@ -422,6 +432,8 @@ def _item(raw):
             "extension": str(raw[11] or ""),
             "size": _number(raw[4] if len(raw) > 4 else 0),
             "seconds": _seconds(raw[14]) if len(raw) > 14 else None,
+            "posted": 0,
+            "audio": [],
             "bad": False,
             "type": "",
         }
@@ -429,6 +441,9 @@ def _item(raw):
         return None
     if str(raw.get("type") or "").upper() not in ("", "VIDEO"):
         return None
+    audio = raw.get("audio_tracks") or []
+    if isinstance(audio, str):
+        audio = [audio]
     return {
         "key": str(_field(raw, ("hash", "0")) or ""),
         "id": str(_field(raw, ("id",)) or ""),
@@ -436,6 +451,8 @@ def _item(raw):
         "extension": str(_field(raw, ("extension", "ext", "11")) or ""),
         "size": _number(_field(raw, ("rawSize", "size", "4"))),
         "seconds": _seconds(_field(raw, ("runtime", "14"))),
+        "posted": _number(_field(raw, ("timestamp", "ts", "dtime"))),
+        "audio": [str(item) for item in audio if item],
         "bad": bool(raw.get("passwd") or raw.get("password") or raw.get("virus")),
         "type": str(raw.get("type") or ""),
     }
@@ -504,6 +521,8 @@ def _parse_answer(answer, titles, content_type, year, season, episode, limit, cu
             "url": url,
             "size": size,
             "seconds": seconds,
+            "posted": item["posted"],
+            "audio": item["audio"],
         })
         if len(out) >= limit:
             break
@@ -584,7 +603,7 @@ def _search_answer(query):
 
 
 def search(title, alt_title, year, content_type, season=None, episode=None,
-           original_language=None, episode_title=None, show_all=False):
+           original_language=None, episode_title=None, episode_air_date=None, show_all=False):
     if not available():
         return []
     titles = []
@@ -605,25 +624,27 @@ def search(title, alt_title, year, content_type, season=None, episode=None,
     except (TypeError, ValueError):
         if content_type == "tv":
             return []
-    query = titles[0]
+    query = _query_text(titles[0])
     if year and content_type != "tv":
         query = "%s %d" % (query, year)
     if content_type == "tv" and season is not None and episode is not None:
         query = "%s S%02dE%02d" % (query, season, episode)
+    _log("query: %s" % query)
     answer = _search_answer(query)
     if answer is None:
         return []
     rows = _parse_answer(answer, titles, content_type, year, season, episode, _max_results())
     if show_all:
         return rows
-    return _identity_filter_rows(rows, original_language, episode_title, season, episode)
+    return _identity_filter_rows(rows, original_language, episode_title, season, episode,
+                                 episode_air_date)
 
 
 def search_custom(query, limit=None):
     """Free-text search for the Usenet custom search; no film-title filter."""
     if not available():
         return []
-    query = str(query or "").strip()
+    query = _query_text(query)
     if not query:
         return []
     try:
@@ -631,6 +652,7 @@ def search_custom(query, limit=None):
     except (TypeError, ValueError):
         limit = _max_results()
     limit = max(1, min(100, limit))
+    _log("custom query: %s" % query)
     answer = _search_answer(query)
     if answer is None:
         return []

@@ -10,6 +10,8 @@ import hashlib
 import json
 import os
 import re
+import select
+import socket
 import threading
 import time
 import urllib.parse
@@ -19,6 +21,7 @@ from socketserver import ThreadingMixIn
 import requests
 
 PORT_PROPERTY = 'tmdbmovies.easynews.port'
+ACTIVITY_PROPERTY = 'tmdbmovies.easynews.activity'
 PORT_RANGE = tuple(range(47341, 47351))
 TOKEN_RE = re.compile(r'^[0-9a-f]{32}$')
 MAX_SESSIONS = 8
@@ -57,6 +60,14 @@ def _publish(port):
             window.setProperty(PORT_PROPERTY, str(port))
         else:
             window.clearProperty(PORT_PROPERTY)
+    except Exception:
+        pass
+
+
+def _publish_activity():
+    try:
+        import xbmcgui
+        xbmcgui.Window(10000).setProperty(ACTIVITY_PROPERTY, '%.3f' % time.time())
     except Exception:
         pass
 
@@ -104,6 +115,17 @@ def _stream_name(remote_url):
 def _local_url(port, token, remote_url):
     return 'http://127.0.0.1:%d/en/%s/%s' % (
         port, token, urllib.parse.quote(_stream_name(remote_url), safe=''))
+
+
+def _token_from_url(url):
+    base = (url or '').partition('|')[0]
+    try:
+        parts = [piece for piece in urllib.parse.urlsplit(base).path.split('/') if piece]
+    except Exception:
+        return ''
+    if len(parts) >= 2 and parts[0] == 'en' and TOKEN_RE.match(parts[1]):
+        return parts[1]
+    return ''
 
 
 def _parse_range(value):
@@ -189,9 +211,95 @@ def _follow(session, method, url, headers, timeout=(10, 12), on_resolved=None):
     return None
 
 
+def _abort_stream(entry, reason, kill_client=False):
+    if not entry or entry['done'].is_set() or entry['abort'].is_set():
+        return
+    entry['abort'].set()
+    response = entry.get('response')
+    if response is not None:
+        try:
+            response.close()
+        except Exception:
+            pass
+    if kill_client:
+        try:
+            entry['connection'].shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass
+    _log('stream aborted after %.1fs range=%r (%s)'
+         % (time.time() - entry['started'], entry['range'], reason))
+
+
+def _watch_client(entry):
+    connection = entry['connection']
+    while not entry['done'].is_set():
+        if entry['abort'].wait(0.5):
+            return
+        try:
+            ready = select.select([connection], [], [], 0)[0]
+            if not ready:
+                continue
+            if connection.recv(1, socket.MSG_PEEK) == b'':
+                _abort_stream(entry, 'client closed')
+                return
+        except (OSError, ValueError):
+            _abort_stream(entry, 'client closed')
+            return
+
+
+def _begin_stream(info, handler, range_value):
+    entry = {
+        'connection': handler.connection,
+        'response': None,
+        'range': range_value,
+        'started': time.time(),
+        'done': threading.Event(),
+        'abort': threading.Event(),
+    }
+    with _LOCK:
+        previous = info.get('stream')
+        info['stream'] = entry
+    if previous is not None:
+        _abort_stream(previous, 'newer range')
+    _publish_activity()
+    threading.Thread(target=_watch_client, args=(entry,),
+                     name='EasyNewsClientWatch', daemon=True).start()
+    return entry
+
+
+def _finish_stream(info, entry):
+    entry['done'].set()
+    with _LOCK:
+        if info.get('stream') is entry:
+            info['stream'] = None
+
+
+def _abort_token(token, reason='stop', close=False):
+    with _LOCK:
+        info = _SESSIONS.get(token)
+        entry = info.get('stream') if info else None
+    if entry is not None:
+        _abort_stream(entry, reason, kill_client=True)
+    if close:
+        _close(token)
+    return entry is not None
+
+
+def _abort_other_streams(token):
+    with _LOCK:
+        entries = [info.get('stream') for key, info in _SESSIONS.items()
+                   if key != token]
+    for entry in entries:
+        if entry is not None:
+            _abort_stream(entry, 'new playback', kill_client=True)
+
+
 def _close(token):
     with _LOCK:
         info = _SESSIONS.pop(token, None)
+        entry = info.get('stream') if info else None
+    if entry is not None:
+        _abort_stream(entry, 'session closed', kill_client=True)
     if info:
         try:
             info['session'].close()
@@ -233,6 +341,7 @@ def _register(remote_url):
         'last': time.time(),
         'head': None,
         'resolved': None,
+        'stream': None,
     }
     with _LOCK:
         _SESSIONS[token] = info
@@ -471,6 +580,8 @@ class _Handler(BaseHTTPRequestHandler):
             return self._text(403, 'forbidden')
         if path == '/open':
             return self._open()
+        if path == '/abort':
+            return self._abort()
         if path == '/close':
             _close_all()
             return self._json({'ok': True})
@@ -501,6 +612,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not _authorization():
             return self._json({'ok': False, 'reason': 'EasyNews login is not configured'})
         token = _register(remote_url)
+        _abort_other_streams(token)
         with _LOCK:
             info = _SESSIONS.get(token)
         if info:
@@ -508,6 +620,20 @@ class _Handler(BaseHTTPRequestHandler):
         tail_ok = bool(info and info.get('tail'))
         return self._json({'ok': True, 'url': _local_url(_PORT, token, remote_url),
                            'tail_ok': tail_ok})
+
+    def _abort(self):
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+            if length <= 0 or length > 4096:
+                return self._text(400, 'bad body')
+            payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            token = str(payload.get('token') or '')
+            reason = str(payload.get('reason') or 'stop')[:40]
+        except Exception:
+            return self._text(400, 'bad body')
+        if not TOKEN_RE.match(token):
+            return self._text(400, 'bad token')
+        return self._json({'ok': True, 'aborted': _abort_token(token, reason, close=True)})
 
     def _send_headers(self, status, values):
         self.send_response(status)
@@ -549,6 +675,7 @@ class _Handler(BaseHTTPRequestHandler):
             cached_tail = _cached_tail(info, client_start, client_end)
             if cached_tail:
                 values, data = cached_tail
+                _publish_activity()
                 self._send_headers(206, values)
                 try:
                     self.wfile.write(data)
@@ -557,31 +684,43 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
                 return
-        headers = _request_headers(range_value)
-        if if_range:
-            headers['If-Range'] = if_range
-        _log('request %s range=%r if_range=%r'
-             % ('HEAD' if head else 'GET', headers.get('Range'), if_range))
-        upstream_url = _resolved_url(info) or info['url']
-        remember = lambda final: _remember_resolved(info, final)
+        entry = None
+        if not head:
+            entry = _begin_stream(info, self, range_value)
+            if entry['abort'].is_set():
+                _finish_stream(info, entry)
+                return
         response = None
-        for attempt in range(2):
-            response = _follow(info['session'], 'HEAD' if head else 'GET',
-                               upstream_url, headers, timeout=upstream_timeout,
-                               on_resolved=remember)
-            if response is not None:
-                break
-            if attempt == 0:
-                if upstream_url != info['url']:
-                    _forget_resolved(info)
-                    upstream_url = info['url']
-                    _log('resolved CDN URL failed, retry original range=%r'
-                         % headers.get('Range'))
-                else:
-                    _log('upstream retry range=%r' % headers.get('Range'))
-        if response is None:
-            return self._text(502, 'upstream unavailable')
         try:
+            headers = _request_headers(range_value)
+            if if_range:
+                headers['If-Range'] = if_range
+            _log('request %s range=%r if_range=%r'
+                 % ('HEAD' if head else 'GET', headers.get('Range'), if_range))
+            upstream_url = _resolved_url(info) or info['url']
+            remember = lambda final: _remember_resolved(info, final)
+            for attempt in range(2):
+                if entry is not None and entry['abort'].is_set():
+                    return
+                response = _follow(info['session'], 'HEAD' if head else 'GET',
+                                   upstream_url, headers, timeout=upstream_timeout,
+                                   on_resolved=remember)
+                if response is not None:
+                    break
+                if attempt == 0:
+                    if upstream_url != info['url']:
+                        _forget_resolved(info)
+                        upstream_url = info['url']
+                        _log('resolved CDN URL failed, retry original range=%r'
+                             % headers.get('Range'))
+                    else:
+                        _log('upstream retry range=%r' % headers.get('Range'))
+            if response is None:
+                return self._text(502, 'upstream unavailable')
+            if entry is not None:
+                entry['response'] = response
+                if entry['abort'].is_set():
+                    return
             status = response.status_code
             if status in (401, 403, 410) and upstream_url != info['url']:
                 try:
@@ -596,6 +735,10 @@ class _Handler(BaseHTTPRequestHandler):
                                    on_resolved=remember)
                 if response is None:
                     return self._text(502, 'upstream unavailable')
+                if entry is not None:
+                    entry['response'] = response
+                    if entry['abort'].is_set():
+                        return
                 status = response.status_code
             if status not in (200, 206, 416):
                 _log('upstream answered HTTP %d' % status, 'warning')
@@ -627,10 +770,15 @@ class _Handler(BaseHTTPRequestHandler):
             failures = 0
             current = response
             while True:
+                if entry is not None and entry['abort'].is_set():
+                    break
                 attempt_sent = sent
                 body_error = ''
                 try:
                     for piece in current.iter_content(1024 * 1024):
+                        if entry is not None and entry['abort'].is_set():
+                            body_error = 'abort'
+                            break
                         if not piece:
                             continue
                         if expected is not None:
@@ -646,20 +794,25 @@ class _Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     body_error = 'client'
                 except Exception as error:
-                    body_error = type(error).__name__
-                    _log('stream error: %s after %.1fs sent %d range=%r'
-                         % (body_error, time.time() - started, sent,
-                            headers.get('Range')), 'warning')
+                    if entry is not None and entry['abort'].is_set():
+                        body_error = 'abort'
+                    else:
+                        body_error = type(error).__name__
+                        _log('stream error: %s after %.1fs sent %d range=%r'
+                             % (body_error, time.time() - started, sent,
+                                headers.get('Range')), 'warning')
                 finally:
                     try:
                         current.close()
                     except Exception:
                         pass
-                if body_error == 'client':
+                if body_error in ('client', 'abort'):
                     break
                 if expected is not None and sent >= expected:
                     break
                 if expected is None:
+                    break
+                if entry is not None and entry['abort'].is_set():
                     break
                 if not body_error:
                     _log('stream ended early at %d of %d bytes' % (sent, expected),
@@ -682,6 +835,14 @@ class _Handler(BaseHTTPRequestHandler):
                 if current is None:
                     _log('resume unavailable at %d' % next_offset, 'warning')
                     break
+                if entry is not None:
+                    entry['response'] = current
+                    if entry['abort'].is_set():
+                        try:
+                            current.close()
+                        except Exception:
+                            pass
+                        break
                 if current.status_code != 206:
                     _log('resume answered HTTP %d at %d'
                          % (current.status_code, next_offset), 'warning')
@@ -704,14 +865,18 @@ class _Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except Exception:
                     pass
-                elapsed = max(0.001, time.time() - started)
-                _log('served %d bytes in %.1fs (%.1f MB/s)'
-                     % (sent, elapsed, sent / 1048576.0 / elapsed))
+                if entry is None or not entry['abort'].is_set():
+                    elapsed = max(0.001, time.time() - started)
+                    _log('served %d bytes in %.1fs (%.1f MB/s)'
+                         % (sent, elapsed, sent / 1048576.0 / elapsed))
         finally:
             try:
-                response.close()
+                if response is not None:
+                    response.close()
             except Exception:
                 pass
+            if entry is not None:
+                _finish_stream(info, entry)
 
 
 class _ThreadedServer(ThreadingMixIn, HTTPServer):
@@ -836,6 +1001,28 @@ def playback_url(remote_url):
             local += '|seekable=0'
         _log('tail cache unavailable - this attempt uses no-seek')
     return local
+
+
+def abort_url(url, reason='stop'):
+    """Abort only this playback's active loopback stream.
+
+    The player and the HTTP server can live in different Python invokers, so
+    the server must do the abort; the local call only covers same-process use.
+    """
+    token = _token_from_url(url)
+    if not token:
+        return False
+    port = _published_port()
+    if port:
+        try:
+            response = _LOCAL.post('http://127.0.0.1:%d/abort' % port,
+                                   json={'token': token, 'reason': reason}, timeout=2)
+            answer = response.json()
+            if answer.get('ok'):
+                return bool(answer.get('aborted'))
+        except Exception:
+            pass
+    return _abort_token(token, reason, close=True)
 
 
 def close_all():

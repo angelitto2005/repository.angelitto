@@ -1,7 +1,13 @@
+1.1.366
+- EasyNews Direct uses the audio language and posting date, so the Dutch The Perfect Lie no longer appears next to the Korean one, while English releases without an episode title are kept.
+- Titles with a colon, such as The Lord of the Rings: The Rings of Power, are searched without the colon, so EasyNews no longer returns zero results.
+- Stopping EasyNews Direct no longer leaves Kodi waiting on the old stream: the local stream is closed immediately and the source list returns at once.
+- Seeking closes the previous EasyNews range instead of downloading it in parallel, so the new position gets the full available speed and a stalled source is retried without competition.
+- Seeking in EasyNews Direct no longer trips the stall guard; a genuinely stalled source is still retried.
+
 1.1.365
 - EasyNews Direct now reads language words such as POLISH, ITALIAN and FRENCH from the filename, so the Dutch The Perfect Lie no longer appears next to the Korean one.
 - Usenet and EasyNews Direct now follow the Search mode: Auto hides same-name collisions, while ID + Name shows every matching release, including other shows with the same name.
-- Existing source lists are rebuilt once after the update so the new rule applies immediately.
 
 1.1.364
 - EasyNews cold starts no longer stop and need a second click: the source is prepared, the signed CDN link is reused and the last 512 KB is fetched before Kodi opens it, so the tail does not fight the main download.
@@ -9,14 +15,12 @@
 - EasyNews Direct filenames use the same collision filter as Usenet, so an episode from another show with the same name is not listed.
 - Usenet TV searches now use the TVDB id when TMDb has one, so DrunkenSlug and similar indexers no longer mix The Perfect Lie with another 2026 show of the same name; season packs no longer fall back to an ambiguous name search.
 - A release posted more than a week before the episode aired is dropped, so the older season of a same-name show cannot appear when an indexer ignores the TVDB id.
-- Existing source lists and searches are rebuilt once after the update so the new rules apply immediately.
 
 1.1.363
 - New Search mode under Usenet > Fetching strategy: Auto asks by IMDb first and falls back to the name, ID + Name asks both (more results, more quota).
 - Same-title, same-year collisions no longer mix two shows: a different IMDb id, declared language, episode title or foreign language tag drops that row, while rows without metadata stay.
 - One-word film titles now match the film itself, so The Beast no longer brings Heart of the Beast or Shaun the Sheep.
 - Season packs and large indexer answers keep their titleless episodes; only a small indexer that mixes episode titles loses its single episode without an episode name.
-- Existing source lists are rebuilt once after the update so the new rules apply immediately.
 
 1.1.362
 - Usenet searches use a 15-second budget on all Kodi Python versions: answers that arrive are kept, a hung indexer is skipped and a stalled free indexer is paused for 15 minutes.
