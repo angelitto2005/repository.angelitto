@@ -2703,6 +2703,16 @@ def run_service():
         xbmc.log('[TMDb Movies] [EASYNEWS-PROXY] server error: %s' % _easynews_proxy_error,
                  xbmc.LOGERROR)
 
+    # --- Dialogurile de dupa stop (binge / rating). Invocarea de play scrie o
+    # cerere si pleaca; dialogul il arata bucla de aici, ca invocarea (singura
+    # pe care Kodi o asteapta la final) sa nu fie tinuta cit sta omul in dialog. ---
+    try:
+        from resources.lib.playback import post_stop_prompt as _post_stop_prompt
+        _post_stop_prompt.start()
+    except Exception as _post_stop_error:
+        xbmc.log('[TMDb Movies] [POST-STOP] bucla nu a pornit: %s' % _post_stop_error,
+                 xbmc.LOGERROR)
+
     # --- Usenet (NZB): trim the caches kept in the profile (NZBs 3 days / 256 MB,
     # VFS plans 12 h). The HTTP server does the NZB pass itself, but the VFS path
     # never starts it, so this runs on every boot regardless of the stream engine. ---

@@ -515,10 +515,16 @@ def history_clear(params=None):
 def _play_easynews(handle, remote_url, title='', size=0, indexer='EasyNews Direct'):
     local = ''
     try:
-        from resources.lib.api.easynews_proxy import playback_url
+        from resources.lib.api.easynews_direct import playback_url
         local = playback_url(remote_url)
     except Exception as exc:
-        _log('EasyNews proxy failed: %s' % type(exc).__name__)
+        _log('EasyNews direct address failed: %s' % type(exc).__name__)
+    if not local:
+        try:
+            from resources.lib.api.easynews_proxy import playback_url as _proxy_playback_url
+            local = _proxy_playback_url(remote_url)
+        except Exception as exc:
+            _log('EasyNews proxy failed: %s' % type(exc).__name__)
     if not local:
         try:
             from resources.lib.api.easynews_direct import resolve_playback
@@ -529,12 +535,13 @@ def _play_easynews(handle, remote_url, title='', size=0, indexer='EasyNews Direc
         _notify('EasyNews Direct stream is unavailable')
         xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
         return
-    if '|seekable=' not in local:
-        local += '|seekable=1'
+    if '127.0.0.1' in local and '|seekable=' not in local:
+        local += '|seekable=1'          # only the proxy fallback needs the hint
     _log('playing EasyNews Direct: %s' % (title or 'stream'))
     li = xbmcgui.ListItem(label=title or 'EasyNews Direct', path=local)
     try:
         li.setInfo('video', _video_info(title, size, indexer))
+        li.setContentLookup(False)      # no extra Stat request before playing
     except Exception as exc:
         _log('info tag failed: %s' % exc)
     xbmcplugin.setResolvedUrl(handle, True, li)

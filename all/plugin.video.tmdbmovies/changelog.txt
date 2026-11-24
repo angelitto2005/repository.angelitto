@@ -1,3 +1,10 @@
+1.1.367
+- A stop no longer keeps Kodi waiting: the list refresh, the pre-build wait, a modal dialog and the container update now share a single six second budget after the stop instead of adding up, so the source list comes back at once even when a dialog was left open.
+- The binge and rating dialogs are shown by the service now, not by the play call, so an open dialog no longer holds the player script and closing Kodi with it on screen no longer reports that the script did not stop.
+- A placeholder answer is rejected before playback: HTML and JSON pages, download-in-progress clips, files under 20 MB and downloading.mp4 links are skipped to the next source, while HLS playlists and real video headers are kept.
+- With the local watched status, finishing an episode no longer drops the show from TMDb Up Next: the per-mark rebuild did not count the local library as a source pool, so the show was deleted from the TMDb list while it stayed in the local Up Next.
+- The list behind the player is refreshed again after a stop in the addon's own window: the plugin name could come back empty while Kodi was still re-initialising the media window, so the single refresh was skipped and the list kept the old resume point until it was re-opened.
+
 1.1.366
 - EasyNews Direct uses the audio language and posting date, so the Dutch The Perfect Lie no longer appears next to the Korean one, while English releases without an episode title are kept.
 - Titles with a colon, such as The Lord of the Rings: The Rings of Power, are searched without the colon, so EasyNews no longer returns zero results.

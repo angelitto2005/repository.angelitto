@@ -215,6 +215,12 @@ PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursa (mareste daca surse
 PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifica audio-only doar pe SD/720p, False = verifica toate
 EASYNEWS_STALL_SECONDS = 20.0  # no position progress -> try the next source
 EASYNEWS_RANGE_GRACE = 10.0  # a fresh proxy range means Kodi is seeking/recovering
+# Post-stop work runs inside the play invocation and Kodi waits for its threads
+# ("CPythonInvoker ... waiting on thread"), so nothing after a stop may outlive
+# this budget, counted from the moment playback stopped. Every wait below takes
+# what is left of it, they do not add up.
+POST_STOP_BUDGET = 6.0
+POST_STOP_WAIT = 2.5      # plafon pentru o singura asteptare (prebuild, modal, varianta)
 # PLAYER_KEEP_DUPLICATES = True  # True = pastreaza surse duplicate, False = elimina duplicate
 # =============================================================================
 _active_player = None
@@ -897,25 +903,91 @@ def check_url_validity(url, headers=None, max_timeout=None):
     return result['valid']
 
 
-def _fast_aio_resolve_link(url, timeout=25):
-    """Rezolva URL-uri AIO/Stremio la link-ul final: 4xx/5xx/timeout = None, fara retry."""
+# Un releas oferit ca video nu e niciodata atit de mic: ce intoarce un serviciu
+# debrid pentru un torrent pe care inca il aduce este un clip "downloading" de
+# citeva sute de KB sau o pagina HTML, iar Kodi le deschide ca ecran negru.
+PLACEHOLDER_MAX_BYTES = 20 * 1024 * 1024
+PLACEHOLDER_BODY = 2048          # citim doar inceputul, cit sa recunoastem un text
+PLACEHOLDER_WORDS = (
+    b'download in progress', b'downloading', b'not downloaded', b'not ready',
+    b'please wait', b'preparing', b'queued', b'not cached',
+)
+PLACEHOLDER_TYPES = ('text/html', 'application/xhtml+xml', 'application/json',
+                     'application/xml')
+PLACEHOLDER_PATHS = ('download_failed', 'download-failed', '/failed.mp4',
+                     '/downloading.mp4')
+VIDEO_SIGNATURES = (b'\x1aE\xdf\xa3', b'ftyp', b'RIFF')   # mkv/webm, mp4/mov/m4v, avi/wmv
+HLS_TYPES = ('application/vnd.apple.mpegurl', 'application/x-mpegurl')
+
+
+def _probe_total(status, headers):
+    """Dimensiunea intregului fisier din raspunsul sondei, sau None."""
+    match = re.match(r'bytes\s+\d+-\d+/(\d+)', headers.get('Content-Range') or '')
+    if match:
+        return int(match.group(1))
+    length = (headers.get('Content-Length') or '').strip()
+    if status == 200 and length.isdigit():
+        return int(length)
+    return None
+
+
+def _placeholder_reason(status, headers, body, final_url):
+    """De ce raspunsul nu e un video adevarat (text pentru log), sau '' daca pare video."""
+    ctype = (headers.get('Content-Type') or '').split(';')[0].strip().lower()
+    if ctype in HLS_TYPES or b'#EXTM3U' in body[:1024] or b'#EXTINF' in body[:2048]:
+        return ''                                   # playlist HLS: mic si text, dar redabil
+    path = final_url.split('?', 1)[0].lower()
+    if any(mark in path for mark in PLACEHOLDER_PATHS):
+        return 'path'
+    # Dimensiunea inaintea tipului: un "downloading.mp4" e un mp4 adevarat,
+    # doar ca are citeva sute de KB in loc de citiva GB.
+    total = _probe_total(status, headers)
+    if total is not None and total < PLACEHOLDER_MAX_BYTES:
+        return 'size %d B' % total
+    if any(sig in body[:64] for sig in VIDEO_SIGNATURES) or ctype.startswith('video/'):
+        return ''
+    if ctype in PLACEHOLDER_TYPES:
+        return 'type %s' % ctype
+    low = body.lower()
+    for word in PLACEHOLDER_WORDS:
+        if word in low:
+            return 'text "%s"' % word.decode('ascii', 'ignore')
+    return ''
+
+
+def _fast_aio_resolve_link(url, timeout=10):
+    """Rezolva URL-uri AIO/Stremio la link-ul final: 4xx/5xx/timeout = None, fara retry.
+
+    Sonda cere doar inceputul fisierului, ca la Lucent: un link rece (torrent inca
+    nepus in debrid) raspunde repede cu eroare sau cu un placeholder, iar unul bun
+    trimite redirectul adevarat. GET-ul fara Range statea pana la 25s pe un server
+    rece, iar sursa parea ca "nu se deschide" fara sa se vada de ce.
+    """
     clean_url = url.split('|')[0]
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     if '|' in url:
         try: headers = dict(urllib.parse.parse_qsl(url.split('|')[1]))
         except: pass
+    probe = dict(headers)
+    if not any(k.lower() == 'range' for k in probe):
+        probe['Range'] = 'bytes=0-%d' % (PLACEHOLDER_BODY - 1)   # only for the probe
     try:
-        r = requests.get(clean_url, headers=headers, timeout=timeout, verify=False, allow_redirects=True, stream=True)
+        r = requests.get(clean_url, headers=probe, timeout=timeout, verify=False, allow_redirects=True, stream=True)
         code = r.status_code
         final = r.url
+        response_headers = dict(r.headers or {})
+        body = b''
+        try:
+            body = next(r.iter_content(PLACEHOLDER_BODY), b'') or b''
+        except Exception as read_error:
+            log(f"[PLAYER-AIOCHECK] probe body error: {type(read_error).__name__}")
         r.close()
-        if code >= 400:
+        if code >= 400 and code != 416:   # 416 = the range was answered, the file exists
             log(f"[PLAYER-AIOCHECK] FAIL ({code}): {clean_url[:60]}...")
             return None
-        final_path = final.split('|', 1)[0].lower()
-        if ('download_failed' in final_path or 'download-failed' in final_path
-                or final_path.split('?', 1)[0].endswith('/failed.mp4')):
-            log(f"[PLAYER-AIOCHECK] FAIL placeholder: {final[:60]}...")
+        why = _placeholder_reason(code, response_headers, body, final)
+        if why:
+            log(f"[PLAYER-AIOCHECK] FAIL placeholder ({why}): {final[:60]}...")
             return None
         if headers and '|' not in final:
             final = f"{final}|" + urllib.parse.urlencode(headers)
@@ -2709,7 +2781,14 @@ def start_playback_monitor(player_instance, dialog=None):
             try: dialog.close()
             except: pass
         player_instance.playback_start_time = time.time()
-        _easynews_source = bool(getattr(player_instance, 'easynews_source', False))
+        # Doar pe calea cu proxy. Pe redarea directa watchdog-ul ramine OPRIT,
+        # deliberat: o sursa rece care nu porneste trebuie sa se opreasca si sa
+        # te lase in lista. Cu el pornit, retry-ul automat (acelasi URL, apoi
+        # sursa urmatoare) se poate inlantui si redarea reporneste singura, fara
+        # sa mai poata fi oprita din telecomanda. Al doilea click manual pe
+        # aceeasi sursa o porneste, pentru ca obiectul e deja cald pe CDN.
+        _easynews_source = (bool(getattr(player_instance, 'easynews_source', False))
+                            and not getattr(player_instance, 'easynews_direct', False))
         _easynews_stall_pos = -1.0
         _easynews_stall_since = time.time()
         _easynews_grace_until = 0.0
@@ -3009,7 +3088,6 @@ def start_playback_monitor(player_instance, dialog=None):
         # ============================================================
 
         # SALVARE PROGRES (LOGICA NOUA)
-        stop_net_threads = []
         try:
             xbmcgui.Window(10000).setProperty('tmdbmovies.binge_open', str(time.time()))
         except:
@@ -3094,7 +3172,6 @@ def start_playback_monitor(player_instance, dialog=None):
                 )
                 _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 100), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position, 'watched': True, 'watched_threshold': 0.90}, daemon=True)
                 _stop_net_thread.start()
-                stop_net_threads.append(_stop_net_thread)
                 
                 # BIFAM CA E ELIGIBIL PENTRU RATING LA FINAL
                 player_instance.should_prompt_rating = True
@@ -3117,7 +3194,6 @@ def start_playback_monitor(player_instance, dialog=None):
                 
                 _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', last_known_progress), kwargs={'duration_seconds': last_known_total, 'position_seconds': last_known_position}, daemon=True)
                 _stop_net_thread.start()
-                stop_net_threads.append(_stop_net_thread)
                 log(f"[PLAYER-MONITOR] ✓ Resume saved locally (Exact Seconds stored as {exact_seconds_value})")
                 
             else:
@@ -3144,13 +3220,11 @@ def start_playback_monitor(player_instance, dialog=None):
                         old_pct = (old_resume_seconds / last_known_total * 100) if last_known_total > 0 else 0
                         _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('pause', old_pct), kwargs={'duration_seconds': last_known_total, 'position_seconds': old_resume_seconds}, daemon=True)
                         _stop_net_thread.start()
-                        stop_net_threads.append(_stop_net_thread)
                     else:
                         # Nu exista resume valid sau era si el sub 3 min -> stergem tot
                         log(f"[PLAYER-MONITOR] Watched <3min and near start ({int(watched_duration)}s). Deleting ghost session.")
                         _stop_net_thread = threading.Thread(target=player_instance._send_trakt_scrobble, args=('stop', 0), kwargs={'watched': False}, daemon=True)
                         _stop_net_thread.start()
-                        stop_net_threads.append(_stop_net_thread)
                         if row:
                             # Stergem un resume existent -> cercul dispare, deci
                             # lista trebuie re-randata (chiar daca nu s-a marcat
@@ -3212,90 +3286,63 @@ def start_playback_monitor(player_instance, dialog=None):
                 xbmcgui.Window(10000).setProperty('tmdbmovies.stop_refresh_pending', str(time.time()))
             except Exception:
                 pass
-            import json as _bjson  # 'json' e local in functia care ne gazduieste
             is_ep = (player_instance.content_type in ['tv', 'episode']) and (player_instance.season is not None) and (player_instance.episode is not None)
-            prompted_next = False
-            
-            # AutoPlayWindow (Binge Watching)
-            if is_ep and hasattr(player_instance, 'next_ep_info') and player_instance.next_ep_info:
-                if ADDON.getSetting('auto_scrape_next_episode') != 'false' and (player_instance.watched_marked or last_known_progress >= 90):
-                    n_info = player_instance.next_ep_info
-                    # NU `Dialog.Close(all,true)`: inchidea si DialogBusy-ul pe
-                    # care Kodi il tine in timpul unui `GetDirectory`. In logul cu
-                    # debug (17:10:19.664/.666) buzy-ul apare si dispare in 2ms,
-                    # in aceeasi milisecunda cu deschiderea dialogului nostru, iar
-                    # la 20.330 Kodi pornea un AL DOILEA GetDirectory pe aceeasi
-                    # lista - peste update-ul inca in curs. Fixul e sa asteptam ca
-                    # GUI-ul sa fie liber (niciun modal, niciun container care se
-                    # actualizeaza) si abia apoi sa deschidem dialogul nostru.
-                    for _w in range(20):
-                        try:
-                            if not xbmc.getCondVisibility('System.HasModalDialog') \
-                                    and not xbmc.getCondVisibility('Container.IsUpdating'):
-                                break
-                        except Exception:
-                            break
-                        if kodi_abort_requested():
-                            break
-                        _nap(100)
-                    win = AutoPlayWindow('autoplay_dialog.xml', ADDON.getAddonInfo('path'), 'Default', '1080i', n_info=n_info)
-                    _show_modal_abortable(win)
-                    ret = win.action_result
-                    del win
-                    log(f"[BINGE-WATCH] Buton apasat: {ret}")
-                    if ret == 1 or ret == 2:
-                        prompted_next = True
-                        for _net_thread in stop_net_threads:
-                            try:
-                                if _net_thread.is_alive():
-                                    _net_thread.join(timeout=2)
-                            except:
-                                pass
-                        url_params = {
-                            'mode': 'sources', 'tmdb_id': player_instance.tmdb_id, 'type': 'tv',
-                            'season': str(n_info['season']), 'episode': str(n_info['episode']),
-                            'title': n_info['title'], 'tv_show_title': n_info['show_title']
-                        }
-                        if ret == 1:
-                            url_params.update({
-                                'auto_play_next': 'true',
-                                'prev_quality': getattr(player_instance, 'prev_quality', ''),
-                                'prev_group': getattr(player_instance, 'prev_group', ''),
-                                'prev_is_sdr': 'true' if getattr(player_instance, 'prev_is_sdr', True) else 'false',
-                                'prev_debrid': getattr(player_instance, 'prev_debrid', ''),
-                                'prev_provider': getattr(player_instance, 'prev_provider', ''),
-                                'prev_codec': getattr(player_instance, 'prev_codec', ''),
-                                'prev_source': getattr(player_instance, 'prev_source', ''),
-                                # 'json' e import local in functia care ne gazduieste, deci
-                                # referirea ar fi tratata ca variabila neinitiializata.
-                                'prev_ctx': _bjson.dumps(getattr(player_instance, 'prev_ctx', None) or {}),
-                            })
-                        else:
-                            # "Choose Source" deschide fereastra surselor: fara no_auto
-                            # intra oricum pe autoplay standard si ignora alegerea.
-                            url_params['no_auto'] = '1'
-                        import urllib.parse
-                        from resources.lib.core.utils import plugin_url as _plugin_url
-                        _run_url = _plugin_url(url_params)
-                        if xbmc.Player().isPlaying():
-                            xbmc.Player().stop(); _nap(500)
-                        xbmc.executebuiltin(f"RunPlugin({_run_url})")
-            
-            # Rating (provider-aware)
-            if getattr(player_instance, 'should_prompt_rating', False) and not prompted_next:
+
+            # Prompturile de dupa stop (binge + rating) NU se mai arata aici.
+            # Invocarea asta e singura pe care Kodi o asteapta la final, deci un
+            # dialog lasat deschis o tinea cit statea omul in el ("waiting on
+            # thread"); la inchiderea Kodi cu dialogul pe ecran aparea si
+            # "script didn't stop in 5 seconds". Scriem cererea si plecam:
+            # dialogul il arata service-ul (playback/post_stop_prompt.py).
+            _binge_payload = None
+            if (is_ep and getattr(player_instance, 'next_ep_info', None)
+                    and ADDON.getSetting('auto_scrape_next_episode') != 'false'
+                    and (player_instance.watched_marked or last_known_progress >= 90)):
+                _binge_payload = {
+                    'n_info': dict(player_instance.next_ep_info),
+                    'tmdb_id': player_instance.tmdb_id,
+                    'prev': {
+                        'quality': getattr(player_instance, 'prev_quality', ''),
+                        'group': getattr(player_instance, 'prev_group', ''),
+                        'is_sdr': getattr(player_instance, 'prev_is_sdr', True),
+                        'debrid': getattr(player_instance, 'prev_debrid', ''),
+                        'provider': getattr(player_instance, 'prev_provider', ''),
+                        'codec': getattr(player_instance, 'prev_codec', ''),
+                        'source': getattr(player_instance, 'prev_source', ''),
+                        'ctx': getattr(player_instance, 'prev_ctx', None) or {},
+                    },
+                }
+            _rating_payload = None
+            if getattr(player_instance, 'should_prompt_rating', False):
                 try:
-                    from resources.lib.api import tmdb_api as _tmdb_post
-                    rate_movies = ADDON.getSetting('trakt_rate_movies') == 'true'
-                    rate_eps = ADDON.getSetting('trakt_rate_episodes') == 'true'
-                    if (player_instance.content_type == 'movie' and rate_movies) or (is_ep and rate_eps):
-                        _tmdb_post.prompt_postwatch_rating(player_instance.tmdb_id, player_instance.content_type, player_instance.season, player_instance.episode, player_instance.title)
-                except Exception as e:
-                    log(f"[PLAYER-MONITOR] Error prompting rating: {e}")
-            
-            try:
-                xbmcgui.Window(10000).clearProperty('tmdbmovies.binge_open')
-            except:
-                pass
+                    if ((player_instance.content_type == 'movie'
+                         and ADDON.getSetting('trakt_rate_movies') == 'true')
+                            or (is_ep and ADDON.getSetting('trakt_rate_episodes') == 'true')):
+                        _rating_payload = {
+                            'tmdb_id': player_instance.tmdb_id,
+                            'content_type': player_instance.content_type,
+                            'season': player_instance.season,
+                            'episode': player_instance.episode,
+                            'title': player_instance.title,
+                        }
+                except Exception:
+                    _rating_payload = None
+            _prompt_sent = False
+            if _binge_payload or _rating_payload:
+                try:
+                    from resources.lib.playback.post_stop_prompt import submit as _submit_prompt
+                    _prompt_sent = _submit_prompt(binge=_binge_payload, rating=_rating_payload)
+                except Exception as _prompt_error:
+                    log(f"[PLAYER-MONITOR] Prompt spre service eroare: {_prompt_error}")
+            # `binge_open` e garda de randare din watched_provider. Cind am
+            # trimis cererea, o stinge promptul din service dupa ce s-a
+            # terminat; altfel o stingem noi, ca sa nu ramina aprinsa 120s.
+            if not _prompt_sent:
+                try:
+                    xbmcgui.Window(10000).clearProperty('tmdbmovies.binge_open')
+                except Exception:
+                    pass
+
             if (player_instance.watched_marked or last_known_progress >= 90) and last_known_total >= 900:
                 try:
                     from resources.lib.providers.trakt_sync import update_kodi_library_watchstatus as _update_lib_watch
@@ -3305,15 +3352,14 @@ def start_playback_monitor(player_instance, dialog=None):
                     _spawn_thread(target=_update_lib_watch, args=(player_instance.content_type, 'mark_as_watched', _lib_title, player_instance.tmdb_id, player_instance.season, player_instance.episode), daemon=True).start()
                 except:
                     pass
+            # Fara interogari de GUI aici: getCondVisibility trece prin threadul
+            # aplicatiei si, cit Kodi isi re-initializeaza fereastra dupa stop,
+            # un singur apel putea sta 5s (log 23:37:43: 8.3s pentru o bucla
+            # plafonata la 3s, cu invokerul tinut pe thread). Asezarea o face
+            # safety pass-ul, care isi verifica singur garzile inainte de refresh.
             _fs_started = time.time()
-            for _fs_wait in range(34):
-                try:
-                    if not xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
-                        break
-                except:
-                    break
-                _nap(150)
-            log("[PLAYER-MONITOR] post-playback fullscreen wait %.1fs"
+            time.sleep(0.2)
+            log("[PLAYER-MONITOR] post-playback settle %.1fs"
                 % (time.time() - _fs_started))
             # NU reimprospatam containerul aici. La 0.7-1.2s dupa stop Kodi isi
             # re-initializeaza fereastra media (MyVideoNav, 10025): logul real
@@ -3339,6 +3385,15 @@ def start_playback_monitor(player_instance, dialog=None):
             except Exception:
                 _folder_at_stop = ''
 
+            # Buget unic de la stop, impartit intre toate asteptarile (dialog
+            # modal, prebuild, varianta, container, asezare): insumate ajungeau
+            # la ~75s, iar Kodi tinea invocarea de play atita vreme ("waiting on
+            # thread"). Il folosesc amindoua threadurile de mai jos.
+            _budget_end = _stopped_at + POST_STOP_BUDGET
+
+            def _left(cap):
+                return max(0.0, min(cap, _budget_end - time.time()))
+
             def _safety_refresh():
                 try:
                     # 3s budget counted from the stop, not from here: on Android
@@ -3346,20 +3401,20 @@ def start_playback_monitor(player_instance, dialog=None):
                     # active for a while, and adding a fresh wait on top made the
                     # return to the list feel frozen. Keep at least 1s of settle.
                     _elapsed = max(0.0, time.time() - _stopped_at)
-                    _wait_budget = max(1.0, 3.0 - _elapsed)
-                    _waited = 0.0
-                    while _waited < _wait_budget:
+                    _wait_budget = _left(max(1.0, 3.0 - _elapsed))
+                    _settle_end = time.time() + _wait_budget
+                    while time.time() < _settle_end:
                         if kodi_abort_requested():
                             return
                         _nap(250)
-                        _waited += 0.25
                     # Pre-randarea Up Next isi rescrie cache-ul in fundal (build
                     # 1.5-2.5s). Un refresh in timpul build-ului randeaza
                     # cache-ul VECHI si lista ramane pe randul vechi (log
                     # 22:52:27: refresh la +8.2s, build terminat la +9.6s).
-                    # Asteptam sa termine, max 9s, cu abort Kodi.
-                    _pb_wait = 0.0
-                    while _pb_wait < 9.0:
+                    # Cit ne permite bugetul: un build care termina dupa ce noi
+                    # iesim din asteptare isi re-randeaza el lista.
+                    _pb_end = time.time() + _left(POST_STOP_WAIT)
+                    while time.time() < _pb_end:
                         try:
                             if xbmcgui.Window(10000).getProperty('tmdbmovies.prebuild_busy') != 'true':
                                 break
@@ -3368,12 +3423,22 @@ def start_playback_monitor(player_instance, dialog=None):
                         if kodi_abort_requested():
                             return
                         _nap(250)
-                        _pb_wait += 0.25
-                    try:
-                        _plugin_now = (xbmc.getInfoLabel('Container.PluginName') or '').lower()
-                        if 'tmdbmovies' not in _plugin_now:
-                            log("[PLAYER-MONITOR] Safety refresh sarit (container: %s)" % (_plugin_now or 'gol'))
+                    # PluginName iese gol cit se re-initializeaza fereastra dupa stop (00:42:41) - reincercam in buget.
+                    _label_end = time.time() + _left(1.5)
+                    while True:
+                        try:
+                            _plugin_now = (xbmc.getInfoLabel('Container.PluginName') or '').lower()
+                        except Exception:
                             return
+                        if _plugin_now or time.time() >= _label_end:
+                            break
+                        if kodi_abort_requested():
+                            return
+                        _nap(250)
+                    if 'tmdbmovies' not in _plugin_now:
+                        log("[PLAYER-MONITOR] Safety refresh sarit (container: %s)" % (_plugin_now or 'gol'))
+                        return
+                    try:
                         # Userul a pornit deja alt episod: lista din spate nu se
                         # reimprospateaza acum (nu are rost sa o randam peste
                         # redare); o prinde urmatorul stop.
@@ -3409,9 +3474,10 @@ def start_playback_monitor(player_instance, dialog=None):
                     # urmatoarea intrare in lista.
                     # Un dialog modal (rating/binge) nu mai anuleaza refreshul:
                     # asteptam pina se inchide, altfel lista raminea neactualizata
-                    # pina la urmatoarea navigare. Limita 30s, cu abort Kodi.
-                    _dlg_wait = 0.0
-                    while _dlg_wait < 30.0:
+                    # pina la urmatoarea navigare. Plafon dur: cit a ramas din
+                    # bugetul de stop, nu 30s cit tine dialogul deschis.
+                    _dlg_end = time.time() + _left(POST_STOP_WAIT)
+                    while time.time() < _dlg_end:
                         try:
                             if not xbmc.getCondVisibility('System.HasModalDialog'):
                                 break
@@ -3420,7 +3486,6 @@ def start_playback_monitor(player_instance, dialog=None):
                         if kodi_abort_requested():
                             return
                         _nap(500)
-                        _dlg_wait += 0.5
                     try:
                         if xbmc.getCondVisibility('System.HasModalDialog'):
                             log("[PLAYER-MONITOR] Safety refresh amanat (dialog modal deschis)")
@@ -3432,12 +3497,13 @@ def start_playback_monitor(player_instance, dialog=None):
                     # veche pe ecran cind pre-randarea se termina fara
                     # re-randare (log: "pre-randare gata ... fara re-randare").
                     #
-                    # Plafon 25s, nu 6s: un build Up Next dureaza 10-15s pe un
-                    # box lent (log 21:34:44 marcaj -> 21:34:58 build gata), iar
-                    # dupa el vine si a doua varianta. Cu plafonul de 6s, pass-ul
-                    # se declansa inainte de build, randa cache-ul VECHI si (mai
-                    # jos) stingea `upnext_stale_since`, asa ca build-ul nu mai
-                    # re-randa nimic: lista raminea pe episodul tocmai vazut.
+                    # Plafon: cit a ramas din bugetul de stop (cel mult
+                    # POST_STOP_WAIT). Un build Up Next dureaza 10-15s pe un box
+                    # lent (log 21:34:44 marcaj -> 21:34:58 build gata), deci de
+                    # multe ori iesim inainte sa se termine; build-ul isi scrie
+                    # cache-ul si isi re-randeaza el lista dupa aceea (vezi
+                    # curatarea `stop_refresh_pending` din finally). Ce nu mai
+                    # facem e sa tinem invocarea de play 25s pentru asta.
                     # Tinta = momentul marcajului. Un build terminat DUPA el e
                     # proaspat; orice altceva e cache-ul vechi din fereastra
                     # stale-while-revalidate (get_fast_cache il intoarce
@@ -3463,7 +3529,7 @@ def start_playback_monitor(player_instance, dialog=None):
                     # Comparatia stricta `stamp >= tinta` cadea la diferente de
                     # 2-100ms: in logul 23:54-23:55, la doua stopuri build-ul
                     # variantelor era deja proaspat in cache, dar pass-ul a
-                    # asteptat 25s degeaba si a iesit cu "varianta vizibila inca
+                    # asteptat plafonul intreg degeaba si a iesit cu "varianta vizibila inca
                     # nescrisa" -> ZERO re-randare, adica exact bugul raportat,
                     # pe alta usa. Toleranta acopera jitterul de thread, dar e
                     # mult sub diferenta fata de un build VECHI: cel oportunist
@@ -3559,8 +3625,8 @@ def start_playback_monitor(player_instance, dialog=None):
                     # cache vechi, lista raminea pe episodul vazut.
                     # Tinta = momentul marcajului; un build terminat DUPA el e
                     # proaspat (vezi mark_upnext_cache_built).
-                    _pend_wait = 0.0
-                    while _pend_wait < 25.0:
+                    _pend_end = time.time() + _left(POST_STOP_WAIT)
+                    while time.time() < _pend_end:
                         if _stale_target <= 0:
                             # Nimic marcat: nu e nimic de corectat, iar
                             # refresh-ul de mai jos ramine cel de resume/bifa.
@@ -3570,7 +3636,6 @@ def start_playback_monitor(player_instance, dialog=None):
                         if kodi_abort_requested():
                             return
                         _nap(250)
-                        _pend_wait += 0.25
                     else:
                         # Plafon atins. Daca build-ul variantei vizibile a
                         # terminat chiar in ultima iteratie, refresh-ul e inca
@@ -3592,7 +3657,8 @@ def start_playback_monitor(player_instance, dialog=None):
                                 log("[PLAYER-MONITOR] Safety refresh amanat "
                                     "(varianta vizibila inca nescrisa)")
                             return
-                    for _ in range(80):
+                    _upd_end = time.time() + _left(2.0)
+                    while time.time() < _upd_end:
                         try:
                             if not xbmc.getCondVisibility('Container.IsUpdating'):
                                 break
@@ -3608,7 +3674,7 @@ def start_playback_monitor(player_instance, dialog=None):
                         """Suntem inca in lista de la stop?
 
                         Garda de la intrarea in pass se face o singura data,
-                        iar intre ea si refresh pot trece pina la ~59s de
+                        iar intre ea si refresh pot trece citiva secunde de
                         asteptari (dialog modal, build, Container.IsUpdating,
                         asezare). Un Back in acel interval schimba containerul,
                         iar Container.Refresh aruncat atunci navigheaza peste ce
@@ -3643,16 +3709,18 @@ def start_playback_monitor(player_instance, dialog=None):
                     # rearanjeaza. 0.8s, cu abort Kodi - si cu verificare de
                     # lista la fiecare pas, ca un Back sa nu fie prins la
                     # mijloc (refresh-ul ar sari peste navigarea userului).
-                    _settle = 0.0
-                    while _settle < 0.8:
+                    _settle_end = time.time() + _left(0.8)
+                    while time.time() < _settle_end:
                         if kodi_abort_requested():
                             return
-                        if not _still_in_same_list():
-                            _drop_stale_marker_if_fresh()
-                            log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
-                            return
                         _nap(200)
-                        _settle += 0.2
+                    # O singura verificare de lista dupa asezare: fiecare
+                    # getInfoLabel trece prin threadul aplicatiei si poate sta
+                    # secunde cit fereastra media se re-initializeaza.
+                    if not _still_in_same_list():
+                        _drop_stale_marker_if_fresh()
+                        log("[PLAYER-MONITOR] Safety refresh sarit (alta lista)")
+                        return
                     # Cache-ul e final DOAR daca un build a scris lista DUPA marcaj.
                     # Altfel il lasam aprins: safety pass-ul poate iesi din
                     # asteptare pe plafon, cu build-ul inca in curs, iar stingerea
@@ -3698,12 +3766,11 @@ def start_playback_monitor(player_instance, dialog=None):
                             return
                     except Exception:
                         pass
-                    _waited = 0.0
-                    while _waited < 3.0:
+                    _widget_end = time.time() + _left(3.0)
+                    while time.time() < _widget_end:
                         if kodi_abort_requested():
                             return
                         _nap(250)
-                        _waited += 0.25
                     try:
                         if xbmc.getCondVisibility('Window.IsActive(fullscreenvideo)'):
                             return
@@ -3712,7 +3779,8 @@ def start_playback_monitor(player_instance, dialog=None):
                             return
                     except Exception:
                         return
-                    for _ in range(30):
+                    _upd_end = time.time() + _left(3.0)
+                    while time.time() < _upd_end:
                         if kodi_abort_requested():
                             return
                         try:
@@ -4438,27 +4506,29 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
             pass
         player.easynews_source = easynews_source
         player.easynews_local_url = ''
+        player.easynews_direct = False
 
         if str(current_stream.get('provider_id', '')) == 'easynews_direct':
             try:
-                # Linkul CDN semnat expira dupa ~100 min; proxy-ul reia originalul
-                # la fiecare Range, deci reimprospateaza tokenul si la seek.
-                from resources.lib.api.easynews_proxy import playback_url
-                proxied = playback_url(valid_url)
-                if proxied:
-                    valid_url = proxied
-                    player.easynews_local_url = valid_url.partition('|')[0]
-                    if '|seekable=' not in valid_url:
-                        valid_url += '|seekable=1'
-                    log("[PLAYER] EasyNews direct via loopback proxy (token refresh)")
+                # Ca la Lucent Video: Kodi citeste direct adresa EasyNews, cu
+                # loginul in URL. Proxy-ul local relua fiecare Range prin Python
+                # si facea HEAD + coada inainte de start; un seek sau o pauza
+                # scurta depaseau timeout-urile si Kodi oprea sursa (black screen).
+                from resources.lib.api.easynews_direct import playback_url as _en_playback_url
+                direct = _en_playback_url(valid_url)
+                if direct:
+                    valid_url = direct
+                    player.easynews_direct = True
+                    log("[PLAYER] EasyNews direct: Kodi plays the EasyNews address itself (no proxy)")
                 else:
-                    from resources.lib.api.easynews_direct import resolve_playback
-                    direct = resolve_playback(valid_url)
-                    if direct:
-                        valid_url = direct
+                    from resources.lib.api.easynews_proxy import playback_url
+                    proxied = playback_url(valid_url)
+                    if proxied:
+                        valid_url = proxied
+                        player.easynews_local_url = valid_url.partition('|')[0]
                         if '|seekable=' not in valid_url:
                             valid_url += '|seekable=1'
-                        log("[PLAYER] EasyNews proxy unavailable - direct CDN link resolved")
+                        log("[PLAYER] EasyNews direct address unavailable - loopback proxy fallback")
                     else:
                         log("[PLAYER] EasyNews direct resolve and proxy unavailable")
             except Exception as e:
@@ -4470,6 +4540,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         try:
             easynews_noseek = ADDON.getSetting('easynews_noseek')
             if (easynews_source and current_stream.get('provider_id') != 'usenet'
+                    and not getattr(player, 'easynews_direct', False)
                     and easynews_noseek != 'false'):
                 if 'seekable=1' in valid_url:
                     valid_url = valid_url.replace('seekable=1', 'seekable=0')

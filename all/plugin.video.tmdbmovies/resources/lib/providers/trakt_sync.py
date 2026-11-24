@@ -4304,7 +4304,8 @@ def refresh_next_episode_tmdb(tmdb_id, _attempt=1, _max_attempts=3):
                 prov_tbl = {'trakt': 'trakt_next_episodes',
                             'mdblist': 'mdblist_next_episodes',
                             'simkl': 'simkl_next_episodes',
-                            'punchplay': 'punchplay_next_episodes'}.get(prov)
+                            'punchplay': 'punchplay_next_episodes',
+                            'local': 'local_next_episodes'}.get(prov)
                 if prov_tbl:
                     import time
                     for _ in range(6):

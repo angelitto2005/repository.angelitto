@@ -176,6 +176,37 @@ def resolve_playback(remote_url):
     return ""
 
 
+def playback_url(remote_url):
+    """The EasyNews address Kodi plays itself, the way Lucent Video does it.
+
+    The login goes inside the address instead of a header: Kodi redacts the
+    password of a user address in its log but writes a header value out in
+    full.  Kodi then makes its own Range requests straight to EasyNews, so a
+    seek is an ordinary HTTP range and nothing sits in between that can time
+    out, stall or cut the stream.
+    """
+    if not remote_url or not configured():
+        return ""
+    base, separator, tail = str(remote_url).partition("|")
+    if not base.startswith("https://") or not _easynews_host(base):
+        return ""
+    parts = urllib.parse.urlsplit(base)
+    if not parts.username:
+        user, password = credentials()
+        if not user or not password:
+            return ""
+        netloc = "%s:%s@%s" % (urllib.parse.quote(user, safe=""),
+                                urllib.parse.quote(password, safe=""),
+                                parts.netloc)
+        base = urllib.parse.urlunsplit(("https", netloc, parts.path,
+                                        parts.query, parts.fragment))
+    headers = dict(urllib.parse.parse_qsl(tail, keep_blank_values=True)) \
+        if separator else {}
+    if not any(key.lower() == "user-agent" for key in headers):
+        headers["User-Agent"] = USER_AGENT
+    return base + "|" + urllib.parse.urlencode(headers)
+
+
 def _number(value, default=0):
     if isinstance(value, bool):
         return default
