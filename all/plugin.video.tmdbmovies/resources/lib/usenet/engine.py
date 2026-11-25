@@ -24,7 +24,7 @@ import struct
 from collections import OrderedDict
 from concurrent.futures import CancelledError, Future, as_completed
 
-from . import config, nntp, nzb, stats, yenc
+from . import config, health, nntp, nzb, stats, yenc
 
 HOLE_WARMUP = 20                # articles read before the percentage is trusted
 DEFAULT_HOLE_PERCENT = 2.0      # of the articles read may be missing
@@ -635,6 +635,227 @@ class Session(object):
         raise SessionError('this release holds S%02dE%02d, not %s'
                            % (wrong[0], wrong[1], wanted))
 
+    def _check_health(self, files, media, kind):
+        """A quick STAT sample before opening: refuse a release the provider lost.
+        The full check stays in the source list; waiting for it added 15-20 s here."""
+        ids = health.media_ids(files, media, kind)
+        if not ids:
+            return
+        result = health.check_ids(ids, [pool.provider for pool in self.pools],
+                                  seconds=3, full=False,
+                                  key=self.options.get('health_key') or self.key)
+        if not result:
+            return
+        _log('health sample: %s, %d of %d articles checked, %d gone, %.1fs'
+             % (result.get('status'), result.get('checked', 0),
+                result.get('total', 0), result.get('gone', 0),
+                result.get('seconds', 0)))
+        if not health.playable(result):
+            if result.get('status') == 'dead' and result.get('checked', 0) <= 1:
+                raise SessionError('this release is gone from the provider '
+                                   '(its first article is missing)')
+            if result.get('status') == 'dead':
+                raise SessionError('most articles of this release are gone from the provider')
+            raise SessionError('this release is missing %d of %d articles on the provider'
+                               % (result.get('gone', 0), result.get('total', 0)))
+
+    def _wanted_pairs(self):
+        pairs = []
+        for season, episode in ((self.options.get('season'), self.options.get('episode')),
+                                (self.options.get('alt_season'), self.options.get('alt_episode'))):
+            try:
+                pair = (int(season), int(episode))
+            except (TypeError, ValueError):
+                continue
+            if pair not in pairs:
+                pairs.append(pair)
+        return pairs
+
+    def _volume_bytes(self, volume, offset, length, head=b''):
+        """Bytes from anywhere in one posted volume, before any part exists."""
+        segments = volume.segments
+        if not segments or offset < 0:
+            return b''
+        if not head:
+            head = self._decode_first(segments).get('data') or b''
+        part = len(head)
+        if part <= 0:
+            return b''
+        out = []
+        while length > 0:
+            number, skip = divmod(offset, part)
+            if number >= len(segments):
+                break
+            data = head if number == 0 else None
+            if data is None:
+                raw = self._article(segments[number][2])
+                if raw is None:
+                    break
+                try:
+                    data = yenc.decode(raw)['data']
+                except yenc.YencError:
+                    break
+            chunk = data[skip:skip + length]
+            if not chunk:
+                break
+            out.append(chunk)
+            offset += len(chunk)
+            length -= len(chunk)
+        return b''.join(out)
+
+    def _rar_member(self, volumes, first, layout, wanted):
+        """The wanted episode inside a RAR set that holds the whole season.
+
+        Each volume starts with the file that runs through it, so a binary
+        search over the volumes' first headers finds the episode without
+        reading the season; then it is served like any stored RAR set.
+        """
+        fmt = layout.get('fmt')
+        if fmt not in (4, 5) or len(volumes) < 2:
+            raise SessionError('the wanted episode could not be located inside this RAR set')
+        if fmt == 5 and not layout.get('first', True):
+            raise SessionError('the first RAR volume is missing from this NZB')
+        heads = {0: first.get('data') or b''}
+        crcs = {0: bool(first.get('crc_ok', True))}
+        parsed = {}
+
+        def entries(number):
+            if number not in parsed:
+                head = heads.get(number)
+                if head is None:
+                    info = self._decode_first(volumes[number].segments)
+                    head = info.get('data') or b''
+                    heads[number] = head
+                    crcs[number] = bool(info.get('crc_ok', True))
+                try:
+                    parsed[number] = nzb.rar_entries(head)
+                except nzb.Unsupported as exc:
+                    raise SessionError('RAR: %s' % exc)
+            return parsed[number]
+
+        def key(number):
+            found = entries(number)
+            if not found:
+                return None
+            pairs = nzb.episode_pairs(found[0].get('name') or '')
+            return min(pairs) if pairs else None
+
+        def locate(target):
+            low, high = 0, len(volumes) - 1
+            high_key = key(high)
+            if high_key is None or high_key < target:
+                low = high
+            else:
+                while high - low > 1:
+                    middle = (low + high) // 2
+                    found = key(middle)
+                    if found is not None and found >= target:
+                        high = middle
+                    else:
+                        low = middle
+            for number in (low, high):
+                for item in entries(number):
+                    if item.get('before'):
+                        continue
+                    if target in nzb.episode_pairs(item.get('name') or ''):
+                        return number, item
+            last = entries(low)[-1] if entries(low) else None
+            if last is not None and not last.get('more'):
+                at = int(last.get('offset') or 0) + int(last.get('length') or 0)
+                data = self._volume_bytes(volumes[low], at, 8192, heads.get(low) or b'')
+                item = nzb.rar_entry_at(data, fmt)
+                if item is not None and not item.get('before') \
+                        and target in nzb.episode_pairs(item.get('name') or ''):
+                    item['offset'] = int(item.get('offset') or 0) + at
+                    item['next_offset'] = int(item.get('next_offset') or 0) + at
+                    return low, item
+            return None, None
+
+        start = entry = None
+        for target in wanted:
+            start, entry = locate(target)
+            if start is not None:
+                break
+        if start is None:
+            raise SessionError('the wanted episode could not be located inside this RAR set')
+        if not entry.get('store'):
+            raise SessionError('this RAR is compressed - only stored RAR sets can be streamed')
+        if not entry.get('unp_size'):
+            raise SessionError('the RAR header does not say how big the episode is')
+        if int(entry.get('unp_size') or 0) < nzb.MIN_INNER_VIDEO_BYTES:
+            raise SessionError('the file inside the RAR is too small to be the episode')
+        start_head = heads.get(start) or b''
+        at = int(entry.get('offset') or 0)
+        if at + 64 <= len(start_head):
+            inner = start_head[at:at + 8]
+            sniff = _sniff(start_head, at)
+            image = _looks_image(start_head, at)
+        else:
+            probe = self._volume_bytes(volumes[start], at, 65536, start_head)
+            inner = probe[:8]
+            sniff = _sniff(probe)
+            image = _looks_image(probe)
+        if (inner.startswith(b'Rar!\x1a\x07')
+                or inner.startswith(b'7z\xbc\xaf\x27\x1c')
+                or re.search(r'\.(?:rar|r\d{2,3}|7z(?:\.\d+)?)$', entry.get('name') or '', re.I)):
+            raise SessionError('this release is a RAR inside a RAR - not supported')
+        if not sniff and image:
+            raise SessionError('the file inside this RAR is an image, not the episode')
+        self.inner_name = (entry.get('name') or '').strip()
+        self.media_name = self.inner_name or self.media_name
+        self.first_crc_ok = crcs.get(start, True)
+        self.container = 'iso' if (self.inner_name.lower().endswith('.iso')
+                                   or sniff == 'iso') else 'rar'
+        self.length = int(entry.get('unp_size') or 0)
+        self.part_size = 0
+        remaining = self.length
+        length = int(entry.get('length') or 0)
+        self.parts.append({'id': 0, 'segments': [item[2] for item in volumes[start].segments],
+                           'skip': at, 'length': length, 'part_size': 0})
+        remaining -= length
+        number = start + 1
+        follow = None
+        if remaining > 0:
+            if number >= len(volumes):
+                raise SessionError('RAR: volumes do not add up')
+            follow_entries = entries(number)
+            follow = follow_entries[0] if follow_entries else None
+            if follow is None:
+                raise SessionError('RAR: volumes do not add up')
+        if follow is not None:
+            follow_volume = follow.get('volume')
+            if follow_volume is None:
+                follow_volume = number
+            base = _vint_len(int(follow_volume)) if fmt == 5 else 0
+            index = 1
+            while remaining > 0 and number < len(volumes):
+                if fmt == 5:
+                    grow = _vint_len(number) - base
+                    skip = int(follow.get('offset') or 0) + grow
+                    size = min(int(follow.get('length') or 0) - grow, remaining)
+                else:
+                    skip = int(follow.get('offset') or 0)
+                    size = min(int(follow.get('length') or 0), remaining)
+                if size <= 0:
+                    raise SessionError('RAR: volumes do not add up')
+                self.parts.append({'id': index,
+                                   'segments': [item[2] for item in volumes[number].segments],
+                                   'skip': skip, 'length': size, 'part_size': 0})
+                head = heads.get(number)
+                if head:
+                    self._remember((index, 0), head)
+                remaining -= size
+                number += 1
+                index += 1
+        if remaining != 0:
+            raise SessionError('RAR: volumes do not add up')
+        self._pinned.add((0, 0))
+        self._remember((0, 0), start_head)
+        self._warm_front(volumes[start].segments)
+        self.prepared = True
+        self._warm_tail()
+        return self.info()
+
     def prepare(self):
         _log('engine: %d worker(s) x %d pipelined on %d core(s), %s, prefetch %.0f MB, '
              'cache %.0f MB, timeout %ds, profile %s'
@@ -662,6 +883,8 @@ class Session(object):
                 raise SessionError('this NZB contains only a sample or trailer')
             raise SessionError('this NZB contains no video')
         self.media_name = media.name or 'video'
+        if self.options.get('health'):
+            self._check_health(files, media, kind)
         if kind == '7z':
             return self._prepare_seven(files, media)
         if kind == 'video':
@@ -718,6 +941,11 @@ class Session(object):
                 self.first_crc_ok = bool(first.get('crc_ok', True))
                 head = first['data']
                 layout = nzb.rar_layout(head)
+        wanted = self._wanted_pairs()
+        if wanted and len(volumes) > 1:
+            pairs = nzb.episode_pairs(layout.get('name') or '')
+            if pairs and not set(wanted) & pairs:
+                return self._rar_member(volumes, first, layout, wanted)
         if not layout.get('store'):
             raise SessionError('this RAR is compressed - only stored RAR sets can be streamed')
         if not layout.get('unp_size'):

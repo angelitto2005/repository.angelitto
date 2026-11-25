@@ -19,6 +19,19 @@ _handle = None
 _profile = None
 _art_path = None
 _simkl_status_migrated = False
+_usenet_health_migrated = False
+
+def _migrate_usenet_health():
+    global _usenet_health_migrated
+    if _usenet_health_migrated:
+        return
+    _usenet_health_migrated = True
+    try:
+        _a = get_addon()
+        if _a.getSetting('usenet_nzb.health') == '2':
+            _a.setSetting('usenet_nzb.health', '1')
+    except:
+        pass
 
 def _migrate_simkl_status():
     global _simkl_status_migrated
@@ -822,6 +835,7 @@ def run_plugin():
     mode = params.get('mode')
     handle = get_handle()
     _migrate_simkl_status()
+    _migrate_usenet_health()
     try:
         from resources.lib.providers.watched_provider import wipe_plugin_bookmarks_followup
         wipe_plugin_bookmarks_followup()
@@ -2683,6 +2697,7 @@ def run_service():
         from resources.lib.core.config import ADDON
     except:
         return
+    _migrate_usenet_health()
 
     # --- Usenet (NZB): the local HTTP server must outlive a single plugin call ---
     try:

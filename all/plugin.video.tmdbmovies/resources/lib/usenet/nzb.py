@@ -522,6 +522,32 @@ def rar_layout(head):
     raise Unsupported('not a RAR volume')
 
 
+def rar_entries(head):
+    """Every stored-file header in these bytes, with 'before' saying the file
+    started in an earlier volume (a season inside one RAR set)."""
+    if head.startswith(RAR5):
+        entries, main_end = _entries_rar5(head)
+    elif head.startswith(RAR4):
+        entries, main_end = _entries_rar4(head)
+    else:
+        raise Unsupported('not a RAR volume')
+    for entry in entries:
+        entry['next_offset'] = (main_end + entry['header_len']) if main_end else entry['offset']
+    return entries
+
+
+def rar_entry_at(data, fmt):
+    """The file header at the very start of `data` (a header further into a
+    volume, after an earlier file's data), or None."""
+    magic = RAR5 if fmt == 5 else RAR4
+    at = None if data.startswith(magic) else 0
+    try:
+        entries, _main_end = (_entries_rar5 if fmt == 5 else _entries_rar4)(data, at=at)
+    except Unsupported:
+        return None
+    return entries[0] if entries else None
+
+
 def _inner_kind(name):
     low = (name or '').lower()
     if _IMAGE_VIDEO_NAME.search(low):
@@ -558,9 +584,9 @@ def _pick_inner(entries):
     raise Unsupported('no video file in the first RAR volume')
 
 
-def _layout_rar4(data):
+def _entries_rar4(data, at=None):
     import struct
-    position = len(RAR4)
+    position = len(RAR4) if at is None else at
     first = True
     main_end = 0
     entries = []
@@ -593,6 +619,7 @@ def _layout_rar4(data):
             entries.append({'fmt': 4, 'offset': position + head_size, 'length': packed,
                             'unp_size': unpacked, 'store': method == 0x30,
                             'encrypted': False, 'name': name, 'first': first,
+                            'before': bool(flags & 0x0001),
                             'header_len': head_size,
                             'more': bool(flags & 0x0002)})
             position += head_size + packed
@@ -600,6 +627,11 @@ def _layout_rar4(data):
         elif kind == 0x7B:                                 # end of archive
             break
         position += head_size + extra
+    return entries, main_end
+
+
+def _layout_rar4(data):
+    entries, main_end = _entries_rar4(data)
     if not entries:
         raise Unsupported('no file header in the first RAR volume')
     movie = _pick_inner(entries)
@@ -607,8 +639,8 @@ def _layout_rar4(data):
     return movie
 
 
-def _layout_rar5(data):
-    position = len(RAR5)
+def _entries_rar5(data, at=None):
+    position = len(RAR5) if at is None else at
     first = True
     volume = 0
     has_volume = False
@@ -663,6 +695,7 @@ def _layout_rar5(data):
                             'unp_size': unpacked,
                             'store': ((compression >> 7) & 0x07) == 0,
                             'encrypted': False, 'name': name, 'first': first,
+                            'before': bool(flags & 0x08),
                             'volume': volume, 'volfield': has_volume,
                             'header_len': header_end - crc_at,
                             'more': bool(flags & 0x10)})
@@ -671,6 +704,11 @@ def _layout_rar5(data):
         elif kind == 5:
             break
         position = header_end + data_size
+    return entries, main_end
+
+
+def _layout_rar5(data):
+    entries, main_end = _entries_rar5(data)
     if not entries:
         raise Unsupported('no file header in the first RAR volume')
     movie = _pick_inner(entries)

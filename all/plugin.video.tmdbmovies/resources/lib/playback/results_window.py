@@ -1,8 +1,19 @@
 import os
 import re
 import json
+import threading
+import time
+# pyrefly: ignore [missing-import]
+import xbmc
 # pyrefly: ignore [missing-import]
 import xbmcgui
+
+
+def _health_log(message):
+    try:
+        xbmc.log('[TMDb Movies] [RESULTS-HEALTH] %s' % str(message), xbmc.LOGINFO)
+    except Exception:
+        pass
 
 QUALITY_ICONS = {
     '4K':    'flag4k.png',
@@ -10,6 +21,10 @@ QUALITY_ICONS = {
     '720p':  'flag720p.png',
     'SD':    'flagsd.png',
 }
+
+# Verdicts already known are shown for free; only this many saved NZBs without
+# one are checked per list, so a folder full of old NZBs cannot start a long pass.
+LIST_HEALTH_CHECKS = 8
 
 # Listele din cache scrise inainte de maparea NZB.Info contin fallback-ul 'Nzb'.
 _NZB_INDEXER_ALIASES = {
@@ -43,6 +58,43 @@ def _source_provider_label(info, provider_id, usenet_meta=None):
     if pid:
         return pid.replace('p2p_', '').replace('_', ' ').title()
     return 'Unknown'
+
+
+def _health_badge(result, with_dovi=True):
+    """(colored, plain) text for a Usenet availability and DoVi verdict."""
+    if not isinstance(result, dict):
+        return '', ''
+    colored, plain = [], []
+    status = result.get('status')
+    pct = int(result.get('pct') or 0)
+    _dovi = ({'fel': 'FEL', 'mel': 'MEL', 'p7': 'P7'}.get(result.get('dovi'))
+             if with_dovi else None)
+    if _dovi:
+        colored.append('[COLOR FFFFCC00][B]%s[/B][/COLOR]' % _dovi)
+        plain.append(_dovi)
+    if status == 'ok':
+        colored.append('[COLOR lime][B]COMPLETE[/B][/COLOR]')
+        plain.append('COMPLETE')
+    elif status == 'bad':
+        colored.append('[COLOR FFFF5555][B]%d%%[/B][/COLOR]' % pct)
+        plain.append('%d%%' % pct)
+    elif status == 'dead':
+        colored.append('[COLOR FFFF5555][B]MISSING[/B][/COLOR]')
+        plain.append('MISSING')
+    return ' | '.join(colored), ' | '.join(plain)
+
+
+def _dovi_badge(kind):
+    text = {'fel': 'FEL', 'mel': 'MEL', 'p7': 'P7'}.get(kind)
+    if not text:
+        return '', ''
+    return '[COLOR FFFFCC00][B]%s[/B][/COLOR]' % text, text
+
+
+def _insert_badge(head, badge, tail):
+    if badge:
+        head = head + ' | ' + badge
+    return head + ((' | ' + tail) if tail else '')
 
 
 def _source_indexer_label(info, provider_id, usenet_meta=None):
@@ -338,15 +390,29 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.filter_applied = False
         self.last_cm_time = 0
         self.is_info_open = False
+        self._health_rows = {}
+        self._health_lock = threading.Lock()
+        self._health_stop = threading.Event()
+        self._health_urls = set()
+        self._health_streams = []
+        self._health_articles = False
+        self._dovi_enabled = False
+        self._dovi_rows = {}
+        self._dovi_urls = set()
+        self._dovi_streams = []
+        self._refresh_lock = threading.Lock()
+        self._last_refresh = 0.0
 
     def onInit(self):
         self._set_window_properties()
+        self._prepare_health()
         self._populate_list()
         try:
             ctrl = self.getControl(2000)
             if ctrl:
                 self.setFocusId(2000)
         except: pass
+        self._start_health()
 
     def _extract_codec(self, name):
         for compiled, label in CODEC_PATTERNS:
@@ -474,8 +540,267 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         else:
             self.setProperty('tmdbmovies.episode_label', '')
 
+    def _prepare_health(self):
+        self._health_urls = set()
+        self._health_streams = []
+        self._health_articles = False
+        self._dovi_enabled = False
+        self._dovi_urls = set()
+        self._dovi_streams = []
+        try:
+            from resources.lib.usenet import config as uconfig, health as uhealth
+            health_on = bool(uconfig.health_mode())
+            dovi_on = uconfig.dovi_enabled()
+            if not health_on and not dovi_on:
+                return
+            providers = uconfig.primary_providers() or uconfig.backup_providers()
+            if health_on and not providers:
+                health_on = False
+            if not health_on and not dovi_on:
+                return
+        except Exception as exc:
+            _health_log('prepare failed: %s' % exc)
+            return
+        self._health_articles = bool(health_on)
+        self._dovi_enabled = bool(dovi_on)
+        usenet_dovi = bool(dovi_on and providers)
+        seen = set()
+        dovi_seen = set()
+        cached_rows = []
+        check_rows = []
+        for res in self.all_results:
+            stream = res.get('raw_stream_data')
+            if not isinstance(stream, dict):
+                continue
+            meta = stream.get('usenet')
+            if isinstance(meta, dict):
+                url = str(meta.get('nzb_url') or '').strip()
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                try:
+                    key = uconfig.nzb_key(url)
+                    saved = bool(uconfig.nzb_path(key) and
+                                 os.path.exists(uconfig.nzb_path(key)))
+                    known = uhealth.cached(key)
+                    known_dovi = (uhealth.cached('dovi:' + key)
+                                  if dovi_on else None)
+                except Exception:
+                    continue
+                if not saved and known is None and known_dovi is None:
+                    continue
+                if known is not None:
+                    merged = dict(known)
+                    merged.pop('dovi', None)
+                    if known_dovi and known_dovi.get('dovi'):
+                        merged['dovi'] = known_dovi.get('dovi')
+                    meta['health'] = merged
+                    need_dv = bool(usenet_dovi and known_dovi is None and
+                                   uhealth.is_dv(stream))
+                    cached_rows.append((url, stream, need_dv))
+                elif saved:
+                    if known_dovi and known_dovi.get('dovi'):
+                        meta['health'] = {'status': 'unknown',
+                                          'dovi': known_dovi.get('dovi')}
+                    check_rows.append((url, stream))
+                elif known_dovi is not None:
+                    meta['health'] = {'status': 'unknown',
+                                      'dovi': known_dovi.get('dovi') or ''}
+                    cached_rows.append((url, stream, False))
+                continue
+            if dovi_on and len(self._dovi_streams) < 3:
+                pid = str(stream.get('provider_id') or '').lower()
+                url = str(stream.get('url') or '').strip()
+                if (pid == 'easynews_direct' and url and url not in self._dovi_urls
+                        and uhealth.is_dv(stream)):
+                    self._dovi_urls.add(url)
+                    self._dovi_streams.append(stream)
+        cached_checks = [(url, stream) for url, stream, need_dv in cached_rows
+                         if need_dv]
+        chosen = cached_checks + (check_rows[:LIST_HEALTH_CHECKS]
+                                  if health_on else check_rows)
+        for url, stream in chosen:
+            dv = bool(usenet_dovi and len(dovi_seen) < 3 and
+                      uhealth.is_dv(stream))
+            if not health_on and not dv:
+                continue
+            if dv:
+                dovi_seen.add(url)
+            self._health_urls.add(url)
+            self._health_streams.append(stream)
+        checked = min(len(check_rows), LIST_HEALTH_CHECKS) if health_on else 0
+        skipped = max(0, len(check_rows) - checked) if health_on else 0
+        _health_log('prepare: mode=%s articles=%s dovi=%s providers=%d streams=%d '
+                    'dovi_streams=%d cached=%d check=%d skipped=%d' % (
+                        uconfig.health_mode(), self._health_articles,
+                        self._dovi_enabled, len(providers),
+                        len(self._health_streams), len(self._dovi_streams),
+                        len(cached_rows), checked, skipped))
+        def _positions(streams):
+            found = []
+            for stream in streams:
+                for res in self.all_results:
+                    if res.get('raw_stream_data') is stream:
+                        found.append('%s:%s' % (res.get('src_index'),
+                                                str(res.get('name') or '')[:55]))
+                        break
+            return ' | '.join(found)
+        _health_log('usenet candidates: %s' % _positions(self._health_streams))
+        _health_log('easynews candidates: %s' % _positions(self._dovi_streams))
+
+    def _start_health(self):
+        _health_log('start: %d usenet, %d easynews' % (len(self._health_streams),
+                                                       len(self._dovi_streams)))
+        if self._health_streams:
+            threading.Thread(target=self._health_worker, daemon=True,
+                             name='UsenetHealth').start()
+        if self._dovi_streams:
+            threading.Thread(target=self._easynews_worker, daemon=True,
+                             name='EasyNewsDovi').start()
+
+    def _health_worker(self):
+        try:
+            from resources.lib.usenet import health as uhealth
+            _health_log('usenet worker: %d release(s)' % len(self._health_streams))
+            uhealth.check_streams(
+                self._health_streams,
+                season=self.meta.get('season'), episode=self.meta.get('episode'),
+                limit=len(self._health_streams), seconds=10,
+                articles=self._health_articles, dovi=self._dovi_enabled,
+                progress=self._health_progress, stop=self._health_stop.is_set)
+            _health_log('usenet worker: done')
+            self._refresh_after_checks('usenet')
+        except Exception as exc:
+            _health_log('usenet worker failed: %s' % exc)
+
+    def _easynews_worker(self):
+        try:
+            from resources.lib.api import easynews_direct
+        except Exception as exc:
+            _health_log('easynews worker import failed: %s' % exc)
+            return
+        _health_log('easynews worker: %d release(s)' % len(self._dovi_streams))
+        for stream in self._dovi_streams:
+            if self._health_stop.is_set():
+                break
+            try:
+                kind = easynews_direct.dovi_kind(stream.get('url') or '')
+            except Exception as exc:
+                _health_log('easynews probe failed: %s' % exc)
+                kind = ''
+            stream['dovi'] = kind
+            for res in self.all_results:
+                if res.get('raw_stream_data') is stream:
+                    _health_log('easynews: %r for %s' %
+                                (kind, str(res.get('name') or '')[:90]))
+                    self._show_dovi(res.get('src_index'), kind)
+                    break
+        _health_log('easynews worker: done')
+        self._refresh_after_checks('easynews')
+
+    def _refresh_after_checks(self, label, force=True):
+        """Rebuild the rows after verdicts change: Kodi keeps the old unfocused
+        text for items whose properties were changed after addItems."""
+        if self._health_stop.is_set():
+            return
+        if not force and time.time() - self._last_refresh < 5:
+            return
+        if not self._refresh_lock.acquire(False):
+            return
+        try:
+            control = self.getControl(2000)
+            pos = control.getSelectedPosition()
+            control.reset()
+            self._populate_list()
+            if pos >= 0:
+                control.selectItem(min(pos, len(self.results) - 1))
+            self._last_refresh = time.time()
+            _health_log('%s: list refreshed after checks' % label)
+        except Exception as exc:
+            _health_log('%s: refresh failed: %s' % (label, exc))
+        finally:
+            self._refresh_lock.release()
+
+    def _health_progress(self, done, total, stream, result):
+        for res in self.all_results:
+            if res.get('raw_stream_data') is stream:
+                _health_log('%d/%d %s -> %s checked=%s/%s dovi=%r' % (
+                    done, total, str(res.get('name') or '')[:80],
+                    result.get('status'), result.get('checked'), result.get('total'),
+                    result.get('dovi')))
+                self._show_health(res.get('src_index'), result)
+                return
+        _health_log('%d/%d result had no matching row' % (done, total))
+
+    def _show_health(self, src_index, result):
+        with self._health_lock:
+            row = self._health_rows.get(src_index)
+        if not row:
+            _health_log('show health: no row for src_index=%r' % src_index)
+            return
+        colored, plain = _health_badge(result, self._dovi_enabled)
+        line_colored = _insert_badge(row['head_colored'], colored,
+                                     row['tail_colored'])
+        line_white = _insert_badge(row['head_white'], plain, row['tail_white'])
+        _health_log('show health %r: %s' % (src_index, plain or '(cleared)'))
+        live = None
+        try:
+            pos = int(row.get('pos', -1))
+            if pos >= 0:
+                live = self.getControl(2000).getListItem(pos)
+        except Exception:
+            live = None
+        for item in (row.get('item'), live):
+            if item is None:
+                continue
+            try:
+                item.setProperty(
+                    'tmdbmovies.info_line_unfocus',
+                    line_white if row['unfocus_plain'] else line_colored)
+                item.setProperty(
+                    'tmdbmovies.info_line_focus',
+                    line_white if row['focus_plain'] else line_colored)
+            except Exception:
+                pass
+
+    def _show_dovi(self, src_index, kind):
+        if not self._dovi_enabled:
+            return
+        with self._health_lock:
+            row = self._dovi_rows.get(src_index)
+        if not row:
+            _health_log('show dv: no row for src_index=%r' % src_index)
+            return
+        colored, plain = _dovi_badge(kind)
+        line_colored = _insert_badge(row['head_colored'], colored,
+                                     row['tail_colored'])
+        line_white = _insert_badge(row['head_white'], plain, row['tail_white'])
+        _health_log('show dv %r: %s' % (src_index, plain or '(cleared)'))
+        live = None
+        try:
+            pos = int(row.get('pos', -1))
+            if pos >= 0:
+                live = self.getControl(2000).getListItem(pos)
+        except Exception:
+            live = None
+        for item in (row.get('item'), live):
+            if item is None:
+                continue
+            try:
+                item.setProperty(
+                    'tmdbmovies.info_line_unfocus',
+                    line_white if row['unfocus_plain'] else line_colored)
+                item.setProperty(
+                    'tmdbmovies.info_line_focus',
+                    line_white if row['focus_plain'] else line_colored)
+            except Exception:
+                pass
+
     def _populate_list(self):
         items =[]
+        with self._health_lock:
+            self._health_rows = {}
+            self._dovi_rows = {}
         global_poster = self.meta.get('poster', '')
         global_plot = self.meta.get('plot', '')
         
@@ -629,6 +954,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             # CONSTRUIRE INFO LINE (Randul 2)
             # -------------------------------------------------------------
             parts =[]
+            _source_tag_index = None
             
             if size and size != "N/A": 
                 parts.append(f"[COLOR lime][B]{size}[/B][/COLOR]")
@@ -853,6 +1179,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 parts.append(final_tag)
 
             if source:
+                _before_source = len(parts)
                 src_up = source.upper()
                 if 'REMUX' in src_up: add_tag('REMUX', 'FFFF0000')
                 elif 'BLURAY' in src_up or 'BLU-RAY' in src_up: add_tag('BluRay', 'FF00BFFF')
@@ -866,6 +1193,8 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 elif 'DVDRIP' in src_up: add_tag('DVDRip', 'FFFFA500')
                 elif 'DVDSCR' in src_up: add_tag('DVDScr', 'FFFF6347')
                 else: add_tag(source, 'FFAAAAAA')
+                if len(parts) > _before_source:
+                    _source_tag_index = len(parts) - 1
 
             if codec:
                 cod_up = codec.upper()
@@ -911,6 +1240,35 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
 
             info_line_colored = " | ".join(parts)
             info_line_white = _COLOR_STRIP_RE.sub('', info_line_colored)
+            if _source_tag_index is not None:
+                head_colored = " | ".join(parts[:_source_tag_index + 1])
+                tail_colored = " | ".join(parts[_source_tag_index + 1:])
+            else:
+                head_colored = info_line_colored
+                tail_colored = ''
+            head_white = _COLOR_STRIP_RE.sub('', head_colored)
+            tail_white = _COLOR_STRIP_RE.sub('', tail_colored)
+            _health = _nzb_meta.get('health') if is_nzb else None
+            _health_colored, _health_plain = ('', '')
+            if is_nzb and isinstance(_health, dict):
+                if self._health_articles:
+                    _health_colored, _health_plain = _health_badge(
+                        _health, self._dovi_enabled)
+                elif self._dovi_enabled:
+                    _health_colored, _health_plain = _dovi_badge(
+                        _health.get('dovi'))
+            _dovi_colored, _dovi_plain = ('', '')
+            if (not is_nzb and self._dovi_enabled and
+                    str(provider_id).lower() == 'easynews_direct'):
+                _raw_stream = res.get('raw_stream_data')
+                _dovi_kind = (_raw_stream.get('dovi') or ''
+                              if isinstance(_raw_stream, dict) else '')
+                _dovi_colored, _dovi_plain = _dovi_badge(_dovi_kind)
+            _badge_colored = _health_colored or _dovi_colored
+            _badge_plain = _health_plain or _dovi_plain
+            info_line_colored = _insert_badge(head_colored, _badge_colored,
+                                               tail_colored)
+            info_line_white = _insert_badge(head_white, _badge_plain, tail_white)
             
             # Daca e Simplu, Mono sau Custom, folosim text curat (alb/gri) cand NU are focus
             if is_simple or is_mono or is_custom:
@@ -969,12 +1327,37 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             
             li.setProperty('tmdbmovies.tags', ', '.join(info.get('tags', [])))
             li.setProperty('tmdbmovies.data', json.dumps(res['raw_stream_data']))
+            if is_nzb and (_nzb_meta.get('nzb_url') or '') in self._health_urls:
+                with self._health_lock:
+                    self._health_rows[_src_index] = {
+                        'item': li,
+                        'pos': len(items),
+                        'head_colored': head_colored,
+                        'tail_colored': tail_colored,
+                        'head_white': head_white,
+                        'tail_white': tail_white,
+                        'unfocus_plain': is_simple or is_mono or is_custom,
+                        'focus_plain': is_mono or is_custom,
+                    }
+            if not is_nzb and (res.get('url') or '') in self._dovi_urls:
+                with self._health_lock:
+                    self._dovi_rows[_src_index] = {
+                        'item': li,
+                        'pos': len(items),
+                        'head_colored': head_colored,
+                        'tail_colored': tail_colored,
+                        'head_white': head_white,
+                        'tail_white': tail_white,
+                        'unfocus_plain': is_simple or is_mono or is_custom,
+                        'focus_plain': is_mono or is_custom,
+                    }
             
             items.append(li)
             
         self.getControl(2000).addItems(items)
 
     def close(self):
+        self._health_stop.set()
         try:
             from resources.lib.playback.player import invalidate_play_attempts
             invalidate_play_attempts()

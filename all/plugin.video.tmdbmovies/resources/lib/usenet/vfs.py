@@ -24,7 +24,7 @@ ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
 FOLDER = 'usenet-vfs/'
 KEEP_SECONDS = 12 * 3600
-PLAN_VERSION = 12
+PLAN_VERSION = 13
 
 
 def enabled():
@@ -241,6 +241,7 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
         session = engine.Session(token, b'', providers,
                                  config.player_options(season, episode,
                                                        alt_season, alt_episode))
+        session.options['health_key'] = key
     except engine.SessionError as exc:
         return '', str(exc), False
     except Exception as exc:

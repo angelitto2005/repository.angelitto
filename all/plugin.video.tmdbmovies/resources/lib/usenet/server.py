@@ -123,6 +123,7 @@ def open_session(token, nzb_key=None, season=None, episode=None,
         session = engine.Session(token, data, providers,
                                  config.player_options(season, episode,
                                                        alt_season, alt_episode))
+        session.options['health_key'] = nzb_key or token
         info = session.prepare()
         if nzb_key:
             try:

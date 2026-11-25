@@ -240,12 +240,24 @@ def indexer_agent():
 
 
 def health_mode():
-    """0 = off, 1 = when playing, 2 = while listing."""
-    return number('usenet_nzb.health', 1, 0, 2)
+    """0 = off, 1 = before playing; saved NZBs are also checked in the list."""
+    raw = str(text('usenet_nzb.health', '')).strip()
+    try:
+        value = int(float(raw))
+    except Exception:
+        value = 1
+    if value > 1:
+        value = 1
+        try:
+            addon().setSetting('usenet_nzb.health', '1')
+        except Exception:
+            pass
+    return max(0, value)
 
 
-def health_max():
-    return number('usenet_nzb.health_max', 8, 1, 20)
+def dovi_enabled():
+    """Read FEL/MEL/P7 from the first megabytes of the release."""
+    return flag('usenet_nzb.dovi', True)
 
 
 def timeout():
@@ -293,7 +305,7 @@ def player_options(season=None, episode=None, alt_season=None, alt_episode=None)
     options = {'timeout': timeout(), 'prefetch_bytes': prefetch_bytes(),
                'cache_bytes': cache_bytes(), 'profile': performance_profile(),
                'hole_filling': hole_filling(), 'hole_percent': hole_percent(),
-               'hole_consecutive': hole_consecutive()}
+               'hole_consecutive': hole_consecutive(), 'health': health_mode()}
     try:
         options['season'] = int(season)
         options['episode'] = int(episode)

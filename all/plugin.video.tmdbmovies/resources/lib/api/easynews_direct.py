@@ -8,6 +8,8 @@ playback resolves the signed CDN address so Kodi never receives the login.
 
 import base64
 import hashlib
+import json
+import os
 import re
 import threading
 import time
@@ -205,6 +207,145 @@ def playback_url(remote_url):
     if not any(key.lower() == "user-agent" for key in headers):
         headers["User-Agent"] = USER_AGENT
     return base + "|" + urllib.parse.urlencode(headers)
+
+
+DOVI_FILE = 'easynews_dovi.json'
+DOVI_TTL = 14 * 86400
+DOVI_SHORT_TTL = 86400
+_DOVI = {}
+_DOVI_LOCK = threading.Lock()
+
+
+def _dovi_ttl(value):
+    if value.get('kind') or value.get('verified'):
+        return DOVI_TTL
+    return DOVI_SHORT_TTL
+
+
+def _dovi_path():
+    try:
+        from resources.lib.usenet import config as usenet_config
+        return usenet_config.data_file(DOVI_FILE)
+    except Exception:
+        return ''
+
+
+def _dovi_get(key):
+    now = time.time()
+    with _DOVI_LOCK:
+        value = _DOVI.get(key)
+        if value and now - value.get('at', 0) < _dovi_ttl(value):
+            return value.get('kind', '')
+        path = _dovi_path()
+        if not path:
+            return None
+        try:
+            with open(path, encoding='utf-8') as handle:
+                data = json.load(handle)
+        except Exception:
+            return None
+        value = data.get(key)
+        if not value or now - value.get('at', 0) >= _dovi_ttl(value):
+            return None
+        _DOVI[key] = value
+        return value.get('kind', '')
+
+
+def _dovi_set(key, kind, verified=False):
+    now = time.time()
+    record = {'kind': kind, 'at': now, 'verified': bool(verified)}
+    with _DOVI_LOCK:
+        _DOVI[key] = record
+        path = _dovi_path()
+        if not path:
+            return
+        try:
+            try:
+                with open(path, encoding='utf-8') as handle:
+                    data = json.load(handle)
+            except Exception:
+                data = {}
+            data = {name: value for name, value in data.items()
+                    if now - value.get('at', 0) < _dovi_ttl(value)}
+            data[key] = record
+            temp = path + '.tmp'
+            with open(temp, 'w', encoding='utf-8') as handle:
+                json.dump(data, handle)
+            os.replace(temp, path)
+        except Exception:
+            pass
+
+
+def _read_head(url, headers, limit):
+    session = requests.Session()
+    session.trust_env = False
+    response = None
+    try:
+        response = session.get(url, headers=headers, stream=True,
+                               timeout=(10, 20), verify=True)
+        if response.status_code not in (200, 206):
+            return b''
+        out, total = [], 0
+        for piece in response.iter_content(262144):
+            if not piece:
+                continue
+            out.append(piece)
+            total += len(piece)
+            if total >= limit:
+                break
+        return b''.join(out)[:limit]
+    except Exception:
+        return b''
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        session.close()
+
+
+def dovi_kind(remote_url):
+    """'fel', 'mel', 'p7' or '' from the first megabytes of an EasyNews MKV."""
+    base = str(remote_url or '').split('|', 1)[0]
+    if not configured() or not _easynews_host(base):
+        return ''
+    key = hashlib.sha1(base.encode('utf-8')).hexdigest()
+    known = _dovi_get(key)
+    if known is not None:
+        return known
+    try:
+        from resources.lib.usenet import tracks
+    except Exception:
+        return ''
+    headers = auth_headers()
+    headers['Accept-Encoding'] = 'identity'
+    headers['Range'] = 'bytes=0-%d' % (3 * 1024 * 1024 - 1)
+    data = _read_head(base, headers, 3 * 1024 * 1024)
+    if not data:
+        return ''
+    if data[:4] != b'\x1a\x45\xdf\xa3':
+        _dovi_set(key, '')
+        return ''
+    found = tracks.read(data)
+    if (not found or not found.get('video')) and len(data) >= 3 * 1024 * 1024:
+        headers['Range'] = 'bytes=0-%d' % (12 * 1024 * 1024 - 1)
+        data = _read_head(base, headers, 12 * 1024 * 1024)
+        found = tracks.read(data)
+    if not found or not found.get('video'):
+        _dovi_set(key, '')
+        return ''
+    kind = ''
+    if found.get('dv') == 7:
+        number, nal_size = found['video']
+        kind = tracks.dolby(data, number, nal_size, found['after'])
+        if not kind:
+            headers['Range'] = 'bytes=0-%d' % (12 * 1024 * 1024 - 1)
+            data = _read_head(base, headers, 12 * 1024 * 1024)
+            kind = tracks.dolby(data, number, nal_size, found['after'])
+        kind = kind or 'p7'
+    _dovi_set(key, kind, verified=True)
+    return kind
 
 
 def _number(value, default=0):
