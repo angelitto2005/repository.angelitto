@@ -27,7 +27,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import urlopen
 
-from . import config, engine, indexer
+from . import config, engine, indexer, vfs
 
 PORT_PROPERTY = 'tmdbmovies.usenet.port'
 PORT_RANGE = tuple(range(47321, 47332))
@@ -119,12 +119,25 @@ def open_session(token, nzb_key=None, season=None, episode=None,
     except Exception as exc:
         return None, None, 'the NZB could not be read (%s)' % exc
     providers = config.primary_providers() + config.backup_providers()
+    started = time.time()
     try:
         session = engine.Session(token, data, providers,
                                  config.player_options(season, episode,
                                                        alt_season, alt_episode))
         session.options['health_key'] = nzb_key or token
         info = session.prepare()
+        _log('opened %s in %.1fs (%d part(s))'
+             % (getattr(session, 'media_name', '') or token,
+                time.time() - started, len(session.parts)))
+        if not session.crypto and nzb_key:
+            # The next play can go straight to the native add-on: it reads this
+            # plan itself, so no prepare is paid again.
+            try:
+                if vfs.available():
+                    _log('plan written for %s: %s'
+                         % (nzb_key, vfs.write_plan(session, info, token, path, providers)))
+            except Exception as exc:
+                _log('plan not written: %s' % str(exc)[:90])
         if nzb_key:
             try:
                 config.remember_release(nzb_key, session.pack, played=True)
@@ -158,6 +171,40 @@ def close_session(key):
         session.close()
         return True
     return False
+
+
+def trim_idle(older_than=15.0):
+    """Drop the decoded articles of releases nobody read for a while. The session
+    stays open, so the plan and the measured sizes still make the next open fast."""
+    released = 0
+    with _LOCK:
+        sessions = list(_SESSIONS.values())
+    for session in sessions:
+        if time.time() - float(getattr(session, 'last_read', 0) or 0) <= older_than:
+            continue
+        try:
+            released += session.release_buffers()
+        except Exception:
+            pass
+    if released:
+        _log('dropped %.0f MB of buffered articles (release kept open)'
+             % (released / 1048576.0))
+    return released
+
+
+def close_idle(older_than=300.0):
+    """Close the releases nobody read for long: their connections go back to the
+    provider, so another device on the same account can use them."""
+    now = time.time()
+    with _LOCK:
+        stale = [key for key, session in _SESSIONS.items()
+                 if now - float(getattr(session, 'last_read', 0) or 0) > older_than]
+        closed = [_SESSIONS.pop(key) for key in stale]
+    for session in closed:
+        session.close()
+    if closed:
+        _log('closed %d release(s) left unused' % len(closed))
+    return len(closed)
 
 
 def _episode_query(season, episode, alt_season, alt_episode):

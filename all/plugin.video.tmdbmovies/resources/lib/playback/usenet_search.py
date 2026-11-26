@@ -427,10 +427,6 @@ def search_results(params=None):
         _log('EasyNews Direct search failed: %s' % type(exc).__name__)
         notes.append('EasyNews Direct: search failed')
     rows = en_rows + rows
-    try:
-        _release_records = usenet_config.release_records()
-    except Exception:
-        _release_records = {}
 
     for note in notes:
         _log(note)
@@ -456,20 +452,7 @@ def search_results(params=None):
             params['en_key'] = _remember_link('en', row.get('en_url'))
         else:
             params['nzb_key'] = _remember_link('nzb', row.get('nzb_url'))
-        _nested = False
-        _nzb_link = row.get('nzb_url') or ''
-        if _nzb_link and _release_records:
-            try:
-                _nested = bool((_release_records.get(usenet_config.nzb_key(_nzb_link))
-                                or {}).get('nested'))
-            except Exception:
-                _nested = False
-        if _nested:
-            plot = ' | '.join(piece for piece in (plot, 'Nested RAR, not streamable') if piece)
-        _label = title
-        if _nested:
-            _label = '%s  [COLOR FFFF5555][B]NESTED RAR[/B][/COLOR]' % title
-        li = xbmcgui.ListItem(label=_label)
+        li = xbmcgui.ListItem(label=title)
         li.setArt({'icon': _ICON_SEARCH, 'thumb': _ICON_SEARCH})
         try:
             li.setInfo('video', {'title': title, 'plot': plot, 'mediatype': 'video'})

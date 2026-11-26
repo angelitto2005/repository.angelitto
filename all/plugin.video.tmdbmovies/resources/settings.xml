@@ -227,7 +227,7 @@
         <setting id="usenet_nzb.max_results" type="slider" label="      [COLOR FFCCCCFF]└─ [B]Maximum results per indexer[/B][/COLOR]" default="30" range="5,5,100" option="int"/>
         <setting id="usenet_nzb.age_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the NZB age[/B] in the source list[/COLOR]" default="true"/>
         <setting id="usenet_nzb.grabs_badge" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Show the grab count[/B] in the source list   (how many times the NZB was downloaded)[/COLOR]" default="true"/>
-        <setting id="usenet_nzb.allow_iso" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Allow full-disc ISO[/B]   (slow over Usenet: the ISO is scanned before playback)[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.allow_iso" type="bool" label="      [COLOR FFCCCCFF]└─ [B]Allow full-disc ISO[/B]   (reads only the film inside the ISO: BDMV/STREAM or VIDEO_TS)[/COLOR]" default="false"/>
 
         <setting label="[B][COLOR FFFFEA00]Custom search[/COLOR][/B]" type="lsep" visible="eq(-8,true)"/>
         <setting id="usenet_nzb.context_search" type="bool" label="[COLOR FFCCCCFF][B]Search Usenet in the context menu[/B]   (asks for your own words)[/COLOR]" default="false" visible="eq(-9,true)"/>

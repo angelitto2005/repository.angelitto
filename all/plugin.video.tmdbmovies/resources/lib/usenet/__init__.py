@@ -11,4 +11,5 @@ Layout:
     engine.py   an NZB turned into a byte stream
     server.py   local HTTP server with Range, what Kodi plays
     service_host.py  starts the server inside the add-on service
+    memory.py   gives the RAM back after a film stops (buffers, then connections)
 """

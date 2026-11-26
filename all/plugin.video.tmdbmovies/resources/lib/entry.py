@@ -2728,6 +2728,16 @@ def run_service():
         xbmc.log('[TMDb Movies] [POST-STOP] bucla nu a pornit: %s' % _post_stop_error,
                  xbmc.LOGERROR)
 
+    # --- Usenet: dupa un film, release-ul tinut deschis (plan + buffere) da
+    # memoria inapoi; conexiunile doar dupa un idle lung. Ruleaza in service,
+    # acolo unde traieste serverul. ---
+    try:
+        from resources.lib.usenet import memory as _usenet_memory
+        _usenet_memory.start()
+    except Exception as _usenet_memory_error:
+        xbmc.log('[TMDb Movies] [MEMORY] bucla nu a pornit: %s' % _usenet_memory_error,
+                 xbmc.LOGERROR)
+
     # --- Usenet (NZB): trim the caches kept in the profile (NZBs 3 days / 256 MB,
     # VFS plans 12 h). The HTTP server does the NZB pass itself, but the VFS path
     # never starts it, so this runs on every boot regardless of the stream engine. ---

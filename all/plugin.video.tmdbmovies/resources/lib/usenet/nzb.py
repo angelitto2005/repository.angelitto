@@ -3,10 +3,12 @@ or 7z set is laid out.
 
 An NZB is XML with one <file> per posted file and one <segment> per article.
 Scene releases are usually a RAR or 7z set, so a player must understand the
-headers of a *stored* (uncompressed) archive: compressed or encrypted archives
+headers of a *stored* (uncompressed) archive: a stored file that is only
+wrapped in AES is still readable block by block, but a compressed archive
 cannot be streamed at all, and we say so instead of serving garbage.
 """
 
+import hashlib
 import html
 import lzma
 import re
@@ -33,6 +35,19 @@ _SEGMENT_BYTES_FIRST = re.compile(
     rb'<segment\b[^>]*?\bbytes="(\d+)"[^>]*?\bnumber="(\d+)"[^>]*>([^<]+)</segment>')
 _SEGMENT_NUMBER_FIRST = re.compile(
     rb'<segment\b[^>]*?\bnumber="(\d+)"[^>]*?\bbytes="(\d+)"[^>]*>([^<]+)</segment>')
+_PASSWORD_META = re.compile(
+    rb'<meta\b[^>]*\btype\s*=\s*["\']password["\'][^>]*>([^<]+)</meta>', re.I)
+
+
+def password(data):
+    """The archive password some indexers put in the NZB head (obfuscated 7z)."""
+    match = _PASSWORD_META.search(data or b'')
+    if not match:
+        return ''
+    try:
+        return html.unescape(match.group(1).decode('utf-8')).strip()
+    except Exception:
+        return ''
 
 MIN_INNER_VIDEO_BYTES = 20 * 1024 * 1024
 _IMAGE_VIDEO_NAME = re.compile(
@@ -368,6 +383,11 @@ def _volume_key(name):
     return (9, 0)
 
 
+def volume_key(name):
+    """Order of one archive volume: .part01.rar, then .rar, then .r00 and up."""
+    return _volume_key(name)
+
+
 _VOLUME_PREFIX = re.compile(r'^\[[^\]]{1,80}\]\s*\\?[^:]{0,80}::\s*', re.I)
 
 
@@ -592,10 +612,12 @@ def _entries_rar4(data, at=None):
     entries = []
     while position + 7 <= len(data):
         _crc, kind, flags, head_size = struct.unpack_from('<HBHH', data, position)
-        if head_size < 7:
+        if head_size < 7 or position + head_size > len(data):
             break
         extra = 0
         if flags & 0x8000 and kind != 0x74:
+            if position + 11 > len(data):
+                break
             extra = struct.unpack_from('<I', data, position + 7)[0]
         if kind == 0x73:                                   # main header
             if flags & 0x0080:
@@ -613,6 +635,8 @@ def _entries_rar4(data, at=None):
                 packed += high_packed << 32
                 unpacked += high_unpacked << 32
                 name_at += 8
+            if name_at + name_size > len(data):
+                break
             name = data[name_at:name_at + name_size].split(b'\x00')[0].decode('utf-8', 'replace')
             if flags & 0x0004:
                 raise Unsupported('this RAR is password protected')
@@ -660,6 +684,8 @@ def _entries_rar5(data, at=None):
         if flags & 0x02:
             data_size, cursor = _varint(data, cursor)
         header_end = header_start + header_size
+        if header_end > len(data):
+            break
         if kind == 1:                                      # main header
             archive_flags, cursor = _varint(data, cursor)
             has_volume = bool(archive_flags & 0x02)
@@ -680,6 +706,8 @@ def _entries_rar5(data, at=None):
             compression, cursor = _varint(data, cursor)
             _host, cursor = _varint(data, cursor)
             name_size, cursor = _varint(data, cursor)
+            if cursor + name_size > len(data):
+                break
             name = data[cursor:cursor + name_size].decode('utf-8', 'replace')
             encrypted = False
             record = header_end - extra
@@ -721,14 +749,19 @@ def _layout_rar5(data):
 SEVEN = b'7z\xbc\xaf\x27\x1c'
 
 
-def file_size(item):
-    """The exact decoded size of one posted file when the subject says it."""
+def declared_size(item):
+    """The decoded size from the subject's yEnc line, or 0 when it is missing."""
     match = _YENC_SIZE.search(item.subject or '')
     if match:
         declared = int(match.group(1))
         if declared >= item.bytes * 0.9:
             return declared
-    return item.bytes
+    return 0
+
+
+def file_size(item):
+    """The exact decoded size of one posted file when the subject says it."""
+    return declared_size(item) or item.bytes
 
 
 def _seven_stem(name):
@@ -851,7 +884,8 @@ def _seven_unpack_info(data, pos):
             for _ in range(packed_streams):
                 _, pos = _seven_number(data, pos)
         folders.append({'coders': coders, 'num_in': total_in,
-                        'num_out': total_out, 'unpack': 0})
+                        'num_out': total_out, 'unpack': 0,
+                        'packed_streams': packed_streams})
     while True:
         prop = data[pos]
         pos += 1
@@ -863,6 +897,7 @@ def _seven_unpack_info(data, pos):
                 for _ in range(folder['num_out']):
                     value, pos = _seven_number(data, pos)
                     sizes_out.append(value)
+                folder['sizes_out'] = sizes_out
                 folder['unpack'] = sizes_out[-1] if sizes_out else 0
         elif prop == 0x0A:
             pos = _seven_digests_length(data, pos, len(folders))
@@ -921,6 +956,69 @@ def seven_streams(data, pos):
     return result, pos
 
 
+_AES_METHOD = b'\x06\xf1\x07\x01'
+
+
+def _seven_aes_parts(props):
+    """(cycles, salt, iv) from the compact 7z AES coder properties."""
+    if len(props) < 2:
+        raise Unsupported('this 7z archive has broken AES properties')
+    first, second = props[0], props[1]
+    cycles = first & 0x3F
+    salt_size = ((first >> 7) & 1) + (second >> 4)
+    iv_size = ((first >> 6) & 1) + (second & 0x0F)
+    if len(props) != 2 + salt_size + iv_size:
+        raise Unsupported('this 7z archive has broken AES properties')
+    salt = props[2:2 + salt_size]
+    iv = props[2 + salt_size:].ljust(16, b'\x00')
+    return cycles, salt, iv
+
+
+_AES_KEYS = {}
+
+
+def seven_aes_setup(props, secret):
+    """(key, iv) for a 7z AES folder. Mirrors the published 7z KDF."""
+    if not secret:
+        raise Unsupported('this 7z archive is password protected')
+    kept = _AES_KEYS.get((props, secret))
+    if kept:
+        return kept
+    try:
+        from Cryptodome.Cipher import AES  # noqa: F401 - availability check
+    except ImportError:
+        try:
+            from Crypto.Cipher import AES  # noqa: F401
+        except ImportError:
+            raise Unsupported('7z decryption is not available on this device')
+    cycles, salt, iv = _seven_aes_parts(props)
+    password = secret.encode('utf-16-le')
+    if cycles == 0x3F:
+        key = (salt + password + bytes(32))[:32]
+    else:
+        digest = hashlib.sha256()
+        for index in range(1 << cycles):
+            digest.update(salt + password + struct.pack('<Q', index))
+        key = digest.digest()[:32]
+    if len(_AES_KEYS) > 8:
+        _AES_KEYS.clear()
+    _AES_KEYS[(props, secret)] = (key, iv)
+    return key, iv
+
+
+def seven_aes_bytes(data, key, iv):
+    """CBC-decrypt whole 16-byte blocks; a partial tail is padded with zeros."""
+    try:
+        from Cryptodome.Cipher import AES
+    except ImportError:
+        from Crypto.Cipher import AES
+    if not data:
+        return b''
+    if len(data) % 16:
+        data = data + bytes(16 - len(data) % 16)
+    return AES.new(key, AES.MODE_CBC, iv).decrypt(data)
+
+
 def _seven_lzma(packed, filters, size):
     """7z streams have no end marker: stop at the announced size."""
     engine = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
@@ -933,32 +1031,40 @@ def _seven_lzma(packed, filters, size):
     return out
 
 
-def seven_decode_pack(packed, folder):
-    """Decode the packed 7z header with the standard library only."""
-    if len(folder.get('coders') or []) != 1:
-        raise Unsupported('this 7z header uses a filter chain')
-    coder = folder['coders'][0]
-    method = coder['method']
-    props = coder['props'] or b''
-    size = folder['unpack']
-    if method == b'\x00':
-        return packed[:size]
-    if method == b'\x03\x01\x01' and len(props) >= 5:
-        value = props[0]
-        filters = [{'id': lzma.FILTER_LZMA1,
-                    'dict_size': struct.unpack('<I', props[1:5])[0],
-                    'lc': value % 9, 'lp': (value // 9) % 5, 'pb': value // 45}]
-        return _seven_lzma(packed, filters, size)
-    if method == b'\x21' and len(props) == 1:
-        value = props[0]
-        dict_size = (0xFFFFFFFF if value >= 40
-                     else (2 | (value & 1)) << (value // 2 + 11))
-        filters = [{'id': lzma.FILTER_LZMA2, 'dict_size': dict_size}]
-        return _seven_lzma(packed, filters, size)
-    raise Unsupported('unsupported 7z header compression')
+def seven_decode_pack(packed, folder, secret=None):
+    """Decode a packed 7z folder, running its coders from first to last."""
+    coders = folder.get('coders') or []
+    sizes_out = folder.get('sizes_out') or []
+    if not coders:
+        raise Unsupported('this 7z archive has no coders')
+    data = packed
+    for index, coder in enumerate(coders):
+        method = coder['method']
+        props = coder['props'] or b''
+        size = int(sizes_out[index]) if index < len(sizes_out) else int(folder.get('unpack') or 0)
+        if method == _AES_METHOD:
+            key, iv = seven_aes_setup(props, secret)
+            data = seven_aes_bytes(data, key, iv)[:size]
+        elif method == b'\x00':
+            data = data[:size]
+        elif method == b'\x03\x01\x01' and len(props) >= 5:
+            value = props[0]
+            filters = [{'id': lzma.FILTER_LZMA1,
+                        'dict_size': struct.unpack('<I', props[1:5])[0],
+                        'lc': value % 9, 'lp': (value // 9) % 5, 'pb': value // 45}]
+            data = _seven_lzma(data, filters, size)
+        elif method == b'\x21' and len(props) == 1:
+            value = props[0]
+            dict_size = (0xFFFFFFFF if value >= 40
+                         else (2 | (value & 1)) << (value // 2 + 11))
+            filters = [{'id': lzma.FILTER_LZMA2, 'dict_size': dict_size}]
+            data = _seven_lzma(data, filters, size)
+        else:
+            raise Unsupported('unsupported 7z header compression')
+    return data
 
 
-def seven_read_header(next_bytes, read_pack):
+def seven_read_header(next_bytes, read_pack, secret=None):
     """The real 7z header from the next-header block at the archive end."""
     kind = next_bytes[:1]
     if kind == b'\x01':
@@ -968,13 +1074,31 @@ def seven_read_header(next_bytes, read_pack):
     streams, _ = seven_streams(next_bytes, 1)
     folders = streams.get('folders') or []
     sizes = streams.get('sizes') or []
-    if len(folders) != 1 or len(sizes) != 1 or folders[0].get('num_in') != 1:
-        raise Unsupported('this 7z header uses an unsupported layout')
-    packed = read_pack(streams.get('pack_pos', 0), sizes[0])
-    header = seven_decode_pack(packed, folders[0])
+    if not folders or not sizes:
+        raise Unsupported('the 7z encoded header is empty')
+    # The packed header streams sit one after another from PackPos, and each
+    # folder consumes its own share; a header split into several folders is
+    # decoded folder by folder and the pieces are joined in order.
+    pack_at = int(streams.get('pack_pos', 0))
+    stream_at = 0
+    header = bytearray()
+    for folder in folders:
+        packed_count = int(folder.get('packed_streams') or 1)
+        if packed_count < 1 or packed_count > 1:
+            raise Unsupported('this 7z header uses multiple packed streams')
+        if stream_at >= len(sizes):
+            raise Unsupported('the 7z header pack sizes do not match its folders')
+        packed = read_pack(pack_at, sizes[stream_at])
+        if len(packed) < sizes[stream_at]:
+            raise Unsupported('the 7z header is incomplete')
+        header += seven_decode_pack(packed, folder, secret)
+        pack_at += sizes[stream_at]
+        stream_at += 1
+    if stream_at != len(sizes):
+        raise Unsupported('the 7z header pack sizes do not match its folders')
     if header[:1] != b'\x01':
         raise Unsupported('the 7z header did not decode')
-    return header
+    return bytes(header)
 
 
 def seven_header_streams(header):
@@ -1008,27 +1132,47 @@ def seven_header_streams(header):
 
 
 def seven_stored_streams(streams):
-    """Every stored (Copy) file stream, in header order: offset, length, packed."""
+    """Every stream kept verbatim on the wire, in header order: offset, length.
+
+    A folder of Copy coders maps the pack bytes straight onto the file, so it
+    can be served with plain ranges. An AES+Copy folder is the same archive
+    with a CBC layer on top: the length is the plaintext size and crypto holds
+    the coder properties the reader needs to peel the layer off.
+    """
     sizes = streams.get('sizes') or []
     folders = streams.get('folders') or []
     pack = 0
     consumed = 0
     items = []
     for folder in folders:
-        used = folder.get('num_in') or 0
+        used = int(folder.get('packed_streams') or 0)
         packed = sum(sizes[pack:pack + used])
         coders = folder.get('coders') or []
-        single = (len(coders) == 1 and coders[0]['num_in'] == 1
-                  and coders[0]['num_out'] == 1)
-        stored = (single and coders[0]['method'] == b'\x00'
-                  and packed == folder.get('unpack'))
+        aes = None
+        stored = bool(coders) and used == 1
+        for coder in coders if stored else []:
+            if coder['method'] == _AES_METHOD:
+                if aes is None:
+                    aes = {'props': coder['props'] or b''}
+            elif coder['method'] != b'\x00':
+                stored = False
+                break
+        if stored and aes is None and packed != folder.get('unpack'):
+            stored = False
         if stored:
             sizes_in = folder.get('stream_sizes')
             if sizes_in is None and folder.get('num_streams', 1) == 1:
                 sizes_in = [folder.get('unpack', 0)]
-            position = streams.get('pack_pos', 0) + consumed
+            folder_start = streams.get('pack_pos', 0) + consumed
+            position = folder_start
             for size_in in sizes_in or []:
-                items.append({'offset': position, 'length': size_in, 'packed': packed})
+                item = {'offset': position, 'length': size_in, 'packed': packed}
+                if aes:
+                    # CBC works on folder blocks: a stream that does not start
+                    # on one would need bytes from the file before it.
+                    item['crypto'] = {'props': aes['props'],
+                                      'rel': position - folder_start}
+                items.append(item)
                 position += size_in
         pack += used
         consumed += packed

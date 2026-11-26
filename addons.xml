@@ -1,0 +1,1138 @@
+<?xml version='1.0' encoding='utf-8'?>
+<addons><addon id="Bee-Queen" name="Bee Queen" version="1.0.4" provider-name="ASistem">
+    <extension point="xbmc.addon.repository" name="Bee Queen Repository">
+	    <dir>
+            <info compressed="false">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/repo/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/repo/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/repo/zips/</datadir>
+        </dir>
+		<dir minversion="17.0.0" maxversion="17.9.9">
+            <info compressed="false">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/krypton/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/krypton/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/krypton/zips/</datadir>
+        </dir>
+		<dir minversion="18.0.0" maxversion="18.9.9">
+            <info compressed="false">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/leia/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/leia/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/leia/zips/</datadir>
+        </dir>
+		<dir minversion="19.0.0">
+            <info compressed="false">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/matrix/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/matrix/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/audiosistem/Bee-Queen/main/matrix/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Bee Queen Repository</summary>
+        <description>4install build Al8inA</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="plugin.video.elementum" name="[B][COLOR gray]Elementum MRSP[/COLOR][/B]" version="1.1.114a" provider-name="elgatito, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.addon" version="16.0.0" />
+        <import addon="repository.elementumorg" optional="true" />
+        <import addon="script.module.kodi-six" />
+        <import addon="script.module.requests" version="2.9.1" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="navigation.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py" start="startup" />
+    <extension point="xbmc.python.module" library="resources/site-packages" />
+    <extension point="xbmc.subtitle.module" library="navigation.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ru">Elementum: Стриминг видео</summary>
+        <summary lang="en">Elementum: Media streaming</summary>
+        <summary lang="hr">Elementum: Medijsko strujanje</summary>
+        <summary lang="es">Elementum: Transmisión de medios</summary>
+        <summary lang="sv">Elementum: medieströmning</summary>
+        <description lang="ru">Elementum это дополнение для поиска и воспроизведения торрентов. Дополнение не ходит на запрещенные сайты самостоятельно. Хотя, для поиска используются дополнения (называемые провайдерами), которые устанавливаются отдельно.[CR]Этот проект является ответвлением хорошо извесных, но не поддерживаемых Pulsar/Quasar от steeve и scakemyer.</description>
+        <description lang="en">Elementum is a torrent finding and streaming engine. It doesn't go on torrent websites for legal reasons. However, it calls specially crafted add-ons (called providers) that are installed separately.[CR]This project is a fork of the well known, but no longer maintained Pulsar/Quasar projects from steeve and scakemyer.</description>
+        <description lang="hr">Elementum je pogon pretraživanja i strujanja. Ne posjećuje torrent web stranice iz pravnih razloga. Ipak, koristi posebno napravljene dodatke (nazvane pružatelji usluge) koji su instalirani odvojeno.[CR]Ovaj projekt je ogranak dobro poznatih, ali više ne održavanih Pulsar/Quasar projekata od autora steevea i scakemyera.</description>
+        <description lang="es">Elementum es un motor de búsqueda y transmisión torrent. No navega por sitios web torrent por razones legales. Sin embargo, llama a complementos especialmente diseñados para ello (denominados providers o proveedores) que se instalan por separado.[CR]Este proyecto es un fork de los bien conocidos, pero ya sin soporte proyectos Pulsar/Quasar de steeve y scakemyer.[CR]</description>
+        <description lang="sv">Elementum är en torrentsöknings- och strömningsmotor. Det går inte till torrentwebbplatser av juridiska skäl. Den anropar dock speciellt utformade tillägg (kallade leverantörer) som installeras separat.[CR]Detta projekt är en förgrening av de välkända, men inte längre underhållna Pulsar/Quasar-projekten av steeve och scakemyer. </description>
+        <disclaimer lang="ru">Автор дополнения не несёт ответственности за скачивание или поиск информации и содержимого в этом дополнении. Автор никак не связан с Kodi, командой Kodi, или XBMC Foundation.</disclaimer>
+        <disclaimer lang="en">The author does not own or host any content found within this Addon. The author is not connected to or in any other way affiliated with Kodi, Team Kodi, or the XBMC Foundation.</disclaimer>
+        <disclaimer lang="hr">Autor ovog dodatka ne posjeduje i ne distribuira bilo kakav sadržaj koji je pronađen. Autor nije povezan sa ili na bilo koji drugi način bilo sa Kodijem, Team Kodijem ili XBMC fundacijom.</disclaimer>
+        <disclaimer lang="es">El autor no posee ni aloja ningún contenido que se encuentre a través de este complemento. El autor no está unido ni relacionado de ninguna manera con Kodi, Team Kodi, o XBMC Foundation.</disclaimer>
+        <disclaimer lang="sv">Skaparen äger inte eller är värd av något innehåll som finns i detta tillägg. Författaren är inte ansluten till eller på något annat sätt en del av Kodi, Team Kodi eller XBMC Foundation.</disclaimer>
+        <language>en el es de fi fr he hr it nl pt ro sk sv</language>
+        <platform>all</platform>
+        <website>http://elementum.surge.sh/</website>
+        <source>https://github.com/elgatito/plugin.video.elementum</source>
+        <forum />
+        <license>Non commercial. See https://github.com/elgatito/plugin.video.elementum/blob/master/LICENSE</license>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>icon.png</fanart>
+            <screenshot>resources/screenshots/home.png</screenshot>
+            <screenshot>resources/screenshots/movies.png</screenshot>
+            <screenshot>resources/screenshots/webui.png</screenshot>
+        </assets>
+    </extension>
+</addon><addon id="plugin.video.romanianpack" name="[B][COLOR FFFDBD01]MRSP Lite[/COLOR][/B]" version="1.2.87" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+	<import addon="script.module.requests" version="2.22.0" />
+    <import addon="script.module.resolveurl" version="5.0.06" />
+    <import addon="plugin.video.elementum" optional="true" />
+    <import addon="script.module.torrent2http" />
+    <import addon="repository.angelitto" version="1.0.0" />
+  </requires>
+  <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video</provides>
+  </extension>
+  <extension point="kodi.context.item">
+    <menu id="kodi.core.main">
+        <item library="resources/lib/context.py">
+            <label>[B][COLOR FFFDBD01]Play with MRSP[/COLOR][/B]</label>
+            <visible>String.IsEqual(Window(10000).Property(mrsp.context_menu_enabled),true) + !String.StartsWith(ListItem.path,plugin://plugin.video.romanianpack/) + [String.IsEqual(ListItem.dbtype,episode) | String.IsEqual(ListItem.dbtype,movie)]</visible>
+        </item>
+    </menu>
+  </extension>
+  <extension point="xbmc.service" name="mrsp.service" library="service.py" />
+  <extension point="xbmc.addon.metadata">
+	<summary>Motor de căutare și redare Torente</summary>
+    <description>[B][COLOR FF009900]Browser și Player pentru torente video[/COLOR][/B]</description>
+    <platform>all</platform>
+    <disclaimer lang="en">The author of this addon do not host any of the content which is found and have no affiliation with any of the content providers. This addon simply searches websites for content. Use at your own risk!</disclaimer>
+    <disclaimer lang="ro">Autorul acestui supliment nu găzduiește conținutul găsit și nu are nicio legătură cu furnizorii de conținut. Acest supliment doar caută conținutul furnizat de site-uri web. Folosiți-l pe propria răspundere! </disclaimer>
+    <assets>
+        <icon>icon.png</icon>
+		<fanart>fanart.jpg</fanart>
+    </assets>
+  </extension>
+</addon><addon id="plugin.video.tmdbmovies" version="1.1.371" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+        <import addon="script.module.resolveurl" version="5.0.0" />
+        <import addon="inputstream.adaptive" version="19.0.0" />
+        <import addon="vfs.tmdbm" version="0.1.4" optional="true" />
+    </requires>
+    
+    <extension point="xbmc.python.pluginsource" library="resources/lib/router.py">
+        <provides>video</provides>
+    </extension>
+    
+    <extension point="xbmc.service" library="resources/lib/service.py" />
+
+    
+    <extension point="kodi.context.item">
+        <menu id="kodi.core.main">
+ 
+        
+            <item library="resources/lib/context/context_library.py">
+                <label>[B][COLOR yellow]Add to Library[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.LibraryContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))] +
+                    !String.IsEmpty(Container.PluginName)
+                </visible>
+            </item>
+             
+            
+            <item library="resources/lib/context/context.py">
+                <label>[B][COLOR FF6AFB92]TMDb INFO[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.ContextMenu),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+
+            
+            <item library="resources/lib/context/context_extended.py">
+                <label>[B][COLOR FF33CCFF]TMDb Extended INFO[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.ExtendedContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+
+            
+            <item library="resources/lib/context/context_trailer.py">
+                <label>[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]</label>
+                <visible>
+                    String.IsEqual(Window(10000).Property(TMDbMovies.TrailerContext),true) + 
+                    !String.IsEmpty(ListItem.Title) +
+                    [String.IsEqual(ListItem.DBTYPE,movie) | String.IsEqual(ListItem.DBTYPE,tvshow) | String.IsEqual(ListItem.DBTYPE,season) | String.IsEqual(ListItem.DBTYPE,episode) | !String.IsEmpty(ListItem.Property(mediatype))]
+                </visible>
+            </item>
+            
+        </menu>
+    </extension>
+    
+    <extension point="xbmc.addon.metadata">
+        <reuselanguageinvoker>true</reuselanguageinvoker>
+        <summary lang="en">Your source for movies and TV shows</summary>
+        <description lang="en">[B][COLOR FF009900]Popular Movies and TV Shows using the TMDB API.[/COLOR][/B]</description>
+        <disclaimer lang="en">This addon is a video search engine. We do not host content.</disclaimer>
+        <language>en</language>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>icon.png</fanart>
+        </assets>
+    </extension>
+</addon><addon id="plugin.video.youtube" name="YouTube" version="7.4.4a" provider-name="anxdpanic, bromix, MoojMidge">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.27.1" />
+        <import addon="inputstream.adaptive" version="19.0.0" />
+        <import addon="script.module.inputstreamhelper" version="0.2.2" optional="true" />
+        <import addon="script.module.pysocks" optional="true" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="resources/lib/plugin.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.service" library="resources/lib/service.py" />
+    <extension point="xbmc.python.module" library="resources/lib/" />
+    <extension point="xbmc.python.script" library="resources/lib/script.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <assets>
+            <icon>resources/media/icon.png</icon>
+            <fanart>resources/media/fanart.jpg</fanart>
+        </assets>
+        <platform>all</platform>
+        <license>GPL-2.0-only</license>
+        <forum>https://ytaddon.panicked.xyz/forum</forum>
+        <website>https://www.youtube.com</website>
+        <source>https://github.com/anxdpanic/plugin.video.youtube</source>
+        <reuselanguageinvoker>true</reuselanguageinvoker>
+        <summary lang="bg_BG">Добавка за YouTube</summary>
+        <summary lang="bs_BA">Dodatak za YouTube</summary>
+        <summary lang="cs_CZ">Plugin pro YouTube</summary>
+        <summary lang="da_DK">Plugin til YouTube</summary>
+        <summary lang="de_DE">Plugin für YouTube</summary>
+        <summary lang="el_GR">Πρόσθετο για το YouTube</summary>
+        <summary lang="en_GB">Plugin for YouTube</summary>
+        <summary lang="eo">Aldonaĵo por YouTube</summary>
+        <summary lang="es_ES">Complemento para YouTube</summary>
+        <summary lang="es_MX">Complemento para YouTube</summary>
+        <summary lang="et_EE">YouTube lisamoodul</summary>
+        <summary lang="fi_FI">YouTube-lisäosa</summary>
+        <summary lang="fr_FR">Plugin pour YouTube</summary>
+        <summary lang="ga">Breiseán do YouTube</summary>
+        <summary lang="he_IL">תוסף עבור YouTube</summary>
+        <summary lang="hr_HR">Dodatak za YouTube</summary>
+        <summary lang="hu_HU">YouTube kiegészítő</summary>
+        <summary lang="id_ID">Pengaya untuk YouTube</summary>
+        <summary lang="it_IT">Plugin per YouTube</summary>
+        <summary lang="ko_KR">유튜브 플러그인</summary>
+        <summary lang="nb_NO">Tillegg for YouTube</summary>
+        <summary lang="nl_NL">Plugin voor YouTube</summary>
+        <summary lang="pl_PL">Wtyczka YouTube</summary>
+        <summary lang="pt_BR">Plugin para YouTube</summary>
+        <summary lang="ro_RO">Modul pentru YouTube</summary>
+        <summary lang="ru_RU">Видеодополнение YouTube</summary>
+        <summary lang="sk_SK">Doplnok pre YouTube</summary>
+        <summary lang="sv_SE">Insticksmodul för YouTube</summary>
+        <summary lang="tr_TR">YouTube için eklenti</summary>
+        <summary lang="uk_UA">Додаток для YouTube</summary>
+        <summary lang="vi_VN">Plugin dành cho YouTube</summary>
+        <summary lang="zh_CN">油管插件</summary>
+        <summary lang="zh_TW">YouTube附加元件</summary>
+        <description lang="bg_BG">YouTube е един от най-големите уеб сайтове за споделяне на видео в целия свят.</description>
+        <description lang="bs_BA">YouTube je jedna od najvećih svjetskih web stranica za dijeljenje videozapisa.</description>
+        <description lang="cs_CZ">YouTube je jedna z největších webových stránek světa sdílející video.</description>
+        <description lang="da_DK">YouTube er et af verdens største videodelingswebsteder.</description>
+        <description lang="de_DE">YouTube ist eines der größten Video-Sharing-Websites der Welt.</description>
+        <description lang="el_GR">Το YouTube είναι μία από τις μεγαλύτερες ιστοσελίδες διαμοιρασμού βίντεο στον κόσμο.</description>
+        <description lang="en_GB">YouTube is one of the biggest video-sharing websites of the world.</description>
+        <description lang="es_ES">YouTube es uno de los sitios web para compartir vídeos más grandes del mundo.</description>
+        <description lang="es_MX">YouTube es uno de los más grandes sitios web de intercambio de videos del mundo.</description>
+        <description lang="fi_FI">YouTube on yksi maailman suurimmista videoiden jakosivustoista.</description>
+        <description lang="fr_FR">YouTube est l'un des plus grands sites de partage vidéos du monde.</description>
+        <description lang="he_IL">YouTube הוא אחד מאתרי שיתוף הווידאו הגדולים בעולם.</description>
+        <description lang="hr_HR">YouTube je jedna od najvećih stranica za dijeljenje video sadržaja na svijetu.</description>
+        <description lang="hu_HU">A YouTube világ egyik legnagyobb videómegosztó weboldala.</description>
+        <description lang="id_ID">YouTube adalah salah satu situs web berbagi video terbesar di dunia.</description>
+        <description lang="it_IT">YouTube è uno dei più grandi siti di condivisione video del mondo.</description>
+        <description lang="ko_KR">유튜브는 세상에서 가장 큰 동영상 공유 사이트 중의 하나입니다.</description>
+        <description lang="nb_NO">YouTube er en av verdens største nettsider for videodeling.</description>
+        <description lang="nl_NL">YouTube is een van de grootste videodelenwebsite in de hele wereld.</description>
+        <description lang="pl_PL">YouTube jest jednym z największych na świecie serwisów udostępniania wideo.</description>
+        <description lang="pt_BR">O YouTube é um dos maiores sites de compartilhamento de vídeos do mundo.</description>
+        <description lang="ro_RO">YouTube este unul dintre cele mai mari saituri de distribuire de videoclipuri din lume.</description>
+        <description lang="ru_RU">YouTube - популярнейший видеохостинговый сайт, предоставляющий пользователям услуги хранения, доставки и показа видео.</description>
+        <description lang="sk_SK">YouTube je jednou z najväčších stránok na zdieľanie videa na svete.</description>
+        <description lang="sv_SE">YouTube är en av världens största webbplatser för videodelning.</description>
+        <description lang="tr_TR">YouTube, dünya üzerindeki en büyük video paylaşma platformlarından birisidir.</description>
+        <description lang="uk_UA">YouTube є одним з найбільших відеохостингів в світі.</description>
+        <description lang="vi_VN">YouTube là một trong những trang web chia sẻ video lớn nhất trên thế giới.</description>
+        <description lang="zh_CN">油管是世界上最大的视频分享网站之一。</description>
+        <description lang="zh_TW">Youtube 是全世界最大的影片分享網站。</description>
+        <disclaimer lang="bs_BA">Ovaj dodatak nije odobren od strane Googlea</disclaimer>
+        <disclaimer lang="cs_CZ">Tento plugin není schválen společností Google</disclaimer>
+        <disclaimer lang="da_DK">Dette plugin er ikke godkendt af Google</disclaimer>
+        <disclaimer lang="de_DE">Dieses Plugin ist nicht von Google befürwortet</disclaimer>
+        <disclaimer lang="el_GR">Η παρούσα μικροεφαρμογή δεν έχει υϊοθετηθεί από την Google</disclaimer>
+        <disclaimer lang="en_GB">This plugin is not endorsed by Google</disclaimer>
+        <disclaimer lang="eo">Tiu aldonaĵo ne estas aprobita de Google</disclaimer>
+        <disclaimer lang="es_ES">Este add-on no está respaldado por Google</disclaimer>
+        <disclaimer lang="es_MX">Este complemento no está respaldado por Google</disclaimer>
+        <disclaimer lang="fi_FI">Google ei tue tätä lisäosaa</disclaimer>
+        <disclaimer lang="fr_FR">Ce module n'est pas validé par Google</disclaimer>
+        <disclaimer lang="hr_HR">Ovaj dodatak nije podržan od strane Googlea</disclaimer>
+        <disclaimer lang="id_ID">Plugin ini tidak didukung oleh Google</disclaimer>
+        <disclaimer lang="it_IT">Questo plugin non è approvato da Google</disclaimer>
+        <disclaimer lang="ko_KR">이 플러그인은 Google의 허가를 받지 않았습니다</disclaimer>
+        <disclaimer lang="nl_NL">Deze plug-in wordt niet door Google ondersteund</disclaimer>
+        <disclaimer lang="pl_PL">Ta wtyczka nie jest zatwierdzona przez Google</disclaimer>
+        <disclaimer lang="pt_BR">Este plugin não é recomendado pelo Google</disclaimer>
+        <disclaimer lang="ro_RO">Acest modul nu este susținut de Google</disclaimer>
+        <disclaimer lang="ru_RU">Плагин не поддерживается Google</disclaimer>
+        <disclaimer lang="sk_SK">Tento doplnok nie je schválený spoločnosťou Google</disclaimer>
+        <disclaimer lang="sv_SE">Denna insticksmodul är inte godkänd av Google</disclaimer>
+        <disclaimer lang="tr_TR">Bu eklenti Google tarafından üretilmemiştir</disclaimer>
+        <disclaimer lang="uk_UA">Цей додаток не має відношення до компанії Google</disclaimer>
+        <disclaimer lang="vi_VN">Plugin này không được xác nhận bởi Google</disclaimer>
+        <disclaimer lang="zh_CN">此插件未被谷歌认可</disclaimer>
+        <disclaimer lang="zh_TW">此附加元件未由Google支持</disclaimer>
+    <news>## v7.4.4
+### Fixed
+- Fix not including FolderPath in current container details
+- Fix current plugin item window properties sometimes not updating correctly
+- Fix not updating remote history upon consecutive playback events for certain video types
+- Fix using unimplemented change to localisation identifier when showing API config page address
+- Fix play uri parameters/properties not being able to be forced off
+- Limit retrying feeds that cannot be accessed
+
+### Changed
+- Improve responsiveness of service loop upon plugin invocation
+- Log redacted visitorData details
+- More aggressively utilise cached data for My Subscriptions feed failures
+
+### New
+- Add option to play YouTube error notification video upon playback failure</news></extension>
+</addon><addon id="repository.derzis" name="Derzis Repo" version="1.0.0" provider-name="derzis">
+    <extension point="xbmc.addon.repository" name="Derzis Repo">
+        <dir>
+            <repopath>https://derzis.xyz/repo/</repopath>
+            <info compressed="false">https://derzis.xyz/repo/addons.xml</info>
+            <checksum>https://derzis.xyz/repo/addons.xml.md5</checksum>
+            <datadir zip="true">https://derzis.xyz/repo/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">Derzis Kodi Repository</summary>
+        <description lang="en">A collection of Kodi video addons by derzis</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.elementumorg" name="ElementumOrg repository" provider-name="elementumorg" version="0.0.7">
+    <requires>
+        
+    </requires>
+    <extension point="xbmc.addon.repository">
+        <dir>
+            <info>http://127.0.0.1:65223/addons.xml</info>
+            <checksum>http://127.0.0.1:65223/addons.xml.md5</checksum>
+            <datadir>http://127.0.0.1:65223/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.python.script" library="default.py" />
+    <extension point="xbmc.service" library="service.py" />
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <license>See https://github.com/ElementumOrg/repository.elementumorg/blob/master/LICENSE</license>
+        <source>https://github.com/ElementumOrg/repository.elementumorg</source>
+        <summary lang="en">GitHub virtual Add-on repository</summary>
+        <description lang="en">Customizable repository which acts as a proxy for defined GitHub users' add-ons updates.</description>
+        <news>
+- Allow running in standalone mode
+- Migrate to GitHub API
+- Add support for "tag_pattern" field
+- Add support for private repositories by supplying a "token"
+- Try to automatically determine zip ref from version
+- Multiple minor improvements
+        </news>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon><addon id="repository.hub" name="Hub Repo" version="1.1.3" provider-name="1x">
+    <extension point="xbmc.addon.repository" name="Hub Repo">
+		<dir>
+			<info compressed="false">https://raw.githubusercontent.com/staycanuca/hub/main/zip/addons.xml</info>
+			<checksum>https://raw.githubusercontent.com/staycanuca/hub/main/zip/addons.xml.md5</checksum>
+			<datadir zip="true">https://raw.githubusercontent.com/staycanuca/hub/main/zip/</datadir>
+			<hashes>false</hashes>
+		</dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Hub Repository</summary>
+        <description lang="en_GB">Repo for Hub.</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+			<fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.ivarbrandt" name="ivarbrandt's Repository" version="1.0.1" provider-name="Ivar Brandt">
+    <extension point="xbmc.addon.repository" name="ivarbrandt's Repository">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/ivarbrandt/repository.ivarbrandt/master/repo/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/ivarbrandt/repository.ivarbrandt/master/repo/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/ivarbrandt/repository.ivarbrandt/master/repo/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>ivarbrandt's Repository</summary>
+        <description>Kodi repository for the FENtastic skin and other projects</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.jurialmunkey" name="jurialmunkey Alpha Repository" version="3.5" provider-name="jurialmunkey">
+    <extension point="xbmc.addon.repository" name="jurialmunkey Alpha Repository">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/repo/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/repo/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/repo/zips/</datadir>
+        </dir>
+        <dir minversion="19.9.1" maxversion="20.9.0">
+            <info compressed="false">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/nexusrepo/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/nexusrepo/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/nexusrepo/zips/</datadir>
+        </dir>
+        <dir minversion="20.9.1">
+            <info compressed="false">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/omega/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/omega/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/jurialmunkey/repository.jurialmunkey/master/omega/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>jurialmunkey Alpha Repository</summary>
+        <description>A repository for alpha releases of jurialmunkey's skins.</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon><addon id="repository.kodifitzwell" version="0.0.1" name="kodifitzwell repository" provider-name="kodifitzwell">
+    <extension point="xbmc.addon.repository" name="kodifitzwell repository">
+        <dir minversion="19.0.0">
+            <info compressed="false">https://kodiyashimaru.github.io/repo/packages/addons.xml</info>
+            <checksum>https://kodiyashimaru.github.io/repo/packages/addons.xml.md5</checksum>
+            <datadir zip="true">https://kodiyashimaru.github.io/repo/</datadir>
+        </dir>
+        <dir minversion="19.0.0">
+            <info compressed="false">https://kodifitzwell.github.io/repo/packages/addons.xml</info>
+            <checksum>https://kodifitzwell.github.io/repo/packages/addons.xml.md5</checksum>
+            <datadir zip="true">https://kodifitzwell.github.io/repo/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <description>kodifitzwell repository</description>
+        <assets><icon>icon.png</icon></assets>
+    </extension>
+</addon><addon id="repository.luc_repo" name="[B][COLOR ff00fa9a]luc_[/COLOR][/B]repo" version="1.0.10" provider-name="[COLOR ffffae00]apoyotech[/COLOR]">
+   <extension point="xbmc.addon.repository" name="luc_repo">
+		<dir>
+			<info compressed="false">https://raw.githubusercontent.com/apoyotech/luc_repo/main/addons.xml</info>
+			<checksum>https://raw.githubusercontent.com/apoyotech/luc_repo/main/addons.xml.md5</checksum>
+			<datadir zip="true">https://raw.githubusercontent.com/apoyotech/luc_repo/main/zips/</datadir>
+		</dir>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+    <summary lang="en_GB"> Welcome to the luc_repo</summary>
+    <description lang="en_GB">[COLOR fffa9900]luc_repo for  Kodi[/COLOR]</description>
+    <platform>all</platform>
+  <license>GNU GENERAL PUBLIC LICENSE. Version 3, 29 June 2007</license>  
+  <disclaimer lang="en">The author of this repository do not host any of the content which is found and have no affiliation with any of the content providers. Use at your own risk!</disclaimer>  
+  <assets>	
+	 <icon>icon.png</icon>
+     <fanart>fanart.jpg</fanart>	
+	</assets>  
+  </extension>
+</addon><addon id="repository.lucent" name="Lucent Repository" version="1.0.4" provider-name="Wilfried van der Voort">
+    <requires>
+        <import addon="xbmc.addon" version="12.0.0" />
+    </requires>
+    <extension point="xbmc.addon.repository" name="Lucent Repository">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/djdirty60/Lucent/main/repo/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/djdirty60/Lucent/main/repo/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/djdirty60/Lucent/main/repo/zips/</datadir>
+            <hashes>false</hashes>
+        </dir>
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/djdirty60/Lucent-video/main/repo/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/djdirty60/Lucent-video/main/repo/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/djdirty60/Lucent-video/main/repo/zips/</datadir>
+            <hashes>false</hashes>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <news>1.0.4: Maker shown as Wilfried van der Voort.
+1.0.3: New, sharper icon (blue, with a download arrow).
+1.0.2: Also reads the separate folder of the video add-on.</news>
+        <summary lang="en_GB">Updates for the Lucent skin and its video add-on</summary>
+        <summary lang="nl_NL">Updates voor de Lucent-skin en de video add-on</summary>
+        <description lang="en_GB">Install this once. Kodi then keeps the Lucent skin and its video add-on up to date by itself.</description>
+        <description lang="nl_NL">Installeer dit één keer. Kodi houdt de Lucent-skin en de video add-on daarna zelf up-to-date.</description>
+        <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.newdiamond" name="New DiamondInfo_Mod Repo" version="2.2" provider-name="fryhenryj">
+    <extension point="xbmc.addon.repository" name="newdiamondinfo_mod">
+        <dir>
+            <info compressed="false">https://henryjfry.github.io/repository.thenewdiamond/zips/addons.xml</info>
+            <checksum>https://henryjfry.github.io/repository.thenewdiamond/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://henryjfry.github.io/repository.thenewdiamond/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>New DiamondInfo_Mod Repo</summary>
+        <description>New DiamondInfo_Mod Repo</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.redwizard" name="[COLOR red]The Red Repo[/COLOR]" version="1.2.2" provider-name="[COLOR red]The Red Wizard[/COLOR]">
+	<extension point="xbmc.addon.repository" name="The Red Repo">
+		<dir>
+			<info compressed="false">https://repo.redwizard.xyz/redwizardrepo/main/addons.xml</info>
+			<checksum>https://repo.redwizard.xyz/redwizardrepo/main/addons.xml.md5</checksum>
+			<datadir zip="true">https://repo.redwizard.xyz/redwizardrepo/main/</datadir>
+		</dir>
+		<dir minversion="20.9.0" maxversion="21.8.9">
+			<info compressed="false">https://repo.redwizard.xyz/redwizardrepo/21omega/addons.xml</info>
+			<checksum>https://repo.redwizard.xyz/redwizardrepo/21omega/addons.xml.md5</checksum>
+			<datadir zip="true">https://repo.redwizard.xyz/redwizardrepo/21omega/</datadir>
+		</dir>
+		<dir minversion="21.9.0" maxversion="22.8.9">
+			<info compressed="false">https://repo.redwizard.xyz/redwizardrepo/22piers/addons.xml</info>
+			<checksum>https://repo.redwizard.xyz/redwizardrepo/22piers/addons.xml.md5</checksum>
+			<datadir zip="true">https://repo.redwizard.xyz/redwizardrepo/22piers/</datadir>
+		</dir>
+		<dir>
+			<info compressed="false">https://raw.githubusercontent.com/Gujal00/smrzips/master/addons.xml</info>
+			<checksum>https://raw.githubusercontent.com/Gujal00/smrzips/master/addons.xml.md5</checksum>
+			<datadir zip="true">https://raw.githubusercontent.com/Gujal00/smrzips/master/zips/</datadir>
+		</dir>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">[COLOR red]The Red Wizard Builds and Add-ons[/COLOR]</summary>
+		<description lang="en_GB">[COLOR red]The Red Repo for The Red Wizard builds and add-ons[/COLOR]</description>
+		<disclaimer lang="en_GB">[COLOR red]The author of this add-on does not host any content and has no affiliation with the content providers[/COLOR]</disclaimer>
+		<news>[COLOR red]2026-03-23
+- Change to the add-on description
+- Typos corrected in the news section and changelog
+- Chains Repository and The 7o9 Repo now available to install from The Red Repo
+- The Red Wizard has a new home! Go to https://redwizard.xyz[/COLOR]</news>
+		<platform>all</platform>
+		<language>en</language>
+		<license>GNU GENERAL PUBLIC LICENSE Version 3</license>
+		<email>info@redwizard.xyz</email>
+		<website>https://www.redwizard.xyz/</website>
+		<forum>https://t.me/+XiuBf9KvPfw2MzVk</forum>
+		<assets>
+			<icon>icon.png</icon>
+			<fanart>fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon><addon id="repository.resolveurl" name="ResolveURL Repository" provider-name="gujal" version="1.0.0">
+  <extension point="xbmc.addon.repository" name="ResolveURL Repository">
+    <dir>
+      <info compressed="false">https://raw.githubusercontent.com/Gujal00/smrzips/master/addons.xml</info>
+      <checksum>https://raw.githubusercontent.com/Gujal00/smrzips/master/addons.xml.md5</checksum>
+      <datadir zip="true">https://raw.githubusercontent.com/Gujal00/smrzips/master/zips/</datadir>
+    </dir>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <platform>all</platform>
+    <description lang="en_GB">ResolveURL and Link Tester</description>
+    <license />
+    <language />
+    <website />
+    <news />
+    <assets>
+      <icon>icon.png</icon>
+      <fanart>fanart.jpg</fanart>
+    </assets> 
+  </extension>
+</addon><addon id="repository.sarsaila" name="Sarsailă's Addons" version="1.1.1" provider-name="Sarsailă">
+    <extension point="xbmc.addon.repository" name="Sarsailă's Addons">
+        <dir>
+            <info compressed="false">https://raw.githubusercontent.com/xngsrs/myhobby/master/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/xngsrs/myhobby/master/addons.xml.md5</checksum>
+            <datadir zip="true">https://github.com/xngsrs/myhobby/raw/master/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Install Addons from Sarsa repo</summary>
+        <description>Download and install addons for Kodi.</description>
+        <disclaimer>Sarsailă</disclaimer>
+        <platform>all</platform>
+    </extension>
+</addon><addon id="repository.umbrella" name="Umbrella Repository" version="2.2.6" provider-name="Umbrella">
+    <extension point="xbmc.addon.repository" name="Umbrella Repository">
+        <dir minversion="18.9.701" maxversion="19.5">
+            <info compressed="false">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/matrix/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/matrix/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/matrix/zips/</datadir>
+        </dir>
+	    <dir minversion="19.8.0" maxversion="20.89.0">
+            <info compressed="false">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/nexus/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/nexus/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/nexus/zips/</datadir>
+        </dir>
+		<dir minversion="20.90.0">
+            <info compressed="false">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/omega/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/omega/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/umbrellaplug/umbrellaplug.github.io/master/omega/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Umbrella Repository</summary>
+        <description>Repository for the Umbrella video plugin.</description>
+        <disclaimer />
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="repository.yt.testing_official" name="YouTube Test Repo (Official)" version="2.0.7" provider-name="anxdpanic">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+    </requires>
+	<extension point="xbmc.addon.repository" name="YouTube Test Repo (Official)">
+        <dir minversion="19.0.0">
+            <info compressed="false">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/addons.xml</info>
+            <checksum>https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/addons.xml.md5</checksum>
+            <datadir zip="true">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/official_testing/zips</datadir>
+            <hashes>false</hashes>        
+        </dir>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary>Install alpha and beta versions of the YouTube add-on.</summary>
+		<description>Install alpha and beta versions of the YouTube add-on.</description>
+		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
+		<platform>all</platform>
+	</extension>
+</addon><addon id="repository.yt.testing_unofficial" name="YouTube Test Repo (Unofficial)" version="2.0.7" provider-name="anxdpanic">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+    </requires>
+	<extension point="xbmc.addon.repository" name="YouTube Test Repo (Unofficial)">
+        <dir minversion="19.0.0">
+            <info compressed="false">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/unofficial_testing/addons.xml</info>
+            <checksum>https://download.osmc.tv/dev/anxdpanic/kodi/youtube/unofficial_testing/addons.xml.md5</checksum>
+            <datadir zip="true">https://download.osmc.tv/dev/anxdpanic/kodi/youtube/unofficial_testing/zips</datadir>
+            <hashes>false</hashes>           
+        </dir>        
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary>Install alpha and beta versions of the YouTube add-on.</summary>
+		<description>Install alpha and beta versions of the YouTube add-on.</description>
+		<disclaimer>This add-on is not supported or endorsed by Google/YouTube.</disclaimer>
+		<platform>all</platform>
+	</extension>
+</addon><addon id="script.backup.restore" name="[B][COLOR deepskyblue]Backup and Restore[/COLOR][/B]" version="1.0.14" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+  </requires>
+
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>executable</provides>
+  </extension>
+
+  <extension point="xbmc.addon.metadata">
+    <platform>all</platform>
+    <summary lang="en_gb">Backup, Restore and Clean your Kodi setup</summary>
+    <description lang="en_gb">Complete backup, restore and cleaning solution for Kodi. Saves addons, settings, databases, favourites, sources and playlists. Cleaning removes packages, cache, thumbnails and textures database. Works on Windows, Linux, Android, LibreELEC, CoreELEC and macOS.</description>
+    <license>GPL-2.0-or-later</license>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+  </extension>
+</addon><addon id="script.elementum.burst" name="Elementum [COLOR FFFF6B00]Burst[/COLOR]" version="0.0.99" provider-name="elgatito">
+    <requires>
+        <import addon="xbmc.addon" version="16.0.0" />
+        <import addon="plugin.video.elementum" optional="true" />
+        <import addon="script.module.kodi-six" />
+        <import addon="script.module.requests" />
+        <import addon="script.module.future" version="0.16.0.4" />
+        <import addon="script.module.pycryptodome" optional="true" />
+    </requires>
+    <extension point="xbmc.python.script" library="burst.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">Elementum torrents provider</summary>
+        <summary lang="hr">Elementum torrent pružatelji usluga</summary>
+        <summary lang="es">Proveedor de torrents Elementum</summary>
+        <summary lang="ru">Поисковое дополнение Elementum</summary>
+        <summary lang="sv">Elementum-torrentleverantör</summary>
+        <description lang="en">Elementum Burst is a lean and mean multi-provider for Elementum.</description>
+        <description lang="hr">Elementum Burst je višestruki pružatelj usluga za Elementum.</description>
+        <description lang="es">Elementum Burst es un multi-proveedor simple y eficiente para Elementum.</description>
+        <description lang="ru">Elementum Burst это поисковое дополнение, для поиска торрентов для Elementum.</description>
+        <description lang="sv">Elementum Burst är en enkel och effektiv multi-leverantör för Elementum.</description>
+        <disclaimer lang="en">The author does not host or distribute any of the content displayed by this addon. The author does not have any affiliation with the content providers.</disclaimer>
+        <disclaimer lang="hr">Autor ovog dodatka ne posjeduje i ne distribuira bilo kakav sadržaj koji je pronađen. Autor nije povezan sa bilo kojim izvorom sadržaja.</disclaimer>
+        <disclaimer lang="es">El autor no aloja ni distribuye ninguno de los contenidos mostrados por este complemento. El autor no tiene ninguna afiliación con los proveedores de contenido.</disclaimer>
+        <disclaimer lang="ru">Автор не несёт ответственности за использование дополнения, не распространяет данные, выводимые дополнением.</disclaimer>
+        <disclaimer lang="sv">Skaparen är inte värd eller distribuerar något av innehållet som visas av detta tillägg. Skaparen har ingen anslutning till innehållsleverantörerna.</disclaimer>
+        <license>WTFPL, Version 2, December 2004. See included LICENSE.</license>
+        <website>https://elementum.surge.sh</website>
+        <source>https://github.com/elgatito/script.elementum.burst</source>
+        <forum>TODO</forum>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="script.kodi.mybackup" name="[B][COLOR cyan]My Custom [B][COLOR gray]Backup[/COLOR][/B]" version="1.0.13" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+    </requires>
+    <extension point="xbmc.python.script" library="default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">Backup and Restore specific Kodi files</summary>
+        <description lang="en">Salveaza si restaureaza doar addons si fisiere esentiale din userdata.</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon><addon id="script.module.resolveurl" name="ResolveURL" version="5.1.213" provider-name="gujal">
+    <requires>
+        
+        <import addon="script.module.six" />
+        <import addon="script.module.kodi-six" />
+        <import addon="script.module.pyqrcode" />
+        <import addon="script.module.cloudrequest" optional="true" />
+        <import addon="plugin.video.youtube" optional="true" />
+        <import addon="script.module.python.twitch" optional="true" />
+        <import addon="plugin.googledrive" optional="true" />
+    </requires>
+    <extension point="xbmc.python.module" library="lib" />
+    <extension point="xbmc.python.pluginsource" library="lib/default.py" />
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <summary lang="en_GB">Resolve common video host URL's to be playable in XBMC/Kodi.</summary>
+        <summary lang="es_ES">Resolver enlaces a videos de sitios populares para poder reproducirlos en XBMC/Kodi.</summary>
+        <summary lang="hr_HR">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju.</summary>
+        <summary lang="el_GR">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi.</summary>
+        <description lang="en_GB">Resolve common video host URL's to be playable in XBMC/Kodi, simplify addon development of video plugins requiring multi video hosts.</description>
+        <description lang="el_GR">Επίλυση συνδέσμων κοινών εξυπηρετητών σε μορφή βίντεο ικανό για αναπαραγωγή στο XBMC/Kodi, απλοποίηση της ανάπτυξης των προσθέτων που χρησιμοποιούν πολλαπλούς εξυπηρετητές για υλικό βίντεο</description>
+        <description lang="hr_HR">Prilagodi najčešće URL-ove video izvora kako bi radili u XBMC/Kodiju, pojednostavnjuje razvoj priključaka za video dodatke koji zahtjevaju višestruke video izvore.</description>
+        <disclaimer lang="en_GB">This script only resolves video content from legitimate file lockers without prejudice. If this script is being used by 3rd parties to resolve content that you feel infringes upon your Intellectual Property then please take your complaints to the actual website or developer linking to such content and not here. This script in no way searches for any content whatsoever.</disclaimer>
+        <disclaimer lang="el_GR">Το ανωτέρο σενάριο το μόνο που κάνει είναι να επιλύει οπτικοακουστικό περιεχόμενο από νόμιμες πηγές χωρίς προκατάληψη. Εάν το ανωτέρο σενάριο χρησιμοποιηθεί από τρίτους ώστε να επιλύσει περιεχόμενο το οποίο σας προκαλεί αντίδραση ότι παραβιάζει την πνευματική σας ιδιοκτησία παρακαλώ μεταφέρετε τα παραπονά σας στον ιστότοπο τον οποίο βρίσκεται το εν λόγω περιεχόμενο η τον δημιουργό ο οποίος πραγματοποιεί την σύνδεση και όχι εδω. Το σενάριο αυτό ουδεμία περίπτωση πραγματοποιεί αναζήτηση περιεχομένου.</disclaimer>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon><addon id="script.module.torrent2http" name="[B][COLOR dodgerblue]torrent2http[/COLOR][/B]" version="0.5.17" provider-name="anteo,DiMartino,-=Vd=-">
+    <requires>
+		<import addon="script.module.requests" optional="false" />
+    </requires>
+    <extension point="xbmc.python.module" library="lib" />
+	<extension point="xbmc.python.script" library="main.py">
+		<provides>executable</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py" name="torrent2http.service" />
+    <extension point="xbmc.addon.metadata">
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>icon.png</fanart>
+        </assets>
+        <language>en</language>
+        <summary lang="en">Downloads torrents and share it over HTTP</summary>
+        <description lang="en">[B][COLOR FF009900]Provides sequential torrent downloading for online streaming video and other media over HTTP.[/COLOR][/B]</description>
+        <email>anteo@academ.org</email>
+    </extension>
+</addon><addon id="script.service.fastautosubs" version="1.0.23" name="[B][COLOR FF00BFFF]Fast AutoSubs[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.service" library="service.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Smart background subtitle downloader</summary>
+        <description lang="en_GB">[B][COLOR FF009900]Automatically downloads subtitles in the background from Subs.ro and falls back to standard search for others.[/COLOR][/B]</description>
+        <platform>all</platform>
+		<assets>
+	    <icon>icon.png</icon>
+	    <fanart>icon.png</fanart>    
+		<screenshot>icon.png</screenshot>
+		<screenshot>resources/media/pic1.jpg</screenshot>
+		<screenshot>resources/media/pic2.jpg</screenshot>				
+	</assets>
+    </extension>
+</addon><addon id="service.subtitles.opensub" name="OpenSub" version="1.1.5a" provider-name="OpenSub">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.25.1" />
+    </requires>
+    
+    <extension point="xbmc.subtitle.module" library="service.py" listitemmonitor="true" />
+    
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Subtitrări de pe OpenSubtitles cu Translator AI integrat</summary>
+        <summary lang="en_GB">Subtitles from OpenSubtitles with integrated AI Translator</summary>
+        <description lang="ro">Traducere automată folosind Google, Gemini, DeepL sau Lingva .</description>
+        <description lang="en_GB">Automatic translation using Google, Gemini, DeepL or Lingva.</description>
+        <disclaimer lang="ro">Acest addon traduce subtitrări folosind servicii AI externe.</disclaimer>
+        <disclaimer lang="en_GB">This addon translates subtitles using external AI services.</disclaimer>
+        <language>ro_RO en_GB</language>
+        <platform>all</platform>
+        <license>GPL-2.0-only</license>
+        <assets>
+            <icon>icon.png</icon>
+	        <fanart>fanart.png</fanart>			
+        </assets>
+    </extension>
+</addon><addon id="service.subtitles.opensubtitles-v3" name="OpenSubtitlesv3" version="1.0.3" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.25.1" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="main.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">OpenSubtitles</summary>
+        <description lang="en">[B][COLOR FF009900]Search and download subtitles from OpenSubtitles[/COLOR][/B]</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>	
+        </assets>
+    </extension>
+</addon><addon id="service.subtitles.regielive" name="[B][COLOR FF00BFFF]Regie[/COLOR][/B][B][COLOR FFF70D1A]live[/COLOR][/B]" version="2.0.5" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" version="2.22.0" />
+	<import addon="script.module.beautifulsoup4" version="4.9.3" />
+	<import addon="vfs.rar" version="1.0.0" />
+  </requires>
+  <extension point="xbmc.subtitle.module" library="service.py" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Regielive Subtitles</summary>
+    <description lang="ro">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subtitrari.regielive.ro[/COLOR][/B]</description>
+    <platform>all</platform>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>https://subtitrari.regielive.ro</website>
+    <assets>
+        <icon>icon.png</icon>
+		<fanart>icon.png</fanart>
+    </assets>
+    <news>
+2.0.5
+- Reparat cateva buguri mici
+
+2.0.4
+- Reparat cateva buguri mici
+
+2.0.3
+- Algoritm nou de cautare
+
+2.0.2
+- Filtrare mai performanta
+
+2.0.1
+- Imbunatatiri vizuale UI
+
+2.0.0
+- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
+- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: Elementum, TMDB Helper).
+- Remediată extragerea subtitrărilor din arhivele RAR.
+- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
+- Curatare automata a fisierelor temporare la fiecare rulare.
+- Imbunatatita lizibilitatea textului in lista de rezultate.
+- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
+    </news>
+  </extension>
+</addon><addon id="service.subtitles.subsro" name="[B][COLOR FFFDBD01]Subs.ro[/COLOR][/B]" version="2.5.31" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" version="2.22.0" />
+    <import addon="script.module.beautifulsoup4" version="4.9.3" />
+	<import addon="vfs.rar" version="1.0.0" />
+  </requires>
+  <extension point="xbmc.subtitle.module" library="service.py" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="ro">Subtitrări de pe Subs.ro</summary>
+    <summary lang="en">Subs.ro Subtitles</summary>
+    <description lang="ro">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subs.ro[/COLOR][/B]</description>
+    <description lang="en">[B][COLOR FF009900]Search and download subtitles from subs.ro[/COLOR][/B]</description>
+    <platform>all</platform>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>https://subs.ro</website>
+    <assets>
+      <icon>icon.png</icon>
+	  <fanart>icon.png</fanart>
+	  <screenshot>resources/media/pic1.jpg</screenshot>
+	  <screenshot>resources/media/pic2.jpg</screenshot>
+	  <screenshot>resources/media/pic3.jpg</screenshot>
+    </assets>
+  </extension>
+</addon><addon id="service.subtitles.substudio" name="[B][COLOR FFB048B5]Sub[COLOR FF00BFFF]Studio[/COLOR][/B]" version="1.0.41" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="service.py" listitemmonitor="true" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Traducător Subtitrări SRT (Gemini AI)</summary>
+        <summary lang="en">SRT Subtitle Translator (Gemini AI)</summary>
+		<description lang="en">[B][COLOR FF009900]A simple yet powerful subtitle service. Search, download, and translate SRT subtitles with Gemini AI for fast, natural, and accurate translations.[/COLOR][/B]</description>
+		<description lang="ro">[B][COLOR FF009900]Un serviciu simplu și puternic pentru subtitrări: caută, descarcă și traduce fișiere SRT folosind tehnologia Gemini AI. Bucură-te de traduceri rapide, clare și naturale direct în playerul tău.[/COLOR][/B]</description>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon><addon id="service.subtitles.subtitrarinoiro" name="[B][COLOR FFF70D1A]Subtitrari-[/COLOR][/B][B][COLOR FF009900]noi.ro[/COLOR][/B]" version="2.0.6" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" version="2.22.0" />
+    <import addon="script.module.beautifulsoup4" version="4.9.3" />
+    <import addon="vfs.rar" version="1.0.0" />
+  </requires>
+  <extension point="xbmc.subtitle.module" library="service.py" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Subtitrari-noi.ro</summary>
+    <description lang="en">[B][COLOR FF009900]Cauta si descarca subtitrari de pe subtitrari-noi.ro[/COLOR][/B]</description>
+    <disclaimer lang="en" />
+    <platform>all</platform>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>https://www.subtitrari-noi.ro/</website>
+    <assets>
+        <icon>icon.png</icon>
+		<fanart>icon.png</fanart>
+    </assets>
+    <news>
+2.0.6
+- Reparat cateva buguri mici
+
+2.0.5
+- Afiseaza numele traducatorului sub streag
+- Reparat cateva buguri mici
+
+2.0.4
+- Algoritm nou de cautare
+
+2.0.3
+- Fix bugs
+
+2.0.2
+- Filtrare performanta
+- Fix extragere din arhive ZIP si RAR cu subfoldere
+
+2.0.1
+- Imbunatatiri vizuale UI
+
+2.0.0
+Cod refactorizat pentru a se alinia cu actualizarile sitului
+    </news>
+  </extension>
+</addon><addon id="service.subtitles.titrariro" name="[B][COLOR FFF778A1]Titrari.ro[/COLOR][/B]" version="2.0.9" provider-name="Sarsailă, [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+    <import addon="script.module.requests" version="2.22.0" />
+	<import addon="script.module.beautifulsoup4" version="4.9.3" />
+	<import addon="vfs.rar" version="1.0.0" />
+  </requires>
+  <extension point="xbmc.subtitle.module" library="service.py" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">Subtitrări de pe Titrari.ro</summary>
+    <description lang="en">[B][COLOR FF009900]Cauta si descarca subtitrari de pe Titrari.ro[/COLOR][/B]</description>
+    <platform>all</platform>
+    <license>GNU GENERAL PUBLIC LICENSE. Version 2, June 1991</license>
+    <website>https://titrari.ro</website>
+    <assets>
+        <icon>icon.png</icon>
+		<fanart>icon.png</fanart>
+    </assets>
+    <news>
+2.0.9
+- Reparat cateva buguri mici
+
+2.0.8
+- Afiseaza numele traducatorului sub streag
+- Reparat cateva buguri mici
+
+2.0.7
+- Algoritm nou de cautare
+
+2.0.6
+- Fix bugs
+
+2.0.5
+- Filtrare mai performanta
+
+2.0.4
+- Ajustari culori
+
+2.0.3
+- Boom shakalaka
+- Merg arhivele RAR pe Android
+
+2.0.2
+- Filtrare mai corecta
+- Imbunatatiri arhive ZIP cu subfoldere
+- Imbunatatiri arhive RAR
+
+2.0.1
+Îmbunătățiri vizuale UI
+
+2.0.0
+- Reparat un bug care impiedica filtrarea corecta a subtitrarilor pe episod.
+- Imbunatatita logica de cautare pentru a functiona cu add-on-uri externe (ex: Elementum, TMDB Helper).
+- Remediată extragerea subtitrărilor din arhivele RAR.
+- Adaugat suport pentru extragerea arhivelor RAR pe toate platformele (Windows, OSMC, Android) prin unelte externe.
+- Curatare automata a fisierelor temporare la fiecare rulare.
+- Imbunatatita lizibilitatea textului in lista de rezultate.
+- Adaugat suport pentru cautare cand in nume apar coduri de tara (US, UK).
+    </news>
+  </extension>
+</addon><addon id="service.subtitles.wyzie" name="Wyzie Subtitles" version="1.2.0a" provider-name="Wyzie">
+    <requires>
+        <import addon="xbmc.python" version="3.0.1" />
+        <import addon="script.module.requests" version="2.25.1" />
+        <import addon="resource.images.languageflags.colour" version="0.0.1" />
+    </requires>
+    <extension point="xbmc.subtitle.module" library="service.py" languages="Romanian" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="ro">Subtitrări de pe Wyzie Subs cu Translator AI integrat</summary>
+        <summary lang="en_GB">Subtitles from Wyzie Subs with integrated AI Translator</summary>
+        <description lang="ro">Traducere automată folosind Google, Gemini, DeepL sau Lingva .</description>
+        <description lang="en_GB">Automatic translation using Google, Gemini, DeepL or Lingva.</description>
+        <disclaimer lang="ro">Acest addon traduce subtitrări folosind servicii AI externe.</disclaimer>
+        <disclaimer lang="en_GB">This addon translates subtitles using external AI services.</disclaimer>
+        <language>ro_RO en_GB</language>
+        <platform>all</platform>
+        <license>GPL-2.0-only</license>
+        <assets>
+            <icon>icon.png</icon>
+	        <fanart>fanart.png</fanart>			
+        </assets>
+    </extension>
+</addon><addon id="service.torrserver" name="[B][COLOR orange]Torr[COLOR gray]Server[/COLOR][/B]" version="1.0.2" provider-name="[B][COLOR orange]BB[/COLOR][/B], [B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0" />
+  </requires>
+<extension point="xbmc.service" library="resources/lib/service.py" start="startup" />
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en">TorrServer background service</summary>
+    <summary lang="ro">Serviciu de fundal TorrServer</summary>
+    <description lang="en">[B][COLOR FF009900]Starts TorrServer automatically at boot. Configurable from Kodi settings. Supports Windows, Linux, CoreELEC/LibreELEC and Android (with improved hardware detection). On some Android devices, SELinux restrictions may prevent running the binary; in that case, use the TorrServer APK from F-Droid and configure the addon to connect to it.[/COLOR][/B]</description>
+    <description lang="ro">[B][COLOR FF009900]Porneste TorrServer automat la boot. Configurabil din setarile Kodi. Suporta Windows, Linux, CoreELEC/LibreELEC si Android (cu detectie hardware imbunatatita). Pe unele dispozitive Android, restrictiile SELinux pot impiedica rularea binarului; in acest caz, folositi aplicatia TorrServer APK de pe F-Droid si configurati addon-ul sa se conecteze la ea.[/COLOR][/B]</description>
+    <platform>all</platform>
+    <license>GPL-2.0</license>
+    <assets>
+      <icon>icon.png</icon>
+      <fanart>icon.png</fanart>
+    </assets>
+  </extension>
+</addon><addon id="tmdbm.trailers" version="1.0.41" name="[B][COLOR FF00CED1]TMDbM [COLOR FFF70D1A]Trailers[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+        <import addon="script.module.requests" version="2.22.0" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="resources/lib/default.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.service" library="resources/service.py" start="login" />
+    <extension point="xbmc.addon.metadata">
+        <description lang="en">[B][COLOR FF00CED1]YouTube browser and player[/COLOR][/B]
+[COLOR FFFFFFFF]Search, Trending, Live, Trailers, random music with autoplay and My YouTube (QR login). Pure-Python playback - no third-party binaries, original audio, up to 4K.[/COLOR]</description>
+        <summary lang="en">Full YouTube browser with search, categories, music queue, account sync and pure-Python playback.</summary>
+        <reuselanguageinvoker>true</reuselanguageinvoker>
+        <language />
+        <license>MIT</license>
+        <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+    </extension>
+</addon><addon id="vfs.tmdbm" version="0.1.12" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
+    <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
+    <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9" />
+    <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1" />
+  </requires>
+  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS" library_android="libvfs.tmdbm.so" />
+  <extension point="xbmc.addon.metadata">
+    <platform>android-aarch64</platform>
+    <summary lang="en_GB">Native stream reader for TMDb Movies</summary>
+    <summary lang="ro_RO">Cititor nativ de flux pentru TMDb Movies</summary>
+    <description lang="en_GB">Reads the video stream through the native engine, without the local HTTP server and without Python in the data path.</description>
+    <description lang="ro_RO">Citeste fluxul video prin motorul nativ, fara serverul HTTP local si fara Python pe traseul datelor.</description>
+    <license>GPL-2.0-or-later</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  <path>vfs.tmdbm+android-aarch64/vfs.tmdbm-0.1.12.zip</path></extension>
+</addon><addon id="vfs.tmdbm" version="0.1.12" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
+    <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
+    <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9" />
+    <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1" />
+  </requires>
+  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS" library_android="libvfs.tmdbm.so" />
+  <extension point="xbmc.addon.metadata">
+    <platform>android-armv7</platform>
+    <summary lang="en_GB">Native stream reader for TMDb Movies</summary>
+    <summary lang="ro_RO">Cititor nativ de flux pentru TMDb Movies</summary>
+    <description lang="en_GB">Reads the video stream through the native engine, without the local HTTP server and without Python in the data path.</description>
+    <description lang="ro_RO">Citeste fluxul video prin motorul nativ, fara serverul HTTP local si fara Python pe traseul datelor.</description>
+    <license>GPL-2.0-or-later</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  <path>vfs.tmdbm+android-armv7/vfs.tmdbm-0.1.12.zip</path></extension>
+</addon><addon id="vfs.tmdbm" version="0.1.12" name="[B][COLOR FF00CED1]TMDb [/COLOR][COLOR FFCCCCFF]Movies[/COLOR][/B] [B][COLOR FFF70D1A]VFS[/COLOR][/B]" provider-name="[B][COLOR FF6AFB92]Angelitto[/COLOR][/B]">
+  <requires>
+    <import addon="kodi.binary.global.main" minversion="2.0.0" version="2.0.2" />
+    <import addon="kodi.binary.global.general" minversion="1.0.4" version="1.0.5" />
+    <import addon="kodi.binary.global.filesystem" minversion="1.1.7" version="1.1.9" />
+    <import addon="kodi.binary.instance.vfs" minversion="3.0.1" version="3.0.1" />
+  </requires>
+  <extension point="kodi.vfs" protocols="tmdbm" files="true" directories="false" filedirectories="false" supportBrowsing="false" supportDialog="false" supportWrite="false" label="TMDb Movies VFS" library_windows="vfs.tmdbm.dll" />
+  <extension point="xbmc.addon.metadata">
+    <platform>windows-x86_64</platform>
+    <summary lang="en_GB">Native stream reader for TMDb Movies</summary>
+    <summary lang="ro_RO">Cititor nativ de flux pentru TMDb Movies</summary>
+    <description lang="en_GB">Reads the video stream through the native engine, without the local HTTP server and without Python in the data path.</description>
+    <description lang="ro_RO">Citeste fluxul video prin motorul nativ, fara serverul HTTP local si fara Python pe traseul datelor.</description>
+    <license>GPL-2.0-or-later</license>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
+  <path>vfs.tmdbm+windows-x86_64/vfs.tmdbm-0.1.12.zip</path></extension>
+</addon></addons>

@@ -1,3 +1,26 @@
+1.1.373
+- Binge "Autoplay" plays the next episode straight from the same pack NZB, without the source search and the indexers: the member inside the NZB already on disk is opened at once when the display filters would keep it, and the normal listing runs otherwise. "Not now" and "Choose source" are unchanged.
+- The "Continuing pack" line shows where the episode sits in the pack ("8.93 GB of 80.54 GB") and the clean release name is used for the player label and the subtitles.
+- After a film stops, the Usenet release kept open for an instant restart gives its buffered articles back (and its provider connections after five minutes idle); the plan stays, so the next open is still fast. The free memory is measured on Android and logged as [MEMORY].
+
+1.1.372
+- Releases posted as a 7z inside a stored RAR now play too: the outer volumes are read as one stream, the inner 7z set (one file or .7z.001-.7z.NNN) is read through the volume headers and the film is mapped out of it, checked byte for byte on WinRAR archives. Nested RAR now also works when the inner archive is a single volume.
+- A play attempt is now a token shared by the service and every plugin window, so a slow preparation that finishes after the user picked another source is dropped instead of opening over the new playback.
+- A season pack whose post name has no SxxExx is still continued by binge: the engine records the episode it located inside the archive, so the next episode is served from the same NZB instead of another source.
+- A 7z encoded header split into several folders is decoded folder by folder at its real pack offsets, instead of being refused as an unsupported layout.
+
+1.1.371
+- Releases posted as a RAR inside a stored RAR now play: the outer archive's files are read in order and the inner volumes are streamed straight from the plan, for one outer volume or many, checked byte for byte, instead of being refused.
+- An episode a season pack already gave us is kept and served at once: the next play reads one article and builds the same parts instead of walking up to 25 volume headers, which cuts prepare to about 1.2 s per episode on the 43 volume Percy Jackson pack.
+- Volume headers are read in short parallel batches while an episode is located, so the walk waits on one round trip per batch rather than one per volume.
+
+1.1.370
+- "Allow full-disc ISO" now plays the film instead of the image: the disc filesystem is read (ISO9660 and UDF, Blu-ray metadata partitions included) and only the feature is streamed - the biggest BDMV/STREAM clip, or the main VIDEO_TS title with its VOBs joined in order - from an ISO posted as one file or kept inside a RAR/7z set.
+- An image with no video inside is refused with a clear reason, and a plan cached before the option was on is no longer reused.
+
+1.1.369
+- Season packs posted as one multi-volume RAR now also find episodes that start later inside a volume: the file headers are walked in order instead of checking only the first one, and every continuation volume is checked by name before it is used. RAR4 sets are covered too, and a missing first volume is refused with a clear reason.
+
 1.1.368
 - Season packs posted as one multi-volume RAR now serve the requested episode directly: the file headers are read from the volume starts, so the player no longer reads the whole season or starts the first episode. Stored RAR4/RAR5 only; compressed sets and nested archives are refused with a clear reason.
 - With availability checking on, a Usenet release starts after a quick sample (first article and 40 spread articles, 3 s at most) instead of waiting 15-20 s for a full check. A release gone at the start is still refused at once; deeper gaps are left to the player's retry.

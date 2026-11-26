@@ -231,11 +231,25 @@ _play_attempt_lock = threading.Lock()
 _PLAY_ATTEMPT_PROPERTY = 'tmdbmovies.play_attempt'
 
 
+def _read_play_token():
+    try:
+        stored = (xbmcgui.Window(10000).getProperty(_PLAY_ATTEMPT_PROPERTY) or '').strip()
+        return int(stored) if stored else 0
+    except Exception:
+        return 0
+
+
 def begin_play_attempt():
+    """A token every process shares, so an older prepare cannot start over a newer one.
+
+    The number is taken from the window property, not from a local counter: the
+    service and the short-lived plugin windows are separate processes and each
+    used to count from 1, so both believed they were current.
+    """
     global _play_attempt
     with _play_attempt_lock:
-        _play_attempt += 1
-        attempt = _play_attempt
+        attempt = max(_play_attempt + 1, _read_play_token() + 1, time.time_ns())
+        _play_attempt = attempt
     try:
         xbmcgui.Window(10000).setProperty(_PLAY_ATTEMPT_PROPERTY, str(attempt))
     except Exception:
@@ -249,15 +263,11 @@ def invalidate_play_attempts():
 
 
 def _play_attempt_is_current(attempt):
+    stored = _read_play_token()
+    if stored:
+        return attempt == stored
     with _play_attempt_lock:
-        current = _play_attempt
-    try:
-        stored = (xbmcgui.Window(10000).getProperty(_PLAY_ATTEMPT_PROPERTY) or '').strip()
-        if stored:
-            current = max(current, int(stored))
-    except Exception:
-        pass
-    return attempt == current
+        return attempt == _play_attempt
 
 
 def _record_usenet_outcome(indexer_name, ok):
@@ -4233,7 +4243,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 _usenet_meta = stream.get('usenet') or {}
                 _usenet_nzb = _usenet_meta.get('nzb_url', '')
                 _usenet_indexer = str(_usenet_meta.get('indexer') or stream.get('server') or '').strip()
-                _usenet_url, _usenet_why = '', ''
+                _usenet_url, _usenet_why, _usenet_retry = '', '', True
                 try:
                     from resources.lib.usenet import vfs as _usenet_vfs
                     if _usenet_vfs.enabled() and _usenet_vfs.available():
@@ -4246,8 +4256,10 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                             log("[PLAYER] stale Usenet preparation ignored - a newer source was started")
                             return
                         if not _usenet_url:
-                            log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
-                            if not _usenet_retry:
+                            if _usenet_retry:
+                                log(f"[PLAYER] Usenet VFS handed over: {_usenet_why}", xbmc.LOGINFO)
+                            else:
+                                log(f"[PLAYER] Usenet VFS failed: {_usenet_why}", xbmc.LOGWARNING)
                                 _record_usenet_outcome(_usenet_indexer, False)
                                 if i + 1 < total_streams:
                                     _show_usenet_failover(_usenet_why)
@@ -4288,6 +4300,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                             'name': stream.get('name') or '',
                             'indexer': stream.get('server') or '',
                             'quality': stream.get('quality') or '',
+                            'size': int(_usenet_meta.get('size') or 0),
                             'tmdb': str(tmdb_id),
                         }))
                 except Exception:
@@ -4598,6 +4611,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # --------------------------
         
         release_name_for_subs = current_stream.get('title', '')
+        if current_stream.get('_continue_pack') and current_stream.get('name'):
+            release_name_for_subs = current_stream['name']
         if not release_name_for_subs or len(release_name_for_subs) < 10:
              release_name_for_subs = current_stream.get('name', '')
              
@@ -4623,6 +4638,11 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 _duration = int(info_tag.get('duration', 0) or 0)
                 _quality = info_extr.get('quality', '') or current_stream.get('quality', '')
                 _size = info_extr.get('size', '') or current_stream.get('size', '')
+                if current_stream.get('_continue_pack') and current_stream.get('pack_size'):
+                    # The episode file inside the pack, next to the pack total, so
+                    # a smaller number here is not mistaken for another source.
+                    _size = '%s of %s' % (current_stream.get('size') or _size,
+                                          current_stream['pack_size'])
                 _provider = info_extr.get('provider', '') or ''
                 _indexer = info_extr.get('indexer', '') or ''
                 header_parts = []
@@ -4660,7 +4680,16 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                 if len(_stream_label) > 130:
                     _stream_label = _stream_label[:127] + "..."
                 if _stream_label:
-                    enriched += f"\n[COLOR FF20B2AA]Source {valid_index + 1}:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]"
+                    _source_tag = ('  ·  ' + _indexer) if _indexer else ''
+                    if current_stream.get('_continue_pack'):
+                        # No row number: this episode was not picked from a list.
+                        enriched += (f"\n[COLOR FF20B2AA]Continuing pack"
+                                     f"{_source_tag}:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]")
+                    else:
+                        # The number is the row in THIS episode's list: every episode
+                        # has its own cached list, so the pack sits at a different row.
+                        enriched += (f"\n[COLOR FF20B2AA]Source {valid_index + 1}/{len(streams)}"
+                                     f"{_source_tag}:[/COLOR] [B][COLOR FFCCCCFF]{_stream_label}[/COLOR][/B]")
                     if _size or _quality:
                         enriched += f"  • [B][COLOR yellow]{_size}[/COLOR][/B] • [B][COLOR {c_qual}]{_quality}[/COLOR][/B]" if _size and _quality else ""
                 info_tag['plot'] = enriched
@@ -5143,7 +5172,8 @@ def _continue_pack_source(tmdb_id, season, episode, streams):
         record = _pack_config.release_records().get(key) or {}
         per_episode = record.get('per_episode') or {}
         pair = 'S%02dE%02d' % (season, episode)
-        if not record.get('pack') or pair not in per_episode:
+        if not record.get('pack') or (pair not in per_episode
+                                      and not record.get('open_pack')):
             return None
         path = _pack_config.nzb_path(key)
         if not path or not os.path.exists(path):
@@ -5154,13 +5184,19 @@ def _continue_pack_source(tmdb_id, season, episode, streams):
         size = int(per_episode.get(pair) or 0)
         size_text = ('%.2f GB' % (size / 1073741824.0)) if size >= 1073741824 else (
             ('%.0f MB' % (size / 1048576.0)) if size else '')
+        try:
+            total = int(data.get('size') or 0)
+        except (TypeError, ValueError):
+            total = 0
+        total_text = ('%.2f GB' % (total / 1073741824.0)) if total >= 1073741824 else ''
         name = data.get('name') or 'Usenet pack'
         return {
             'name': name,
-            'title': name + (('\n' + size_text) if size_text else '') + ' | continuing pack',
+            'title': name + (('\n' + size_text) if size_text else ''),
             'url': '',
             'quality': data.get('quality') or '',
             'size': size_text,
+            'pack_size': total_text,
             'provider': 'NZB',
             'provider_id': 'usenet_nzb',
             'server': data.get('indexer') or 'Indexer',
@@ -5224,7 +5260,9 @@ def _continue_pack_index(streams, tmdb_id, season, episode):
             return -1
         pair = 'S%02dE%02d' % (int(season), int(episode))
         record = _pack_config.release_records().get(_pack_config.nzb_key(url)) or {}
-        if not record.get('pack') or pair not in (record.get('per_episode') or {}):
+        per_episode = record.get('per_episode') or {}
+        if not record.get('pack') or (pair not in per_episode
+                                      and not record.get('open_pack')):
             return -1
         for index, stream in enumerate(streams):
             if ((stream.get('usenet') or {}).get('nzb_url') or '') == url:
@@ -5435,8 +5473,23 @@ def list_sources(params):
     
     cache_db = MainCache()
     cached_streams, error_providers_history, empty_providers_history, scanned_providers_history, cached_sort_opt = None, [], [], [], None
-    
-    if use_cache:
+
+    # Autoplay next inside a pack: the NZB still on disk already holds this
+    # episode, so the list, the source cache and the indexers are skipped. The
+    # stream is only used when the display filters would keep it too - otherwise
+    # the normal listing runs.
+    _pack_stream = None
+    if params.get('auto_play_next') == 'true':
+        _pack_candidate = _continue_pack_source(tmdb_id, season, episode, [])
+        if _pack_candidate:
+            try:
+                _pack_kept, _ = filter_streams_for_display([_pack_candidate])
+            except Exception:
+                _pack_kept = [_pack_candidate]
+            if _pack_kept:
+                _pack_stream = _pack_candidate
+
+    if use_cache and not _pack_stream:
         cached_streams, error_providers_history, empty_providers_history, scanned_providers_history, cached_sort_opt = cache_db.get_source_cache(search_id)
 
     if scanned_providers_history is None: scanned_providers_history = []
@@ -5445,8 +5498,13 @@ def list_sources(params):
 
     streams = []
     providers_to_scan = [] 
-    
-    if cached_streams is not None:
+
+    if _pack_stream:
+        cached_streams = []
+        streams = [_pack_stream]
+        log("[BINGE-WATCH] S%02dE%02d plays straight from the pack - no source search"
+            % (int(season), int(episode)))
+    if cached_streams is not None and not _pack_stream:
         valid_cached_streams = []
         for s in cached_streams:
             s_pid = s.get('provider_id')
@@ -5669,12 +5727,14 @@ def list_sources(params):
                 _check_alt(imdb_id=imdb_id, tmdb_id=tmdb_id, season=int(_a2[0]), episode=int(_a2[1]))
         except: pass
 
-    _known_packs = _inject_known_packs(streams, cache_db, tmdb_id, season, episode)
-    if _continue_pack_source(tmdb_id, season, episode, streams):
-        _known_packs += 1
-    if _known_packs:
-        log('[BINGE-WATCH] Added %d pack(s) that carry S%02dE%02d'
-            % (_known_packs, int(season), int(episode)))
+    _known_packs = 0
+    if not _pack_stream:
+        _known_packs = _inject_known_packs(streams, cache_db, tmdb_id, season, episode)
+        if _continue_pack_source(tmdb_id, season, episode, streams):
+            _known_packs += 1
+        if _known_packs:
+            log('[BINGE-WATCH] Added %d pack(s) that carry S%02dE%02d'
+                % (_known_packs, int(season), int(episode)))
 
     if not streams:
         try: dialog.close()
@@ -5867,14 +5927,14 @@ def list_sources(params):
         _pack_index = _continue_pack_index(filtered_streams, tmdb_id, season, episode)
         if _pack_index >= 0:
             ret, _deferred_n = _pack_index, 0
-            log("[BINGE-WATCH] Continuing the current pack (index %d)" % ret)
+            log("[BINGE-WATCH] Continuing the current pack (source %d)" % (ret + 1))
         else:
             ret, _deferred_n = _pick_binge_index(filtered_streams, prev_quality, prev_group, prev_is_sdr,
                                                  prev_debrid, prev_provider, prev_codec, prev_source,
                                                  _bctx or None)
 
         if ret >= 0:
-            log(f"[BINGE-WATCH] Sursa aleasa index={ret} din {len(filtered_streams)} (instant; {_deferred_n} amanate)")
+            log(f"[BINGE-WATCH] Sursa aleasa {ret + 1} din {len(filtered_streams)} (instant; {_deferred_n} amanate)")
             xbmcgui.Dialog().notification("Binge Watching", "Auto-playing next episode...", TMDbmovies_ICON, 3000, False)
         else:
             log(f"[BINGE-WATCH] Nicio sursa instant ({_deferred_n} necached amanate) -> fereastra de surse, fara autoplay")

@@ -8,7 +8,8 @@ file that the VFS add-on follows:
     tmdbm://<key>/<name>
 
 The local HTTP server stays as the fallback when the VFS add-on is missing or
-the plan cannot be written.
+the plan cannot be written - and for password-protected 7z sets, which the
+native add-on cannot decrypt: those are handed to the local server instead.
 """
 
 import base64
@@ -18,13 +19,13 @@ import time
 import zlib
 from urllib.parse import quote
 
-from . import config, engine, indexer
+from . import config, engine, indexer, nzb
 
 ADDON_ID = 'vfs.tmdbm'
 SCHEME = 'tmdbm'
 FOLDER = 'usenet-vfs/'
 KEEP_SECONDS = 12 * 3600
-PLAN_VERSION = 13
+PLAN_VERSION = 15
 
 
 def enabled():
@@ -120,11 +121,12 @@ def _fingerprint(session, path, providers):
         return ''
     bits = ['plan %d' % PLAN_VERSION,
             'nzb %d %d' % (stat.st_size, stat.st_mtime_ns),
-            'opts %d %d %d %d %d %d %s %d' % (
+            'opts %d %d %d %d %d %d %s %d %d' % (
                 int(session.timeout), int(session.prefetch_bytes),
                 int(session.cache_limit), int(session.pipeline),
                 int(session.worker_target), 1 if session.hole_filling else 0,
-                '%g' % session.hole_percent, int(session.hole_consecutive))]
+                '%g' % session.hole_percent, int(session.hole_consecutive),
+                1 if session.options.get('disc') else 0)]
     for provider in providers:
         bits.append('srv %s %d %d %d %d %s %s %s' % (
             provider.get('host') or '',
@@ -210,6 +212,47 @@ def _write_warm(path, session):
     return True
 
 
+def _is_seven(data, season=None, episode=None, alt_season=None, alt_episode=None):
+    """True when the post is a 7z set - names only, no article is read."""
+    try:
+        files = nzb.parse(data)
+        _media, kind = nzb.select_media(files, season, episode, alt_season, alt_episode)
+    except Exception:
+        return False
+    return kind == '7z'
+
+
+def write_plan(session, info, token, path, providers, digest=''):
+    """The plan, its first/warm articles and the active marker, all or error."""
+    folder = _folder()
+    if not folder:
+        raise IOError('the profile folder is not writable')
+    if not digest:
+        digest = _fingerprint(session, path, providers)
+    cleanup()
+    try:
+        if not _write_first(folder + token + '.first', session):
+            engine._log('first article not cached for %s' % token)
+    except Exception as exc:
+        engine._log('first article cache failed (%s)' % str(exc)[:90])
+        try:
+            os.remove(folder + token + '.first')
+        except Exception:
+            pass
+    try:
+        _write_warm(folder + token + '.first2', session)
+    except Exception as exc:
+        engine._log('warm article cache failed (%s)' % str(exc)[:90])
+        try:
+            os.remove(folder + token + '.first2')
+        except Exception:
+            pass
+    _write(folder + token + '.plan', _plan_text(session, info, providers, digest))
+    _write_active(folder, token)
+    name = info.get('name') or 'video.mkv'
+    return '%s://%s/%s' % (SCHEME, token, quote(name))
+
+
 def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_episode=None,
                    should_continue=None, indexer_name=''):
     """(url, error, retry_with_server).
@@ -264,6 +307,22 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
             return '', 'the NZB could not be read (%s)' % exc, False
         session.data = data
         try:
+            known = config.seven_layout(config.nzb_data_key(data))
+        except Exception:
+            known = {}
+        if known.get('crypto'):
+            # The native add-on cannot peel AES, so no plan can ever be written:
+            # skipping the prepare here saves the whole open on every replay.
+            engine._log('encrypted 7z %s known from an earlier open - the local server opens it'
+                        % (known.get('name') or token))
+            return '', 'this 7z release is encrypted - playing it through the local server', True
+        if not known and _is_seven(data, season, episode, alt_season, alt_episode):
+            # A 7z set is opened once by the local server, which writes the plan
+            # too: one prepare instead of two, and the next play is native.
+            engine._log('7z set - the local server opens it and writes the plan')
+            return '', 'this 7z release is opened by the local server', True
+        started = time.time()
+        try:
             info = session.prepare()
         except engine.SessionError as exc:
             if 'rar inside a rar' in str(exc).lower():
@@ -279,40 +338,22 @@ def prepare_stream(nzb_url, season=None, episode=None, alt_season=None, alt_epis
             return '', str(exc), False
         except Exception as exc:
             return '', 'the release could not be opened (%s)' % str(exc)[:90], False
+        engine._log('opened %s in %.1fs (%d part(s))'
+                    % (getattr(session, 'media_name', '') or token,
+                       time.time() - started, len(session.parts)))
         if should_continue and not should_continue():
             return '', 'cancelled', False
         try:
             config.remember_release(key, session.pack, played=True)
         except Exception:
             pass
+        if session.crypto:
+            # The native add-on cannot peel AES: the local server can.
+            return '', 'this 7z release is encrypted - playing it through the local server', True
         try:
-            if not folder:
-                return '', 'the profile folder is not writable', True
-            if not digest:
-                digest = _fingerprint(session, path, providers)
-            cleanup()
-            try:
-                if not _write_first(folder + token + '.first', session):
-                    engine._log('first article not cached for %s' % token)
-            except Exception as exc:
-                engine._log('first article cache failed (%s)' % str(exc)[:90])
-                try:
-                    os.remove(folder + token + '.first')
-                except Exception:
-                    pass
-            try:
-                _write_warm(folder + token + '.first2', session)
-            except Exception as exc:
-                engine._log('warm article cache failed (%s)' % str(exc)[:90])
-                try:
-                    os.remove(folder + token + '.first2')
-                except Exception:
-                    pass
-            _write(folder + token + '.plan', _plan_text(session, info, providers, digest))
-            _write_active(folder, token)
+            url = write_plan(session, info, token, path, providers, digest)
         except Exception as exc:
             return '', 'the VFS plan could not be written (%s)' % str(exc)[:90], True
-        name = info.get('name') or 'video.mkv'
-        return '%s://%s/%s' % (SCHEME, token, quote(name)), '', False
+        return url, '', False
     finally:
         session.close()

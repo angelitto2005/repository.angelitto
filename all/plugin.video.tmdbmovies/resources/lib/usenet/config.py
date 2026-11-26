@@ -144,7 +144,7 @@ def remember_release(key, info, played=True):
     with _RELEASE_LOCK:
         records = release_records()
         record = dict(records.get(key) or {})
-        for name in ('pack', 'episodes', 'per_episode', 'nested'):
+        for name in ('pack', 'episodes', 'per_episode', 'nested', 'open_pack'):
             if name in info:
                 record[name] = info[name]
         record['at'] = now
@@ -154,6 +154,173 @@ def remember_release(key, info, played=True):
         kept = sorted(((name, value) for name, value in records.items()
                        if now - (value.get('at') or 0) < RELEASE_KEEP_SECONDS),
                       key=lambda pair: pair[1].get('at') or 0, reverse=True)[:RELEASE_MAX]
+        try:
+            temp = path + '.tmp'
+            with open(temp, 'w', encoding='utf-8') as handle:
+                json.dump(dict(kept), handle)
+            os.replace(temp, path)
+        except Exception:
+            pass
+
+
+RAR_INDEX_MAX = 120
+_RAR_INDEX_LOCK = threading.Lock()
+
+
+def nzb_data_key(data):
+    """A stable key for the NZB bytes, for callers that have no file key."""
+    return hashlib.sha1(data or b'').hexdigest()[:20]
+
+
+def rar_index(key):
+    """Episode starts already found in this release: {name: [volume, offset, length]}.
+
+    Walking a 40 volume season pack costs one head per volume, so the walk is
+    kept and the next episode is served straight from it.
+    """
+    if not key:
+        return {}
+    try:
+        with open(data_file('usenet_rar_index.json'), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except Exception:
+        return {}
+    record = (data or {}).get(key) if isinstance(data, dict) else None
+    files = (record or {}).get('files') if isinstance(record, dict) else None
+    return files if isinstance(files, dict) else {}
+
+
+def remember_rar_index(key, found):
+    """Keep the episode starts of one release, so the next episode skips the walk."""
+    if not key or not isinstance(found, dict) or not found:
+        return
+    path = data_file('usenet_rar_index.json')
+    if not path:
+        return
+    now = time.time()
+    with _RAR_INDEX_LOCK:
+        try:
+            with open(path, encoding='utf-8') as handle:
+                data = json.load(handle)
+        except Exception:
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        record = data.get(key) if isinstance(data.get(key), dict) else {}
+        files = dict(record.get('files') or {})
+        files.update(found)
+        data[key] = {'at': now, 'files': files}
+        kept = sorted(((name, value) for name, value in data.items()
+                       if now - ((value or {}).get('at') or 0) < RELEASE_KEEP_SECONDS),
+                      key=lambda pair: pair[1].get('at') or 0, reverse=True)[:RAR_INDEX_MAX]
+        try:
+            temp = path + '.tmp'
+            with open(temp, 'w', encoding='utf-8') as handle:
+                json.dump(dict(kept), handle)
+            os.replace(temp, path)
+        except Exception:
+            pass
+
+
+def volume_sizes(key):
+    """Decoded sizes of the archive volumes already measured for this NZB.
+
+    A poster that gives no decoded size in the subject makes every volume cost
+    one article read before playback; the sizes never change, so they are kept.
+    """
+    if not key:
+        return {}
+    try:
+        with open(data_file('usenet_volume_sizes.json'), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except Exception:
+        return {}
+    record = (data or {}).get(key) if isinstance(data, dict) else None
+    sizes = (record or {}).get('sizes') if isinstance(record, dict) else None
+    result = {}
+    if isinstance(sizes, dict):
+        for name, value in sizes.items():
+            try:
+                result[int(name)] = int(value)
+            except (TypeError, ValueError):
+                continue
+    return result
+
+
+def remember_volume_sizes(key, count, sizes):
+    """Keep the measured volume sizes, so the next open needs no article."""
+    if not key or not isinstance(sizes, dict) or not sizes:
+        return
+    path = data_file('usenet_volume_sizes.json')
+    if not path:
+        return
+    now = time.time()
+    with _RAR_INDEX_LOCK:
+        try:
+            with open(path, encoding='utf-8') as handle:
+                data = json.load(handle)
+        except Exception:
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        record = data.get(key) if isinstance(data.get(key), dict) else {}
+        if int(record.get('count') or 0) != int(count or 0):
+            record = {'count': int(count or 0), 'sizes': {}}
+        kept_sizes = dict(record.get('sizes') or {})
+        for index, size in sizes.items():
+            if int(size or 0) > 0:
+                kept_sizes[str(int(index))] = int(size)
+        data[key] = {'at': now, 'count': int(count or 0), 'sizes': kept_sizes}
+        kept = sorted(((name, value) for name, value in data.items()
+                       if now - ((value or {}).get('at') or 0) < RELEASE_KEEP_SECONDS),
+                      key=lambda pair: pair[1].get('at') or 0, reverse=True)[:RAR_INDEX_MAX]
+        try:
+            temp = path + '.tmp'
+            with open(temp, 'w', encoding='utf-8') as handle:
+                json.dump(dict(kept), handle)
+            os.replace(temp, path)
+        except Exception:
+            pass
+
+
+def seven_layout(key):
+    """What an earlier open learned from a 7z archive header.
+
+    The header sits at the end of the set, so learning it costs article reads.
+    It never changes for a posted NZB: keeping it makes the next open
+    immediate and tells the plugin, without any read, that an encrypted set
+    has to go to the local server.
+    """
+    if not key:
+        return {}
+    try:
+        with open(data_file('usenet_seven.json'), encoding='utf-8') as handle:
+            data = json.load(handle)
+    except Exception:
+        return {}
+    record = (data or {}).get(key) if isinstance(data, dict) else None
+    return record if isinstance(record, dict) else {}
+
+
+def remember_seven_layout(key, record):
+    """Keep the 7z header facts of this NZB for the next open."""
+    if not key or not isinstance(record, dict) or not record:
+        return
+    path = data_file('usenet_seven.json')
+    if not path:
+        return
+    now = time.time()
+    with _RAR_INDEX_LOCK:
+        try:
+            with open(path, encoding='utf-8') as handle:
+                data = json.load(handle)
+        except Exception:
+            data = {}
+        data = data if isinstance(data, dict) else {}
+        record = dict(record)
+        record['at'] = now
+        data[key] = record
+        kept = sorted(((name, value) for name, value in data.items()
+                       if now - ((value or {}).get('at') or 0) < RELEASE_KEEP_SECONDS),
+                      key=lambda pair: pair[1].get('at') or 0, reverse=True)[:RAR_INDEX_MAX]
         try:
             temp = path + '.tmp'
             with open(temp, 'w', encoding='utf-8') as handle:
@@ -305,7 +472,8 @@ def player_options(season=None, episode=None, alt_season=None, alt_episode=None)
     options = {'timeout': timeout(), 'prefetch_bytes': prefetch_bytes(),
                'cache_bytes': cache_bytes(), 'profile': performance_profile(),
                'hole_filling': hole_filling(), 'hole_percent': hole_percent(),
-               'hole_consecutive': hole_consecutive(), 'health': health_mode()}
+               'hole_consecutive': hole_consecutive(), 'health': health_mode(),
+               'disc': flag('usenet_nzb.allow_iso', False)}
     try:
         options['season'] = int(season)
         options['episode'] = int(episode)
