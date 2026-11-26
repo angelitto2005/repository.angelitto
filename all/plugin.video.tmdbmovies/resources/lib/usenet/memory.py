@@ -86,6 +86,8 @@ def _loop(monitor):
                 idle_since = now
             idle = now - idle_since
             if idle >= WAIT and not _waiting_play():
+                if monitor.abortRequested():
+                    break
                 if not buffers_done:
                     buffers_done = True
                     _tidy(False)

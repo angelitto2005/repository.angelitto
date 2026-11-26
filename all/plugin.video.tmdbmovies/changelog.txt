@@ -1,3 +1,10 @@
+1.1.374
+- A right-click on an EasyNews row in the source list (EasyNews Direct, EasyNews++ or an AIO row) offers to play that source with seek or without seek, whichever is the opposite of the "Play Without Seek" switch, so a cold source can be started the other way without changing the setting. Indexers, HTTP, P2P and debrid rows do not show it.
+- The choice lasts for that playback only, including its automatic retry and the next source on rollover. EasyNews Direct now follows the "Play Without Seek" switch too, instead of always seeking, so the menu option is just the quick way to start one release the other way.
+- Closing Kodi is immediate again: the automatic sync stops as soon as shutdown is requested, in the Local Up Next rebuild and in the TMDb phase (watchlist pages, personal lists, Up Next), instead of keeping the Python thread busy and holding the window in Task Manager for up to a minute.
+- The active watched-provider check now runs when the addon is opened (once per 5 minutes) instead of at Kodi startup. During an add-on update the settings can still read empty, so the old startup check could show a false "Trakt is not connected - connect or switch to Kodi (Local)" dialog even though Trakt was connected.
+- On a source refresh the old EasyNews Direct rows are replaced by the new ones instead of being kept next to them, so each release appears once with a working link.
+
 1.1.373
 - Binge "Autoplay" plays the next episode straight from the same pack NZB, without the source search and the indexers: the member inside the NZB already on disk is opened at once when the display filters would keep it, and the normal listing runs otherwise. "Not now" and "Choose source" are unchanged.
 - The "Continuing pack" line shows where the episode sits in the pack ("8.93 GB of 80.54 GB") and the clean release name is used for the player label and the subtitles.

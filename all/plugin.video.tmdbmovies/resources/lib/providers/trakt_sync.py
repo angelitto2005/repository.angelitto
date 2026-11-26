@@ -1178,6 +1178,14 @@ def _sync_tmdb_discovery(c):
     log(f"[TMDB SYNC] Saved {total_saved} TMDb discovery items (Movies & TV).")
 
 
+def _abort():
+    try:
+        from resources.lib.core.config import kodi_abort_requested
+        return kodi_abort_requested()
+    except Exception:
+        return False
+
+
 def _fetch_tmdb_section_pages(aid, endpoint_media, resource, headers, lang, max_pages=1000):
     """Descarca toate paginile sectiunii in memorie. Intoarce (pages, total, ok).
     ok=False la orice esec de retea/HTTP — swap-ul in DB se face DOAR pe fetch complet."""
@@ -1187,6 +1195,9 @@ def _fetch_tmdb_section_pages(aid, endpoint_media, resource, headers, lang, max_
     total_fetched = 0
     page = 1
     while page <= max_pages:
+        if _abort():
+            log("[TMDB SYNC] %s (%s) fetch aborted - Kodi is closing" % (resource, endpoint_media))
+            return pages, total_fetched, False
         try:
             # v4: media type (singular) vine INAINTE: /account/{aid}/movie/watchlist
             url = f"{TMDB_V4_BASE_URL}/account/{aid}/{endpoint_media}/{resource}"
@@ -1232,11 +1243,18 @@ def sync_tmdb_phase(c, force=False, silent=True, progress_cb=None):
     lang = get_language()
     headers = {'Authorization': f'Bearer {token}'}
 
+    if _abort():
+        log("[TMDB SYNC] aborted - Kodi is closing")
+        return False
+
     all_complete = True
 
 # 1. WATCHLIST & FAVORITES (buffer-and-swap anti-141: swap doar pe fetch complet)
     endpoints = [('watchlist', 'movie', 'movie'), ('watchlist', 'tv', 'tv'), ('favorite', 'movie', 'movie'), ('favorite', 'tv', 'tv')]
     for ltype, endpoint_media, db_media in endpoints:
+        if _abort():
+            log("[TMDB SYNC] aborted - Kodi is closing")
+            return False
         try:
             # Verificam daca e cazul de sync
             c.execute("SELECT 1 FROM tmdb_account_lists WHERE list_type=? AND media_type=? LIMIT 1", (ltype, db_media))
@@ -1271,6 +1289,9 @@ def sync_tmdb_phase(c, force=False, silent=True, progress_cb=None):
             log(f"[TMDB SYNC] Error in TMDb category {ltype}: {e}", xbmc.LOGERROR)
 
     # 2-4. Liste personale TMDB (paralelizate) + recommendations + Up Next TMDb
+    if _abort():
+        log("[TMDB SYNC] aborted - Kodi is closing")
+        return False
     try:
         _sync_tmdb_lists_and_extras(c, force=force, aid=aid, token=token, lang=lang, progress_cb=progress_cb)
     except Exception as e:
@@ -1290,6 +1311,9 @@ def _sync_tmdb_lists_and_extras(c, force=False, aid=None, token=None, lang='en-U
     from resources.lib.core.config import TMDB_V4_BASE_URL
     import requests
     headers = {'Authorization': f'Bearer {token}'}
+
+    if _abort():
+        return
 
 # 2. LISTE PERSONALE TMDB (PARALELIZATE)
     try:
@@ -1332,6 +1356,8 @@ def _sync_tmdb_lists_and_extras(c, force=False, aid=None, token=None, lang='en-U
                     try:
                         page = 1
                         while True:
+                            if _abort():
+                                break
                             # Folosim v4 pentru a suporta seriale
                             list_url = f"{TMDB_V4_BASE_URL}/list/{list_id}"
                             r_raw = requests.get(list_url, headers=_headers, params={'language': _lang, 'page': page}, timeout=10)
@@ -1364,8 +1390,13 @@ def _sync_tmdb_lists_and_extras(c, force=False, aid=None, token=None, lang='en-U
                 }
 
             # Lansam thread-urile (max_workers=5 este ideal pentru TMDb)
+            if _abort():
+                return
             with ThreadPoolExecutor(max_workers=5) as executor:
                 results = list(executor.map(lambda l: fetch_tmdb_list_worker(l, token, aid, lang, force, local_lists, headers), lists_data))
+
+            if _abort():
+                return
 
             remote_ids = []
             for res in results:
@@ -1410,6 +1441,8 @@ def _sync_tmdb_lists_and_extras(c, force=False, aid=None, token=None, lang='en-U
     except: pass
 
     # 3. RECOMMENDATIONS (Raman la fel)
+    if _abort():
+        return
     try:
         c.execute("DELETE FROM tmdb_recommendations")
         for m_type in ['movie', 'tv']:
@@ -4008,6 +4041,9 @@ def sync_tmdb_up_next(c):
     from resources.lib.providers.watched_provider import get_watched_episodes_set_batch, _get_provider_raw, get_source_module
     from resources.lib.api import tmdb_api
 
+    if _abort():
+        return
+
     t0 = time.time()
     try:
         c.execute("SELECT tmdb_id, title, poster, overview FROM tmdb_account_lists "
@@ -4081,6 +4117,8 @@ def sync_tmdb_up_next(c):
 
         show_map = {}
         def _fetch_show(tid):
+            if _abort():
+                return tid, None
             try:
                 return tid, tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True)
             except:
@@ -4098,6 +4136,8 @@ def sync_tmdb_up_next(c):
         en_names = {}
         if pool_ids:
             def _fetch_en(tid):
+                if _abort():
+                    return tid, ''
                 try:
                     d = tmdb_api.get_tmdb_item_details(tid, 'tv', lightweight=True, skip_localization=True) or {}
                     return tid, d.get('name') or ''
@@ -4183,6 +4223,8 @@ def sync_tmdb_up_next(c):
 
         t_season_start = time.time()
         def _fetch_meta(entry):
+            if _abort():
+                return entry, '', '', ''
             try:
                 tid = entry['tid']
                 s = entry['next_ep']['season']
@@ -4206,6 +4248,9 @@ def sync_tmdb_up_next(c):
             clean_rows.append((entry['tid'], entry['show_title'], next_ep['season'], next_ep['number'],
                                ep_title, ep_overview or entry['overview'], w['last_at'] or now_str,
                                entry['poster'], air_date, len(w['set'])))
+
+        if _abort():
+            return
 
         _db_exec_retry(c, "DELETE FROM tmdb_next_episodes")
         try:

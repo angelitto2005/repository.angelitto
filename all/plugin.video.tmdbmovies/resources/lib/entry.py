@@ -873,6 +873,22 @@ def run_plugin():
         _t3 = time.time()
         # Dupa ce meniul e desenat: notificarea nu intarzie pornirea.
         _notify_active_provider()
+        # Verificarea providerului se face la intrarea in addon, nu la boot:
+        # in fereastra de update a addonului setarile pot citi gol, iar dialogul
+        # "not connected" ar fi fals. O data la 5 minute, in fundal.
+        try:
+            _wprov = xbmcgui.Window(10000)
+            _nowp = time.time()
+            try:
+                _lastp = float(_wprov.getProperty('tmdbmovies.provider_check_ts') or 0)
+            except Exception:
+                _lastp = 0.0
+            if _nowp - _lastp >= 300:
+                _wprov.setProperty('tmdbmovies.provider_check_ts', str(_nowp))
+                from resources.lib.providers.watched_provider import ensure_active_provider as _eap
+                threading.Thread(target=_eap, daemon=True, name='ProviderCheck').start()
+        except Exception:
+            pass
         # DEBUG TIMING (pastreaza — util la depanare lag pornire):
         # xbmc.log(f"[TIMING] root menu: import={int((_t2-_t1)*1000)}ms build={int((_t3-_t2)*1000)}ms total={int((_t3-_t0)*1000)}ms", xbmc.LOGINFO)
         return
@@ -2542,6 +2558,12 @@ def _maybe_refresh_widgets_after_sync(force=False):
     altfel Up Next ramane gol pana la restart (widgetul a randat in timpul
     rebuild-ului DB din sync-ul fortat si nu se mai re-invoca singur)."""
     try:
+        from resources.lib.core.config import kodi_abort_requested
+        if kodi_abort_requested():
+            return
+    except Exception:
+        pass
+    try:
         from resources.lib.core.config import ADDON
         setting_on = ADDON.getSetting('trakt_sync_refresh_widgets') == 'true'
         if force and not setting_on:
@@ -2839,12 +2861,6 @@ def run_service():
                 self._last_tmdb_unstarted = ADDON.getSetting('tmdb_upnext_show_unstarted')
             except:
                 self._last_tmdb_unstarted = None
-            try:
-                from resources.lib.providers.watched_provider import ensure_active_provider
-                import threading as _th
-                _th.Thread(target=ensure_active_provider, daemon=True).start()
-            except:
-                pass
             try:
                 from resources.lib.playback.scraper import netmirror_prewarm
                 import threading as _th2
@@ -3349,7 +3365,7 @@ def run_service():
                     else:
                         xbmc.log("[TMDb Movies] Monitor Service Update - SKIPPED (status=%s)." % (_st,), xbmc.LOGINFO)
                     _maybe_refresh_widgets_after_sync(force=(_st == 'ok'))
-                threading.Thread(target=_run_all, daemon=True).start()
+                threading.Thread(target=_run_all, daemon=True, name='SyncDispatch').start()
             except Exception as e:
                 xbmc.log(f"[TMDb Movies] Monitor Service Update - Failed: {e}", xbmc.LOGERROR)
 

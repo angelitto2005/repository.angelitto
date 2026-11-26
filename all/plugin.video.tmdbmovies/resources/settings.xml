@@ -214,7 +214,7 @@
 		<setting id="easynews_direct_max" type="slider" label="  Max results per search   (one search request per title)" default="30" range="5,5,100" option="int" visible="eq(-3,true)"/>
 
 		<setting type="lsep" label="EasyNews Playback"/>
-		<setting id="easynews_noseek" type="bool" label="Play Without Seek   (EasyNews++ / Stremio only - EasyNews Direct always seeks)" default="false"/>
+		<setting id="easynews_noseek" type="bool" label="Play Without Seek   (EasyNews Direct / EasyNews++ / Stremio)" default="false"/>
     </category>
 
 	<!-- 4b. USENET (NZB) -->

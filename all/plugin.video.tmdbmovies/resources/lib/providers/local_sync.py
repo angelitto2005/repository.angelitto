@@ -19,7 +19,7 @@ import sqlite3
 import xbmc
 import xbmcgui
 
-from resources.lib.core.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE, provider_title, provider_icon
+from resources.lib.core.config import ADDON, ADDON_DATA_DIR, ADDON_PATH, IMG_BASE, BACKDROP_BASE, provider_title, provider_icon, kodi_abort_requested
 
 DB_PATH = os.path.join(ADDON_DATA_DIR, 'local_sync.db')
 LOCAL_ICON = provider_icon('local') or os.path.join(ADDON_PATH, 'resources', 'media', 'tmdb.png')
@@ -479,6 +479,12 @@ def refresh_next_episode_local(tmdb_id, ignore_hidden=False, refresh_ui=True):
     """
     from resources.lib.api import tmdb_api
 
+    try:
+        if kodi_abort_requested():
+            return
+    except Exception:
+        pass
+
     def _trigger_ui_refresh():
         try:
             from resources.lib.core.cache import clear_list_fast_cache
@@ -545,6 +551,13 @@ def refresh_next_episode_local(tmdb_id, ignore_hidden=False, refresh_ui=True):
                 _trigger_ui_refresh()
             return
 
+        try:
+            if kodi_abort_requested():
+                try: conn.close()
+                except: pass
+                return
+        except Exception:
+            pass
         season_data = tmdb_api.get_smart_season_details(tmdb_id, next_ep['season'])
         ep_title = ''
         air_date = ''
@@ -601,6 +614,13 @@ def sync_full_library(silent=False, force=False, rebuild_upnext=True, progress_c
     except Exception as e:
         xbmc.log(f'[LOCAL] reverse-import error: {e}', xbmc.LOGERROR)
 
+    try:
+        if kodi_abort_requested():
+            xbmc.log('[LOCAL] sync aborted - Kodi is closing', xbmc.LOGINFO)
+            return
+    except Exception:
+        pass
+
     if not rebuild_upnext:
         set_sync_meta('last_sync', datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z'))
         return
@@ -616,6 +636,13 @@ def sync_full_library(silent=False, force=False, rebuild_upnext=True, progress_c
         _prog(80, 'Sync: [B][COLOR FFF70D1A]Up Next rebuild[/COLOR][/B]')
         _total = len(tids) or 1
         for _idx, tid in enumerate(tids):
+            try:
+                if kodi_abort_requested():
+                    xbmc.log('[LOCAL] Up Next rebuild aborted at %d/%d - Kodi is closing'
+                             % (_idx, _total), xbmc.LOGINFO)
+                    return
+            except Exception:
+                pass
             try:
                 refresh_next_episode_local(tid, refresh_ui=False)
             except:

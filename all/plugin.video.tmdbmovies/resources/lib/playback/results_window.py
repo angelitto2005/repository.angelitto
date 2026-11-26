@@ -387,6 +387,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
         self.meta = kwargs.get('meta', {})
         self.selected = None
         self.selected_index = -1
+        self.seek_override = None
         self.filter_applied = False
         self.last_cm_time = 0
         self.is_info_open = False
@@ -1408,6 +1409,7 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 return
             self.selected = None
             self.selected_index = -1
+            self.seek_override = None
             self.close()
 
     def handle_context_menu(self):
@@ -1453,6 +1455,18 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
             options.append("[B]Filter by Provider[/B]")
             options.append("[B]Filter by Title[/B]")
             options.append("[B]Filter by Info[/B]")
+
+            _en_row = self._is_easynews_row(stream_data)
+            _noseek_on = False
+            if _en_row:
+                try:
+                    _noseek_on = ADDON.getSetting('easynews_noseek') != 'false'
+                except Exception:
+                    _noseek_on = False
+                if _noseek_on:
+                    options.append("[B][COLOR FFFDBD01]Play Source With Seek[/COLOR][/B]")
+                else:
+                    options.append("[B][COLOR FFFDBD01]Play Source Without Seek[/COLOR][/B]")
                 
             ret = xbmcgui.Dialog().contextmenu(options)
             if ret == 0:
@@ -1533,9 +1547,35 @@ class ResultsWindow(xbmcgui.WindowXMLDialog):
                 t_idx = xbmcgui.Dialog().select("Filter by Info (Tags)", tags)
                 if t_idx >= 0:
                     self.apply_filter('info', tags[t_idx])
+            elif ret == (14 if is_tv else 13) and _en_row:
+                self.seek_override = 'seek' if _noseek_on else 'noseek'
+                self.selected = json.dumps(stream_data)
+                try: self.selected_index = int(item.getProperty('tmdbmovies.src_index'))
+                except: self.selected_index = -1
+                self.close()
         except Exception as e:
             import xbmc
             xbmc.log(f"[CM ERROR] {e}", xbmc.LOGERROR)
+
+    @staticmethod
+    def _is_easynews_row(stream_data):
+        try:
+            pid = str(stream_data.get('provider_id') or '').strip().lower()
+            if pid == 'usenet_nzb':
+                return False
+            if pid in ('easynews_direct', 'easynewspp', 'usenet'):
+                return True
+            blob = ''
+            info = stream_data.get('info')
+            if isinstance(info, dict):
+                blob = ' '.join(str(info.get(k) or '') for k in
+                                ('addon', 'debrid_service', 'provider', 'indexer', 'server', 'source_provider'))
+            elif isinstance(info, str):
+                blob = info
+            blob += ' ' + str(stream_data.get('name') or '') + ' ' + str(stream_data.get('url') or '')
+            return 'easynews' in blob.lower()
+        except Exception:
+            return False
 
     def apply_filter(self, filter_type, value):
         import xbmcgui

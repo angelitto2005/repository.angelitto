@@ -2167,7 +2167,7 @@ class TMDbPlayer(xbmc.Player):
             t = threading.Thread(target=play_with_rollover, args=(
                 self.streams, next_idx, self.tmdb_id, self.content_type, 
                 self.season, self.episode, *self.rollover_args
-            ), kwargs={'from_resolve': True})
+            ), kwargs={'from_resolve': True, 'seek_override': getattr(self, 'seek_override', None)})
             t.daemon = True
             t.start()
         else:
@@ -2187,6 +2187,7 @@ class TMDbPlayer(xbmc.Player):
             _show_modal_abortable(win)
             selected_data = win.selected
             selected_index = getattr(win, 'selected_index', -1)
+            win_override = getattr(win, 'seek_override', None)
             del win
             
             if selected_data and self.rollover_args:
@@ -2197,7 +2198,8 @@ class TMDbPlayer(xbmc.Player):
                     t = threading.Thread(target=play_with_rollover, args=(
                         _saved_filtered_streams, i, self.tmdb_id, self.content_type,
                         self.season, self.episode, info_tag, unique_ids, art, properties, resume_time
-                    ), kwargs={'from_resolve': True})
+                    ), kwargs={'from_resolve': True,
+                               'seek_override': win_override or getattr(self, 'seek_override', None)})
                     t.daemon = True
                     t.start()
                     return
@@ -2986,7 +2988,8 @@ def start_playback_monitor(player_instance, dialog=None):
                         player_instance.tmdb_id, player_instance.content_type,
                         player_instance.season, player_instance.episode,
                         _info, _ids, _art, _props, _resume,
-                        from_resolve=True, easynews_retried=True)
+                        from_resolve=True, easynews_retried=True,
+                        seek_override=getattr(player_instance, 'seek_override', None))
                 threading.Thread(target=_easynews_retry, daemon=True,
                                  name='EASYNEWS-RETRY').start()
                 return
@@ -3963,10 +3966,11 @@ def format_for_results_window(streams, poster_url, meta=None):
 # =============================================================================
 # PLAY WITH ROLLOVER - VERSIUNE FINALA (FARA BUFFERING DUPLICAT)
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False, easynews_retried=False):
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False, easynews_retried=False, seek_override=None):
 
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
     _attempt = begin_play_attempt()
+    seek_override = seek_override if seek_override in ('seek', 'noseek') else None
     
     # ===========================================================================
     # CURATAM WINDOW PROPERTIES LA INCEPUT (FARA URME DE ALTE ADDONURI)
@@ -4493,6 +4497,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         player = _active_player
         player.play_attempt = _attempt
         player.easynews_retried = bool(easynews_retried)
+        player.seek_override = seek_override if seek_override in ('seek', 'noseek') else None
         # imdb_id pentru Skip Intro (SegmentScraper cere imdb_id)
         player.imdb_id = (unique_ids or {}).get('imdb') or None
         
@@ -4551,10 +4556,27 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         # FIX EASYNEWS: NO SEEK (Prevenire erori conexiune)
         # ==============================================================
         try:
-            easynews_noseek = ADDON.getSetting('easynews_noseek')
-            if (easynews_source and current_stream.get('provider_id') != 'usenet'
-                    and not getattr(player, 'easynews_direct', False)
-                    and easynews_noseek != 'false'):
+            _pid = str(current_stream.get('provider_id') or '')
+            _en_row = (easynews_source or _pid in ('easynews_direct', 'easynewspp', 'usenet'))
+            if seek_override and _en_row:
+                if seek_override == 'seek':
+                    if 'seekable=0' in valid_url:
+                        valid_url = valid_url.replace('seekable=0', 'seekable=1')
+                    elif '|' in valid_url:
+                        valid_url += '&seekable=1'
+                    else:
+                        valid_url += '|seekable=1'
+                    log("[PLAYER] EasyNews context choice -> seekable=1")
+                else:
+                    if 'seekable=1' in valid_url:
+                        valid_url = valid_url.replace('seekable=1', 'seekable=0')
+                    elif '|' in valid_url:
+                        valid_url += '&seekable=0'
+                    else:
+                        valid_url += '|seekable=0'
+                    log("[PLAYER] EasyNews context choice -> seekable=0")
+            elif not seek_override and (easynews_source and _pid != 'usenet'
+                    and ADDON.getSetting('easynews_noseek') != 'false'):
                 if 'seekable=1' in valid_url:
                     valid_url = valid_url.replace('seekable=1', 'seekable=0')
                 elif '|' in valid_url:
@@ -4796,6 +4818,7 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                     _show_modal_abortable(win)
                     selected_data = win.selected
                     selected_index = getattr(win, 'selected_index', -1)
+                    win_override = getattr(win, 'seek_override', None)
                     del win
                     if selected_data:
                         i = _resolve_selected_index(selected_index, selected_data, _saved_filtered_streams)
@@ -4803,7 +4826,8 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
                             t = threading.Thread(target=play_with_rollover, args=(
                                 _saved_filtered_streams, i, tmdb_id, c_type, season, episode,
                                 info_tag, unique_ids, art, properties, resume_time
-                            ), kwargs={'from_resolve': True})
+                            ), kwargs={'from_resolve': True,
+                                       'seek_override': win_override or seek_override})
                             t.daemon = True
                             t.start()
                             return
@@ -5706,6 +5730,14 @@ def list_sources(params):
         final_empty = new_empty
 
         if cached_streams is not None:
+            if ('easynews_direct' in providers_attempted_now
+                    and 'easynews_direct' not in new_failed
+                    and any(s.get('provider_id') == 'easynews_direct' for s in new_streams)):
+                _en_before = len(streams)
+                streams = [s for s in streams
+                           if s.get('provider_id') != 'easynews_direct']
+                log('[DEDUP] EasyNews Direct: replaced %d old row(s) with fresh links'
+                    % (_en_before - len(streams)))
             streams.extend(new_streams)
         else:
             streams = new_streams
@@ -5954,6 +5986,7 @@ def list_sources(params):
                 xbmcgui.Dialog().notification("Auto Play", "Selecting best source...", TMDbmovies_ICON, 3000, False)
         except: pass
 
+    seek_override = None
     if ret < 0:
         from resources.lib.playback.results_window import ResultsWindow
         window_items = format_for_results_window(filtered_streams, poster_url, meta_dict)
@@ -5964,6 +5997,7 @@ def list_sources(params):
         _show_modal_abortable(win)
         selected_data = win.selected
         selected_index = getattr(win, 'selected_index', -1)
+        seek_override = getattr(win, 'seek_override', None)
         del win
         
         if selected_data:
@@ -6028,7 +6062,7 @@ def list_sources(params):
         play_with_rollover(
             selected_streams, ret, tmdb_id, c_type, season, episode, 
             info_tag, unique_ids, art, properties, resume_time, resolve_only=resolve_only,
-            native_resume_mode=native_resume_mode
+            native_resume_mode=native_resume_mode, seek_override=seek_override
         )
             
     else:
