@@ -222,6 +222,83 @@ def _safe_filename(name):
     name = re.sub(r'\s+', ' ', name).strip()
     return name
 
+_ST_SUB_EXT_RE = re.compile(r'\.(srt|ass|ssa|sub|vtt|txt|xml)$', re.IGNORECASE)
+_ST_BADGE_CACHE = {}
+
+def _short_provider_tag(name):
+    words = re.findall(r'[A-Za-z]+|\d+', str(name or ''))
+    parts = []
+    for word in words:
+        if word.isdigit():
+            parts.append(word)
+            continue
+        chunks = re.findall(r'[A-Z]?[a-z]+|[A-Z]+(?![a-z])', word)
+        if not chunks:
+            parts.append(word[:1].upper())
+        elif len(chunks) == 1 and word.islower() and len(word) > 2:
+            parts.append(word[:1].upper())
+        else:
+            parts.append(''.join(c[:1] for c in chunks))
+    return ''.join(parts).strip()[:8]
+
+def _stremio_badge(manifest_url):
+    url = (manifest_url or '').strip()
+    if not url:
+        return 'ST'
+    if url in _ST_BADGE_CACHE:
+        return _ST_BADGE_CACHE[url]
+
+    cache_file = os.path.join(
+        xbmcvfs.translatePath(__addon__.getAddonInfo('profile')), 'stremio_manifest.json')
+    cache = {}
+    tag = ''
+    try:
+        with open(cache_file, 'r', encoding='utf-8') as fh:
+            cache = json.load(fh) or {}
+        entry = cache.get(url) or {}
+        if entry.get('tag') and (time.time() - float(entry.get('ts') or 0)) < 604800:
+            tag = entry['tag']
+    except Exception:
+        cache = {}
+
+    if not tag:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=min(5.0, RACE_TIMEOUT))
+            if r.ok:
+                tag = _short_provider_tag((r.json() or {}).get('name'))
+        except Exception as ex:
+            _log_debug(f"[STREMIO] Manifest name unavailable: {ex}")
+
+    if not tag:
+        tag = 'ST'
+    else:
+        try:
+            cache[url] = {'tag': tag, 'ts': time.time()}
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            with open(cache_file, 'w', encoding='utf-8') as fh:
+                json.dump(cache, fh)
+        except Exception:
+            pass
+
+    _ST_BADGE_CACHE[url] = tag
+    return tag
+
+def _stremio_release_name(raw, video_title='', year=None, season=None, episode=None):
+    name = re.split(r'<br\s*/?>|\r|\n', str(raw or ''), flags=re.IGNORECASE)[0]
+    name = re.sub(r'[\\/*?:"<>|]', '', name).strip()
+    name = _ST_SUB_EXT_RE.sub('', name).strip()
+    if not name:
+        name = str(video_title or '').strip()
+        if name and year and str(year) not in name:
+            name = f"{name} ({year})"
+        try:
+            if name and season and episode and int(season) > 0:
+                name = f"{name} S{int(season):02d}E{int(episode):02d}"
+        except Exception:
+            pass
+    name = re.sub(r'\s+', ' ', name).strip(' .-_')
+    return f"{name or 'Subtitle'}.srt"
+
 def _normalize(s):
     s = unicodedata.normalize('NFD', s)
     s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
@@ -480,6 +557,7 @@ def search():
     global RACE_STATE, RACE_TIMEOUT
     RACE_STATE["finished"] = False
     base_url = 'https://sub.wyzie.io/search'
+    OSV3_MANIFEST = 'https://opensubtitles-v3.strem.io/manifest.json'
 
     try: source_opt = __addon__.getSettingInt('subtitle_source')
     except Exception: source_opt = 3
@@ -813,11 +891,11 @@ def search():
             
         return results
 
-    def stremio_worker():
+    def stremio_worker(manifest_url=None, badge_label=''):
         nonlocal s, e, video_title, imdb_id
         results = []
         try:
-            manifest_url = __addon__.getSetting('custom_stremio_manifest').strip()
+            manifest_url = (manifest_url or __addon__.getSetting('custom_stremio_manifest')).strip()
             if not manifest_url:
                 _log_debug("[STREMIO] No manifest URL configured, skipping.")
                 return results
@@ -847,6 +925,7 @@ def search():
             try: v_path = xbmc.Player().getPlayingFile().lower()
             except: v_path = ""
 
+            badge = badge_label or (_stremio_badge(manifest_url) if subs else 'ST')
             seen = set()
             for sub in subs or []:
                 sub_url = sub.get('url', '')
@@ -861,10 +940,9 @@ def search():
                 is_fallback = (short_lang == 'en' and l_code != 'en')
                 if not (show_all or is_target or is_fallback): continue
 
-                raw_release = sub.get('title') or sub.get('release') or sub.get('description') or 'Subtitle'
-                clean_release = re.split(r'<br\s*/?>|\n', raw_release, flags=re.IGNORECASE)[0]
-                clean_release = re.sub(r'[\\/*?:"<>|]', '', clean_release).strip()
-                if not clean_release.lower().endswith('.srt'): clean_release += '.srt'
+                raw_release = (sub.get('subtitleFileName') or sub.get('movieReleaseName')
+                               or sub.get('title') or sub.get('release') or sub.get('description') or '')
+                clean_release = _stremio_release_name(raw_release, video_title, kodi_year, s, e)
 
                 sh_rating = 4.0
                 rel_low = clean_release.lower()
@@ -874,11 +952,13 @@ def search():
                 if matches >= 3: sh_rating = 10.0
                 elif matches >= 1: sh_rating = 8.0
 
-                is_sdh = sub.get('hearing_impaired', False) or bool(sdh_pattern.search(f"{raw_release} {sub_url}".lower()))
+                is_sdh = (sub.get('hearing_impaired', False)
+                          or str(sub.get('releaseGroup', '')).strip().lower() == 'sdh'
+                          or bool(sdh_pattern.search(f"{raw_release} {sub_url}".lower())))
 
                 results.append({
                     'language_name': _get_lang_name(short_lang),
-                    'filename': f"{clean_release} [B][COLOR FFB048B5][ST][/COLOR][/B]",
+                    'filename': f"{clean_release} [B][COLOR FFB048B5][{badge}][/COLOR][/B]",
                     'url': sub_url,
                     'l_code': short_lang,
                     'api_filename': clean_release,
@@ -897,8 +977,10 @@ def search():
     if source_opt == 0: online_results = wyzie_worker()
     elif source_opt == 1: online_results = os_worker()
     elif source_opt == 2: online_results = stremio_worker()
+    elif source_opt == 4: online_results = stremio_worker(OSV3_MANIFEST, 'OSv3')
     else:
         # ── RACING MODE ("FIRST TO FIND WINS") ──
+        RACERS = 4
         fast_results = []
         fast_lock = threading.Lock()
         fast_event = threading.Event()
@@ -916,7 +998,7 @@ def search():
                         _log_debug(f"[RACING] WINNER! {name} won the race! Stopping timer!")
                         fast_event.set()
                         
-                    elif finished_count[0] == 3 and not fast_event.is_set():
+                    elif finished_count[0] == RACERS and not fast_event.is_set():
                         _log_debug("[RACING] Everyone finished and all have 0 results...")
                         fast_event.set()
                         
@@ -924,14 +1006,15 @@ def search():
                 _log_debug(f"[RACING] Critical error in thread {name}: {e}")
                 with fast_lock:
                     finished_count[0] += 1
-                    if finished_count[0] == 3 and not fast_event.is_set():
+                    if finished_count[0] == RACERS and not fast_event.is_set():
                         fast_event.set()
 
         t1 = threading.Thread(target=run_worker_thread, args=(wyzie_worker, "WYZIE"), daemon=True)
         t2 = threading.Thread(target=run_worker_thread, args=(os_worker, "OS"), daemon=True)
-        t3 = threading.Thread(target=run_worker_thread, args=(stremio_worker, "STREMIO"), daemon=True)
+        t3 = threading.Thread(target=run_worker_thread, args=(lambda: stremio_worker(OSV3_MANIFEST, 'OSv3'), "OSV3"), daemon=True)
+        t4 = threading.Thread(target=run_worker_thread, args=(stremio_worker, "STREMIO"), daemon=True)
         
-        t1.start(); t2.start(); t3.start()
+        t1.start(); t2.start(); t3.start(); t4.start()
         fast_event.wait(timeout=15)
         
         with fast_lock:

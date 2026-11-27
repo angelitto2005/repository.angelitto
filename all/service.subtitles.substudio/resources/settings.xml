@@ -3,11 +3,11 @@
     <category label="General">
         <setting label="[B][COLOR orange]Providers[/COLOR][/B]" type="lsep" />
         <setting id="subtitle_source" type="enum" label="Subtitle Provider"
-                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]Custom Stremio[/COLOR][/B]|[B][COLOR cyan]Fast (All 3)[/COLOR][/B]"
+                 values="[B][COLOR cyan]Wyzie[/COLOR][/B]|[B][COLOR cyan]OpenSubtitles[/COLOR][/B]|[B][COLOR cyan]Custom Stremio[/COLOR][/B]|[B][COLOR cyan]Fast (All 4)[/COLOR][/B]|[B][COLOR cyan]OSv3 (Stremio)[/COLOR][/B]"
                  default="3" />
         <setting id="custom_stremio_manifest" type="text" label="Custom Stremio Manifest URL" default=""
                  visible="eq(-1,2)" />
-        <setting label="[I]Paste the manifest URL from any Stremio subtitle addon (e.g., SubMaker, OpenSubtitlesV3). Get it from the addon&apos;s configure page.[/I]" type="lsep" visible="eq(-2,2)" />
+        <setting label="[I]Paste the manifest URL of any other Stremio subtitle addon (e.g., SubMaker). Get it from the addon&apos;s configure page.[/I]" type="lsep" visible="eq(-2,2)" />
 				 
         <setting id="subs_languages" type="enum" label="Subtitle Language"
                  values="[B][COLOR yellow]Romanian[/COLOR][/B]|[B][COLOR yellow]English[/COLOR][/B]|[B][COLOR yellow]Spanish[/COLOR][/B]|[B][COLOR yellow]French[/COLOR][/B]|[B][COLOR yellow]German[/COLOR][/B]|[B][COLOR yellow]Italian[/COLOR][/B]|[B][COLOR yellow]Hungarian[/COLOR][/B]|[B][COLOR yellow]Portuguese[/COLOR][/B]|[B][COLOR yellow]Russian[/COLOR][/B]|[B][COLOR yellow]Turkish[/COLOR][/B]|[B][COLOR yellow]Bulgarian[/COLOR][/B]|[B][COLOR yellow]Greek[/COLOR][/B]|[B][COLOR yellow]Polish[/COLOR][/B]|[B][COLOR yellow]Czech[/COLOR][/B]|[B][COLOR yellow]Dutch[/COLOR][/B]|[B][COLOR yellow]Indonesian[/COLOR][/B]|[B][COLOR yellow]Arabic[/COLOR][/B]"
@@ -47,7 +47,7 @@
 
         <!-- Secțiune Wyzie API -->
         <setting label="[B][COLOR orange]Wyzie API Configuration[/COLOR][/B]" type="lsep" />
-        <setting id="wyzie_api_key" type="text" label="Wyzie API key for searching" default="" />
+        <setting id="wyzie_api_key" type="text" label="Wyzie API key for searching" default="" option="hidden" />
         <setting label="[I]Get key from:  [B][COLOR cyan]store.wyzie.io/redeem[/COLOR][/B][/I]" type="lsep" />
 
 		<setting type="sep2"/>
