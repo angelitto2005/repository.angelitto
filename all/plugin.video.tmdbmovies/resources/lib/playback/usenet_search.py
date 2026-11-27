@@ -504,12 +504,6 @@ def _play_easynews(handle, remote_url, title='', size=0, indexer='EasyNews Direc
         _log('EasyNews direct address failed: %s' % type(exc).__name__)
     if not local:
         try:
-            from resources.lib.api.easynews_proxy import playback_url as _proxy_playback_url
-            local = _proxy_playback_url(remote_url)
-        except Exception as exc:
-            _log('EasyNews proxy failed: %s' % type(exc).__name__)
-    if not local:
-        try:
             from resources.lib.api.easynews_direct import resolve_playback
             local = resolve_playback(remote_url)
         except Exception as exc:
@@ -518,8 +512,6 @@ def _play_easynews(handle, remote_url, title='', size=0, indexer='EasyNews Direc
         _notify('EasyNews Direct stream is unavailable')
         xbmcplugin.setResolvedUrl(handle, False, xbmcgui.ListItem())
         return
-    if '127.0.0.1' in local and '|seekable=' not in local:
-        local += '|seekable=1'          # only the proxy fallback needs the hint
     _log('playing EasyNews Direct: %s' % (title or 'stream'))
     li = xbmcgui.ListItem(label=title or 'EasyNews Direct', path=local)
     try:

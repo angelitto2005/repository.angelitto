@@ -213,8 +213,6 @@ TMDbmovies_ICON = os.path.join(ADDON_PATH, 'icon.png')
 # =============================================================================
 PLAYER_CHECK_TIMEOUT = 10  # Secunde pentru verificare sursa (mareste daca surse mari)
 PLAYER_AUDIO_CHECK_ONLY_SD = True  # True = verifica audio-only doar pe SD/720p, False = verifica toate
-EASYNEWS_STALL_SECONDS = 20.0  # no position progress -> try the next source
-EASYNEWS_RANGE_GRACE = 10.0  # a fresh proxy range means Kodi is seeking/recovering
 # Post-stop work runs inside the play invocation and Kodi waits for its threads
 # ("CPythonInvoker ... waiting on thread"), so nothing after a stop may outlive
 # this budget, counted from the moment playback stopped. Every wait below takes
@@ -2209,12 +2207,6 @@ class TMDbPlayer(xbmc.Player):
     def onPlayBackStopped(self):
         log(f"[PLAYER-CLASS] onPlayBackStopped called")
         self.user_stopped = True
-        try:
-            from resources.lib.api.easynews_proxy import abort_url
-            if abort_url(getattr(self, 'easynews_local_url', ''), 'stopped callback'):
-                log("[PLAYER-CLASS] EasyNews stream aborted (stopped callback)")
-        except Exception as e:
-            log("[PLAYER-CLASS] EasyNews abort error: %s" % e, xbmc.LOGWARNING)
 
     def onPlayBackEnded(self):
         log("[PLAYER-CLASS] onPlayBackEnded called")
@@ -2698,50 +2690,6 @@ def start_playback_monitor(player_instance, dialog=None):
     
     def monitor_loop():
         log("[PLAYER-MONITOR] Monitor thread started")
-        _easynews_local_url = str(getattr(player_instance, 'easynews_local_url', '') or '')
-
-        def _release_easynews(reason):
-            if not _easynews_local_url:
-                if reason == 'stall':
-                    log("[PLAYER-MONITOR] EasyNews abort: local URL missing", xbmc.LOGWARNING)
-                return
-            try:
-                from resources.lib.api.easynews_proxy import abort_url
-                if abort_url(_easynews_local_url, reason):
-                    log("[PLAYER-MONITOR] EasyNews stream aborted (%s)" % reason)
-                elif reason == 'stall':
-                    log("[PLAYER-MONITOR] EasyNews abort: no active stream", xbmc.LOGWARNING)
-            except Exception as e:
-                log("[PLAYER-MONITOR] EasyNews abort error: %s" % e, xbmc.LOGWARNING)
-
-        def _easynews_fresh_range():
-            try:
-                raw = (xbmcgui.Window(10000).getProperty(
-                    'tmdbmovies.easynews.activity') or '').strip()
-                return bool(raw) and (time.time() - float(raw)) < EASYNEWS_RANGE_GRACE
-            except Exception:
-                return False
-
-        def _stop_stalled_easynews(curr):
-            player_instance.easynews_stalled = True
-            log("[PLAYER-MONITOR] EasyNews source stalled at %ss - trying next"
-                % int(curr))
-            try:
-                _retry_text = ("Trying next..." if getattr(
-                    player_instance, 'easynews_retried', False)
-                    else "Retrying source...")
-                xbmcgui.Dialog().notification(
-                    "[B][COLOR FF00CED1]TMDb [COLOR FFCCCCFF]Movies[/COLOR][/B]",
-                    "[B][COLOR FFCCCCFF]EasyNews stalled. %s[/COLOR][/B]"
-                    % _retry_text,
-                    TMDbmovies_ICON, 3000)
-            except Exception:
-                pass
-            _release_easynews('stall')
-            try:
-                player_instance.stop()
-            except Exception:
-                pass
 
         # Cata timp ruleaza episodul, lista Up Next nu se goleste (vezi
         # cache._playback_active). Altfel ghost scraper-ul de la 80% si daemonii
@@ -2775,7 +2723,6 @@ def start_playback_monitor(player_instance, dialog=None):
             
             # Un player blocat in OpenFile (ex. ISO/UDF) nu raporteaza isPlaying(),
             # dar Stop ii poate anula deschiderea inainte de urmatoarea sursa.
-            _release_easynews('open timeout')
             try:
                 xbmc.Player().stop()
             except Exception:
@@ -2793,17 +2740,6 @@ def start_playback_monitor(player_instance, dialog=None):
             try: dialog.close()
             except: pass
         player_instance.playback_start_time = time.time()
-        # Doar pe calea cu proxy. Pe redarea directa watchdog-ul ramine OPRIT,
-        # deliberat: o sursa rece care nu porneste trebuie sa se opreasca si sa
-        # te lase in lista. Cu el pornit, retry-ul automat (acelasi URL, apoi
-        # sursa urmatoare) se poate inlantui si redarea reporneste singura, fara
-        # sa mai poata fi oprita din telecomanda. Al doilea click manual pe
-        # aceeasi sursa o porneste, pentru ca obiectul e deja cald pe CDN.
-        _easynews_source = (bool(getattr(player_instance, 'easynews_source', False))
-                            and not getattr(player_instance, 'easynews_direct', False))
-        _easynews_stall_pos = -1.0
-        _easynews_stall_since = time.time()
-        _easynews_grace_until = 0.0
 
         # Offset in kodi.log la pornirea acestei surse; la oprire citim doar
         # ce s-a scris de aici incolo (vezi _nzb_damage_since).
@@ -2856,38 +2792,6 @@ def start_playback_monitor(player_instance, dialog=None):
             try:
                 curr = player_instance.getTime()
                 total = player_instance.getTotalTime()
-                
-                if _easynews_source:
-                    try:
-                        _paused = xbmc.getCondVisibility('Player.Paused')
-                    except Exception:
-                        _paused = False
-                    try:
-                        _seeking = xbmc.getCondVisibility('Player.Seeking')
-                    except Exception:
-                        _seeking = False
-                    if _paused or _seeking:
-                        _easynews_stall_since = time.time()
-                        _easynews_stall_pos = curr
-                        _easynews_grace_until = 0.0
-                    elif curr > _easynews_stall_pos + 0.5:
-                        _easynews_stall_pos = curr
-                        _easynews_stall_since = time.time()
-                        _easynews_grace_until = 0.0
-                    elif _easynews_grace_until and time.time() >= _easynews_grace_until:
-                        _stop_stalled_easynews(curr)
-                        break
-                    elif time.time() - _easynews_stall_since >= EASYNEWS_STALL_SECONDS:
-                        if not _easynews_grace_until and _easynews_fresh_range():
-                            # One fresh range may be Kodi recovering from a seek; give it a
-                            # short window, but do not let reconnect churn hide a dead source.
-                            _easynews_grace_until = time.time() + EASYNEWS_RANGE_GRACE
-                            _easynews_stall_since = time.time()
-                            _easynews_stall_pos = curr
-                            log("[PLAYER-MONITOR] EasyNews stall grace for fresh range")
-                        else:
-                            _stop_stalled_easynews(curr)
-                            break
                 
                 if curr > 0 and total > 0:
                     last_known_position = curr
@@ -2959,44 +2863,12 @@ def start_playback_monitor(player_instance, dialog=None):
         # ============================================================
         # PLAYERUL S-A OPRIT
         # ============================================================
-        _release_easynews('stopped')
         _stopped_at = time.time()
         watched_duration = 0
         if player_instance.playback_start_time > 0:
             watched_duration = time.time() - player_instance.playback_start_time
         
         log(f"[PLAYER-MONITOR] Player stopped after {int(watched_duration)}s")
-        
-        if getattr(player_instance, 'easynews_stalled', False):
-            try:
-                wipe_plugin_bookmarks()
-            except Exception:
-                pass
-            _monitor_release(_claim_token)
-            if (not getattr(player_instance, 'easynews_retried', False)
-                    and player_instance.rollover_args and player_instance.streams):
-                log("[PLAYER-MONITOR] EasyNews stalled - retrying the same source")
-                _info, _ids, _art, _props, _resume = player_instance.rollover_args
-                def _easynews_retry():
-                    xbmc.sleep(800)
-                    if not _play_attempt_is_current(
-                            getattr(player_instance, 'play_attempt', -1)):
-                        log("[PLAYER-MONITOR] EasyNews retry cancelled (newer playback)")
-                        return
-                    play_with_rollover(
-                        player_instance.streams, player_instance.start_index,
-                        player_instance.tmdb_id, player_instance.content_type,
-                        player_instance.season, player_instance.episode,
-                        _info, _ids, _art, _props, _resume,
-                        from_resolve=True, easynews_retried=True,
-                        seek_override=getattr(player_instance, 'seek_override', None))
-                threading.Thread(target=_easynews_retry, daemon=True,
-                                 name='EASYNEWS-RETRY').start()
-                return
-            log("[PLAYER-MONITOR] EasyNews stalled again - switching to next source")
-            player_instance.user_stopped = False
-            player_instance.trigger_rollover(allow_started=True)
-            return
         
         # Inchidem dialogurile busy ca sa nu mai apara rotita
         xbmc.executebuiltin('Dialog.Close(busydialog,true)')
@@ -3966,7 +3838,7 @@ def format_for_results_window(streams, poster_url, meta=None):
 # =============================================================================
 # PLAY WITH ROLLOVER - VERSIUNE FINALA (FARA BUFFERING DUPLICAT)
 # =============================================================================
-def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False, easynews_retried=False, seek_override=None):
+def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, info_tag, unique_ids, art, properties, resume_time=0, from_resolve=False, resolve_only=False, native_resume_mode=False, seek_override=None):
 
     log("[PLAYER] === PLAY_WITH_ROLLOVER START ===")
     _attempt = begin_play_attempt()
@@ -4496,7 +4368,6 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         _active_player = TMDbPlayer(tmdb_id, c_type, season, episode, title=p_title, year=str(p_year), tvshowtitle=show_title_extracted)
         player = _active_player
         player.play_attempt = _attempt
-        player.easynews_retried = bool(easynews_retried)
         player.seek_override = seek_override if seek_override in ('seek', 'noseek') else None
         # imdb_id pentru Skip Intro (SegmentScraper cere imdb_id)
         player.imdb_id = (unique_ids or {}).get('imdb') or None
@@ -4523,32 +4394,20 @@ def play_with_rollover(streams, start_index, tmdb_id, c_type, season, episode, i
         except Exception:
             pass
         player.easynews_source = easynews_source
-        player.easynews_local_url = ''
-        player.easynews_direct = False
 
         if str(current_stream.get('provider_id', '')) == 'easynews_direct':
             try:
                 # Ca la Lucent Video: Kodi citeste direct adresa EasyNews, cu
-                # loginul in URL. Proxy-ul local relua fiecare Range prin Python
+                # loginul in URL. Un proxy local relua fiecare Range prin Python
                 # si facea HEAD + coada inainte de start; un seek sau o pauza
                 # scurta depaseau timeout-urile si Kodi oprea sursa (black screen).
                 from resources.lib.api.easynews_direct import playback_url as _en_playback_url
                 direct = _en_playback_url(valid_url)
                 if direct:
                     valid_url = direct
-                    player.easynews_direct = True
                     log("[PLAYER] EasyNews direct: Kodi plays the EasyNews address itself (no proxy)")
                 else:
-                    from resources.lib.api.easynews_proxy import playback_url
-                    proxied = playback_url(valid_url)
-                    if proxied:
-                        valid_url = proxied
-                        player.easynews_local_url = valid_url.partition('|')[0]
-                        if '|seekable=' not in valid_url:
-                            valid_url += '|seekable=1'
-                        log("[PLAYER] EasyNews direct address unavailable - loopback proxy fallback")
-                    else:
-                        log("[PLAYER] EasyNews direct resolve and proxy unavailable")
+                    log("[PLAYER] EasyNews direct address unavailable")
             except Exception as e:
                 log("[PLAYER] EasyNews direct playback setup error: %s" % e)
 

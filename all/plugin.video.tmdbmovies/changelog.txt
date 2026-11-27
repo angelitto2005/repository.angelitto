@@ -1,3 +1,6 @@
+1.1.376
+- The local EasyNews helper server was removed: EasyNews Direct always plays straight from EasyNews and nothing extra starts in the background.
+
 1.1.375
 - Addresses written to the Kodi log by the addon are masked: a login inside a URL and the token/key/signature query values are replaced with ***, so a log shared for support does not expose the account.
 
