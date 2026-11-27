@@ -31,7 +31,6 @@ INDEXER_SLOTS = 6
 NZBINDEX_URL = 'https://www.nzbindex.com'
 BINSEARCH_URL = 'https://www.binsearch.info'
 NZBKING_URL = 'https://www.nzbking.com'
-CLUBNZB_URL = 'https://clubnzb.com'
 
 
 def addon():
@@ -750,11 +749,6 @@ def nzbking_enabled():
     return flag('usenet_nzb.nzbking', False)
 
 
-def clubnzb_enabled():
-    """A free Spotweb site; its HTML search is opt-in like the other scrapers."""
-    return flag('usenet_nzb.clubnzb', False)
-
-
 def indexers():
     """The slots in order, then the extra comma list; one entry per address."""
     found = []
@@ -772,10 +766,6 @@ def indexers():
         found.append({'name': 'NZBKing', 'url': NZBKING_URL, 'key': 'free',
                       'builtin': 'nzbking'})
         seen.add(NZBKING_URL)
-    if clubnzb_enabled():
-        found.append({'name': 'ClubNZB', 'url': CLUBNZB_URL, 'key': 'free',
-                      'builtin': 'clubnzb'})
-        seen.add(CLUBNZB_URL)
     for number in range(1, INDEXER_SLOTS + 1):
         item = indexer_slot(number)
         if item and item['url'] not in seen:

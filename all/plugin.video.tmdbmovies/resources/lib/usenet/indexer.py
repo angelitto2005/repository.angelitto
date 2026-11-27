@@ -43,7 +43,6 @@ RETRY_AFTER = 3600
 NZBINDEX_PAUSE = 900
 BINSEARCH_PAUSE = 900
 NZBKING_PAUSE = 900
-CLUBNZB_PAUSE = 900
 USER_AGENT = 'plugin.video.tmdbmovies usenet'
 
 
@@ -481,8 +480,6 @@ def _query(indexer, kind, imdb, season, episode, title, packs=True, use_cache=Tr
         return _binsearch_rows(indexer, title, year, season, episode)
     if indexer.get('builtin') == 'nzbking':
         return _nzbking_rows(indexer, title, year, season, episode)
-    if indexer.get('builtin') == 'clubnzb':
-        return _clubnzb_rows(indexer, title, year, season, episode)
     digits = _imdb_number(imdb)
     if all_categories and season is None:
         # A user's own words are not a film title: search every category
@@ -868,76 +865,6 @@ def _nzbking_title(text):
     return name.strip()
 
 
-def _clubnzb_posted(text, now=None):
-    match = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', str(text or ''))
-    if not match:
-        return _binsearch_posted(text, now)
-    try:
-        return int(time.mktime((int(match.group(3)), int(match.group(2)),
-                                int(match.group(1)), 12, 0, 0, 0, 0, -1)))
-    except (TypeError, ValueError, OverflowError):
-        return 0
-
-
-def _clubnzb_get(indexer, params, timeout=None):
-    """The Spotweb search page: no account, no key, the rows are plain HTML."""
-    url = indexer['url'].rstrip('/') + '/?' + urlencode(params)
-    if not _allowed(indexer['url'], 'api'):
-        raise LimitReached('the searches on %s are paused for a while' % indexer['name'])
-    request = Request(url, headers={'User-Agent': _agent(), 'Accept': 'text/html'})
-    try:
-        with urlopen(request, timeout=timeout or BUILTIN_TIMEOUT) as response:
-            body = response.read(MAX_BYTES + 1)
-    except Exception as exc:
-        code = getattr(exc, 'code', None)
-        if code in (403, 429):
-            _pause(indexer['url'], _now() + CLUBNZB_PAUSE, ('api',))
-            raise LimitReached('%s asked to wait - it is asked again in a few minutes'
-                               % indexer['name'])
-        raise LimitReached('%s did not answer (%s)'
-                           % (indexer['name'], code or type(exc).__name__))
-    _note(indexer['url'], 'api', body)
-    if len(body) > MAX_BYTES:
-        raise LimitReached('%s sent an answer that is too large' % indexer['name'])
-    head = body[:4096].lower()
-    if b'just a moment' in head or b'cf-chl' in head or b'attention required' in head:
-        raise LimitReached('%s asked for a browser check - try again later' % indexer['name'])
-    return body
-
-
-def _clubnzb_rows(indexer, title, year, season, episode):
-    for query in _free_queries(title, year, season, episode):
-        body = _clubnzb_get(indexer, {'search[value][]': 'Title:=:DEF:' + query,
-                                      'sortby': 'stamp', 'sortdir': 'DESC'}
-                            ).decode('utf-8', 'replace')
-        page_rows, seen = [], set()
-        useful = False
-        for raw in re.split(r"<tr class='spotcat", body)[1:]:
-            name_match = re.search(r"title='([^']+)' class='spotlink'", raw)
-            link_match = re.search(r"href='(https?://[^']*page=getnzb[^']*)'", raw)
-            if not name_match or not link_match:
-                continue
-            name = _free_clean(html.unescape(name_match.group(1)))
-            link = html.unescape(link_match.group(1))
-            size_match = re.search(r"class='filesize[^']*'>([^<]+)<", raw)
-            size = _binsearch_size(size_match.group(1) if size_match else '')
-            if not name or size <= 0 or link in seen:
-                continue
-            seen.add(link)
-            seen.add(name)
-            date_match = re.search(r"class='date[^']*' title='([^']+)'", raw)
-            page_rows.append({
-                'indexer': indexer['name'], 'title': name, 'nzb_url': link,
-                'size': size, 'grabs': 0, 'password': False,
-                'posted': _clubnzb_posted(date_match.group(1) if date_match else ''),
-            })
-            if not useful:
-                useful = _title_matches(name, title, year, season is None)
-        if page_rows and useful:
-            return page_rows
-    return []
-
-
 def _nzbking_get(indexer, params, timeout=None):
     """The site's HTML search: no account, no key; it is opt-in and throttled."""
     url = indexer['url'].rstrip('/') + '/search/?' + urlencode(params)
@@ -1025,6 +952,19 @@ def _nzbking_rows(indexer, title, year, season, episode):
     return merged if useful else []
 
 
+def _other_season_pack(title, season):
+    """A release that names one season only, and not the wanted one."""
+    low = re.sub(r'[._-]+', ' ', str(title or '').lower())
+    found = set()
+    for value in re.findall(r'\bs(\d{1,2})\b', low):
+        found.add(int(value))
+    try:
+        season = int(season)
+    except (TypeError, ValueError):
+        return False
+    return len(found) == 1 and season not in found
+
+
 def _filter_rows(rows, season, episode, min_size, episodes_only,
                  seen_links, seen_titles, why,
                  query_title='', query_year=None, query_alt=''):
@@ -1046,6 +986,13 @@ def _filter_rows(rows, season, episode, min_size, episodes_only,
         if not _title_matches(title, query_title, query_year, season is None, query_alt):
             _why(why, 'wrong title')
             continue
+        if season is not None and episode not in (None, ''):
+            if nzb.episode_mismatch(title, season, episode):
+                _why(why, 'other episode')
+                continue
+            if _other_season_pack(title, season):
+                _why(why, 'other season')
+                continue
         try:
             size = int(row.get('size') or 0)
         except (TypeError, ValueError):
@@ -1768,17 +1715,6 @@ def test(indexer):
         try:
             body = _nzbking_get(indexer, {'q': 'the matrix 1999'}, timeout=12)
             if b'search-result' in body or b'did not match any documents' in body:
-                return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
-            return False, '%s answered something unexpected' % indexer['name']
-        except (KeyRejected, LimitReached) as exc:
-            return False, redact(exc)
-        except Exception as exc:
-            return False, '%s: %s' % (indexer['name'], redact(str(exc)[:90]))
-    if indexer.get('builtin') == 'clubnzb':
-        try:
-            body = _clubnzb_get(indexer, {'search[value][]': 'Title:=:DEF:the matrix 1999',
-                                          'sortby': 'stamp', 'sortdir': 'DESC'}, timeout=12)
-            if b"class='spotlink'" in body:
                 return True, '%s: free search works (%s)' % (indexer['name'], usage_line(url))
             return False, '%s answered something unexpected' % indexer['name']
         except (KeyRejected, LimitReached) as exc:
