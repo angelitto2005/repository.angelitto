@@ -294,6 +294,15 @@
         <setting id="usenet_nzb.provider2.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
         <setting id="usenet_nzb.provider2.backup" type="bool" label="      [COLOR FFCCCCFF]└─ [B]backup[/B]   (used only if Provider 1 fails)[/COLOR]" default="true" visible="eq(-7,true)"/>
 
+        <setting id="usenet_nzb.provider3.enabled" type="bool" label="[COLOR FF00CED1][B]Provider 3[/B][/COLOR][COLOR FFCCCCFF]   use this NNTP provider   (leave off if you have two)[/COLOR]" default="false"/>
+        <setting id="usenet_nzb.provider3.host" type="text" label="      [COLOR FFCCCCFF]└─ [B]server address[/B]   (e.g. news.example.com)[/COLOR]" default="" visible="eq(-1,true)"/>
+        <setting id="usenet_nzb.provider3.port" type="enum" label="      [COLOR FFCCCCFF]└─ [B]port[/B][/COLOR]" values="563 (secure)|443 (secure, if 563 is blocked)|119 (unsecure)" default="0" visible="eq(-2,true)"/>
+        <setting id="usenet_nzb.provider3.ssl" type="bool" label="      [COLOR FFCCCCFF]└─ [B]secure connection[/B]  (SSL/TLS)[/COLOR]" default="true" visible="eq(-3,true)"/>
+        <setting id="usenet_nzb.provider3.connections" type="slider" label="      [COLOR FFCCCCFF]└─ [B]max connections[/B]   (only if the plan allows)[/COLOR]" default="20" range="1,1,60" option="int" visible="eq(-4,true)"/>
+        <setting id="usenet_nzb.provider3.user" type="text" label="      [COLOR FFCCCCFF]└─ [B]username[/B][/COLOR]" default="" visible="eq(-5,true)"/>
+        <setting id="usenet_nzb.provider3.password" type="text" label="      [COLOR FFCCCCFF]└─ [B]password[/B][/COLOR]" default="" option="hidden" visible="eq(-6,true)"/>
+        <setting id="usenet_nzb.provider3.backup" type="bool" label="      [COLOR FFCCCCFF]└─ [B]backup[/B]   (asked only for the articles the providers before it miss)[/COLOR]" default="true" visible="eq(-7,true)"/>
+
         <setting label="[B][COLOR FFFFEA00]Playback[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.vfs" type="bool" label="[COLOR FFCCCCFF][B]Native VFS engine[/B]   (faster, needs the vfs.tmdbm add-on)[/COLOR]" default="true"/>
         <setting id="usenet_nzb.install_vfs" type="action" label="      [COLOR FFCCCCFF]└─ [/COLOR][B][COLOR FFF70D1A]Install the VFS engine[/COLOR][/B]   [COLOR FFCCCCFF](from the Angelitto repository)[/COLOR]" visible="eq(-1,true) + !System.HasAddon(vfs.tmdbm)" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=install_vfs)"/>
@@ -313,8 +322,10 @@
         <setting label="[B][COLOR FFFFEA00]Test and diagnostics[/COLOR][/B]" type="lsep" />
         <setting id="usenet_nzb.test_provider1" type="action" label="[COLOR FFCCCCFF][B]Test Provider 1[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=1)"/>
         <setting id="usenet_nzb.test_provider2" type="action" label="[COLOR FFCCCCFF][B]Test Provider 2[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=2)"/>
+        <setting id="usenet_nzb.test_provider3" type="action" label="[COLOR FFCCCCFF][B]Test Provider 3[/B]   (connects and logs in)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_provider&amp;index=3)"/>
         <setting id="usenet_nzb.tune_provider1" type="action" label="[COLOR FFFFD700][B]Tune Provider 1[/B]   (connections, secure port, speed; uses data)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_tune_provider&amp;index=1)"/>
         <setting id="usenet_nzb.tune_provider2" type="action" label="[COLOR FFFFD700][B]Tune Provider 2[/B]   (connections, secure port, speed; uses data)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_tune_provider&amp;index=2)"/>
+        <setting id="usenet_nzb.tune_provider3" type="action" label="[COLOR FFFFD700][B]Tune Provider 3[/B]   (connections, secure port, speed; uses data)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_tune_provider&amp;index=3)"/>
         <setting id="usenet_nzb.test_indexers" type="action" label="[COLOR FFCCCCFF][B]Test indexers[/B]   (search + today's quota)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_test_indexers)"/>
         <setting id="usenet_nzb.stats" type="action" label="[COLOR FFCCCCFF][B]Statistics[/B]   (indexers, providers and playback)[/COLOR]" action="RunPlugin(plugin://plugin.video.tmdbmovies/?mode=usenet_stats)"/>
 

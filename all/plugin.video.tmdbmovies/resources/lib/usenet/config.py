@@ -28,6 +28,7 @@ DEFAULT_HOLE_CONSECUTIVE = 4
 NZB_KEEP_SECONDS = 3 * 86400
 NZB_MAX_BYTES = 256 * 1024 * 1024
 INDEXER_SLOTS = 6
+PROVIDER_SLOTS = 3
 NZBINDEX_URL = 'https://www.nzbindex.com'
 BINSEARCH_URL = 'https://www.binsearch.info'
 NZBKING_URL = 'https://www.nzbking.com'
@@ -514,13 +515,13 @@ def provider(index):
         'connections': number('usenet_nzb.provider%d.connections' % index, DEFAULT_CONNECTIONS, 1, 60),
         'user': str(text('usenet_nzb.provider%d.user' % index, '')).strip(),
         'password': str(text('usenet_nzb.provider%d.password' % index, '')),
-        'backup': index == 2 and flag('usenet_nzb.provider2.backup', True),
+        'backup': index > 1 and flag('usenet_nzb.provider%d.backup' % index, True),
         'timeout': timeout(),
     }
 
 
 def providers():
-    return [item for item in (provider(1), provider(2)) if item]
+    return [item for item in (provider(number) for number in range(1, PROVIDER_SLOTS + 1)) if item]
 
 
 def primary_providers():
