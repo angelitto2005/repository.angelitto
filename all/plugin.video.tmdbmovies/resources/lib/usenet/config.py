@@ -31,6 +31,7 @@ INDEXER_SLOTS = 6
 NZBINDEX_URL = 'https://www.nzbindex.com'
 BINSEARCH_URL = 'https://www.binsearch.info'
 NZBKING_URL = 'https://www.nzbking.com'
+CLUBNZB_URL = 'https://clubnzb.com'
 
 
 def addon():
@@ -552,7 +553,6 @@ _PROVIDER_NAMES = {
 
 STATE_FILE = 'usenet_state.json'
 PRIMARY_DOWN_SECONDS = 600
-SERVED_SECONDS = 600
 
 
 def provider_name(item):
@@ -613,22 +613,8 @@ def provider_down():
         return False
 
 
-def mark_served(item, seconds=SERVED_SECONDS):
-    """Remember who actually answered: the list stops guessing from settings."""
-    name = provider_name(item)
-    if not name:
-        return
-    import time
-    _state_update({'served_by': name, 'served_at': time.time()})
-
-
 def active_provider_name():
-    """Who serves the next stream: the one that served last, or the expected one."""
-    import time
-    data = state()
-    served, when = data.get('served_by'), float(data.get('served_at') or 0)
-    if served and time.time() - when < SERVED_SECONDS:
-        return served
+    """The provider asked first: the primary, or the backup while it is down."""
     primary = primary_providers()
     backup = backup_providers()
     if primary and not (backup and provider_down()):
@@ -764,6 +750,11 @@ def nzbking_enabled():
     return flag('usenet_nzb.nzbking', False)
 
 
+def clubnzb_enabled():
+    """A free Spotweb site; its HTML search is opt-in like the other scrapers."""
+    return flag('usenet_nzb.clubnzb', False)
+
+
 def indexers():
     """The slots in order, then the extra comma list; one entry per address."""
     found = []
@@ -781,6 +772,10 @@ def indexers():
         found.append({'name': 'NZBKing', 'url': NZBKING_URL, 'key': 'free',
                       'builtin': 'nzbking'})
         seen.add(NZBKING_URL)
+    if clubnzb_enabled():
+        found.append({'name': 'ClubNZB', 'url': CLUBNZB_URL, 'key': 'free',
+                      'builtin': 'clubnzb'})
+        seen.add(CLUBNZB_URL)
     for number in range(1, INDEXER_SLOTS + 1):
         item = indexer_slot(number)
         if item and item['url'] not in seen:

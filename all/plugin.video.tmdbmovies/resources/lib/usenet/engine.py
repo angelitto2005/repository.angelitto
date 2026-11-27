@@ -488,7 +488,6 @@ class Session(object):
                         pass
                     if not seen:
                         self._served = pool
-                        config.mark_served(pool.provider)
                         _log('serving from %s' % pool.label)
                     if clear:
                         config.clear_primary_down()

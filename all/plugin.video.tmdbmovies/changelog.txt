@@ -1,3 +1,8 @@
+1.1.377
+- ClubNZB is a new free Usenet indexer: it reads the clubnzb.com search page and downloads the NZB without an account or key (Settings > Usenet > Indexers; off by default).
+- The Usenet server shown in the source list is now the provider that is asked first, so it does not switch to the backup for ten minutes after one stream; playback still tries the primary first and asks the backup only for the articles missing on it.
+- The free indexer switches are labelled plainly (free indexer); the opt-in note was dropped.
+
 1.1.376
 - The local EasyNews helper server was removed: EasyNews Direct always plays straight from EasyNews and nothing extra starts in the background.
 
