@@ -63,6 +63,17 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 SUBSRO_ICON = os.path.join(__cwd__, 'icon.png')
 
+_SECRET_URL_RE = re.compile(r'//[^/@\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
+
+
 def log(module, msg):
     if __addon__.getSetting('debug_log') != 'true':
         return
@@ -70,7 +81,7 @@ def log(module, msg):
     try:
         if isinstance(msg, bytes):
             msg = msg.decode('utf-8', 'ignore')
-        full_msg = "### [%s] - %s" % (__scriptid__, msg)
+        full_msg = "### [%s] - %s" % (__scriptid__, _mask_secrets(msg))
         if py3: xbmc.log(full_msg, level=xbmc.LOGINFO)
         else: xbmc.log(full_msg.encode('utf-8'), level=xbmc.LOGNOTICE)
     except: pass

@@ -71,9 +71,20 @@ _META_VER = 6
 # HTTP helpers
 # =============================================================================
 
+_SECRET_URL_RE = re.compile(r'//[^/@\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
+
+
 def _log(msg, level=xbmc.LOGINFO):
     try:
-        xbmc.log("[DETONATE] " + str(msg), level)
+        xbmc.log("[DETONATE] " + _mask_secrets(msg), level)
     except Exception:
         pass
 

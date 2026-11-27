@@ -120,8 +120,19 @@ JUNK_IDS = ('None', '', '0', 'VideoPlayer.TVShow.TMDbId', 'VideoPlayer.TMDbId', 
 OS_SUBS_FOLDER = 'special://temp/fastautosubs_subs/'
 
 
+_SECRET_URL_RE = re.compile(r'//[^/@\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
+
+
 def log(msg):
-    xbmc.log("### [%s] - %s" % (__scriptid__, msg), level=xbmc.LOGINFO)
+    xbmc.log("### [%s] - %s" % (__scriptid__, _mask_secrets(msg)), level=xbmc.LOGINFO)
 
 
 class AutoSubsPlayer(xbmc.Player):

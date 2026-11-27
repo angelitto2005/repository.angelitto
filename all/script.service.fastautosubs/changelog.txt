@@ -1,3 +1,6 @@
+1.0.24
+- Secure logs: a user:password inside a playback URL and token/key/signature query values are masked with *** before they reach kodi.log.
+
 1.0.23
 - Fixed: full movies played through the vfs.tmdbm add-on
 

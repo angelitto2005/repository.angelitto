@@ -41,18 +41,27 @@ def _init_debug(addon):
     except Exception:
         _debug_enabled = False
 
+_SECRET_URL_RE = re.compile(r'//[^/\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
+
 def _log_debug(msg):
     if _debug_enabled:
-        xbmc.log(f"ROBOT DEBUG: {msg}".replace("\x00", ""), xbmc.LOGINFO)
+        xbmc.log(f"ROBOT DEBUG: {_mask_secrets(msg)}".replace("\x00", ""), xbmc.LOGINFO)
 
 def _log_info(msg):
-    xbmc.log(f"ROBOT: {msg}".replace("\x00", ""), xbmc.LOGINFO)
+    xbmc.log(f"ROBOT: {_mask_secrets(msg)}".replace("\x00", ""), xbmc.LOGINFO)
 
 def _log_warn(msg):
-    xbmc.log(f"ROBOT: {msg}".replace("\x00", ""), xbmc.LOGWARNING)
+    xbmc.log(f"ROBOT: {_mask_secrets(msg)}".replace("\x00", ""), xbmc.LOGWARNING)
 
 def _log_error(msg):
-    xbmc.log(f"ROBOT ERROR: {msg}".replace("\x00", ""), xbmc.LOGERROR)
+    xbmc.log(f"ROBOT ERROR: {_mask_secrets(msg)}".replace("\x00", ""), xbmc.LOGERROR)
 
 # ═══════════════════════════════════════════════════════════════════
 #  NOTIFICATION HELPER

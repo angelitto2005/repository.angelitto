@@ -133,7 +133,22 @@ def warm_import_modules():
     _check_import_tripwires()
 
 
+_SECRET_URL_RE = re.compile(r'//[^/@\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+
+def _mask_secrets(msg):
+    try:
+        text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+        text = _SECRET_URL_RE.sub('//***:***@', text)
+        return _SECRET_QUERY_RE.sub(r'\1***', text)
+    except Exception:
+        return msg
+
+
 def log(msg, level=xbmc.LOGINFO):
+    msg = _mask_secrets(msg)
     if level in (xbmc.LOGERROR, xbmc.LOGWARNING):
         xbmc.log(f"[TMDb Movies] {msg}", level)
         return

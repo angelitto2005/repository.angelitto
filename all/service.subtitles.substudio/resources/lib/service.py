@@ -8,11 +8,21 @@ __id__    = __addon__.getAddonInfo('id')
 # ── FUNCTIONS FOR LOG CONTROL FROM SETTINGS ────────────────
 RACE_STATE = {"finished": False}
 
+_SECRET_URL_RE = re.compile(r'//[^/\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
+
 def _log_debug(msg):
     if RACE_STATE["finished"]: return
     try:
         if __addon__.getSettingBool('debug_logging'):
-            xbmc.log(f"SUBSTUDIO: {msg}", xbmc.LOGINFO)
+            xbmc.log(f"SUBSTUDIO: {_mask_secrets(msg)}", xbmc.LOGINFO)
     except Exception:
         pass
 
@@ -20,14 +30,14 @@ def _log_warn(msg):
     if RACE_STATE["finished"]: return
     try:
         if __addon__.getSettingBool('debug_logging'):
-            xbmc.log(f"SUBSTUDIO: {msg}", xbmc.LOGWARNING)
+            xbmc.log(f"SUBSTUDIO: {_mask_secrets(msg)}", xbmc.LOGWARNING)
     except Exception:
         pass
 
 def _log_error(msg):
     if RACE_STATE["finished"]: return
     try:
-        xbmc.log(f"SUBSTUDIO ERROR: {msg}", xbmc.LOGERROR)
+        xbmc.log(f"SUBSTUDIO ERROR: {_mask_secrets(msg)}", xbmc.LOGERROR)
     except Exception:
         pass
 # ─────────────────────────────────────────────────────────────────
@@ -229,7 +239,7 @@ def _normalize(s):
 # ════════════════════════════════════════════════════════════════════
 def _glog(msg):
     """Always-visible guard log."""
-    try: xbmc.log(f"SUBSTUDIO GUARD: {msg}", xbmc.LOGINFO)
+    try: xbmc.log(f"SUBSTUDIO GUARD: {_mask_secrets(msg)}", xbmc.LOGINFO)
     except Exception: pass
 
 def _trans_state_path():
@@ -565,8 +575,9 @@ def search():
         else: kodi_year = None
 
         try:
-            file_path = unquote(xbmc.Player().getPlayingFile())
-            _log_debug(f"Checking file link for clues: {file_path}")
+            raw_link = xbmc.Player().getPlayingFile()
+            file_path = unquote(raw_link)
+            _log_debug(f"Checking file link for clues: {raw_link}")
 
             if not imdb_id or str(imdb_id) in junk_ids:
                 match_imdb = re.search(r'(?:media_id|imdb|imdb_id|title)=([^&]+)', file_path, re.IGNORECASE)

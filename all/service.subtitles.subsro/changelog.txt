@@ -1,3 +1,6 @@
+2.5.32
+- Secure logs: a user:password inside a playback URL and token/key/signature query values are masked with *** before they reach kodi.log.
+
 2.5.31
 - Reparat subs.ro
 

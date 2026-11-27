@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
 import xbmc, xbmcgui, xbmcvfs, xbmcaddon
 import os
+import re
+
+_SECRET_URL_RE = re.compile(r'//[^/\s]+@')
+_SECRET_QUERY_RE = re.compile(
+    r'(?i)([?&](?:token|key|api[_-]?key|password|pass|sig|signature|auth|expires|hdnts)=)[^&\s]+')
+
+def _mask_secrets(msg):
+    text = msg.decode('utf-8', 'ignore') if isinstance(msg, bytes) else str(msg)
+    text = _SECRET_URL_RE.sub('//***:***@', text)
+    return _SECRET_QUERY_RE.sub(r'\1***', text)
 
 def upload_logfile():
     """Reads the kodi.log file and uploads it to paste.kodi.tv"""
@@ -22,7 +32,8 @@ def upload_logfile():
         f = xbmcvfs.File(log_file, 'r')
         text = f.read()
         f.close()
-        
+
+        text = _mask_secrets(text)
         if isinstance(text, str):
             text = text.encode('utf-8', errors='ignore')
             

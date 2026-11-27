@@ -1,3 +1,7 @@
+[B][COLOR FF00BFFF]v1.0.42[/COLOR][/B]
+- Playback links, the translation robot logs and the uploaded Kodi log now mask a user:password inside URLs and token/key/signature query values with ***.
+- An already decoded playback link can no longer expose the account login: the undecoded link is logged, and a decoded link from an older log is masked in full before the log is uploaded.
+
 [B][COLOR FF00BFFF]v1.0.41[/COLOR][/B]
 - Final SRT enforces a minimum 50ms gap between blocks, and null characters in source files no longer crash translation
 

@@ -1,3 +1,6 @@
+1.1.375
+- Addresses written to the Kodi log by the addon are masked: a login inside a URL and the token/key/signature query values are replaced with ***, so a log shared for support does not expose the account.
+
 1.1.374
 - A right-click on an EasyNews row in the source list (EasyNews Direct, EasyNews++ or an AIO row) offers to play that source with seek or without seek, whichever is the opposite of the "Play Without Seek" switch, so a cold source can be started the other way without changing the setting. Indexers, HTTP, P2P and debrid rows do not show it.
 - The choice lasts for that playback only, including its automatic retry and the next source on rollover. EasyNews Direct now follows the "Play Without Seek" switch too, instead of always seeking, so the menu option is just the quick way to start one release the other way.
